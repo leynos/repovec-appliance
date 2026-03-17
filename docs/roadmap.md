@@ -3,9 +3,10 @@
 This roadmap describes the implementation plan for repovec-appliance, a
 self-hosted VM appliance that turns private GitHub repositories into a
 continuously indexed, multi-branch semantic and graph-queryable corpus exposed
-as a remote MCP server over HTTPS. Each phase represents a significant
-capability shift; each step is a coherent workstream with a defined delivery
-objective; each task is a concrete, measurable unit of work.
+as a remote Model Context Protocol (MCP) server over HTTPS. Each phase
+represents a significant capability shift; each step is a coherent workstream
+with a defined delivery objective; each task is a concrete, measurable unit
+of work.
 
 See repovec-appliance-technical-design.md for architecture, rationale, and
 constraints referenced throughout.
@@ -186,7 +187,8 @@ immediate reconciliation rather than waiting for the next polling interval.
 
 Connect grepai indexers to the worktree lifecycle so that every active branch
 is continuously indexed. On completion, semantic search, call-graph tracing,
-and RPG graph queries return results for all active branches.
+and Relational Property Graph (RPG) graph queries return results for all
+active branches.
 
 ### 3.1. grepai workspace and project configuration
 
@@ -367,7 +369,8 @@ Cloudflare, with no inbound ports opened on the VM.
 
 Provide a terminal-based operator interface for configuration, monitoring,
 and token management. On completion, operators can SSH into the appliance and
-manage all aspects of the system through an interactive TUI.
+manage all aspects of the system through an interactive text user interface
+(TUI).
 
 ### 5.1. TUI framework and navigation
 

@@ -11,8 +11,8 @@ server over HTTPS. The core interaction model is:
   (optionally) create webhooks
 - appliance clones repos, creates per-branch worktrees, and keeps them
   current
-- grepai runs indexers (semantic embeddings + symbol/callgraph/RPG graph)
-  into a store backed by Qdrant
+- grepai runs indexers (semantic embeddings + symbol/call-graph/Relational
+  Property Graph (RPG) graph) into a store backed by Qdrant
 - users (or agents) talk to a single MCP HTTPS endpoint, filter queries by
   repo + branch, and get:
   - semantic search results
@@ -23,8 +23,8 @@ grepai already provides (a) daemonised indexing (`grepai watch`) and (b) MCP
 tool exposure (`grepai mcp-serve`) with search, trace, index status, and RPG
 graph tools. The appliance's job is to operationalize this at "many repos +
 many branches", add lifecycle management, and add hardened remote access with
-token minting/revocation, Cloudflare-managed DNS/TLS, and a TUI
-configuration surface.
+token minting/revocation, Cloudflare-managed DNS/TLS, and a text user
+interface (TUI) configuration surface.
 
 ### Non-goals
 
@@ -177,9 +177,9 @@ appliance configures:
 
 For organisation-wide automation, GitHub provides organisation webhooks and
 notes that OAuth app tokens (and classic PATs) need `admin:org_hook` scope
-to create them. This is useful when you want "automatically index new repos
-created in the org" without manually configuring each repository, but you
-still keep polling as the safety net.
+to create them. This is useful when an operator wants to automatically index
+new repos created in the org without manually configuring each repository,
+while still keeping polling as the safety net.
 
 ## Workspace model and branch indexing strategy
 

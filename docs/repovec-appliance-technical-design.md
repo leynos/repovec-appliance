@@ -420,8 +420,8 @@ grepai positions Ollama as the privacy-first local option and documents running
 
 Operational characteristics:
 
-- "code stays on your machine" privacy profile (still produces embeddings
-  on-box)
+- "code remains on the local machine" privacy profile (still produces
+  embeddings on-box)
 - requires CPU/GPU resources sized for embedding throughput
 
 repovec's TUI supports switching the provider, but also warns that switching

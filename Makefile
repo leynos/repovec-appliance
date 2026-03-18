@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint typecheck fmt check-fmt markdownlint nixie
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint nixie
 
 
 TARGET ?= repovec_appliance
@@ -29,7 +29,7 @@ test: ## Run tests with warnings treated as errors
 	RUSTFLAGS="$(RUST_FLAGS)" $(CARGO) $(TEST_CMD) $(TEST_FLAGS) $(BUILD_JOBS)
 ifneq ($(TEST_CMD),test)
 ifneq ($(HAS_DOCTEST_TARGETS),)
-	RUSTFLAGS="$(RUST_FLAGS)" $(CARGO) test --doc --workspace --all-features
+	RUSTFLAGS="$(RUST_FLAGS)" $(CARGO) test --doc $(TEST_FLAGS)
 endif
 endif
 
@@ -39,6 +39,9 @@ target/%/$(TARGET): ## Build binary in debug or release mode
 lint: ## Run Clippy with warnings denied
 	RUSTDOCFLAGS="$(RUSTDOC_FLAGS)" $(CARGO) doc --no-deps
 	$(CARGO) clippy $(CLIPPY_FLAGS)
+	$(MAKE) whitaker-lint
+
+whitaker-lint: ## Run Whitaker when available
 	@if command -v whitaker >/dev/null 2>&1; then \
 		RUSTFLAGS="$(RUST_FLAGS)" whitaker --all -- $(CARGO_FLAGS); \
 	else \

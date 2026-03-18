@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint fmt check-fmt markdownlint nixie typecheck
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint nixie
 
 
 TARGET ?= repovec_appliance
@@ -12,7 +12,9 @@ RUSTDOC_FLAGS := -D warnings $(RUSTDOC_FLAGS)
 CARGO_FLAGS ?= --all-targets --all-features
 CLIPPY_FLAGS ?= $(CARGO_FLAGS) -- $(RUST_FLAGS)
 TEST_FLAGS ?= $(CARGO_FLAGS)
-TEST_CMD := $(if $(shell $(CARGO) nextest --version 2>/dev/null),nextest run,test)
+DOCTEST_FLAGS ?= --workspace --all-features
+TEST_CMD := $(if $(shell $(CARGO) nextest --version 2>/dev/null),nextest run --no-tests pass,test)
+HAS_DOCTEST_TARGETS = $(shell $(CARGO) metadata --no-deps --format-version 1 2>/dev/null | grep -q '"doctest":true' && echo 1)
 MDLINT ?= markdownlint-cli2
 NIXIE ?= nixie
 
@@ -27,7 +29,9 @@ clean: ## Remove build artifacts
 test: ## Run tests with warnings treated as errors
 	RUSTFLAGS="$(RUST_FLAGS)" $(CARGO) $(TEST_CMD) $(TEST_FLAGS) $(BUILD_JOBS)
 ifneq ($(TEST_CMD),test)
-	RUSTFLAGS="$(RUST_FLAGS)" $(CARGO) test --doc --workspace --all-features
+ifneq ($(HAS_DOCTEST_TARGETS),)
+	RUSTFLAGS="$(RUST_FLAGS)" $(CARGO) test --doc $(DOCTEST_FLAGS) $(BUILD_JOBS)
+endif
 endif
 
 target/%/$(TARGET): ## Build binary in debug or release mode
@@ -36,6 +40,9 @@ target/%/$(TARGET): ## Build binary in debug or release mode
 lint: ## Run Clippy with warnings denied
 	RUSTDOCFLAGS="$(RUSTDOC_FLAGS)" $(CARGO) doc --no-deps
 	$(CARGO) clippy $(CLIPPY_FLAGS)
+	$(MAKE) whitaker-lint
+
+whitaker-lint: ## Run Whitaker when available
 	@if command -v whitaker >/dev/null 2>&1; then \
 		RUSTFLAGS="$(RUST_FLAGS)" whitaker --all -- $(CARGO_FLAGS); \
 	else \

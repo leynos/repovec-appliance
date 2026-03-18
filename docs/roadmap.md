@@ -5,8 +5,8 @@ self-hosted VM appliance that turns private GitHub repositories into a
 continuously indexed, multi-branch semantic and graph-queryable corpus exposed
 as a remote Model Context Protocol (MCP) server over HTTPS. Each phase
 represents a significant capability shift; each step is a coherent workstream
-with a defined delivery objective; each task is a concrete, measurable unit
-of work.
+with a defined delivery objective; each task is a concrete, measurable unit of
+work.
 
 See repovec-appliance-technical-design.md for architecture, rationale, and
 constraints referenced throughout.
@@ -87,9 +87,9 @@ correct ordering and dependency declarations.
 ## 2. Repository lifecycle
 
 Enable GitHub authentication, repository discovery, and local Git
-mirror/worktree management. On completion, the appliance can authenticate
-with GitHub, discover accessible repositories and branches, and maintain
-local worktrees that track remote state.
+mirror/worktree management. On completion, the appliance can authenticate with
+GitHub, discover accessible repositories and branches, and maintain local
+worktrees that track remote state.
 
 ### 2.1. GitHub device-flow authentication
 
@@ -187,14 +187,14 @@ immediate reconciliation rather than waiting for the next polling interval.
 
 Connect grepai indexers to the worktree lifecycle so that every active branch
 is continuously indexed. On completion, semantic search, call-graph tracing,
-and Relational Property Graph (RPG) graph queries return results for all
-active branches.
+and Relational Property Graph (RPG) graph queries return results for all active
+branches.
 
 ### 3.1. grepai workspace and project configuration
 
 Objective: the appliance programmatically manages grepai workspace
-configuration so that each repository maps to a workspace and each branch
-maps to a project within it.
+configuration so that each repository maps to a workspace and each branch maps
+to a project within it.
 
 - [ ] 3.1.1. Implement workspace YAML generation
   - Generate entries in `/var/lib/repovec/.grepai/workspace.yaml` using the
@@ -238,8 +238,8 @@ systemd unit, started and stopped in response to reconciliation.
 ### 3.3. Reconciliation loop integration
 
 Objective: the full reconciliation loop drives mirror updates, worktree
-management, workspace configuration, and indexer lifecycle as a single
-coherent operation.
+management, workspace configuration, and indexer lifecycle as a single coherent
+operation.
 
 - [ ] 3.3.1. Compose the full reconciliation pipeline
   - Chain: discover repos and branches (2.2), update mirrors and worktrees
@@ -367,8 +367,8 @@ Cloudflare, with no inbound ports opened on the VM.
 
 ## 5. Operator experience
 
-Provide a terminal-based operator interface for configuration, monitoring,
-and token management. On completion, operators can SSH into the appliance and
+Provide a terminal-based operator interface for configuration, monitoring, and
+token management. On completion, operators can SSH into the appliance and
 manage all aspects of the system through an interactive text user interface
 (TUI).
 

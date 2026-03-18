@@ -19,7 +19,7 @@ over HTTPS. The core interaction model is:
   - call graph tracing (callers/callees/graph)
   - RPG graph interrogation (search/fetch/explore)
 
-grepai already provides (a) daemonised indexing (`grepai watch`) and (b) MCP
+grepai already provides (a) daemonized indexing (`grepai watch`) and (b) MCP
 tool exposure (`grepai mcp-serve`) with search, trace, index status, and RPG
 graph tools. The appliance's job is to operationalize this at "many repos +
 many branches", add lifecycle management, and add hardened remote access with

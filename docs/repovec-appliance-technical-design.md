@@ -330,7 +330,7 @@ Systemd manages the appliance lifecycle via a dedicated target:
 Key service properties:
 
 - indexers run as unprivileged user (e.g. `repovec`) with fixed HOME
-- tight filesystem permissions on:
+- tight filesystem permissions on
   - `/var/lib/repovec/` (repos, worktrees, grepai indices)
   - `/etc/repovec/` (config and secrets)
 - journald logging for all units, no bespoke log files

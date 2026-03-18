@@ -120,7 +120,7 @@ determining which branches are active per the configured policy.
 - [ ] 2.2.1. Implement repository listing via GitHub API
   - Query the GitHub API for repositories accessible to the authenticated
     user or installation.
-  - Support both personal and organisation repositories.
+  - Support both personal and organization repositories.
   - Paginate results correctly.
 - [ ] 2.2.2. Implement branch listing and active-branch evaluation
   - For each repository, list branches and evaluate the active branch policy:
@@ -392,7 +392,7 @@ interactively.
 
 - [ ] 5.2.1. Implement device-flow login screen
   - Display the user code and verification URL.
-  - Show a polling indicator while waiting for authorisation.
+  - Show a polling indicator while waiting for authorization.
   - Display success or failure and surface any missing-permissions warnings
     from 2.1.3. Requires 2.1.1.
 

@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint fmt check-fmt markdownlint nixie
+.PHONY: help all clean test build release lint fmt check-fmt markdownlint nixie typecheck
 
 
 TARGET ?= repovec_appliance
@@ -36,9 +36,11 @@ target/%/$(TARGET): ## Build binary in debug or release mode
 lint: ## Run Clippy with warnings denied
 	RUSTDOCFLAGS="$(RUSTDOC_FLAGS)" $(CARGO) doc --no-deps
 	$(CARGO) clippy $(CLIPPY_FLAGS)
-	@command -v whitaker >/dev/null 2>&1 && \
-		RUSTFLAGS="$(RUST_FLAGS)" whitaker --all -- $(CARGO_FLAGS) || \
-		{ echo "whitaker not found on PATH; skipping whitaker lint. Install whitaker to run this check."; }
+	@if command -v whitaker >/dev/null 2>&1; then \
+		RUSTFLAGS="$(RUST_FLAGS)" whitaker --all -- $(CARGO_FLAGS); \
+	else \
+		echo "whitaker not found on PATH; skipping whitaker lint. Install whitaker to run this check."; \
+	fi
 
 typecheck: ## Type-check without building
 	RUSTFLAGS="$(RUST_FLAGS)" $(CARGO) check $(CARGO_FLAGS)

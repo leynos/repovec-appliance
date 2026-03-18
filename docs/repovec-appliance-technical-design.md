@@ -173,9 +173,9 @@ appliance configures:
   - GitHub documents `create` fires when a branch or tag is created, with
     `ref` and `ref_type` (`branch`/`tag`).
   - this can be used as an earlier signal than the first push, but
-    `push.created` already covers most "new branch" workflows
+    `push.created` already covers most "new branch" workflows.
 
-For organisation-wide automation, GitHub provides organisation webhooks and
+For organization-wide automation, GitHub provides organization webhooks and
 notes that OAuth app tokens (and classic PATs) need `admin:org_hook` scope
 to create them. This is useful when an operator wants to automatically index
 new repos created in the org without manually configuring each repository,
@@ -368,7 +368,7 @@ There are three independently versioned artefacts:
 
 **Qdrant updates** use Podman auto-update:
 
-- Podman can auto-update containers when configured for auto updates and
+- Podman can auto-update containers when configured for auto-updates and
   run under systemd.
 - Podman ships a `podman-auto-update.service` and a
   `podman-auto-update.timer` that triggers daily by default.
@@ -489,7 +489,7 @@ After boot, the operator SSHs in and completes:
 
 - GitHub device flow login in the TUI
 - selection of embedding provider and models (OpenRouter vs Ollama)
-- selecting repositories/organisations to index (and webhook enablement
+- selecting repositories/organizations to index (and webhook enablement
   policy)
 
 This keeps cloud-init deterministic and keeps credentials entry out of IaC

@@ -4,8 +4,8 @@
 
 repovec-appliance is a self-hosted VM appliance that turns a user's private
 repositories on GitHub into a continuously indexed, multi-branch semantic and
-graph-queryable corpus, exposed as a remote Model Context Protocol (MCP)
-server over HTTPS. The core interaction model is:
+graph-queryable corpus, exposed as a remote Model Context Protocol (MCP) server
+over HTTPS. The core interaction model is:
 
 - user authorizes the appliance (device flow) to access repos/branches and
   (optionally) create webhooks
@@ -23,8 +23,8 @@ grepai already provides (a) daemonised indexing (`grepai watch`) and (b) MCP
 tool exposure (`grepai mcp-serve`) with search, trace, index status, and RPG
 graph tools. The appliance's job is to operationalize this at "many repos +
 many branches", add lifecycle management, and add hardened remote access with
-token minting/revocation, Cloudflare-managed DNS/TLS, and a text user
-interface (TUI) configuration surface.
+token minting/revocation, Cloudflare-managed DNS/TLS, and a text user interface
+(TUI) configuration surface.
 
 ### Non-goals
 
@@ -37,8 +37,8 @@ interface (TUI) configuration surface.
 
 ## High-level architecture
 
-The appliance is composed of five long-running concerns, each mapped to
-systemd units and explicit data directories:
+The appliance is composed of five long-running concerns, each mapped to systemd
+units and explicit data directories:
 
 ### Control plane
 
@@ -73,9 +73,9 @@ transport (single endpoint supporting GET and POST), implements origin
 validation, sessions, and authentication as required by the MCP transport
 specification.
 
-Because grepai's built-in MCP server is stdio transport
-(`grepai mcp-serve`), and is designed for local agent integrations,
-`repovec-mcpd` acts as a transport and security adapter:
+Because grepai's built-in MCP server is stdio transport (`grepai mcp-serve`),
+and is designed for local agent integrations, `repovec-mcpd` acts as a
+transport and security adapter:
 
 - externally: Streamable HTTP MCP over HTTPS
 - internally: one `grepai mcp-serve` subprocess per MCP session (or per
@@ -90,8 +90,8 @@ grepai's MCP tool surface includes:
 - RPG graph tools (`grepai_rpg_search`, `grepai_rpg_fetch`,
   `grepai_rpg_explore`)
 
-This keeps "graphing semantics" identical to grepai, rather than
-reimplementing them.
+This keeps "graphing semantics" identical to grepai, rather than reimplementing
+them.
 
 ### Edge networking, DNS, and TLS
 
@@ -100,18 +100,18 @@ The recommended exposure mechanism is Cloudflare Tunnel:
 - `cloudflared` maintains outbound tunnel connections to Cloudflare, and
   Cloudflare routes a hostname to that tunnel via DNS records.
 - tunnel creation and DNS routing can be fully automated via the Cloudflare
-  API; Cloudflare documents required token permissions for the "Create a
-  tunnel (API)" flow.
+  API; Cloudflare documents required token permissions for the "Create a tunnel
+  (API)" flow.
 
-This approach avoids exposing the VM directly to the Internet (no inbound
-443 needed), while still providing a public HTTPS endpoint with
-Cloudflare-managed TLS at the edge.
+This approach avoids exposing the VM directly to the Internet (no inbound 443
+needed), while still providing a public HTTPS endpoint with Cloudflare-managed
+TLS at the edge.
 
 As an alternative (when tunnels are undesired), the appliance can run a
 public-facing reverse proxy (or `repovec-mcpd` directly on 443) behind
-Cloudflare's reverse proxy using Cloudflare Origin CA certificates.
-Cloudflare documents Origin CA certificate creation and also exposes Origin
-CA certificate APIs.
+Cloudflare's reverse proxy using Cloudflare Origin CA certificates. Cloudflare
+documents Origin CA certificate creation and also exposes Origin CA certificate
+APIs.
 
 ### Operator interface
 
@@ -126,15 +126,15 @@ CA certificate APIs.
 
 ### Authentication: device flow
 
-repovec-appliance uses GitHub's OAuth device flow so the VM can be
-configured via SSH without a browser on-box:
+repovec-appliance uses GitHub's OAuth device flow so the VM can be configured
+via SSH without a browser on-box:
 
 - request device/user codes via
   `POST https://github.com/login/device/code`
 - user enters the shown code at `https://github.com/login/device`
 - appliance polls `POST https://github.com/login/oauth/access_token` until
-  approval or expiry, respecting the server-provided minimum interval to
-  avoid `slow_down` errors
+  approval or expiry, respecting the server-provided minimum interval to avoid
+  `slow_down` errors
 
 GitHub explicitly indicates the device flow does not require the OAuth app
 `client_secret` (device flow uses `client_id` + device code + grant type).
@@ -151,8 +151,8 @@ repovecd maintains correctness via a reconcile-first model:
   - on push/create/delete activity, update immediately and avoid waiting
     for the next reconcile
 
-This split matters because not every desired event is reliably available via
-a single GitHub webhook, and webhook delivery can be disrupted; periodic
+This split matters because not every desired event is reliably available via a
+single GitHub webhook, and webhook delivery can be disrupted; periodic
 reconciliation preserves eventual correctness.
 
 ### Webhook events and how they map to workspaces
@@ -173,13 +173,13 @@ appliance configures:
   - GitHub documents `create` fires when a branch or tag is created, with
     `ref` and `ref_type` (`branch`/`tag`).
   - this can be used as an earlier signal than the first push, but
-    `push.created` already covers most "new branch" workflows
+    `push.created` already covers most "new branch" workflows.
 
-For organisation-wide automation, GitHub provides organisation webhooks and
-notes that OAuth app tokens (and classic PATs) need `admin:org_hook` scope
-to create them. This is useful when an operator wants to automatically index
-new repos created in the org without manually configuring each repository,
-while still keeping polling as the safety net.
+For organization-wide automation, GitHub provides organization webhooks and
+notes that OAuth app tokens (and classic PATs) need `admin:org_hook` scope to
+create them. This is useful when an operator wants to automatically index new
+repos created in the org without manually configuring each repository, while
+still keeping polling as the safety net.
 
 ## Workspace model and branch indexing strategy
 
@@ -197,8 +197,8 @@ scope with `--project`.
 
 grepai's workspace configuration is stored globally in
 `~/.grepai/workspace.yaml`. The appliance runs grepai as a dedicated system
-user (e.g. `repovec`), so workspace config lives in that user's home
-(e.g. `/var/lib/repovec/.grepai/workspace.yaml`).
+user (e.g. `repovec`), so workspace config lives in that user's home (e.g.
+`/var/lib/repovec/.grepai/workspace.yaml`).
 
 grepai documents path prefixing for workspace isolation as
 `workspaceName/projectName/relativePath`. repovec uses this to safely index
@@ -217,27 +217,27 @@ Per repo:
   - `git worktree` add/update
   - hard reset the worktree to the target ref (to avoid drift)
 
-This makes branch indexing deterministic and avoids "branch switches in
-place" that can confuse file watchers.
+This makes branch indexing deterministic and avoids "branch switches in place"
+that can confuse file watchers.
 
 grepai has explicit, evolving support for git worktrees and multi-worktree
 watch/daemon behaviour (including worktree detection utilities and
 multi-worktree improvements noted in releases). The appliance leverages that
-where possible, but it does not require it (it can run per-branch watchers
-if needed).
+where possible, but it does not require it (it can run per-branch watchers if
+needed).
 
 ### Active branch policy
 
-Indexing every branch forever becomes expensive (storage, embedding churn,
-and watch CPU). repovec therefore defines an "active branch set" policy:
+Indexing every branch forever becomes expensive (storage, embedding churn, and
+watch CPU). repovec therefore defines an "active branch set" policy:
 
 - always index default branch
 - index any branch with pushes in the last *N* days
 - optionally index branches referenced by open pull requests
 - cap total indexed branches per repo (LRU eviction beyond cap)
 
-This policy is fully configurable in the TUI; the reconcile loop applies it
-to add/remove projects and start/stop corresponding indexers.
+This policy is fully configurable in the TUI; the reconcile loop applies it to
+add/remove projects and start/stop corresponding indexers.
 
 ## MCP HTTPS endpoint and authentication
 
@@ -252,15 +252,15 @@ including:
 - binding to localhost when running locally
 - authentication for all connections
 
-repovec-mcpd follows the MCP session mechanism (`Mcp-Session-Id` header) so
-it can map a session to a dedicated `grepai mcp-serve` subprocess and
-cleanly terminate sessions.
+repovec-mcpd follows the MCP session mechanism (`Mcp-Session-Id` header) so it
+can map a session to a dedicated `grepai mcp-serve` subprocess and cleanly
+terminate sessions.
 
 ### Bridging to grepai MCP tools
 
-grepai's built-in MCP server communicates via stdio and exposes the full
-grepai tool surface, including RPG graph tools. repovec-mcpd bridges
-Streamable HTTP JSON-RPC to stdio JSON-RPC:
+grepai's built-in MCP server communicates via stdio and exposes the full grepai
+tool surface, including RPG graph tools. repovec-mcpd bridges Streamable HTTP
+JSON-RPC to stdio JSON-RPC:
 
 - on `InitializeRequest`, spawn:
   - `grepai mcp-serve` (with environment set to the grepai system user's
@@ -273,8 +273,8 @@ Streamable HTTP JSON-RPC to stdio JSON-RPC:
   - `text/event-stream` (SSE stream), as allowed by Streamable HTTP
     transport
 
-This design intentionally avoids "re-implement grepai semantics" and
-therefore preserves:
+This design intentionally avoids "re-implement grepai semantics" and therefore
+preserves:
 
 - hybrid search behaviour
 - trace output shape and depth behaviour
@@ -293,13 +293,13 @@ credentials:
   last\_used\_at, optional expiry, scopes (read/search/trace/admin).
 - revocation is immediate: set revoked\_at and reject thereafter.
 
-To align with MCP's emphasis on proper authentication for remote servers and
-to reduce exposure to CSRF/DNS rebinding vectors, repovec-mcpd requires:
+To align with MCP's emphasis on proper authentication for remote servers and to
+reduce exposure to CSRF/DNS rebinding vectors, repovec-mcpd requires:
 
 - `Authorization: Bearer <token>` on all non-initialization requests
 - strict `Origin` allowlist (configured hostnames only), rejecting
-  absent/incorrect origins on browser-capable clients, as MCP recommends
-  for Streamable HTTP servers
+  absent/incorrect origins on browser-capable clients, as MCP recommends for
+  Streamable HTTP servers
 
 ### Cloudflare edge integration
 
@@ -313,8 +313,8 @@ With Cloudflare Tunnel:
   privileges.
 
 If the "direct origin" mode is chosen, the appliance provisions Cloudflare
-Origin CA certificates (dashboard or API) and binds the MCP server with
-that certificate/key, using Cloudflare's "Full (strict)" TLS model.
+Origin CA certificates (dashboard or API) and binds the MCP server with that
+certificate/key, using Cloudflare's "Full (strict)" TLS model.
 
 ## Systemd, Podman/Qdrant, and update lifecycle
 
@@ -337,10 +337,9 @@ Key service properties:
 
 ### Qdrant under Podman + systemd
 
-The appliance manages Qdrant via Podman + systemd. Podman's documentation
-now prefers Quadlet files for systemd-managed containers;
-`podman generate systemd` is explicitly described as deprecated in favour of
-Quadlets.
+The appliance manages Qdrant via Podman + systemd. Podman's documentation now
+prefers Quadlet files for systemd-managed containers; `podman generate systemd`
+is explicitly described as deprecated in favour of Quadlets.
 
 Qdrant networking assumptions:
 
@@ -353,8 +352,8 @@ Qdrant networking assumptions:
 Security controls:
 
 - Qdrant supports a static API key; Qdrant recommends API key auth and also
-  recommends binding to localhost/private interfaces to prevent
-  unauthenticated external access.
+  recommends binding to localhost/private interfaces to prevent unauthenticated
+  external access.
 - In appliance mode, Qdrant binds to 127.0.0.1 (or a private interface) and
   is never exposed publicly; callers are local processes only.
 
@@ -368,7 +367,7 @@ There are three independently versioned artefacts:
 
 **Qdrant updates** use Podman auto-update:
 
-- Podman can auto-update containers when configured for auto updates and
+- Podman can auto-update containers when configured for auto-updates and
   run under systemd.
 - Podman ships a `podman-auto-update.service` and a
   `podman-auto-update.timer` that triggers daily by default.
@@ -399,8 +398,8 @@ written into grepai workspace/store configuration.
 
 ### OpenRouter
 
-OpenRouter exposes an embeddings API and documents an embeddings API
-reference and model listing.
+OpenRouter exposes an embeddings API and documents an embeddings API reference
+and model listing.
 
 grepai has explicit support for OpenRouter embedding providers in recent
 releases.
@@ -413,12 +412,11 @@ Operational characteristics:
 
 ### Ollama
 
-Ollama documents embeddings as a first-class capability with
-model-dependent vector length.
+Ollama documents embeddings as a first-class capability with model-dependent
+vector length.
 
-grepai positions Ollama as the privacy-first local option and documents
-running `ollama serve` and pulling a recommended embedding model during
-installation.
+grepai positions Ollama as the privacy-first local option and documents running
+`ollama serve` and pulling a recommended embedding model during installation.
 
 Operational characteristics:
 
@@ -455,9 +453,9 @@ Each `deploy` subcommand:
     provisioning
 
 OpenTofu's documentation describes that the OpenTofu CLI installs providers
-when initializing a working directory, based on declared provider
-requirements. It also documents CLI configuration for credentials and
-provider installation behaviour.
+when initializing a working directory, based on declared provider requirements.
+It also documents CLI configuration for credentials and provider installation
+behaviour.
 
 ### Cloudflare domain modes
 
@@ -469,8 +467,7 @@ repovectl supports:
   remains external to Cloudflare DNS automation)
 
 Cloudflare tunnel automation requirements are explicit: Cloudflare documents
-creating a tunnel via API and the permissions required (Tunnel edit + DNS
-edit).
+creating a tunnel via API and the permissions required (Tunnel edit + DNS edit).
 
 ### Bootstrap of the VM appliance
 
@@ -489,7 +486,7 @@ After boot, the operator SSHs in and completes:
 
 - GitHub device flow login in the TUI
 - selection of embedding provider and models (OpenRouter vs Ollama)
-- selecting repositories/organisations to index (and webhook enablement
+- selecting repositories/organizations to index (and webhook enablement
   policy)
 
 This keeps cloud-init deterministic and keeps credentials entry out of IaC

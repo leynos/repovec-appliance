@@ -1,28 +1,27 @@
 # repovec-appliance
 
-*A self-hosted VM appliance that turns your private GitHub repositories into
-a continuously indexed, semantically searchable MCP server.*
+*A self-hosted VM appliance that turns private GitHub repositories into a
+continuously indexed, semantically searchable MCP server.*
 
-Point your coding agents at a single HTTPS endpoint and get semantic search,
-call-graph tracing, and RPG graph queries across every repository and branch
-you care about — without sending your code to a third-party indexing
-service.
+Point coding agents at a single HTTPS endpoint to get semantic search,
+call-graph tracing, and RPG graph queries across every repository and branch of
+interest without sending code to a third-party indexing service.
 
 ______________________________________________________________________
 
 ## Why repovec-appliance?
 
 - **One endpoint, many repos**: Index dozens of private repositories and
-  branches into a single queryable corpus. Agents connect to one MCP URL
-  and filter by repo and branch.
+  branches into a single queryable corpus. Agents connect to one MCP URL and
+  filter by repo and branch.
 - **Semantic + structural search**: Built on
   [grepai](https://github.com/sloganking/grepai), the appliance provides
   embedding-based semantic search, symbol-level call-graph tracing, and RPG
   graph exploration out of the box.
-- **Your infrastructure, your code**: Runs on a VM you control. Choose
-  between local embeddings (Ollama) for full privacy or remote embeddings
-  (OpenRouter) for throughput. Code never leaves your network unless you
-  opt in.
+- **Self-hosted infrastructure**: Runs on a VM under operator control.
+  Choose between local embeddings (Ollama) for full privacy or remote
+  embeddings (OpenRouter) for throughput. Code never leaves the network unless
+  remote embeddings are enabled.
 - **Hands-off lifecycle**: Branches are discovered automatically, indexed
   continuously, and retired when stale. Qdrant, grepai, and the appliance
   binaries update themselves on a configurable schedule.
@@ -37,7 +36,7 @@ ______________________________________________________________________
 ### Deploy
 
 ```bash
-# Provision a VM on your preferred cloud provider
+# Provision a VM on the preferred cloud provider
 repovectl deploy hetzner \
   --region fsn1 \
   --size cpx31 \
@@ -57,8 +56,8 @@ From the TUI:
 1. Complete the GitHub device-flow login (enter the code shown at
    `github.com/login/device`).
 2. Select an embedding provider (Ollama for local, OpenRouter for remote).
-3. Choose which repositories and organisations to index.
-4. Mint an API token for your agents.
+3. Choose which repositories and organizations to index.
+4. Mint an API token for agents.
 
 ### Connect an agent
 
@@ -70,15 +69,15 @@ Point any MCP-compatible client at the appliance:
     "repovec": {
       "url": "https://mcp.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer <your-token>"
+        "Authorization": "Bearer <api-token>"
       }
     }
   }
 }
 ```
 
-The agent now has access to `grepai_search`, call-graph tracing, index
-status, and RPG graph tools across all indexed repositories.
+The agent now has access to `grepai_search`, call-graph tracing, index status,
+and RPG graph tools across all indexed repositories.
 
 ______________________________________________________________________
 
@@ -114,5 +113,5 @@ ______________________________________________________________________
 
 ## Contributing
 
-Contributions welcome! Please see [AGENTS.md](AGENTS.md) for coding
-standards and workflow guidelines.
+Contributions welcome! Please see [AGENTS.md](AGENTS.md) for coding standards
+and workflow guidelines.

@@ -13,23 +13,39 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
+      WHITAKER_INSTALLER_VERSION: '0.2.1'
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@f9f1c863c8a5bef64aa6779caa746e1a4a6c1ad4
+        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
       - name: Format
         run: make check-fmt
       - name: Markdown lint
-        uses: DavidAnson/markdownlint-cli2-action@992badcdf24e3b8eb7e87ff9287fe931bcb00c6e
+        uses: DavidAnson/markdownlint-cli2-action@07035fd053f7be764496c0f8d8f9f41f98305101
         with:
           globs: |
             **/*.md
             !**/target/**
             !**/dist/**
+      - name: Cache Whitaker installer
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
+        with:
+          path: |
+            ~/.cargo/bin/whitaker-installer
+            ~/.cache/cargo-binstall
+          key: whitaker-installer-${{ runner.os }}-${{ runner.arch }}-${{ env.WHITAKER_INSTALLER_VERSION }}
+      - name: Install Whitaker
+        run: |
+          if command -v whitaker-installer >/dev/null 2>&1; then
+            echo "whitaker-installer already present; skipping cargo binstall"
+          else
+            cargo binstall --no-confirm whitaker-installer@${{ env.WHITAKER_INSTALLER_VERSION }}
+          fi
+          whitaker-installer
       - name: Lint
         run: make lint
       - name: Test and Measure Coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@f9f1c863c8a5bef64aa6779caa746e1a4a6c1ad4
+        uses: leynos/shared-actions/.github/actions/generate-coverage@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
         with:
           output-path: lcov.info
           format: lcov
@@ -37,7 +53,7 @@ jobs:
         env:
           CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
         if: ${{ env.CS_ACCESS_TOKEN }}
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@f9f1c863c8a5bef64aa6779caa746e1a4a6c1ad4
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
         with:
           format: lcov
           access-token: ${{ env.CS_ACCESS_TOKEN }}

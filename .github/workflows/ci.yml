@@ -38,7 +38,13 @@ jobs:
       - name: Install Whitaker
         run: |
           if cargo binstall --version >/dev/null 2>&1; then
-            echo "cargo-binstall already present"
+            INSTALLED_BINSTALL_VERSION="$(cargo binstall --version | awk '{print $2}' | sed 's/^v//')"
+          else
+            INSTALLED_BINSTALL_VERSION=""
+          fi
+
+          if [ "${INSTALLED_BINSTALL_VERSION}" = "${{ env.CARGO_BINSTALL_VERSION }}" ]; then
+            echo "cargo-binstall ${INSTALLED_BINSTALL_VERSION} already present"
           else
             cargo install cargo-binstall --locked --version "${{ env.CARGO_BINSTALL_VERSION }}"
           fi

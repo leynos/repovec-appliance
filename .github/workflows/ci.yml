@@ -13,6 +13,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
+      CARGO_BINSTALL_VERSION: '1.15.7'
       WHITAKER_INSTALLER_VERSION: '0.2.1'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -36,12 +37,24 @@ jobs:
           key: whitaker-installer-${{ runner.os }}-${{ runner.arch }}-${{ env.WHITAKER_INSTALLER_VERSION }}
       - name: Install Whitaker
         run: |
+          if cargo binstall --version >/dev/null 2>&1; then
+            INSTALLED_BINSTALL_VERSION="$(cargo binstall --version | awk '{print $2}' | sed 's/^v//')"
+          else
+            INSTALLED_BINSTALL_VERSION=""
+          fi
+
+          if [ "${INSTALLED_BINSTALL_VERSION}" = "${{ env.CARGO_BINSTALL_VERSION }}" ]; then
+            echo "cargo-binstall ${INSTALLED_BINSTALL_VERSION} already present"
+          else
+            cargo install cargo-binstall --locked --version "${{ env.CARGO_BINSTALL_VERSION }}"
+          fi
+
           if command -v whitaker-installer >/dev/null 2>&1; then
             echo "whitaker-installer already present; skipping cargo binstall"
           else
             cargo binstall --no-confirm whitaker-installer@${{ env.WHITAKER_INSTALLER_VERSION }}
           fi
-          whitaker-installer
+          whitaker-installer --no-update
       - name: Lint
         run: make lint
       - name: Test and Measure Coverage

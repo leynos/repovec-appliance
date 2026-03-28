@@ -648,7 +648,7 @@ July 15, 2025, <https://doc.rust-lang.org/rustdoc/documentation-tests.html>
        <https://users.rust-lang.org/t/test-setup-for-doctests/50426>
 [^12]: quote_doctest - Rust - [Docs.rs](http://Docs.rs), accessed on July 15,
 2025, <https://docs.rs/quote-doctest>
-[^13]: Advanced features - The rustdoc boOK - Rust Documentation, accessed on
+[^13]: Advanced features - The rustdoc book - Rust Documentation, accessed on
        July 15, 2025, <https://doc.rust-lang.org/rustdoc/advanced-features.html>
 [^14]: Stack Overflow — Conditionally executing a module-level doctest,
 accessed on July 15, 2025,

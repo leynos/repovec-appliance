@@ -1,0 +1,13 @@
+[package]
+name = "repovec-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+repovec-core = { path = "../repovec-core" }
+
+[lints]
+workspace = true

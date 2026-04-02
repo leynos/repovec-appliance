@@ -1,0 +1,5 @@
+edition = "2024"
+group_imports = "StdExternalCrate"
+imports_granularity = "Module"
+newline_style = "Unix"
+use_small_heuristics = "Max"

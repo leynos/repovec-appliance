@@ -1,8 +1,6 @@
 .PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint nixie
 
 
-TARGET ?= repovec_appliance
-
 CARGO ?= cargo
 BUILD_JOBS ?=
 BASE_RUST_FLAGS ?= -D warnings
@@ -20,8 +18,11 @@ HAS_DOCTEST_TARGETS := $(shell $(CARGO) metadata --no-deps --format-version 1 2>
 MDLINT ?= markdownlint-cli2
 NIXIE ?= nixie
 
-build: target/debug/$(TARGET) ## Build debug binary
-release: target/release/$(TARGET) ## Build release binary
+build: ## Build the entire workspace in debug mode
+	$(CARGO) build --workspace $(BUILD_JOBS)
+
+release: ## Build the entire workspace in release mode
+	$(CARGO) build --workspace --release $(BUILD_JOBS)
 
 all: check-fmt lint test ## Perform a comprehensive check of code
 
@@ -35,9 +36,6 @@ ifneq ($(HAS_DOCTEST_TARGETS),)
 	RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(CARGO) test --doc $(DOCTEST_FLAGS) $(BUILD_JOBS)
 endif
 endif
-
-target/%/$(TARGET): ## Build binary in debug or release mode
-	$(CARGO) build $(BUILD_JOBS) $(if $(findstring release,$(@)),--release) --bin $(TARGET)
 
 lint: ## Run Clippy with warnings denied
 	RUSTDOCFLAGS="$(EFFECTIVE_RUSTDOC_FLAGS)" $(CARGO) doc --no-deps

@@ -1,5 +1,7 @@
 //! Shared domain types and configuration scaffolding for repovec services.
 
+use std::fmt;
+
 use camino::Utf8PathBuf;
 
 /// Long-running processes that make up the appliance.
@@ -33,6 +35,18 @@ impl ServiceKind {
             Self::RepovecTui => "repovec-tui",
             Self::Repovectl => "repovectl",
         }
+    }
+}
+
+impl fmt::Display for ServiceKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.binary_name())
+    }
+}
+
+impl AsRef<str> for ServiceKind {
+    fn as_ref(&self) -> &str {
+        self.binary_name()
     }
 }
 

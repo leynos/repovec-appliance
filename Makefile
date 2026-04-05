@@ -38,8 +38,8 @@ endif
 endif
 
 lint: ## Run Clippy with warnings denied
-	RUSTDOCFLAGS="$(EFFECTIVE_RUSTDOC_FLAGS)" $(CARGO) doc --no-deps
-	$(CARGO) clippy $(CLIPPY_FLAGS)
+	RUSTDOCFLAGS="$(EFFECTIVE_RUSTDOC_FLAGS)" $(CARGO) doc --no-deps --workspace
+	$(CARGO) clippy --workspace $(CLIPPY_FLAGS)
 	$(MAKE) whitaker-lint
 
 whitaker-lint: ## Run Whitaker when available

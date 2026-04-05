@@ -125,6 +125,10 @@ project:
     ```
 
     validating formatting across the entire workspace without modifying files.
+    **Note:** This project uses nightly rustfmt to enable unstable formatting
+    options (`group_imports` and `imports_granularity` in `rustfmt.toml`).
+    The `rust-toolchain.toml` file enforces the nightly toolchain, so the
+    correct rustfmt version is automatically selected.
   - `make lint` executes:
 
     ```sh

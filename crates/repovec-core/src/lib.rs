@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 
 /// Long-running processes that make up the appliance.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -106,8 +106,8 @@ impl RuntimePaths {
     /// assert_eq!(paths.config_root().as_str(), "/etc/repovec");
     /// ```
     #[must_use]
-    pub const fn config_root(&self) -> &Utf8PathBuf {
-        &self.config_root
+    pub fn config_root(&self) -> &Utf8Path {
+        self.config_root.as_path()
     }
 
     /// Returns the mutable appliance data directory root.
@@ -122,8 +122,8 @@ impl RuntimePaths {
     /// assert_eq!(paths.data_root().as_str(), "/var/lib/repovec");
     /// ```
     #[must_use]
-    pub const fn data_root(&self) -> &Utf8PathBuf {
-        &self.data_root
+    pub fn data_root(&self) -> &Utf8Path {
+        self.data_root.as_path()
     }
 
     /// Returns the bare-mirror directory root.

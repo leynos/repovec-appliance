@@ -185,11 +185,12 @@ mod tests {
     use super::{RuntimePaths, ServiceKind};
 
     #[rstest]
-    fn service_binary_names_remain_stable() {
-        assert_eq!(ServiceKind::Repovecd.binary_name(), "repovecd");
-        assert_eq!(ServiceKind::RepovecMcpd.binary_name(), "repovec-mcpd");
-        assert_eq!(ServiceKind::RepovecTui.binary_name(), "repovec-tui");
-        assert_eq!(ServiceKind::Repovectl.binary_name(), "repovectl");
+    #[case(ServiceKind::Repovecd, "repovecd")]
+    #[case(ServiceKind::RepovecMcpd, "repovec-mcpd")]
+    #[case(ServiceKind::RepovecTui, "repovec-tui")]
+    #[case(ServiceKind::Repovectl, "repovectl")]
+    fn service_binary_names_remain_stable(#[case] kind: ServiceKind, #[case] expected: &str) {
+        assert_eq!(kind.binary_name(), expected);
     }
 
     #[rstest]

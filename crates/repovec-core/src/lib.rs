@@ -4,7 +4,7 @@ use std::fmt;
 
 use camino::{Utf8Path, Utf8PathBuf};
 
-/// Long-running processes that make up the appliance.
+/// Service types: daemons (`Repovecd`, `RepovecMcpd`), terminal UI (`RepovecTui`), and CLI (`Repovectl`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServiceKind {
     /// The repository control-plane daemon.
@@ -110,7 +110,7 @@ impl RuntimePaths {
         self.config_root.as_path()
     }
 
-    /// Returns the mutable appliance data directory root.
+    /// Returns an immutable borrowed path to the appliance data directory root.
     ///
     /// # Examples
     ///
@@ -126,6 +126,12 @@ impl RuntimePaths {
         self.data_root.as_path()
     }
 
+    /// Private helper for constructing data subdirectory paths.
+    #[inline]
+    fn data_child(&self, name: &str) -> Utf8PathBuf {
+        self.data_root.join(name)
+    }
+
     /// Returns the bare-mirror directory root.
     ///
     /// # Examples
@@ -139,7 +145,7 @@ impl RuntimePaths {
     /// ```
     #[must_use]
     pub fn git_mirrors_root(&self) -> Utf8PathBuf {
-        self.data_root.join("git-mirrors")
+        self.data_child("git-mirrors")
     }
 
     /// Returns the worktree directory root.
@@ -155,7 +161,7 @@ impl RuntimePaths {
     /// ```
     #[must_use]
     pub fn worktrees_root(&self) -> Utf8PathBuf {
-        self.data_root.join("worktrees")
+        self.data_child("worktrees")
     }
 
     /// Returns the grepai data directory root.
@@ -174,7 +180,7 @@ impl RuntimePaths {
     /// ```
     #[must_use]
     pub fn grepai_root(&self) -> Utf8PathBuf {
-        self.data_root.join(".grepai")
+        self.data_child(".grepai")
     }
 }
 

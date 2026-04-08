@@ -158,7 +158,10 @@ impl RuntimePaths {
         self.data_root.join("worktrees")
     }
 
-    /// Returns the grepai configuration directory root.
+    /// Returns the grepai data directory root.
+    ///
+    /// Note: grepai configuration is stored under the data root rather than the
+    /// configuration root, as it contains both configuration and mutable index data.
     ///
     /// # Examples
     ///
@@ -193,7 +196,7 @@ mod tests {
         assert_eq!(kind.binary_name(), expected);
     }
 
-    #[rstest]
+    #[test]
     fn runtime_paths_expand_from_the_data_root() {
         let paths =
             RuntimePaths::new(Utf8PathBuf::from("/tmp/config"), Utf8PathBuf::from("/srv/repovec"));

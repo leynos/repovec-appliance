@@ -1,6 +1,9 @@
 name: CI
 
 'on':
+  push:
+    branches:
+      - main
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -19,6 +22,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+      - name: Build
+        run: make build
       - name: Format
         run: make check-fmt
       - name: Markdown lint

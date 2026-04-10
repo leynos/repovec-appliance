@@ -28,12 +28,13 @@ CLI, a strict lint baseline, and a CI pipeline that gates merges.
   - Create shared library crate `repovec-core` for common types and
     configuration.
   - Confirm `cargo build` succeeds for all members.
-- [ ] 1.1.2. Establish lint and formatting baseline
+- [x] 1.1.2. Establish lint and formatting baseline
   - Carry forward the existing `Cargo.toml` lint profile (clippy pedantic,
     panic-prone denials, missing docs).
   - Add `rustfmt.toml` with project conventions.
-  - Ensure rustfmt runs as `nightly` so `fn_single_line = true` is available
-    under the project's formatting policy.
+  - Ensure rustfmt runs as `nightly` so `fn_single_line = true`,
+    `group_imports`, and `imports_granularity` remain available under the
+    project's formatting policy.
   - Confirm `make lint` and `make check-fmt` pass with zero warnings.
 - [ ] 1.1.3. Add CI gating pipeline
   - Configure CI to run commit gate `Makefile` targets on every push.

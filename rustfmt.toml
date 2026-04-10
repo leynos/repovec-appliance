@@ -1,5 +1,8 @@
 edition = "2024"
+# Nightly rustfmt is required for the project's single-line function and
+# import-grouping policy.
 unstable_features = true
+fn_single_line = true
 group_imports = "StdExternalCrate"
 imports_granularity = "Module"
 newline_style = "Unix"

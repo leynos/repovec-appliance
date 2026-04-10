@@ -36,9 +36,14 @@ CLI, a strict lint baseline, and a CI pipeline that gates merges.
     `group_imports`, and `imports_granularity` remain available under the
     project's formatting policy.
   - Confirm `make lint` and `make check-fmt` pass with zero warnings.
+  - Status: complete.
 - [ ] 1.1.3. Add CI gating pipeline
-  - Configure CI to run commit gate `Makefile` targets on every push.
+  - Configure CI to run `make build`, `make check-fmt`, `make lint`, and
+    `make test` on every push as the core commit-gate targets, alongside
+    `make markdownlint` and `make nixie` when documentation changes.
   - Gate merge on all checks passing.
+  - Status: pending until the workflow and branch protection enforce this
+    policy.
 
 ### 1.2. Qdrant container management
 

@@ -22,7 +22,7 @@ Qdrant running and reachable by local processes.
 Objective: a compilable Rust workspace with binary targets for each daemon and
 CLI, a strict lint baseline, and a CI pipeline that gates merges.
 
-- [ ] 1.1.1. Define Cargo workspace with binary crates
+- [x] 1.1.1. Define Cargo workspace with binary crates
   - Create workspace members: `repovecd`, `repovec-mcpd`, `repovec-tui`,
     `repovectl`.
   - Create shared library crate `repovec-core` for common types and
@@ -32,10 +32,11 @@ CLI, a strict lint baseline, and a CI pipeline that gates merges.
   - Carry forward the existing `Cargo.toml` lint profile (clippy pedantic,
     panic-prone denials, missing docs).
   - Add `rustfmt.toml` with project conventions.
-  - Confirm `cargo clippy` and `cargo fmt --check` pass with zero warnings.
+  - Ensure rustfmt runs as `nightly` so `fn_single_line = true` is available
+    under the project's formatting policy.
+  - Confirm `make lint` and `make check-fmt` pass with zero warnings.
 - [ ] 1.1.3. Add CI gating pipeline
-  - Configure CI to run `cargo build`, `cargo clippy`, `cargo fmt --check`,
-    and `cargo test` on every push.
+  - Configure CI to run commit gate `Makefile` targets on every push.
   - Gate merge on all checks passing.
 
 ### 1.2. Qdrant container management

@@ -39,15 +39,11 @@ impl ServiceKind {
 }
 
 impl fmt::Display for ServiceKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.binary_name())
-    }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(self.binary_name()) }
 }
 
 impl AsRef<str> for ServiceKind {
-    fn as_ref(&self) -> &str {
-        self.binary_name()
-    }
+    fn as_ref(&self) -> &str { self.binary_name() }
 }
 
 /// Canonical filesystem roots used by appliance components.
@@ -106,9 +102,7 @@ impl RuntimePaths {
     /// assert_eq!(paths.config_root().as_str(), "/etc/repovec");
     /// ```
     #[must_use]
-    pub fn config_root(&self) -> &Utf8Path {
-        self.config_root.as_path()
-    }
+    pub fn config_root(&self) -> &Utf8Path { self.config_root.as_path() }
 
     /// Returns an immutable borrowed path to the appliance data directory root.
     ///
@@ -122,15 +116,11 @@ impl RuntimePaths {
     /// assert_eq!(paths.data_root().as_str(), "/var/lib/repovec");
     /// ```
     #[must_use]
-    pub fn data_root(&self) -> &Utf8Path {
-        self.data_root.as_path()
-    }
+    pub fn data_root(&self) -> &Utf8Path { self.data_root.as_path() }
 
     /// Private helper for constructing data subdirectory paths.
     #[inline]
-    fn data_child(&self, name: &str) -> Utf8PathBuf {
-        self.data_root.join(name)
-    }
+    fn data_child(&self, name: &str) -> Utf8PathBuf { self.data_root.join(name) }
 
     /// Returns the bare-mirror directory root.
     ///
@@ -144,9 +134,7 @@ impl RuntimePaths {
     /// assert_eq!(paths.git_mirrors_root().as_str(), "/var/lib/repovec/git-mirrors");
     /// ```
     #[must_use]
-    pub fn git_mirrors_root(&self) -> Utf8PathBuf {
-        self.data_child("git-mirrors")
-    }
+    pub fn git_mirrors_root(&self) -> Utf8PathBuf { self.data_child("git-mirrors") }
 
     /// Returns the worktree directory root.
     ///
@@ -160,9 +148,7 @@ impl RuntimePaths {
     /// assert_eq!(paths.worktrees_root().as_str(), "/var/lib/repovec/worktrees");
     /// ```
     #[must_use]
-    pub fn worktrees_root(&self) -> Utf8PathBuf {
-        self.data_child("worktrees")
-    }
+    pub fn worktrees_root(&self) -> Utf8PathBuf { self.data_child("worktrees") }
 
     /// Returns the grepai data directory root.
     ///
@@ -179,9 +165,7 @@ impl RuntimePaths {
     /// assert_eq!(paths.grepai_root().as_str(), "/var/lib/repovec/.grepai");
     /// ```
     #[must_use]
-    pub fn grepai_root(&self) -> Utf8PathBuf {
-        self.data_child(".grepai")
-    }
+    pub fn grepai_root(&self) -> Utf8PathBuf { self.data_child(".grepai") }
 }
 
 #[cfg(test)]

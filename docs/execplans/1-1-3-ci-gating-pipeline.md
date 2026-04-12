@@ -2,9 +2,9 @@
 
 ## Preamble
 
-- Status: Proposed
+- Status: In progress
 - Roadmap item: `1.1.3`
-- Last updated: 2026-04-11
+- Last updated: 2026-04-12
 - Primary references:
   - [docs/roadmap.md](../roadmap.md)
   - [docs/repovec-appliance-technical-design.md](../repovec-appliance-technical-design.md)
@@ -18,34 +18,37 @@
 
 ## Summary
 
-Task `1.1.3` is partly implemented today. The repository already has a GitHub
-Actions workflow, but it does not yet satisfy the roadmap requirement to run
-the full Make-based gate set on every push, to run documentation-specific gates
-only when documentation changes, or to enforce merge blocking through required
-checks and branch protection.
+Task `1.1.3` is now implemented in-repository but not yet complete at the
+repository-settings layer. The GitHub Actions workflow has been rewritten to
+run the full Make-based gate set on every push, documentation gates now run
+conditionally through a tested helper, and the required-check ruleset payload
+is versioned in the repository.
 
-This plan completes the task in two layers:
+Completion still has two layers:
 
 1. align the repository workflow with the Make targets that define the commit
    gates; and
 2. enforce those checks as merge blockers through branch protection or an
    equivalent GitHub ruleset.
 
-The roadmap entry should remain pending until both layers are in place.
+The roadmap entry should remain pending until both layers are in place on the
+remote repository.
 
 ## Current state
 
-- [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs on pushes to
-  `main`, selected pull request events, and manual dispatch rather than on
-  every push.
-- The workflow already runs `make build`, `make check-fmt`, and `make lint`,
-  but it does not run `make test` explicitly.
-- Markdown lint runs unconditionally through a direct GitHub Action instead of
-  through `make markdownlint`.
-- `make nixie` is not wired into CI.
-- No repository-managed branch protection or ruleset configuration is present,
-  so required checks are not yet enforced from the repository side.
-- `docs/execplans/` did not exist before this plan was added.
+- [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) now runs on
+  every push, relevant pull request events, and manual dispatch.
+- The workflow exposes stable required job names: `build`, `check-fmt`,
+  `lint`, `test`, and `docs-gate`.
+- `docs-gate` computes changed files in-workflow and runs
+  `make markdownlint` plus `make nixie` only when Markdown files changed, while
+  still publishing a stable required check result.
+- The docs-gate classification logic now lives in the `repovec-ci` crate and is
+  covered by `rstest` unit tests plus `rstest-bdd` behavioural tests.
+- The desired GitHub ruleset is versioned in
+  [`.github/rulesets/main-ci-gating.json`](../../.github/rulesets/main-ci-gating.json).
+- Live enforcement is still pending because the ruleset has not been activated
+  on the remote repository yet.
 
 ## Delivery goals
 
@@ -85,6 +88,14 @@ checks. The implementation therefore needs one explicit enforcement path:
 If no repository-managed automation exists, the roadmap must stay pending until
 the manual configuration has been applied and verified.
 
+Implementation update, 2026-04-12:
+
+- `gh` authentication is available in the implementation environment.
+- The repository currently has no existing rulesets.
+- The implementation will use a GitHub repository ruleset targeting
+  `refs/heads/main` rather than leaving merge enforcement as a manual-only
+  follow-up.
+
 ### Test policy should live in versioned code
 
 The user requirement calls for unit tests with `rstest` and behavioural tests
@@ -99,6 +110,13 @@ That approach gives the project a place to add:
 - `rstest` unit tests for change classification
 - `rstest-bdd` scenarios for happy and unhappy paths
 - deterministic validation without relying on GitHub-hosted runners
+
+Implementation update, 2026-04-12:
+
+- The helper will live in a dedicated workspace crate, `repovec-ci`, instead of
+  inside `repovec-core`.
+- `docs-gate` will always publish a stable job result so it can be configured as
+  a required check even when no Markdown files changed.
 
 ## Workstreams
 
@@ -118,6 +136,23 @@ Exit criteria:
 
 - one documented enforcement path exists
 - required check names are fixed and stable
+
+Progress, 2026-04-12:
+
+- Enforcement path selected: GitHub repository ruleset applied through
+  `gh api`.
+- Planned required checks:
+  - `build`
+  - `check-fmt`
+  - `lint`
+  - `test`
+  - `docs-gate`
+- A versioned ruleset payload will be committed in-repo, but live activation is
+  deferred until the new workflow exists on the default branch. Enabling the
+  ruleset against the current remote state would require check names that do
+  not yet exist there.
+- The desired ruleset payload is now stored in
+  [`.github/rulesets/main-ci-gating.json`](../../.github/rulesets/main-ci-gating.json).
 
 ### 2. Refactor CI into explicit gate jobs
 
@@ -154,6 +189,18 @@ Exit criteria:
 - every core gate runs on every push
 - the documentation gate only runs when documentation changes
 
+Progress, 2026-04-12:
+
+- The existing monolithic `build-test` job will be split into separate required
+  jobs with those stable names.
+- The existing coverage upload path will be dropped from the required gate set
+  so `make test` becomes the authoritative test gate.
+- `docs-gate` will compute the changed-file set inside the workflow and always
+  publish a required status, running `make markdownlint` and `make nixie` only
+  when Markdown files changed.
+- The rewritten workflow is now in place at
+  [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
+
 ### 3. Introduce a testable CI-policy helper
 
 Factor the decision logic for documentation-gate execution into a small Rust
@@ -186,6 +233,16 @@ Implementation note:
 The helper should stay small and single-purpose. Do not build a large internal
 CI framework around one roadmap item.
 
+Progress, 2026-04-12:
+
+- The helper will classify Markdown changes globally by file extension
+  (`.md`, `.markdown`, and `.mdx`) so README and other repository documentation
+  updates are covered alongside `docs/`.
+- An empty or unavailable changed-file list will conservatively run the docs
+  gate.
+- The helper crate and its tests are now implemented under
+  [`crates/repovec-ci/`](../../crates/repovec-ci/).
+
 ### 4. Update documentation
 
 This work is maintainer-facing, so documentation changes should focus on the
@@ -215,6 +272,20 @@ Exit criteria:
 
 - maintainers can see how CI is expected to behave
 - any durable design decision is recorded in the design document or an ADR
+
+Progress, 2026-04-12:
+
+- Planned documentation updates:
+  - add maintainer guidance in `docs/developers-guide.md`
+  - record the CI and ruleset decision in
+    `docs/repovec-appliance-technical-design.md`
+  - keep `docs/users-guide.md` unchanged unless implementation introduces a
+    user-facing behaviour change
+- add `docs/contents.md` so the documentation set indexes the new developers
+  guide and execution plan
+- Those documentation updates are now in place, and `docs/users-guide.md`
+  remains intentionally untouched because this task did not change an
+  operator-facing workflow or interface.
 
 ### 5. Verify locally and in GitHub
 
@@ -247,6 +318,17 @@ Remote verification steps:
 4. confirm the branch protection or ruleset points at the final job names
 
 Only after that verification should the roadmap item be marked done.
+
+Implementation progress, 2026-04-12:
+
+- Local validation completed successfully:
+  - `make build`
+  - `make check-fmt`
+  - `make lint`
+  - `make test`
+  - `make markdownlint`
+  - `make nixie`
+- Remote verification and ruleset activation remain outstanding.
 
 ## Risks and mitigations
 
@@ -287,7 +369,9 @@ confirms they are intentional cross-cutting requirements.
 Mark roadmap item `1.1.3` as done only when:
 
 - the workflow is merged
-- the required checks are configured and verified in GitHub
+- the required checks from
+  [`.github/rulesets/main-ci-gating.json`](../../.github/rulesets/main-ci-gating.json)
+  are configured and verified in GitHub
 - the local Make gates pass
 - the relevant documentation updates are merged
 - the final pull request shows the required checks blocking merge as intended

@@ -42,8 +42,8 @@ CLI, a strict lint baseline, and a CI pipeline that gates merges.
     `make test` on every push as the core commit-gate targets, alongside
     `make markdownlint` and `make nixie` when documentation changes.
   - Gate merge on all checks passing.
-  - Status: pending until the workflow and branch protection enforce this
-    policy.
+  - Status: workflow and versioned ruleset payload are implemented; pending
+    until the workflow is merged and the GitHub ruleset enforces this policy.
 
 ### 1.2. Qdrant container management
 

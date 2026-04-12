@@ -2,37 +2,49 @@ name: CI
 
 'on':
   push:
-    branches:
-      - main
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BINSTALL_VERSION: '1.15.7'
+  WHITAKER_INSTALLER_VERSION: '0.2.1'
+
 jobs:
-  build-test:
+  build:
+    name: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      CARGO_TERM_COLOR: always
-      BUILD_PROFILE: debug
-      CARGO_BINSTALL_VERSION: '1.15.7'
-      WHITAKER_INSTALLER_VERSION: '0.2.1'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
       - name: Build
         run: make build
-      - name: Format
+
+  check-fmt:
+    name: check-fmt
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Setup Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+      - name: Check formatting
         run: make check-fmt
-      - name: Markdown lint
-        uses: DavidAnson/markdownlint-cli2-action@07035fd053f7be764496c0f8d8f9f41f98305101
-        with:
-          globs: |
-            **/*.md
-            !**/target/**
-            !**/dist/**
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Setup Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
       - name: Cache Whitaker installer
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
         with:
@@ -41,15 +53,18 @@ jobs:
             ~/.cache/cargo-binstall
           key: whitaker-installer-${{ runner.os }}-${{ runner.arch }}-${{ env.WHITAKER_INSTALLER_VERSION }}
       - name: Install Whitaker
+        shell: bash
         run: |
+          set -euo pipefail
+
           if cargo binstall --version >/dev/null 2>&1; then
-            INSTALLED_BINSTALL_VERSION="$(cargo binstall --version | awk '{print $2}' | sed 's/^v//')"
+            installed_binstall_version="$(cargo binstall --version | awk '{print $2}' | sed 's/^v//')"
           else
-            INSTALLED_BINSTALL_VERSION=""
+            installed_binstall_version=""
           fi
 
-          if [ "${INSTALLED_BINSTALL_VERSION}" = "${{ env.CARGO_BINSTALL_VERSION }}" ]; then
-            echo "cargo-binstall ${INSTALLED_BINSTALL_VERSION} already present"
+          if [[ "${installed_binstall_version}" == "${{ env.CARGO_BINSTALL_VERSION }}" ]]; then
+            echo "cargo-binstall ${installed_binstall_version} already present"
           else
             cargo install cargo-binstall --locked --version "${{ env.CARGO_BINSTALL_VERSION }}"
           fi
@@ -59,20 +74,72 @@ jobs:
           else
             cargo binstall --no-confirm whitaker-installer@${{ env.WHITAKER_INSTALLER_VERSION }}
           fi
+
           whitaker-installer --no-update
       - name: Lint
         run: make lint
-      - name: Test and Measure Coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Setup Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+      - name: Test
+        run: make test
+
+  docs-gate:
+    name: docs-gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          output-path: lcov.info
-          format: lcov
-      - name: Upload coverage data to CodeScene
-        env:
-          CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
-        if: ${{ env.CS_ACCESS_TOKEN }}
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
-        with:
-          format: lcov
-          access-token: ${{ env.CS_ACCESS_TOKEN }}
-          installer-checksum: ${{ vars.CODESCENE_CLI_SHA256 }}
+          fetch-depth: 0
+      - name: Setup Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+      - name: Decide whether documentation gates should run
+        id: docs_gate_plan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base_ref=""
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            base_ref="${{ github.event.pull_request.base.sha }}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            base_ref="${{ github.event.before }}"
+          fi
+
+          if [[ -n "${base_ref}" && "${base_ref}" != "0000000000000000000000000000000000000000" ]]; then
+            mapfile -t changed_files < <(git diff --name-only "${base_ref}" "${GITHUB_SHA}")
+          else
+            changed_files=()
+          fi
+
+          if [[ "${#changed_files[@]}" -gt 0 ]]; then
+            printf '%s\n' "${changed_files[@]}" | cargo run --quiet -p repovec-ci -- --stdin >>"${GITHUB_OUTPUT}"
+          else
+            cargo run --quiet -p repovec-ci -- >>"${GITHUB_OUTPUT}"
+          fi
+      - name: Report documentation gate decision
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "should_run=${{ steps.docs_gate_plan.outputs.should_run }}"
+          echo "reason=${{ steps.docs_gate_plan.outputs.reason }}"
+          echo "matched_count=${{ steps.docs_gate_plan.outputs.matched_count }}"
+          echo "matched_files=${{ steps.docs_gate_plan.outputs.matched_files }}"
+      - name: Markdown lint
+        if: steps.docs_gate_plan.outputs.should_run == 'true'
+        run: make markdownlint
+      - name: Mermaid validation
+        if: steps.docs_gate_plan.outputs.should_run == 'true'
+        run: make nixie
+      - name: Skip documentation gates
+        if: steps.docs_gate_plan.outputs.should_run != 'true'
+        run: echo "No Markdown changes detected; documentation gates skipped."

@@ -330,6 +330,43 @@ Implementation progress, 2026-04-12:
   - `make nixie`
 - Remote verification and ruleset activation remain outstanding.
 
+### GitHub ruleset deployment commands
+
+Run these commands only after the workflow changes in
+[`/.github/workflows/ci.yml`](../../.github/workflows/ci.yml) are present on
+the remote default branch.
+
+Inspect the current rulesets:
+
+```sh
+gh api repos/leynos/repovec-appliance/rulesets
+```
+
+Create the ruleset if it does not exist yet:
+
+```sh
+gh api \
+  --method POST \
+  repos/leynos/repovec-appliance/rulesets \
+  --input .github/rulesets/main-ci-gating.json
+```
+
+Update the existing ruleset if one named `main-ci-gating` already exists:
+
+```sh
+RULESET_ID="$(gh api repos/leynos/repovec-appliance/rulesets --jq '.[] | select(.name == "main-ci-gating") | .id')"
+gh api \
+  --method PUT \
+  "repos/leynos/repovec-appliance/rulesets/${RULESET_ID}" \
+  --input .github/rulesets/main-ci-gating.json
+```
+
+Verify that the required checks match the workflow job names:
+
+```sh
+gh api repos/leynos/repovec-appliance/rulesets --jq '.[] | select(.name == "main-ci-gating")'
+```
+
 ## Risks and mitigations
 
 ### GitHub enforcement may remain out of band
@@ -371,7 +408,7 @@ Mark roadmap item `1.1.3` as done only when:
 - the workflow is merged
 - the required checks from
   [`.github/rulesets/main-ci-gating.json`](../../.github/rulesets/main-ci-gating.json)
-  are configured and verified in GitHub
+   are configured and verified in GitHub
 - the local Make gates pass
 - the relevant documentation updates are merged
 - the final pull request shows the required checks blocking merge as intended

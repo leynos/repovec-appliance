@@ -145,6 +145,10 @@ jobs:
       - name: Markdown lint
         if: steps.docs_gate_plan.outputs.docs_gate_required == 'true'
         run: make markdownlint
+      - uses: oven-sh/setup-bun@v2
+        if: steps.docs_gate_plan.outputs.nixie_required == 'true'
+        with:
+          bun-version: latest
       - name: Install nixie
         if: steps.docs_gate_plan.outputs.nixie_required == 'true'
         shell: bash

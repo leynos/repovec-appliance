@@ -202,6 +202,9 @@ Progress, 2026-04-12:
   diagram.
 - The hosted runner did not provide `markdownlint-cli2`, so `docs-gate` now
   installs `markdownlint-cli2@0.22.0` before invoking `make markdownlint`.
+- The hosted runner also did not provide `nixie`, so `docs-gate` now installs
+  it with `uv tool install git+https://github.com/leynos/nixie` before
+  invoking `make nixie`.
 - The rewritten workflow is now in place at
   [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
 

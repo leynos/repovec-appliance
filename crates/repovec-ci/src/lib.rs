@@ -1,6 +1,7 @@
 //! CI policy helpers for repository automation and merge gating.
 
-use std::path::Path;
+use camino::Utf8Path;
+use cap_std::fs_utf8::Dir;
 
 /// The reason the documentation gate should or should not run.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -107,12 +108,12 @@ impl DocsGatePlan {
 /// assert_eq!(plan.reason(), DocsGateReason::MissingChangedFiles);
 /// ```
 #[must_use]
-pub fn evaluate_docs_gate<I, S>(changed_files: I) -> DocsGatePlan
+pub fn evaluate_docs_gate_in<I, S>(root: &Dir, changed_files: I) -> DocsGatePlan
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    evaluate_docs_gate_with(changed_files, path_contains_mermaid)
+    evaluate_docs_gate_with(changed_files, |path| path_contains_mermaid(root, path))
 }
 
 /// Evaluates the docs gate policy with an injected Mermaid detector.
@@ -157,15 +158,16 @@ fn normalize_path(path: &str) -> Option<String> {
 }
 
 fn is_markdown_path(path: &str) -> bool {
-    Path::new(path).extension().and_then(|extension| extension.to_str()).is_some_and(|extension| {
+    Utf8Path::new(path).extension().is_some_and(|extension| {
         extension.eq_ignore_ascii_case("md")
             || extension.eq_ignore_ascii_case("markdown")
             || extension.eq_ignore_ascii_case("mdx")
     })
 }
 
-fn path_contains_mermaid(path: &str) -> bool {
-    std::fs::read_to_string(path).map_or(true, |contents| contents.contains("```mermaid"))
+fn path_contains_mermaid(root: &Dir, path: &str) -> bool {
+    root.read_to_string(Utf8Path::new(path))
+        .map_or(true, |contents| contents.contains("```mermaid"))
 }
 
 #[cfg(test)]

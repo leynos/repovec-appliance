@@ -2,7 +2,8 @@
 
 use std::io::{self, BufRead as _, BufWriter, Write as _};
 
-use repovec_ci::evaluate_docs_gate;
+use cap_std::{ambient_authority, fs_utf8::Dir};
+use repovec_ci::evaluate_docs_gate_in;
 
 fn main() {
     if let Err(error) = run() {
@@ -14,10 +15,11 @@ fn main() {
 }
 
 fn run() -> io::Result<()> {
+    let root = Dir::open_ambient_dir(".", ambient_authority())?;
     let input = parse_args(std::env::args().skip(1))?;
     let plan = match input {
-        Input::ChangedFiles(paths) => evaluate_docs_gate(paths),
-        Input::Stdin => evaluate_docs_gate(read_paths_from_stdin()?),
+        Input::ChangedFiles(paths) => evaluate_docs_gate_in(&root, paths),
+        Input::Stdin => evaluate_docs_gate_in(&root, read_paths_from_stdin()?),
     };
 
     let mut stdout = BufWriter::new(io::stdout().lock());

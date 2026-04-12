@@ -145,6 +145,12 @@ jobs:
       - name: Markdown lint
         if: steps.docs_gate_plan.outputs.docs_gate_required == 'true'
         run: make markdownlint
+      - name: Install nixie
+        if: steps.docs_gate_plan.outputs.nixie_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv tool install git+https://github.com/leynos/nixie
       - name: Mermaid validation
         if: steps.docs_gate_plan.outputs.nixie_required == 'true'
         run: make nixie

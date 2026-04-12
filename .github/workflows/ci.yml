@@ -131,15 +131,23 @@ jobs:
         run: |
           set -euo pipefail
           echo "should_run=${{ steps.docs_gate_plan.outputs.should_run }}"
+          echo "docs_gate_required=${{ steps.docs_gate_plan.outputs.docs_gate_required }}"
+          echo "nixie_required=${{ steps.docs_gate_plan.outputs.nixie_required }}"
           echo "reason=${{ steps.docs_gate_plan.outputs.reason }}"
           echo "matched_count=${{ steps.docs_gate_plan.outputs.matched_count }}"
           echo "matched_files=${{ steps.docs_gate_plan.outputs.matched_files }}"
+      - name: Install markdownlint-cli2
+        if: steps.docs_gate_plan.outputs.docs_gate_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global markdownlint-cli2@0.22.0
       - name: Markdown lint
-        if: steps.docs_gate_plan.outputs.should_run == 'true'
+        if: steps.docs_gate_plan.outputs.docs_gate_required == 'true'
         run: make markdownlint
       - name: Mermaid validation
-        if: steps.docs_gate_plan.outputs.should_run == 'true'
+        if: steps.docs_gate_plan.outputs.nixie_required == 'true'
         run: make nixie
       - name: Skip documentation gates
-        if: steps.docs_gate_plan.outputs.should_run != 'true'
+        if: steps.docs_gate_plan.outputs.docs_gate_required != 'true'
         run: echo "No Markdown changes detected; documentation gates skipped."

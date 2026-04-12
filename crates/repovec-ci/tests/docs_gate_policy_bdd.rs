@@ -1,19 +1,23 @@
 //! Behavioural coverage for docs-gate classification.
 
-use repovec_ci::{DocsGatePlan, DocsGateReason, evaluate_docs_gate};
+use std::collections::BTreeSet;
+
+use repovec_ci::{DocsGatePlan, DocsGateReason, evaluate_docs_gate_with};
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 
 #[derive(Default)]
 struct PolicyWorld {
     changed_files: Vec<String>,
+    mermaid_files: BTreeSet<String>,
     plan: Option<DocsGatePlan>,
 }
 
 #[fixture]
 fn world() -> PolicyWorld {
     let changed_files = Vec::new();
-    PolicyWorld { changed_files, plan: None }
+    let mermaid_files = BTreeSet::new();
+    PolicyWorld { changed_files, mermaid_files, plan: None }
 }
 
 #[given("the changed file list contains {path}")]
@@ -22,10 +26,15 @@ fn changed_file(world: &mut PolicyWorld, path: String) { world.changed_files.pus
 #[given("the changed file list is unavailable")]
 fn missing_changed_files(world: &mut PolicyWorld) { world.changed_files.clear(); }
 
+#[given("the Mermaid-bearing file is {path}")]
+fn mermaid_file(world: &mut PolicyWorld, path: String) { let _ = world.mermaid_files.insert(path); }
+
 #[when("the docs gate policy is evaluated")]
 fn evaluate(world: &mut PolicyWorld) {
-    world.plan =
-        Some(evaluate_docs_gate(world.changed_files.iter().map(std::string::String::as_str)));
+    world.plan = Some(evaluate_docs_gate_with(
+        world.changed_files.iter().map(std::string::String::as_str),
+        |path| world.mermaid_files.contains(path),
+    ));
 }
 
 #[then("the docs gate runs")]
@@ -36,6 +45,16 @@ fn docs_gate_runs(world: &PolicyWorld) {
 #[then("the docs gate is skipped")]
 fn docs_gate_skips(world: &PolicyWorld) {
     assert!(!plan(world).should_run());
+}
+
+#[then("Mermaid validation is required")]
+fn nixie_runs(world: &PolicyWorld) {
+    assert!(plan(world).nixie_required());
+}
+
+#[then("Mermaid validation is skipped")]
+fn nixie_skips(world: &PolicyWorld) {
+    assert!(!plan(world).nixie_required());
 }
 
 #[then(expr = "the docs gate reason is {reason}")]
@@ -77,6 +96,14 @@ fn code_changes_skip_docs_gate(world: PolicyWorld) {
 )]
 fn mixed_changes_trigger_docs_gate(world: PolicyWorld) {
     assert!(plan(&world).matched_files().iter().any(|item| item == "README.md"));
+}
+
+#[scenario(
+    path = "tests/features/docs_gate.feature",
+    name = "Mermaid-bearing docs changes require nixie"
+)]
+fn mermaid_docs_require_nixie(world: PolicyWorld) {
+    assert!(plan(&world).nixie_required());
 }
 
 #[scenario(

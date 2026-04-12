@@ -29,21 +29,34 @@ impl DocsGateReason {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocsGatePlan {
     matched_files: Vec<String>,
+    docs_gate_required: bool,
+    nixie_required: bool,
     reason: DocsGateReason,
 }
 
 impl DocsGatePlan {
     /// Creates a plan from an explicit reason and the matched Markdown files.
     #[must_use]
-    pub const fn new(matched_files: Vec<String>, reason: DocsGateReason) -> Self {
-        Self { matched_files, reason }
+    pub const fn new(
+        matched_files: Vec<String>,
+        docs_gate_required: bool,
+        nixie_required: bool,
+        reason: DocsGateReason,
+    ) -> Self {
+        Self { matched_files, docs_gate_required, nixie_required, reason }
     }
 
     /// Returns whether the documentation gate should run.
     #[must_use]
-    pub const fn should_run(&self) -> bool {
-        !matches!(self.reason, DocsGateReason::NoMarkdownChanges)
-    }
+    pub const fn should_run(&self) -> bool { self.docs_gate_required }
+
+    /// Returns whether the documentation gate should run.
+    #[must_use]
+    pub const fn docs_gate_required(&self) -> bool { self.docs_gate_required }
+
+    /// Returns whether Mermaid validation should run.
+    #[must_use]
+    pub const fn nixie_required(&self) -> bool { self.nixie_required }
 
     /// Returns the reason for the decision.
     #[must_use]
@@ -62,30 +75,35 @@ impl DocsGatePlan {
 /// # Examples
 ///
 /// ```
-/// use repovec_ci::{DocsGateReason, evaluate_docs_gate};
+/// use repovec_ci::{DocsGateReason, evaluate_docs_gate_with};
 ///
-/// let plan = evaluate_docs_gate(["docs/roadmap.md", "crates/repovec-core/src/lib.rs"]);
+/// let plan = evaluate_docs_gate_with(
+///     ["docs/roadmap.md", "crates/repovec-core/src/lib.rs"],
+///     |_path| false,
+/// );
 ///
 /// assert!(plan.should_run());
+/// assert!(!plan.nixie_required());
 /// assert_eq!(plan.reason(), DocsGateReason::MarkdownChanged);
 /// assert_eq!(plan.matched_files(), &["docs/roadmap.md".to_string()]);
 /// ```
 ///
 /// ```
-/// use repovec_ci::{DocsGateReason, evaluate_docs_gate};
+/// use repovec_ci::{DocsGateReason, evaluate_docs_gate_with};
 ///
-/// let plan = evaluate_docs_gate(["crates/repovec-core/src/lib.rs"]);
+/// let plan = evaluate_docs_gate_with(["crates/repovec-core/src/lib.rs"], |_path| false);
 ///
 /// assert!(!plan.should_run());
 /// assert_eq!(plan.reason(), DocsGateReason::NoMarkdownChanges);
 /// ```
 ///
 /// ```
-/// use repovec_ci::{DocsGateReason, evaluate_docs_gate};
+/// use repovec_ci::{DocsGateReason, evaluate_docs_gate_with};
 ///
-/// let plan = evaluate_docs_gate(std::iter::empty::<&str>());
+/// let plan = evaluate_docs_gate_with(std::iter::empty::<&str>(), |_path| false);
 ///
 /// assert!(plan.should_run());
+/// assert!(plan.nixie_required());
 /// assert_eq!(plan.reason(), DocsGateReason::MissingChangedFiles);
 /// ```
 #[must_use]
@@ -94,22 +112,38 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
+    evaluate_docs_gate_with(changed_files, path_contains_mermaid)
+}
+
+/// Evaluates the docs gate policy with an injected Mermaid detector.
+#[must_use]
+pub fn evaluate_docs_gate_with<I, S, F>(
+    changed_files: I,
+    mut path_contains_mermaid: F,
+) -> DocsGatePlan
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+    F: FnMut(&str) -> bool,
+{
     let normalized_files = changed_files
         .into_iter()
         .filter_map(|path| normalize_path(path.as_ref()))
         .collect::<Vec<_>>();
 
     if normalized_files.is_empty() {
-        return DocsGatePlan::new(Vec::new(), DocsGateReason::MissingChangedFiles);
+        return DocsGatePlan::new(Vec::new(), true, true, DocsGateReason::MissingChangedFiles);
     }
 
     let matched_files =
         normalized_files.into_iter().filter(|path| is_markdown_path(path)).collect::<Vec<_>>();
 
     if matched_files.is_empty() {
-        DocsGatePlan::new(Vec::new(), DocsGateReason::NoMarkdownChanges)
+        DocsGatePlan::new(Vec::new(), false, false, DocsGateReason::NoMarkdownChanges)
     } else {
-        DocsGatePlan::new(matched_files, DocsGateReason::MarkdownChanged)
+        let nixie_required = matched_files.iter().any(|path| path_contains_mermaid(path));
+
+        DocsGatePlan::new(matched_files, true, nixie_required, DocsGateReason::MarkdownChanged)
     }
 }
 
@@ -130,13 +164,17 @@ fn is_markdown_path(path: &str) -> bool {
     })
 }
 
+fn path_contains_mermaid(path: &str) -> bool {
+    std::fs::read_to_string(path).map_or(true, |contents| contents.contains("```mermaid"))
+}
+
 #[cfg(test)]
 mod tests {
     //! Unit coverage for docs-gate classification.
 
     use rstest::rstest;
 
-    use super::{DocsGateReason, evaluate_docs_gate};
+    use super::{DocsGateReason, evaluate_docs_gate_with};
 
     #[rstest]
     #[case("docs/roadmap.md")]
@@ -144,9 +182,10 @@ mod tests {
     #[case("guide.MDX")]
     #[case("notes.markdown")]
     fn markdown_paths_trigger_the_docs_gate(#[case] changed_file: &str) {
-        let plan = evaluate_docs_gate([changed_file]);
+        let plan = evaluate_docs_gate_with([changed_file], |_path| false);
 
         assert!(plan.should_run());
+        assert!(!plan.nixie_required());
         assert_eq!(plan.reason(), DocsGateReason::MarkdownChanged);
         assert_eq!(plan.matched_files().len(), 1);
     }
@@ -156,33 +195,43 @@ mod tests {
     #[case("crates/repovec-core/src/lib.rs")]
     #[case("assets/logo.svg")]
     fn non_markdown_paths_skip_the_docs_gate(#[case] changed_file: &str) {
-        let plan = evaluate_docs_gate([changed_file]);
+        let plan = evaluate_docs_gate_with([changed_file], |_path| false);
 
         assert!(!plan.should_run());
+        assert!(!plan.nixie_required());
         assert_eq!(plan.reason(), DocsGateReason::NoMarkdownChanges);
         assert!(plan.matched_files().is_empty());
     }
 
     #[test]
     fn empty_input_runs_the_docs_gate_conservatively() {
-        let plan = evaluate_docs_gate(std::iter::empty::<&str>());
+        let plan = evaluate_docs_gate_with(std::iter::empty::<&str>(), |_path| false);
 
         assert!(plan.should_run());
+        assert!(plan.nixie_required());
         assert_eq!(plan.reason(), DocsGateReason::MissingChangedFiles);
         assert!(plan.matched_files().is_empty());
     }
 
     #[test]
     fn mixed_input_returns_only_markdown_matches() {
-        let plan = evaluate_docs_gate([
-            "crates/repovec-core/src/lib.rs",
-            "./docs/roadmap.md",
-            "README.md",
-            "",
-        ]);
+        let plan = evaluate_docs_gate_with(
+            ["crates/repovec-core/src/lib.rs", "./docs/roadmap.md", "README.md", ""],
+            |path| path == "README.md",
+        );
 
         assert!(plan.should_run());
+        assert!(plan.nixie_required());
         assert_eq!(plan.reason(), DocsGateReason::MarkdownChanged);
         assert_eq!(plan.matched_files(), &["docs/roadmap.md".to_owned(), "README.md".to_owned()]);
+    }
+
+    #[test]
+    fn mermaid_docs_request_nixie() {
+        let plan = evaluate_docs_gate_with(["docs/users-guide.md"], |_path| true);
+
+        assert!(plan.docs_gate_required());
+        assert!(plan.nixie_required());
+        assert_eq!(plan.reason(), DocsGateReason::MarkdownChanged);
     }
 }

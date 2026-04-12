@@ -62,6 +62,10 @@ set includes a Markdown path with one of these extensions:
 When the changed-file list is unavailable, the workflow runs the documentation
 gate conservatively instead of risking a skipped validation.
 
+`make nixie` is narrower than `make markdownlint`: Mermaid validation runs only
+when one of the changed Markdown files contains a Mermaid diagram. The user
+visible flow is documented in [users-guide.md](users-guide.md).
+
 ## CI policy helper
 
 The Markdown change classification logic lives in the `repovec-ci` crate. Keep

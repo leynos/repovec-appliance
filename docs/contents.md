@@ -2,8 +2,8 @@
 
 - [Documentation contents](contents.md): index of the repository documentation
   set.
-- `docs/users-guide.md`: reserved for operator-facing and user-facing
-  workflows when that guide is added.
+- [Users guide](users-guide.md): user-visible workflows and CI behaviour that
+  contributors and operators need to understand.
 - [Developers guide](developers-guide.md): maintainer workflow, quality gates,
   and repository automation policy.
 - [repovec-appliance technical design](repovec-appliance-technical-design.md):

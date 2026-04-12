@@ -22,6 +22,8 @@ fn run() -> io::Result<()> {
 
     let mut stdout = BufWriter::new(io::stdout().lock());
     writeln!(stdout, "should_run={}", plan.should_run())?;
+    writeln!(stdout, "docs_gate_required={}", plan.docs_gate_required())?;
+    writeln!(stdout, "nixie_required={}", plan.nixie_required())?;
     writeln!(stdout, "reason={}", plan.reason().as_str())?;
     writeln!(stdout, "matched_count={}", plan.matched_files().len())?;
     writeln!(stdout, "matched_files={}", plan.matched_files().join(","))?;

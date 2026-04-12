@@ -41,8 +41,9 @@ remote repository.
 - The workflow exposes stable required job names: `build`, `check-fmt`,
   `lint`, `test`, and `docs-gate`.
 - `docs-gate` computes changed files in-workflow and runs
-  `make markdownlint` plus `make nixie` only when Markdown files changed, while
-  still publishing a stable required check result.
+  `make markdownlint` when Markdown files changed, while `make nixie` runs only
+  when a changed Markdown file contains a Mermaid diagram. The job still
+  publishes a stable required check result.
 - The docs-gate classification logic now lives in the `repovec-ci` crate and is
   covered by `rstest` unit tests plus `rstest-bdd` behavioural tests.
 - The desired GitHub ruleset is versioned in
@@ -196,8 +197,11 @@ Progress, 2026-04-12:
 - The existing coverage upload path will be dropped from the required gate set
   so `make test` becomes the authoritative test gate.
 - `docs-gate` will compute the changed-file set inside the workflow and always
-  publish a required status, running `make markdownlint` and `make nixie` only
-  when Markdown files changed.
+  publish a required status, running `make markdownlint` when Markdown files
+  changed and `make nixie` only when a changed Markdown file contains a Mermaid
+  diagram.
+- The hosted runner did not provide `markdownlint-cli2`, so `docs-gate` now
+  installs `markdownlint-cli2@0.22.0` before invoking `make markdownlint`.
 - The rewritten workflow is now in place at
   [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
 
@@ -240,6 +244,9 @@ Progress, 2026-04-12:
   updates are covered alongside `docs/`.
 - An empty or unavailable changed-file list will conservatively run the docs
   gate.
+- Mermaid validation is now a separate output flag so the workflow can skip
+  `make nixie` when Markdown changed but no changed Markdown file contains a
+  Mermaid block.
 - The helper crate and its tests are now implemented under
   [`crates/repovec-ci/`](../../crates/repovec-ci/).
 
@@ -284,8 +291,7 @@ Progress, 2026-04-12:
 - add `docs/contents.md` so the documentation set indexes the new developers
   guide and execution plan
 - Those documentation updates are now in place, and `docs/users-guide.md`
-  remains intentionally untouched because this task did not change an
-  operator-facing workflow or interface.
+  now documents the docs-gate decision flow with an accessible Mermaid diagram.
 
 ### 5. Verify locally and in GitHub
 

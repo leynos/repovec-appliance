@@ -102,6 +102,11 @@ jobs:
           fetch-depth: 0
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+      - name: Build docs-gate helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --quiet -p repovec-ci
       - name: Decide whether documentation gates should run
         id: docs_gate_plan
         shell: bash
@@ -122,9 +127,9 @@ jobs:
           fi
 
           if [[ "${#changed_files[@]}" -gt 0 ]]; then
-            printf '%s\n' "${changed_files[@]}" | cargo run --quiet -p repovec-ci -- --stdin >>"${GITHUB_OUTPUT}"
+            printf '%s\n' "${changed_files[@]}" | target/debug/repovec-ci --stdin >>"${GITHUB_OUTPUT}"
           else
-            cargo run --quiet -p repovec-ci -- >>"${GITHUB_OUTPUT}"
+            target/debug/repovec-ci >>"${GITHUB_OUTPUT}"
           fi
       - name: Report documentation gate decision
         shell: bash
@@ -136,6 +141,8 @@ jobs:
           echo "reason=${{ steps.docs_gate_plan.outputs.reason }}"
           echo "matched_count=${{ steps.docs_gate_plan.outputs.matched_count }}"
           echo "matched_files=${{ steps.docs_gate_plan.outputs.matched_files }}"
+          echo "conservative_fallback_count=${{ steps.docs_gate_plan.outputs.conservative_fallback_count }}"
+          echo "conservative_fallback_files=${{ steps.docs_gate_plan.outputs.conservative_fallback_files }}"
       - name: Install markdownlint-cli2
         if: steps.docs_gate_plan.outputs.docs_gate_required == 'true'
         shell: bash
@@ -148,7 +155,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         if: steps.docs_gate_plan.outputs.nixie_required == 'true'
         with:
-          bun-version: latest
+          bun-version: "1.3.12"
       - name: Install nixie
         if: steps.docs_gate_plan.outputs.nixie_required == 'true'
         shell: bash
@@ -160,4 +167,4 @@ jobs:
         run: make nixie
       - name: Skip documentation gates
         if: steps.docs_gate_plan.outputs.docs_gate_required != 'true'
-        run: echo "No Markdown changes detected; documentation gates skipped."
+        run: echo "No documentation inputs detected; documentation gates skipped."

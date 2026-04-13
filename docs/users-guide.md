@@ -6,10 +6,11 @@ focuses on what a user can expect to happen, not on the internal crate layout.
 
 ## Documentation gate decisions
 
-When a change reaches CI, the workflow decides whether documentation validation
-is required and whether Mermaid diagram validation should also run. The
-decision is based on the changed-file list and, for Markdown files, whether the
-current file contents contain Mermaid diagrams.
+When a change reaches continuous integration (CI), the workflow decides whether
+documentation validation is required and whether Mermaid diagram validation
+should also run. The decision is based on the changed-file list, whether any
+documentation-tooling configuration changed, and, for Markdown files, whether
+the current file contents contain Mermaid diagrams.
 
 Figure 1. Accessible flow diagram showing how the CI policy decides whether the
 documentation gate and Mermaid validation are required from the changed-file
@@ -52,10 +53,14 @@ In practice, the current policy behaves as follows:
 
 - If the changed-file list is unavailable, CI runs both the documentation gate
   and Mermaid validation as a safe default.
-- If no Markdown files changed, the documentation gate is skipped.
+- If no documentation inputs changed, the documentation gate is skipped.
 - If Markdown files changed, the documentation gate runs.
+- If documentation-tooling configuration changed, the documentation gate and
+  Mermaid validation both run as a conservative default.
 - Mermaid validation runs only when one of the changed Markdown files contains
-  a Mermaid diagram.
+  a Mermaid diagram, or when the workflow takes that conservative fallback.
 
 The CI workflow publishes these decisions as stable flags so the `docs-gate`
-job can stay required even when it skips Markdown-specific work.
+job can stay required even when it skips documentation-specific work. When the
+workflow takes the conservative Mermaid path because a file could not be read,
+it also publishes which files triggered that fallback.

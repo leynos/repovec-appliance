@@ -2,8 +2,8 @@
 
 - [Documentation contents](contents.md): index of the repository documentation
   set.
-- [Users guide](users-guide.md): user-visible workflows and CI behaviour that
-  contributors and operators need to understand.
+- [Users guide](users-guide.md): user-visible workflows and continuous
+  integration (CI) behaviour that contributors and operators need to understand.
 - [Developers guide](developers-guide.md): maintainer workflow, quality gates,
   and repository automation policy.
 - [repovec-appliance technical design](repovec-appliance-technical-design.md):
@@ -21,8 +21,8 @@
   guidance on deterministic test design.
 - [rstest-bdd users guide](rstest-bdd-users-guide.md): behavioural testing
   reference used by this repository.
-- [Rust doctest DRY guide](rust-doctest-dry-guide.md): guidance for keeping
-  Rust documentation examples maintainable.
+- [Rust doctest Don't Repeat Yourself (DRY) guide](rust-doctest-dry-guide.md):
+  guidance for keeping Rust documentation examples maintainable.
 - [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md):
   unit and integration testing reference.
 - [Scripting standards](scripting-standards.md): repository guidance for

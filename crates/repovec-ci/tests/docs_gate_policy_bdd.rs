@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use repovec_ci::{DocsGatePlan, DocsGateReason, evaluate_docs_gate_with};
+use repovec_ci::{DocsGatePlan, DocsGateReason, MermaidDetection, evaluate_docs_gate_with};
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 
@@ -33,7 +33,13 @@ fn mermaid_file(world: &mut PolicyWorld, path: String) { let _ = world.mermaid_f
 fn evaluate(world: &mut PolicyWorld) {
     world.plan = Some(evaluate_docs_gate_with(
         world.changed_files.iter().map(std::string::String::as_str),
-        |path| world.mermaid_files.contains(path),
+        |path| {
+            if world.mermaid_files.contains(path) {
+                MermaidDetection::Present
+            } else {
+                MermaidDetection::Absent
+            }
+        },
     ));
 }
 
@@ -55,6 +61,11 @@ fn nixie_runs(world: &PolicyWorld) {
 #[then("Mermaid validation is skipped")]
 fn nixie_skips(world: &PolicyWorld) {
     assert!(!plan(world).nixie_required());
+}
+
+#[then(expr = "the conservative fallback count is {count}")]
+fn fallback_count(world: &PolicyWorld, count: usize) {
+    assert_eq!(plan(world).conservative_fallback_files().len(), count);
 }
 
 #[then(expr = "the docs gate reason is {reason}")]
@@ -79,7 +90,7 @@ const fn plan(world: &PolicyWorld) -> &DocsGatePlan {
     name = "Markdown-only changes trigger the docs gate"
 )]
 fn markdown_changes_trigger_docs_gate(world: PolicyWorld) {
-    assert_eq!(plan(&world).reason(), DocsGateReason::MarkdownChanged);
+    assert_eq!(plan(&world).reason(), DocsGateReason::DocumentationChanged);
 }
 
 #[scenario(
@@ -87,7 +98,7 @@ fn markdown_changes_trigger_docs_gate(world: PolicyWorld) {
     name = "Code-only changes skip the docs gate"
 )]
 fn code_changes_skip_docs_gate(world: PolicyWorld) {
-    assert_eq!(plan(&world).reason(), DocsGateReason::NoMarkdownChanges);
+    assert_eq!(plan(&world).reason(), DocsGateReason::NoDocumentationChanges);
 }
 
 #[scenario(
@@ -96,6 +107,14 @@ fn code_changes_skip_docs_gate(world: PolicyWorld) {
 )]
 fn mixed_changes_trigger_docs_gate(world: PolicyWorld) {
     assert!(plan(&world).matched_files().iter().any(|item| item == "README.md"));
+}
+
+#[scenario(
+    path = "tests/features/docs_gate.feature",
+    name = "Documentation tooling changes trigger the docs gate conservatively"
+)]
+fn docs_tooling_changes_trigger_docs_gate(world: PolicyWorld) {
+    assert!(plan(&world).nixie_required());
 }
 
 #[scenario(

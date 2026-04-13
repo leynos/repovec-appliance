@@ -408,12 +408,17 @@ core build step:
 - `make markdownlint`
 - `make nixie`
 
-Those documentation checks run only when the change set contains Markdown
-files. `make markdownlint` runs for any changed Markdown file, while
-`make nixie` runs only when one of the changed Markdown files contains a
-Mermaid diagram. The change-classification policy lives in a dedicated Rust
-helper so the decision remains unit-testable and behaviourally testable rather
-than being buried entirely in workflow YAML.
+Those documentation checks run only when the change set contains documentation
+inputs. `make markdownlint` runs for any changed Markdown file and for
+documentation-tooling configuration such as `.markdownlint-cli2.jsonc`, while
+`make nixie` runs when one of the changed Markdown files contains a Mermaid
+diagram. If the changed-file list is missing or malformed, the workflow takes a
+safe fallback and runs both documentation checks rather than risking a skipped
+validation. The workflow also keeps the conservative `make nixie` path when a
+relevant Markdown file cannot be read during Mermaid detection. The
+change-classification policy lives in a dedicated Rust helper so the decision
+remains unit-testable and behaviourally testable rather than being buried
+entirely in workflow YAML.
 
 The repository-level required checks are intentionally stable and map directly
 to workflow job names:

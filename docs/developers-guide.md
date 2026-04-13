@@ -1,8 +1,8 @@
 # Developers guide
 
 This guide is for maintainers and contributors working on repovec-appliance. It
-describes the repository-level build, test, lint, and CI workflow that must
-remain true as the project evolves.
+describes the repository-level build, test, lint, and continuous integration
+(CI) workflow that must remain true as the project evolves.
 
 ## Normative references
 
@@ -53,18 +53,23 @@ dispatch.
 
 `docs-gate` always reports a result so it can be configured as a required
 check. It runs `make markdownlint` and `make nixie` only when the changed-file
-set includes a Markdown path with one of these extensions:
+set includes a documentation input. Markdown inputs use one of these extensions:
 
 - `.md`
 - `.markdown`
 - `.mdx`
 
+Documentation-tooling configuration changes also count as documentation input:
+
+- `.markdownlint-cli2.jsonc`
+
 When the changed-file list is unavailable, the workflow runs the documentation
 gate conservatively instead of risking a skipped validation.
 
 `make nixie` is narrower than `make markdownlint`: Mermaid validation runs only
-when one of the changed Markdown files contains a Mermaid diagram. The user
-visible flow is documented in [users-guide.md](users-guide.md).
+when one of the changed Markdown files contains a Mermaid diagram, or when a
+documentation-tooling configuration change requires the conservative path. The
+user-visible flow is documented in [users-guide.md](users-guide.md).
 
 ## CI policy helper
 
@@ -76,6 +81,9 @@ that helper small and policy-focused.
   `strict-compile-time-validation`.
 - Workflow shell should stay thin and delegate any classification logic to the
   helper rather than embedding untestable conditions directly in YAML.
+- The helper emits conservative-fallback fields so workflow logs can
+  distinguish an actual Mermaid match from an unreadable file that forced
+  `make nixie` to run.
 
 ## Required-check enforcement
 

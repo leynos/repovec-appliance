@@ -27,7 +27,7 @@ is versioned in the repository.
 Completion still has two layers:
 
 1. align the repository workflow with the Make targets that define the commit
-   gates; and
+   gates, and
 2. enforce those checks as merge blockers through branch protection or an
    equivalent GitHub ruleset.
 
@@ -82,7 +82,7 @@ real until GitHub branch protection or a GitHub ruleset requires the workflow
 checks. The implementation therefore needs one explicit enforcement path:
 
 - manage the rule manually in the GitHub UI and document the exact required
-  checks; or
+  checks, or
 - manage it through repository automation if the project already has an
   accepted pattern for GitHub settings management.
 
@@ -130,8 +130,8 @@ Planned steps:
 1. confirm whether branch protection will be managed manually or through
    automation
 2. choose the exact check names that branch protection will require
-3. record that choice in the design document or an ADR if the policy is meant
-   to be durable
+3. record that choice in the design document or an architecture decision record
+   (ADR) if the policy is meant to be durable
 
 Exit criteria:
 
@@ -203,8 +203,8 @@ Progress, 2026-04-12:
 - The hosted runner did not provide `markdownlint-cli2`, so `docs-gate` now
   installs `markdownlint-cli2@0.22.0` before invoking `make markdownlint`.
 - The hosted runner also did not provide `nixie`, so `docs-gate` now installs
-  it with `uv tool install git+https://github.com/leynos/nixie` before
-  invoking `make nixie`.
+  it with `uv tool install git+https://github.com/leynos/nixie` before invoking
+  `make nixie`.
 - `nixie` also depends on `bun`, so `docs-gate` now runs
   `oven-sh/setup-bun@v2` immediately before the `nixie` installation step.
 - The rewritten workflow is now in place at
@@ -244,14 +244,20 @@ CI framework around one roadmap item.
 
 Progress, 2026-04-12:
 
-- The helper will classify Markdown changes globally by file extension
+- The helper will classify documentation changes globally by file extension
   (`.md`, `.markdown`, and `.mdx`) so README and other repository documentation
   updates are covered alongside `docs/`.
+- Documentation-tooling configuration, starting with
+  `.markdownlint-cli2.jsonc`, also counts as a docs-gate input so changes to
+  the docs gate itself are validated before merge.
 - An empty or unavailable changed-file list will conservatively run the docs
   gate.
 - Mermaid validation is now a separate output flag so the workflow can skip
   `make nixie` when Markdown changed but no changed Markdown file contains a
   Mermaid block.
+- When a Markdown file cannot be read during Mermaid detection, the helper will
+  still request `make nixie` and emit a separate fallback-files output so CI
+  logs distinguish a real Mermaid match from the conservative path.
 - The helper crate and its tests are now implemented under
   [`crates/repovec-ci/`](../../crates/repovec-ci/).
 
@@ -283,7 +289,23 @@ Current expectation:
 Exit criteria:
 
 - maintainers can see how CI is expected to behave
-- any durable design decision is recorded in the design document or an ADR
+- any durable design decision is recorded in the design document or an
+  architecture decision record (ADR)
+
+Progress, 2026-04-13:
+
+- Review follow-up changes implemented:
+  - the CLI now handles `--help` and `-h` explicitly with a short usage
+    message
+  - the workflow builds `repovec-ci` once and then invokes the compiled binary
+    directly
+  - documentation-tooling configuration now participates in docs-gate
+    classification
+  - conservative Mermaid fallbacks now surface as explicit workflow outputs
+    for diagnosis
+  - existing `rstest-bdd` coverage was extended to cover the
+    documentation-tooling configuration path without duplicating the feature
+    surface in a second test style
 
 Progress, 2026-04-12:
 
@@ -318,6 +340,16 @@ make markdownlint 2>&1 | tee /tmp/repovec-make-markdownlint.log
 set -o pipefail
 make nixie 2>&1 | tee /tmp/repovec-make-nixie.log
 ```
+
+Progress, 2026-04-13:
+
+- Local validation passed for the final review-follow-up tree:
+  - `make build`
+  - `make check-fmt`
+  - `make lint`
+  - `make test`
+  - `make markdownlint`
+  - `make nixie`
 
 Remote verification steps:
 

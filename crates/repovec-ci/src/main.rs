@@ -117,7 +117,57 @@ mod tests {
 
     use std::io;
 
-    use super::{Input, USAGE, parse_args};
+    use insta::assert_snapshot;
+    use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
+
+    use super::{Input, USAGE, parse_args, print_usage, write_plan};
+
+    fn buffer_to_string(buffer: Vec<u8>) -> String {
+        String::from_utf8(buffer).expect("snapshot buffer should contain UTF-8")
+    }
+
+    #[test]
+    fn test_help_output() {
+        let mut buffer = Vec::new();
+
+        print_usage(&mut buffer).expect("help output should be written");
+
+        let output = buffer_to_string(buffer);
+
+        assert_eq!(output, USAGE);
+        assert_snapshot!("help_output", output);
+    }
+
+    #[test]
+    fn test_changed_file_docs_output() {
+        let plan = evaluate_docs_gate_with(["docs/roadmap.md"], |_path| MermaidDetection::Absent);
+        let mut buffer = Vec::new();
+
+        write_plan(&mut buffer, &plan).expect("plan output should be written");
+
+        assert_snapshot!("changed_file_docs_output", buffer_to_string(buffer));
+    }
+
+    #[test]
+    fn test_stdin_empty_output() {
+        let plan =
+            evaluate_docs_gate_with(std::iter::empty::<&str>(), |_path| MermaidDetection::Absent);
+        let mut buffer = Vec::new();
+
+        write_plan(&mut buffer, &plan).expect("plan output should be written");
+
+        assert_snapshot!("stdin_empty_output", buffer_to_string(buffer));
+    }
+
+    #[test]
+    fn test_invalid_flag_error() {
+        let error = match parse_args(["--unknown"].into_iter().map(str::to_owned)) {
+            Ok(_) => panic!("invalid flag should fail"),
+            Err(error) => error,
+        };
+
+        assert_snapshot!("invalid_flag_error", error.to_string());
+    }
 
     #[test]
     fn no_arguments_default_to_changed_files_input() {

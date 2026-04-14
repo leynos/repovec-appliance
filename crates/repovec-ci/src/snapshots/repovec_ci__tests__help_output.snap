@@ -1,0 +1,9 @@
+---
+source: crates/repovec-ci/src/main.rs
+assertion_line: 140
+expression: output
+---
+Usage: repovec-ci [--stdin | --changed-file <path>...]
+
+Reads a changed-file list and prints documentation-gate decisions in
+GitHub Actions output format.

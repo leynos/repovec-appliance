@@ -1,0 +1,13 @@
+---
+source: crates/repovec-ci/src/main.rs
+assertion_line: 161
+expression: buffer_to_string(buffer)
+---
+should_run=true
+docs_gate_required=true
+nixie_required=true
+reason=missing-changed-files
+matched_count=0
+matched_files=
+conservative_fallback_count=0
+conservative_fallback_files=

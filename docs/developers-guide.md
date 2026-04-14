@@ -11,7 +11,7 @@ describes the repository-level build, test, lint, and continuous integration
 - [Roadmap](roadmap.md)
 - [Execution plan for 1.1.3: CI gating pipeline](execplans/1-1-3-ci-gating-pipeline.md)
 
-## Local quality gates
+## 1. Local quality gates
 
 Before proposing a code change, run the repository gate targets:
 
@@ -41,7 +41,7 @@ make nixie 2>&1 | tee /tmp/repovec-make-nixie.log
 These Make targets are the source of truth for local validation and for CI. Do
 not duplicate or partially reimplement them in workflow YAML.
 
-## GitHub Actions gate set
+## 2. GitHub Actions gate set
 
 The repository CI workflow exposes five stable, required job names:
 
@@ -76,7 +76,7 @@ documentation-tooling configuration change or missing changed-file input
 requires the conservative path. The user-visible flow is documented in
 [users-guide.md](users-guide.md).
 
-## CI policy helper
+## 3. CI policy helper
 
 The documentation-input classification logic lives in the `repovec-ci` crate.
 Keep that helper small and policy-focused.
@@ -90,7 +90,7 @@ Keep that helper small and policy-focused.
   distinguish an actual Mermaid match from an unreadable file that forced
   `make nixie` to run.
 
-## Required-check enforcement
+## 4. Required-check enforcement
 
 The desired repository ruleset is versioned in
 [`/.github/rulesets/main-ci-gating.json`](../.github/rulesets/main-ci-gating.json).

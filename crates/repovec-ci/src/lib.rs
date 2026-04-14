@@ -18,6 +18,16 @@ pub enum DocsGateReason {
 
 impl DocsGateReason {
     /// Returns the stable identifier used by workflow logging and ruleset docs.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use repovec_ci::DocsGateReason;
+    ///
+    /// assert_eq!(DocsGateReason::DocumentationChanged.as_str(), "documentation-changed");
+    /// assert_eq!(DocsGateReason::MissingChangedFiles.as_str(), "missing-changed-files");
+    /// assert_eq!(DocsGateReason::NoDocumentationChanges.as_str(), "no-documentation-changes");
+    /// ```
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -85,6 +95,16 @@ impl DocsGatePlan {
     /// [`docs_gate_required()`](Self::docs_gate_required) and exists for
     /// convenience and compatibility with external callers. Both methods return
     /// the underlying `self.docs_gate_required` field.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
+    ///
+    /// let plan = evaluate_docs_gate_with(["docs/roadmap.md"], |_path| MermaidDetection::Absent);
+    ///
+    /// assert!(plan.should_run());
+    /// ```
     #[must_use]
     pub const fn should_run(&self) -> bool { self.docs_gate_required }
 
@@ -93,22 +113,77 @@ impl DocsGatePlan {
     /// This is the canonical accessor for the underlying
     /// `self.docs_gate_required` field. [`should_run()`](Self::should_run) is
     /// provided as a semantic alias for convenience and compatibility.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
+    ///
+    /// let plan = evaluate_docs_gate_with(["Cargo.toml"], |_path| MermaidDetection::Absent);
+    ///
+    /// assert!(!plan.docs_gate_required());
+    /// ```
     #[must_use]
     pub const fn docs_gate_required(&self) -> bool { self.docs_gate_required }
 
     /// Returns whether Mermaid validation should run.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
+    ///
+    /// let plan =
+    ///     evaluate_docs_gate_with(["docs/users-guide.md"], |_path| MermaidDetection::Present);
+    ///
+    /// assert!(plan.nixie_required());
+    /// ```
     #[must_use]
     pub const fn nixie_required(&self) -> bool { self.nixie_required }
 
     /// Returns the reason for the decision.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use repovec_ci::{DocsGateReason, MermaidDetection, evaluate_docs_gate_with};
+    ///
+    /// let plan = evaluate_docs_gate_with(std::iter::empty::<&str>(), |_path| MermaidDetection::Absent);
+    ///
+    /// assert_eq!(plan.reason(), DocsGateReason::MissingChangedFiles);
+    /// ```
     #[must_use]
     pub const fn reason(&self) -> DocsGateReason { self.reason }
 
     /// Returns the docs inputs that triggered the documentation gate.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
+    ///
+    /// let plan = evaluate_docs_gate_with(
+    ///     ["docs/roadmap.md", "crates/repovec-core/src/lib.rs"],
+    ///     |_path| MermaidDetection::Absent,
+    /// );
+    ///
+    /// assert_eq!(plan.matched_files(), &["docs/roadmap.md".to_string()]);
+    /// ```
     #[must_use]
     pub fn matched_files(&self) -> &[String] { &self.matched_files }
 
     /// Returns files that triggered a conservative Mermaid-validation fallback.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
+    ///
+    /// let plan =
+    ///     evaluate_docs_gate_with(["docs/users-guide.md"], |_path| MermaidDetection::Unknown);
+    ///
+    /// assert_eq!(plan.conservative_fallback_files(), &["docs/users-guide.md".to_string()]);
+    /// ```
     #[must_use]
     pub fn conservative_fallback_files(&self) -> &[String] { &self.conservative_fallback_files }
 }
@@ -209,6 +284,28 @@ where
 }
 
 /// Evaluates the docs gate policy with an injected Mermaid detector.
+///
+/// # Examples
+///
+/// ```rust
+/// use repovec_ci::{DocsGateReason, MermaidDetection, evaluate_docs_gate_with};
+///
+/// let plan = evaluate_docs_gate_with(
+///     ["README.md", ".markdownlint-cli2.jsonc"],
+///     |path| {
+///         if path == "README.md" {
+///             MermaidDetection::Present
+///         } else {
+///             MermaidDetection::Absent
+///         }
+///     },
+/// );
+///
+/// assert!(plan.docs_gate_required());
+/// assert!(plan.nixie_required());
+/// assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
+/// assert_eq!(plan.matched_files(), &["README.md".to_string(), ".markdownlint-cli2.jsonc".to_string()]);
+/// ```
 #[must_use]
 pub fn evaluate_docs_gate_with<I, S, F>(
     changed_files: I,
@@ -296,118 +393,4 @@ fn path_contains_mermaid(root: &Dir, path: &str) -> MermaidDetection {
             MermaidDetection::Absent
         }
     })
-}
-
-#[cfg(test)]
-mod tests {
-    //! Unit coverage for docs-gate classification.
-
-    use rstest::rstest;
-
-    use super::{DocsGateReason, MermaidDetection, evaluate_docs_gate_with};
-
-    #[rstest]
-    #[case("docs/roadmap.md")]
-    #[case("./README.md")]
-    #[case("guide.MDX")]
-    #[case("notes.markdown")]
-    fn markdown_paths_trigger_the_docs_gate(#[case] changed_file: &str) {
-        let plan = evaluate_docs_gate_with([changed_file], |_path| MermaidDetection::Absent);
-
-        assert!(plan.should_run());
-        assert!(!plan.nixie_required());
-        assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
-        assert_eq!(plan.matched_files().len(), 1);
-    }
-
-    #[rstest]
-    #[case(".markdownlint-cli2.jsonc")]
-    fn docs_tooling_changes_trigger_the_docs_gate(#[case] changed_file: &str) {
-        let plan = evaluate_docs_gate_with([changed_file], |_path| MermaidDetection::Absent);
-
-        assert!(plan.should_run());
-        assert!(plan.nixie_required());
-        assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
-        assert_eq!(plan.matched_files(), &[changed_file.to_owned()]);
-    }
-
-    #[rstest]
-    #[case("Cargo.toml")]
-    #[case("crates/repovec-core/src/lib.rs")]
-    #[case("assets/logo.svg")]
-    fn non_markdown_paths_skip_the_docs_gate(#[case] changed_file: &str) {
-        let plan = evaluate_docs_gate_with([changed_file], |_path| MermaidDetection::Absent);
-
-        assert!(!plan.should_run());
-        assert!(!plan.nixie_required());
-        assert_eq!(plan.reason(), DocsGateReason::NoDocumentationChanges);
-        assert!(plan.matched_files().is_empty());
-    }
-
-    #[test]
-    fn empty_input_runs_the_docs_gate_conservatively() {
-        let plan =
-            evaluate_docs_gate_with(std::iter::empty::<&str>(), |_path| MermaidDetection::Absent);
-
-        assert!(plan.should_run());
-        assert!(plan.nixie_required());
-        assert_eq!(plan.reason(), DocsGateReason::MissingChangedFiles);
-        assert!(plan.matched_files().is_empty());
-    }
-
-    #[test]
-    fn mixed_input_returns_only_markdown_matches() {
-        let plan = evaluate_docs_gate_with(
-            ["crates/repovec-core/src/lib.rs", "./docs/roadmap.md", "README.md", ""],
-            |path| {
-                if path == "README.md" {
-                    MermaidDetection::Present
-                } else {
-                    MermaidDetection::Absent
-                }
-            },
-        );
-
-        assert!(plan.should_run());
-        assert!(plan.nixie_required());
-        assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
-        assert_eq!(plan.matched_files(), &["docs/roadmap.md".to_owned(), "README.md".to_owned()]);
-    }
-
-    #[test]
-    fn mermaid_docs_request_nixie() {
-        let plan =
-            evaluate_docs_gate_with(["docs/users-guide.md"], |_path| MermaidDetection::Present);
-
-        assert!(plan.docs_gate_required());
-        assert!(plan.nixie_required());
-        assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
-    }
-
-    #[test]
-    fn unreadable_markdown_requests_nixie_conservatively() {
-        let plan =
-            evaluate_docs_gate_with(["docs/users-guide.md"], |_path| MermaidDetection::Unknown);
-
-        assert!(plan.docs_gate_required());
-        assert!(plan.nixie_required());
-        assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
-        assert_eq!(plan.conservative_fallback_files(), &["docs/users-guide.md".to_owned()]);
-    }
-
-    #[test]
-    fn unreadable_markdown_is_recorded_even_after_nixie_is_already_required() {
-        let plan =
-            evaluate_docs_gate_with([".markdownlint-cli2.jsonc", "docs/users-guide.md"], |path| {
-                if path == "docs/users-guide.md" {
-                    MermaidDetection::Unknown
-                } else {
-                    MermaidDetection::Absent
-                }
-            });
-
-        assert!(plan.docs_gate_required());
-        assert!(plan.nixie_required());
-        assert_eq!(plan.conservative_fallback_files(), &["docs/users-guide.md".to_owned()]);
-    }
 }

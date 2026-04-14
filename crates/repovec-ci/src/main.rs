@@ -3,7 +3,7 @@
 use std::io::{self, BufRead as _, BufWriter, Write as _};
 
 use cap_std::{ambient_authority, fs_utf8::Dir};
-use repovec_ci::evaluate_docs_gate_in;
+use repovec_ci::{DocsGatePlan, evaluate_docs_gate_in};
 
 const USAGE: &str = concat!(
     "Usage: repovec-ci [--stdin | --changed-file <path>...]\n\n",
@@ -23,20 +23,10 @@ fn main() {
 fn run() -> io::Result<()> {
     let mut stdout = BufWriter::new(io::stdout().lock());
     let input = parse_args(std::env::args().skip(1))?;
-    let plan = match input {
-        Input::Help => {
-            stdout.write_all(USAGE.as_bytes())?;
-            stdout.flush()?;
-            return Ok(());
-        }
-        Input::ChangedFiles(paths) => {
-            let root = Dir::open_ambient_dir(".", ambient_authority())?;
-            evaluate_docs_gate_in(&root, paths)
-        }
-        Input::Stdin => {
-            let root = Dir::open_ambient_dir(".", ambient_authority())?;
-            evaluate_docs_gate_in(&root, read_paths_from_stdin()?)
-        }
+    let Some(plan) = compute_plan(input)? else {
+        stdout.write_all(USAGE.as_bytes())?;
+        stdout.flush()?;
+        return Ok(());
     };
 
     writeln!(stdout, "should_run={}", plan.should_run())?;
@@ -58,6 +48,20 @@ enum Input {
     Help,
     ChangedFiles(Vec<String>),
     Stdin,
+}
+
+fn compute_plan(input: Input) -> io::Result<Option<DocsGatePlan>> {
+    match input {
+        Input::Help => Ok(None),
+        Input::ChangedFiles(paths) => {
+            let root = Dir::open_ambient_dir(".", ambient_authority())?;
+            Ok(Some(evaluate_docs_gate_in(&root, paths)))
+        }
+        Input::Stdin => {
+            let root = Dir::open_ambient_dir(".", ambient_authority())?;
+            Ok(Some(evaluate_docs_gate_in(&root, read_paths_from_stdin()?)))
+        }
+    }
 }
 
 fn parse_args<I>(arguments: I) -> io::Result<Input>

@@ -162,7 +162,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv tool install git+https://github.com/leynos/nixie
+          uv tool install git+https://github.com/leynos/nixie@68240ea737bed95fe6d420ccc5e737aea9149a94
       - name: Mermaid validation
         if: steps.docs_gate_plan.outputs.nixie_required == 'true'
         run: make nixie

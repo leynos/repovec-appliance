@@ -41,6 +41,16 @@ Feature: Docs gate classification
     And the docs gate reason is documentation-changed
     And the docs gate matches docs/users-guide.md
 
+  Scenario: Unreadable changed Markdown triggers conservative fallback
+    Given the changed file list contains docs/users-guide.md
+    And the unreadable Markdown file is docs/users-guide.md
+    When the docs gate policy is evaluated
+    Then the docs gate runs
+    And Mermaid validation is required
+    And the docs gate reason is documentation-changed
+    And the conservative fallback count is 1
+    And the conservative fallback list contains docs/users-guide.md
+
   Scenario: Missing changed-file input runs the docs gate conservatively
     Given the changed file list is unavailable
     When the docs gate policy is evaluated

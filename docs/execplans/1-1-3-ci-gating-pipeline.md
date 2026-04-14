@@ -41,9 +41,11 @@ remote repository.
 - The workflow exposes stable required job names: `build`, `check-fmt`,
   `lint`, `test`, and `docs-gate`.
 - `docs-gate` computes changed files in-workflow and runs
-  `make markdownlint` when Markdown files changed, while `make nixie` runs only
-  when a changed Markdown file contains a Mermaid diagram. The job still
-  publishes a stable required check result.
+  `make markdownlint` when Markdown files changed, while `make nixie` runs when
+  a changed Markdown file contains a Mermaid diagram. Documentation-tooling
+  configuration changes conservatively trigger both checks, and the same
+  safe-fallback applies when the changed-file list is missing or unreadable.
+  The job still publishes a stable required check result in all cases.
 - The docs-gate classification logic now lives in the `repovec-ci` crate and is
   covered by `rstest` unit tests plus `rstest-bdd` behavioural tests.
 - The desired GitHub ruleset is versioned in
@@ -221,6 +223,9 @@ Progress, 2026-04-14:
   `pull_request` remains the review-time gate. This keeps the required checks
   visible where merge decisions happen and avoids duplicate runs on pull
   request branches.
+- The `docs-gate` dependency chain is now fully pinned and explicit on the
+  runner: Bun is pinned, Mermaid CLI is installed through Bun, and `nixie` is
+  installed from a pinned Git commit rather than a floating repository head.
 
 ### 3. Introduce a testable CI-policy helper
 

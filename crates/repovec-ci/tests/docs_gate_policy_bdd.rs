@@ -10,6 +10,7 @@ use rstest_bdd_macros::{given, scenario, then, when};
 struct PolicyWorld {
     changed_files: Vec<String>,
     mermaid_files: BTreeSet<String>,
+    unreadable_files: BTreeSet<String>,
     plan: Option<DocsGatePlan>,
 }
 
@@ -17,7 +18,8 @@ struct PolicyWorld {
 fn world() -> PolicyWorld {
     let changed_files = Vec::new();
     let mermaid_files = BTreeSet::new();
-    PolicyWorld { changed_files, mermaid_files, plan: None }
+    let unreadable_files = BTreeSet::new();
+    PolicyWorld { changed_files, mermaid_files, unreadable_files, plan: None }
 }
 
 #[given("the changed file list contains {path}")]
@@ -29,11 +31,20 @@ fn missing_changed_files(world: &mut PolicyWorld) { world.changed_files.clear();
 #[given("the Mermaid-bearing file is {path}")]
 fn mermaid_file(world: &mut PolicyWorld, path: String) { let _ = world.mermaid_files.insert(path); }
 
+#[given("the unreadable Markdown file is {path}")]
+fn unreadable_file(world: &mut PolicyWorld, path: String) {
+    let _ = world.unreadable_files.insert(path);
+}
+
 #[when("the docs gate policy is evaluated")]
 fn evaluate(world: &mut PolicyWorld) {
     world.plan = Some(evaluate_docs_gate_with(
         world.changed_files.iter().map(std::string::String::as_str),
         |path| {
+            if world.unreadable_files.contains(path) {
+                return MermaidDetection::Unknown;
+            }
+
             if world.mermaid_files.contains(path) {
                 MermaidDetection::Present
             } else {
@@ -66,6 +77,11 @@ fn nixie_skips(world: &PolicyWorld) {
 #[then(expr = "the conservative fallback count is {count}")]
 fn fallback_count(world: &PolicyWorld, count: usize) {
     assert_eq!(plan(world).conservative_fallback_files().len(), count);
+}
+
+#[then(expr = "the conservative fallback list contains {path}")]
+fn fallback_list_contains(world: &PolicyWorld, path: String) {
+    assert!(plan(world).conservative_fallback_files().iter().any(|item| item == &path));
 }
 
 #[then(expr = "the docs gate reason is {reason}")]
@@ -122,6 +138,14 @@ fn docs_tooling_changes_trigger_docs_gate(world: PolicyWorld) {
     name = "Mermaid-bearing docs changes require nixie"
 )]
 fn mermaid_docs_require_nixie(world: PolicyWorld) {
+    assert!(plan(&world).nixie_required());
+}
+
+#[scenario(
+    path = "tests/features/docs_gate.feature",
+    name = "Unreadable changed Markdown triggers conservative fallback"
+)]
+fn unreadable_markdown_triggers_fallback(world: PolicyWorld) {
     assert!(plan(&world).nixie_required());
 }
 

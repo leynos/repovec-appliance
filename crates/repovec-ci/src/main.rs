@@ -74,7 +74,10 @@ where
             "--stdin" => use_stdin = true,
             "--changed-file" => {
                 let path = iter.next().ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidInput, "missing value for --changed-file")
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("missing value for --changed-file\n\n{USAGE}"),
+                    )
                 })?;
                 changed_files.push(path);
             }
@@ -114,10 +117,69 @@ mod tests {
     use super::{Input, USAGE, parse_args};
 
     #[test]
+    fn no_arguments_default_to_changed_files_input() {
+        let input = parse_args(std::iter::empty::<String>()).expect("empty args should parse");
+
+        match input {
+            Input::ChangedFiles(paths) => assert!(paths.is_empty()),
+            Input::Help | Input::Stdin => panic!("empty args should default to ChangedFiles"),
+        }
+    }
+
+    #[test]
     fn help_flag_returns_help_input() {
         let input = parse_args(["--help".to_owned()]).expect("help flag should parse");
 
         assert!(matches!(input, Input::Help));
+    }
+
+    #[test]
+    fn stdin_flag_returns_stdin_input() {
+        let input = parse_args(["--stdin".to_owned()]).expect("stdin flag should parse");
+
+        assert!(matches!(input, Input::Stdin));
+    }
+
+    #[test]
+    fn changed_file_flags_collect_all_paths() {
+        let input = parse_args([
+            "--changed-file".to_owned(),
+            "docs/users-guide.md".to_owned(),
+            "--changed-file".to_owned(),
+            ".markdownlint-cli2.jsonc".to_owned(),
+        ])
+        .expect("changed-file flags should parse");
+
+        match input {
+            Input::ChangedFiles(paths) => {
+                assert_eq!(paths, vec!["docs/users-guide.md", ".markdownlint-cli2.jsonc"]);
+            }
+            Input::Help | Input::Stdin => panic!("changed-file flags should yield ChangedFiles"),
+        }
+    }
+
+    #[test]
+    fn missing_changed_file_value_reports_usage() {
+        let Err(error) = parse_args(["--changed-file".to_owned()]) else {
+            panic!("missing changed-file value should fail");
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(error.to_string().contains(USAGE));
+    }
+
+    #[test]
+    fn stdin_and_changed_file_are_mutually_exclusive() {
+        let Err(error) = parse_args([
+            "--stdin".to_owned(),
+            "--changed-file".to_owned(),
+            "docs/users-guide.md".to_owned(),
+        ]) else {
+            panic!("stdin and changed-file should not be combinable");
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(error.to_string().contains("--stdin cannot be combined with --changed-file"));
     }
 
     #[test]

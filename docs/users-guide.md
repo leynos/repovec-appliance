@@ -26,15 +26,15 @@ Receive_changed_file_list] --> Validate[Validate_input_list]
     IsEmpty -->|Yes| Fallback[Apply_safe_default_policy]
     IsEmpty -->|No| Classify[Classify_changes_by_path]
 
-    Classify --> DocsOnly{Only_docs_paths_changed?}
+    Classify --> DocsOnly{Only_documentation_inputs_changed?}
     DocsOnly -->|Yes| RequireDocs[Set docs_gate_required = true]
     DocsOnly -->|No| MixedOrCode[Mixed_or_code_only_changes]
 
-    MixedOrCode --> HasDocs{Any_docs_or_mermaid_docs_changed?}
+    MixedOrCode --> HasDocs{Any_documentation_inputs_changed?}
     HasDocs -->|Yes| RequireDocs
     HasDocs -->|No| SkipDocs[Set docs_gate_required = false]
 
-    RequireDocs --> CheckNixie{Mermaid_docs_changed?}
+    RequireDocs --> CheckNixie{Mermaid_or_conservative_path?}
     CheckNixie -->|Yes| RequireNixie[Set nixie_required = true]
     CheckNixie -->|No| SkipNixie[Set nixie_required = false]
 

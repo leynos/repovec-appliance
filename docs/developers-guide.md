@@ -26,9 +26,12 @@ set -o pipefail
 make test 2>&1 | tee /tmp/repovec-make-test.log
 ```
 
-When a change touches Markdown, also run:
+When a change touches Markdown or documentation-tooling configuration, also
+run:
 
 ```sh
+set -o pipefail
+make fmt 2>&1 | tee /tmp/repovec-make-fmt.log
 set -o pipefail
 make markdownlint 2>&1 | tee /tmp/repovec-make-markdownlint.log
 set -o pipefail
@@ -64,17 +67,19 @@ Documentation-tooling configuration changes also count as documentation input:
 - `.markdownlint-cli2.jsonc`
 
 When the changed-file list is unavailable, the workflow runs the documentation
-gate conservatively instead of risking a skipped validation.
+gate conservatively instead of risking a skipped validation. That fallback
+requires both `make markdownlint` and `make nixie`.
 
 `make nixie` is narrower than `make markdownlint`: Mermaid validation runs only
 when one of the changed Markdown files contains a Mermaid diagram, or when a
-documentation-tooling configuration change requires the conservative path. The
-user-visible flow is documented in [users-guide.md](users-guide.md).
+documentation-tooling configuration change or missing changed-file input
+requires the conservative path. The user-visible flow is documented in
+[users-guide.md](users-guide.md).
 
 ## CI policy helper
 
-The Markdown change classification logic lives in the `repovec-ci` crate. Keep
-that helper small and policy-focused.
+The documentation-input classification logic lives in the `repovec-ci` crate.
+Keep that helper small and policy-focused.
 
 - Unit coverage uses `rstest`.
 - Behavioural coverage uses `rstest-bdd` with

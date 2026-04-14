@@ -237,13 +237,16 @@ where
         DocsGatePlan::no_documentation_changes()
     } else {
         let mut conservative_fallback_files = Vec::new();
-        let nixie_required = matched_files.iter().any(|path| {
+        let mut nixie_required = false;
+
+        for path in &matched_files {
             if is_docs_tooling_config_path(path) {
-                return true;
+                nixie_required = true;
+                continue;
             }
 
             if !is_markdown_path(path) {
-                return false;
+                continue;
             }
 
             let detection = path_contains_mermaid(path);
@@ -251,8 +254,10 @@ where
                 conservative_fallback_files.push(path.clone());
             }
 
-            detection.requires_nixie()
-        });
+            if detection.requires_nixie() {
+                nixie_required = true;
+            }
+        }
 
         DocsGatePlan::required(matched_files, conservative_fallback_files, nixie_required)
     }
@@ -387,6 +392,22 @@ mod tests {
         assert!(plan.docs_gate_required());
         assert!(plan.nixie_required());
         assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
+        assert_eq!(plan.conservative_fallback_files(), &["docs/users-guide.md".to_owned()]);
+    }
+
+    #[test]
+    fn unreadable_markdown_is_recorded_even_after_nixie_is_already_required() {
+        let plan =
+            evaluate_docs_gate_with([".markdownlint-cli2.jsonc", "docs/users-guide.md"], |path| {
+                if path == "docs/users-guide.md" {
+                    MermaidDetection::Unknown
+                } else {
+                    MermaidDetection::Absent
+                }
+            });
+
+        assert!(plan.docs_gate_required());
+        assert!(plan.nixie_required());
         assert_eq!(plan.conservative_fallback_files(), &["docs/users-guide.md".to_owned()]);
     }
 }

@@ -47,36 +47,28 @@ jobs:
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
       - name: Cache Whitaker installer
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
         with:
           path: |
             ~/.cargo/bin/whitaker-installer
             ~/.cache/cargo-binstall
+            ~/.local/share/whitaker
           key: whitaker-installer-${{ runner.os }}-${{ runner.arch }}-${{ env.WHITAKER_INSTALLER_VERSION }}
       - name: Install Whitaker
         shell: bash
         run: |
-          set -euo pipefail
-
-          if cargo binstall --version >/dev/null 2>&1; then
-            installed_binstall_version="$(cargo binstall --version | awk '{print $2}' | sed 's/^v//')"
-          else
-            installed_binstall_version=""
-          fi
-
-          if [[ "${installed_binstall_version}" == "${{ env.CARGO_BINSTALL_VERSION }}" ]]; then
-            echo "cargo-binstall ${installed_binstall_version} already present"
+          set -euxo pipefail
+          if command -v cargo-binstall >/dev/null 2>&1; then
+            echo "cargo-binstall already present"
           else
             cargo install cargo-binstall --locked --version "${{ env.CARGO_BINSTALL_VERSION }}"
           fi
-
           if command -v whitaker-installer >/dev/null 2>&1; then
             echo "whitaker-installer already present; skipping cargo binstall"
           else
             cargo binstall --no-confirm whitaker-installer@${{ env.WHITAKER_INSTALLER_VERSION }}
           fi
-
-          whitaker-installer --no-update
+          whitaker-installer
       - name: Lint
         run: make lint
 
@@ -157,6 +149,14 @@ jobs:
         if: steps.docs_gate_plan.outputs.nixie_required == 'true'
         with:
           bun-version: "1.3.12"
+      - name: Install Mermaid CLI
+        if: steps.docs_gate_plan.outputs.nixie_required == 'true'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bun install --global @mermaid-js/mermaid-cli@11.9.0
+          bun x @puppeteer/browsers browsers install chrome-headless-shell
+          mmdc --version
       - name: Install nixie
         if: steps.docs_gate_plan.outputs.nixie_required == 'true'
         shell: bash

@@ -207,6 +207,11 @@ Progress, 2026-04-12:
   `make nixie`.
 - `nixie` also depends on `bun`, so `docs-gate` now runs
   `oven-sh/setup-bun@v2` immediately before the `nixie` installation step.
+- Mermaid rendering also requires `mmdc`, so `docs-gate` now installs
+  `@mermaid-js/mermaid-cli@11.9.0` with Bun and preinstalls
+  `chrome-headless-shell` before running `make nixie`.
+- The `lint` job now caches `~/.local/share/whitaker` and installs Whitaker on
+  the runner before invoking `make lint`.
 - The rewritten workflow is now in place at
   [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
 

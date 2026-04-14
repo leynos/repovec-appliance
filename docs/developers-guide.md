@@ -86,9 +86,98 @@ Keep that helper small and policy-focused.
   `strict-compile-time-validation`.
 - Workflow shell should stay thin and delegate any classification logic to the
   helper rather than embedding untestable conditions directly in YAML.
-- The helper emits conservative-fallback fields so workflow logs can
+- The helper emits conservative-fallback fields, so workflow logs can
   distinguish an actual Mermaid match from an unreadable file that forced
   `make nixie` to run.
+
+### Public API surface
+
+The public API is intentionally small and exposes only the types and functions
+the workflow and tests need:
+
+```rust
+pub enum DocsGateReason { DocumentationChanged, MissingChangedFiles, NoDocumentationChanges }
+impl DocsGateReason { pub const fn as_str(self) -> &'static str }
+```
+
+`DocsGateReason` records why the docs gate ran or was skipped and provides the
+stable reason string consumed by workflow logging.
+
+```rust
+pub struct DocsGatePlan { /* opaque */ }
+impl DocsGatePlan {
+    pub const fn should_run(&self) -> bool;
+    pub const fn docs_gate_required(&self) -> bool;
+    pub const fn nixie_required(&self) -> bool;
+    pub const fn reason(&self) -> DocsGateReason;
+    pub fn matched_files(&self) -> &[String];
+    pub fn conservative_fallback_files(&self) -> &[String];
+}
+```
+
+`DocsGatePlan` is the evaluated policy result, exposing whether the docs gate
+should run, whether Mermaid validation is required, which inputs matched, and
+which files forced the conservative fallback.
+
+```rust
+pub enum MermaidDetection { Present, Absent, Unknown }
+```
+
+`MermaidDetection` is the detector result returned for each documentation input
+when Mermaid validation is being considered.
+
+```rust
+pub fn evaluate_docs_gate_in<I, S>(root: &cap_std::fs_utf8::Dir, changed_files: I) -> DocsGatePlan
+where I: IntoIterator<Item = S>, S: AsRef<str>;
+```
+
+`evaluate_docs_gate_in` evaluates the policy against a capability-scoped file
+system handle and a changed-file list.
+
+```rust
+pub fn evaluate_docs_gate_with<I, S, F>(changed_files: I, path_contains_mermaid: F) -> DocsGatePlan
+where I: IntoIterator<Item = S>, S: AsRef<str>, F: FnMut(&str) -> MermaidDetection;
+```
+
+`evaluate_docs_gate_with` evaluates the same policy with an injected Mermaid
+detector, which keeps the policy logic testable without needing a real file
+system.
+
+### `cap-std` rationale
+
+`repovec-ci` uses `cap-std` with the `fs_utf8` feature instead of `std::fs`
+because it provides capability-safe, UTF-8-native file-system access. That
+makes the file-reading boundary explicit in `evaluate_docs_gate_in`, while
+`evaluate_docs_gate_with` can be tested entirely through an injected detector
+and does not require any real file system.
+
+### `repovec-ci` binary
+
+The `repovec-ci` CLI is invoked by the `docs-gate` job, and its `stdout`
+output is appended directly to `$GITHUB_OUTPUT`.
+
+```text
+USAGE:
+    repovec-ci [--changed-file <path>]... [--help]
+    repovec-ci --stdin
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--changed-file <path>` | Treat `<path>` as a changed file. This flag is repeatable and is mutually exclusive with `--stdin`. |
+| `--stdin` | Read newline-delimited changed-file paths from standard input. This flag is mutually exclusive with `--changed-file`. |
+| `-h`, `--help` | Print usage text and exit. |
+
+The binary writes `key=value` lines to `stdout` for workflow consumption:
+
+- `should_run`
+- `docs_gate_required`
+- `nixie_required`
+- `reason`
+- `matched_count`
+- `matched_files`
+- `conservative_fallback_count`
+- `conservative_fallback_files`
 
 ## 4. Required-check enforcement
 

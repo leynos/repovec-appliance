@@ -23,25 +23,11 @@ fn main() {
 fn run() -> io::Result<()> {
     let mut stdout = BufWriter::new(io::stdout().lock());
     let input = parse_args(std::env::args().skip(1))?;
-    let Some(plan) = compute_plan(input)? else {
-        stdout.write_all(USAGE.as_bytes())?;
-        stdout.flush()?;
-        return Ok(());
-    };
-
-    writeln!(stdout, "should_run={}", plan.should_run())?;
-    writeln!(stdout, "docs_gate_required={}", plan.docs_gate_required())?;
-    writeln!(stdout, "nixie_required={}", plan.nixie_required())?;
-    writeln!(stdout, "reason={}", plan.reason().as_str())?;
-    writeln!(stdout, "matched_count={}", plan.matched_files().len())?;
-    writeln!(stdout, "matched_files={}", plan.matched_files().join(","))?;
-    writeln!(stdout, "conservative_fallback_count={}", plan.conservative_fallback_files().len())?;
-    writeln!(
-        stdout,
-        "conservative_fallback_files={}",
-        plan.conservative_fallback_files().join(",")
-    )?;
-    stdout.flush()
+    match input {
+        Input::Help => print_usage(&mut stdout),
+        Input::ChangedFiles(paths) => write_plan(&mut stdout, &evaluate_from_paths(paths)?),
+        Input::Stdin => write_plan(&mut stdout, &evaluate_from_stdin()?),
+    }
 }
 
 enum Input {
@@ -50,18 +36,31 @@ enum Input {
     Stdin,
 }
 
-fn compute_plan(input: Input) -> io::Result<Option<DocsGatePlan>> {
-    match input {
-        Input::Help => Ok(None),
-        Input::ChangedFiles(paths) => {
-            let root = Dir::open_ambient_dir(".", ambient_authority())?;
-            Ok(Some(evaluate_docs_gate_in(&root, paths)))
-        }
-        Input::Stdin => {
-            let root = Dir::open_ambient_dir(".", ambient_authority())?;
-            Ok(Some(evaluate_docs_gate_in(&root, read_paths_from_stdin()?)))
-        }
-    }
+fn print_usage(out: &mut impl io::Write) -> io::Result<()> {
+    out.write_all(USAGE.as_bytes())?;
+    out.flush()
+}
+
+fn evaluate_from_paths(paths: Vec<String>) -> io::Result<DocsGatePlan> {
+    let root = Dir::open_ambient_dir(".", ambient_authority())?;
+    Ok(evaluate_docs_gate_in(&root, paths))
+}
+
+fn evaluate_from_stdin() -> io::Result<DocsGatePlan> {
+    let root = Dir::open_ambient_dir(".", ambient_authority())?;
+    Ok(evaluate_docs_gate_in(&root, read_paths_from_stdin()?))
+}
+
+fn write_plan(out: &mut impl io::Write, plan: &DocsGatePlan) -> io::Result<()> {
+    writeln!(out, "should_run={}", plan.should_run())?;
+    writeln!(out, "docs_gate_required={}", plan.docs_gate_required())?;
+    writeln!(out, "nixie_required={}", plan.nixie_required())?;
+    writeln!(out, "reason={}", plan.reason().as_str())?;
+    writeln!(out, "matched_count={}", plan.matched_files().len())?;
+    writeln!(out, "matched_files={}", plan.matched_files().join(","))?;
+    writeln!(out, "conservative_fallback_count={}", plan.conservative_fallback_files().len())?;
+    writeln!(out, "conservative_fallback_files={}", plan.conservative_fallback_files().join(","))?;
+    out.flush()
 }
 
 fn parse_args<I>(arguments: I) -> io::Result<Input>

@@ -20,9 +20,9 @@
 
 Task `1.1.3` is now implemented in-repository but not yet complete at the
 repository-settings layer. The GitHub Actions workflow has been rewritten to
-run the full Make-based gate set on every push, documentation gates now run
-conditionally through a tested helper, and the required-check ruleset payload
-is versioned in the repository.
+run the full Make-based gate set on pull request updates and pushes to `main`,
+documentation gates now run conditionally through a tested helper, and the
+required-check ruleset payload is versioned in the repository.
 
 Completion still has two layers:
 
@@ -37,7 +37,7 @@ remote repository.
 ## Current state
 
 - [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) now runs on
-  every push, relevant pull request events, and manual dispatch.
+  pushes to `main`, relevant pull request events, and manual dispatch.
 - The workflow exposes stable required job names: `build`, `check-fmt`,
   `lint`, `test`, and `docs-gate`.
 - `docs-gate` computes changed files in-workflow and runs
@@ -55,7 +55,7 @@ remote repository.
 
 The implementation is complete when all of the following are true:
 
-- every push triggers the core CI gate set:
+- pull request updates and pushes to `main` trigger the core CI gate set:
   `make build`, `make check-fmt`, `make lint`, and `make test`
 - documentation changes additionally trigger `make markdownlint` and
   `make nixie`
@@ -161,8 +161,8 @@ Update the existing workflow so that it matches the roadmap item directly.
 
 Planned steps:
 
-1. change the `push` trigger so it runs on every push rather than only on
-   `main`
+1. configure the `push` trigger so post-merge validation still runs on `main`
+   without duplicating the pull-request gate set on branch pushes
 2. keep pull request coverage and manual dispatch support
 3. split the workflow into clearly named jobs so each required check is easy to
    reason about
@@ -187,7 +187,7 @@ that does not replace the required `test` gate.
 Exit criteria:
 
 - the workflow names match the planned required checks
-- every core gate runs on every push
+- every core gate runs on pull request updates and pushes to `main`
 - the documentation gate only runs when documentation changes
 
 Progress, 2026-04-12:
@@ -209,6 +209,13 @@ Progress, 2026-04-12:
   `oven-sh/setup-bun@v2` immediately before the `nixie` installation step.
 - The rewritten workflow is now in place at
   [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
+
+Progress, 2026-04-14:
+
+- Branch-push duplication removed: `push` now targets `main` only, while
+  `pull_request` remains the review-time gate. This keeps the required checks
+  visible where merge decisions happen and avoids duplicate runs on pull
+  request branches.
 
 ### 3. Introduce a testable CI-policy helper
 

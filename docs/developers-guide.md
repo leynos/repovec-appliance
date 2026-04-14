@@ -48,8 +48,8 @@ The repository CI workflow exposes five stable, required job names:
 - `test`
 - `docs-gate`
 
-The first four jobs run on every push, pull request update, and manual workflow
-dispatch.
+The first four jobs run on pull request updates, pushes to `main`, and manual
+workflow dispatch.
 
 `docs-gate` always reports a result so it can be configured as a required
 check. It runs `make markdownlint` and `make nixie` only when the changed-file

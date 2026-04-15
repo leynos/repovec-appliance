@@ -94,11 +94,11 @@ fn docs_gate_matches(world: &PolicyWorld, path: String) {
     assert!(plan(world).matched_files().iter().any(|item| item == &path));
 }
 
-fn plan(world: &PolicyWorld) -> &DocsGatePlan {
-    world
-        .plan
-        .as_ref()
-        .unwrap_or_else(|| panic!("docs-gate policy should be evaluated before assertions"))
+const fn plan(world: &PolicyWorld) -> &DocsGatePlan {
+    match &world.plan {
+        Some(plan) => plan,
+        None => panic!("docs-gate policy should be evaluated before assertions"),
+    }
 }
 
 #[scenario(

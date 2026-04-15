@@ -132,9 +132,9 @@ jobs:
           echo "docs_gate_required=${{ steps.docs_gate_plan.outputs.docs_gate_required }}"
           echo "nixie_required=${{ steps.docs_gate_plan.outputs.nixie_required }}"
           echo "reason=${{ steps.docs_gate_plan.outputs.reason }}"
-          echo "matched_count=${{ steps.docs_gate_plan.outputs.matched_count }}"
+          echo "matched_files_count=${{ steps.docs_gate_plan.outputs.matched_files_count }}"
           echo "matched_files=${{ steps.docs_gate_plan.outputs.matched_files }}"
-          echo "conservative_fallback_count=${{ steps.docs_gate_plan.outputs.conservative_fallback_count }}"
+          echo "conservative_fallback_files_count=${{ steps.docs_gate_plan.outputs.conservative_fallback_files_count }}"
           echo "conservative_fallback_files=${{ steps.docs_gate_plan.outputs.conservative_fallback_files }}"
       - name: Install markdownlint-cli2
         if: steps.docs_gate_plan.outputs.docs_gate_required == 'true'

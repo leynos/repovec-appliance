@@ -132,7 +132,7 @@ to test with a stub closure.
 
 ```text
 USAGE:
-    repovec-ci [--changed-file <path>]... [--help]
+    repovec-ci [--changed-file <path> [--changed-file <path>]...] [--help]
     repovec-ci --stdin
 ```
 

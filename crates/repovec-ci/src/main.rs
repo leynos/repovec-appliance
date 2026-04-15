@@ -6,7 +6,8 @@ use cap_std::{ambient_authority, fs_utf8::Dir};
 use repovec_ci::{DocsGatePlan, evaluate_docs_gate_in};
 
 const USAGE: &str = concat!(
-    "Usage: repovec-ci [--stdin | --changed-file <path>...]\n\n",
+    "Usage: repovec-ci [--changed-file <path> [--changed-file <path>]...] [--help]\n",
+    "       repovec-ci --stdin\n\n",
     "Reads a changed-file list and prints documentation-gate decisions in\n",
     "GitHub Actions output format.\n"
 );
@@ -56,9 +57,13 @@ fn write_plan(out: &mut impl io::Write, plan: &DocsGatePlan) -> io::Result<()> {
     writeln!(out, "docs_gate_required={}", plan.docs_gate_required())?;
     writeln!(out, "nixie_required={}", plan.nixie_required())?;
     writeln!(out, "reason={}", plan.reason().as_str())?;
-    writeln!(out, "matched_count={}", plan.matched_files().len())?;
+    writeln!(out, "matched_files_count={}", plan.matched_files().len())?;
     writeln!(out, "matched_files={}", plan.matched_files().join(","))?;
-    writeln!(out, "conservative_fallback_count={}", plan.conservative_fallback_files().len())?;
+    writeln!(
+        out,
+        "conservative_fallback_files_count={}",
+        plan.conservative_fallback_files().len()
+    )?;
     writeln!(out, "conservative_fallback_files={}", plan.conservative_fallback_files().join(","))?;
     out.flush()
 }
@@ -161,9 +166,8 @@ mod tests {
 
     #[test]
     fn test_invalid_flag_error() {
-        let error = match parse_args(["--unknown"].into_iter().map(str::to_owned)) {
-            Ok(_) => panic!("invalid flag should fail"),
-            Err(error) => error,
+        let Err(error) = parse_args(["--unknown"].into_iter().map(str::to_owned)) else {
+            panic!("invalid flag should fail");
         };
 
         assert_snapshot!("invalid_flag_error", error.to_string());

@@ -1,0 +1,11 @@
+---
+source: crates/repovec-ci/src/main.rs
+expression: error.to_string()
+---
+unsupported argument: --unknown
+
+Usage: repovec-ci [--changed-file <path> [--changed-file <path>]...] [--help]
+       repovec-ci --stdin
+
+Reads a changed-file list and prints documentation-gate decisions in
+GitHub Actions output format.

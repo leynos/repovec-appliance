@@ -391,6 +391,48 @@ repovec implements update policy as configurable systemd timers:
 This sequencing avoids embedding during store migrations and keeps the
 appliance in a coherent state.
 
+## Repository governance and CI gating
+
+The repository uses GitHub Actions as the merge gate for code and documentation
+changes. The workflow policy is intentionally derived from the same Make
+targets contributors run locally:
+
+- `make build`
+- `make check-fmt`
+- `make lint`
+- `make test`
+
+Markdown validation is treated as a conditional gate rather than an always-on
+core build step:
+
+- `make markdownlint`
+- `make nixie`
+
+Those documentation checks run only when the change set contains documentation
+inputs. `make markdownlint` runs for any changed Markdown file and for
+documentation-tooling configuration such as `.markdownlint-cli2.jsonc`, while
+`make nixie` runs when one of the changed Markdown files contains a Mermaid
+diagram. If the changed-file list is missing or malformed, the workflow takes a
+safe fallback and runs both documentation checks rather than risking a skipped
+validation. The workflow also keeps the conservative `make nixie` path when a
+relevant Markdown file cannot be read during Mermaid detection. The
+change-classification policy lives in a dedicated Rust helper so the decision
+remains unit-testable and behaviourally testable rather than being buried
+entirely in workflow YAML.
+
+The repository-level required checks are intentionally stable and map directly
+to workflow job names:
+
+- `build`
+- `check-fmt`
+- `lint`
+- `test`
+- `docs-gate`
+
+Merge enforcement is implemented through a GitHub repository ruleset targeting
+`refs/heads/main`. The ruleset payload is versioned alongside the workflow so
+the required-check policy is reviewable and can evolve with the repository.
+
 ## Embeddings configurability: OpenRouter vs Ollama
 
 repovec exposes a single "embedding provider" configuration that is then

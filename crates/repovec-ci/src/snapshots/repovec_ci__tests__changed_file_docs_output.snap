@@ -1,0 +1,12 @@
+---
+source: crates/repovec-ci/src/main.rs
+expression: buffer_to_string(buffer)
+---
+should_run=true
+docs_gate_required=true
+nixie_required=false
+reason=documentation-changed
+matched_files_count=1
+matched_files=docs/roadmap.md
+conservative_fallback_files_count=0
+conservative_fallback_files=

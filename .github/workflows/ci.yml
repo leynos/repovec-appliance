@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+        uses: leynos/shared-actions/.github/actions/setup-rust@413dd72e8528ad793fc7fca34c93f5f73d5623fc
       - name: Build
         run: make build
 
@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+        uses: leynos/shared-actions/.github/actions/setup-rust@413dd72e8528ad793fc7fca34c93f5f73d5623fc
       - name: Check formatting
         run: make check-fmt
 
@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+        uses: leynos/shared-actions/.github/actions/setup-rust@413dd72e8528ad793fc7fca34c93f5f73d5623fc
       - name: Cache Whitaker installer
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
         with:
@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+        uses: leynos/shared-actions/.github/actions/setup-rust@413dd72e8528ad793fc7fca34c93f5f73d5623fc
       - name: Test
         run: make test
 
@@ -94,7 +94,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+        uses: leynos/shared-actions/.github/actions/setup-rust@413dd72e8528ad793fc7fca34c93f5f73d5623fc
       - name: Build docs-gate helper
         shell: bash
         run: |

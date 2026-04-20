@@ -356,6 +356,19 @@ Security controls:
   external access.
 - In appliance mode, Qdrant binds to 127.0.0.1 (or a private interface) and
   is never exposed publicly; callers are local processes only.
+- The repository source of truth is
+  `packaging/systemd/qdrant.container`, installed to
+  `/etc/containers/systemd/qdrant.container` on rootful appliance hosts.
+- The Quadlet pins Qdrant to `docker.io/qdrant/qdrant:v1.17.1` so registry
+  auto-update has a stable, fully qualified image reference to track.
+- The Quadlet publishes `127.0.0.1:6333:6333` and
+  `127.0.0.1:6334:6334`, keeping both Qdrant interfaces loopback-only even if
+  container defaults change.
+- Persistent storage is mounted from `/var/lib/repovec/qdrant-storage` to
+  `/qdrant/storage` with an explicit `:Z` SELinux relabel, because the
+  appliance uses rootful Podman-managed system services.
+- The Quadlet owns only the container contract; boot-target wiring remains the
+  responsibility of roadmap item `1.3.1`.
 
 ### Automatic updates and safe rollouts
 

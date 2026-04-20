@@ -51,12 +51,15 @@ CLI, a strict lint baseline, and a CI pipeline that gates merges.
 Objective: Qdrant runs as a Podman Quadlet under systemd, bound to localhost
 with API-key authentication, and survives host reboots.
 
-- [ ] 1.2.1. Write Podman Quadlet definition for Qdrant
+- [x] 1.2.1. Write Podman Quadlet definition for Qdrant
   - Define Quadlet `.container` file targeting the official Qdrant image.
     See repovec-appliance-technical-design.md, "Qdrant under Podman + systemd".
   - Bind Qdrant REST (6333) and gRPC (6334) to `127.0.0.1` only.
   - Mount a persistent volume at `/var/lib/repovec/qdrant-storage`.
   - Enable Podman auto-update label.
+  - Status: complete. The repository now ships
+    `packaging/systemd/qdrant.container`, validates the contract from Rust, and
+    documents the operator-visible behaviour.
 - [ ] 1.2.2. Configure Qdrant API-key authentication
   - Generate a random API key at first boot and store it in
     `/etc/repovec/qdrant-api-key`.

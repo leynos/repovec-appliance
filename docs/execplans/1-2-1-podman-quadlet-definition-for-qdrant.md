@@ -3,7 +3,7 @@
 ## Preamble
 
 - **Roadmap item:** `1.2.1`
-- **Status:** Proposed
+- **Status:** Implemented
 - **Created:** 2026-04-11
 - **Primary references:** [roadmap](../roadmap.md),
   [technical design](../repovec-appliance-technical-design.md), [Podman Quadlet
@@ -52,10 +52,9 @@ roadmap item `1.2.2`.
 - Treat the deployment install path as
   `/etc/containers/systemd/qdrant.container`, which is the rootful system
   Quadlet directory described in Podman's documentation.
-- Use a fully qualified image reference such as
-  `docker.io/qdrant/qdrant:<pinned-version>` instead of an unqualified or
-  floating reference. This is required for predictable rollouts and matches
-  Podman's `AutoUpdate=registry` expectations.
+- Use the fully qualified image reference
+  `docker.io/qdrant/qdrant:v1.17.1`. This is required for predictable rollouts
+  and matches Podman's `AutoUpdate=registry` expectations.
 - Bind both published ports explicitly to `127.0.0.1` rather than relying on
   Qdrant's internal host binding alone. This follows Qdrant's guidance to bind
   to localhost or a private interface for local deployments.
@@ -86,12 +85,11 @@ roadmap item `1.2.2`.
 
 - Pin the Qdrant image to an explicit version tag and keep the reference fully
   qualified so `AutoUpdate=registry` remains valid.
-- Decide whether the storage mount should include an SELinux relabel suffix
-  such as `:Z`. This depends on the supported appliance base images and should
-  be captured explicitly in the design document once chosen.
-- Decide whether the Quadlet itself should include an `[Install]` section.
-  Prefer keeping boot-target wiring in roadmap item `1.3.1`, but document the
-  decision either way so the enablement path is unambiguous.
+- Include the storage mount suffix `:Z` so rootful Podman can relabel
+  `/var/lib/repovec/qdrant-storage` correctly on SELinux-enforcing hosts.
+- Keep the Quadlet free of an `[Install]` section. Boot-target wiring remains
+  owned by roadmap item `1.3.1`, which avoids splitting unit-enablement
+  responsibilities across two tasks.
 - Keep API-key wiring limited to the seam needed for `1.2.2`. Avoid inventing
   secret-management behaviour in `1.2.1` that the roadmap already allocates to
   the next task.
@@ -191,19 +189,38 @@ set -o pipefail && make test 2>&1 | tee /tmp/1-2-1-test.log
 
 ## 6. Risks and open questions
 
-- **Boot integration ownership:** decide whether `qdrant.container` should own
-  standalone enablement, or whether all boot wiring belongs exclusively to
-  `repovec.target` in roadmap item `1.3.1`.
-- **SELinux relabelling:** decide whether the persistent storage mount requires
-  `:Z` on the supported appliance images.
-- **Image pinning policy:** decide whether `latest` is explicitly forbidden in
-  tests, or whether any fully qualified tag is acceptable. The safer choice is
-  to reject floating tags.
 - **Prompt mismatch:** the terminal-behaviour completion criteria in the prompt
   do not map to this feature and should be clarified before being used in
   review.
 
-## 7. Definition of done
+## 7. Implementation notes
+
+- Added `packaging/systemd/qdrant.container` with the pinned image
+  `docker.io/qdrant/qdrant:v1.17.1`, loopback-only REST and gRPC port
+  publishing, persistent storage mounted at
+  `/var/lib/repovec/qdrant-storage:/qdrant/storage:Z`, and
+  `AutoUpdate=registry`.
+- Added `repovec_core::appliance::qdrant_quadlet`, a small section-aware parser
+  and validator that loads the checked-in Quadlet and enforces the contract
+  statically under `cargo test`.
+- Added `rstest` unit tests for the happy path and the required unhappy-path
+  regressions.
+- Added `rstest-bdd` behavioural coverage under
+  `crates/repovec-core/tests/features/qdrant_quadlet.feature` and
+  `crates/repovec-core/tests/qdrant_quadlet_bdd.rs`.
+- Updated `docs/repovec-appliance-technical-design.md`,
+  `docs/users-guide.md`, and `docs/roadmap.md` to reflect the shipped contract.
+
+## 8. Validation status
+
+- Completed on 2026-04-20:
+  `make fmt`, `make markdownlint`, `make nixie`, `make check-fmt`, `make lint`,
+  and `make test` all passed.
+- `make lint` completed with the repository's normal Whitaker behaviour:
+  the target reported `whitaker` absent on `PATH` and skipped that optional
+  sub-check without failing the gate.
+
+## 9. Definition of done
 
 Roadmap item `1.2.1` is complete when all of the following are true:
 

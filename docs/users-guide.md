@@ -64,3 +64,32 @@ The CI workflow publishes these decisions as stable flags so the `docs-gate`
 job can stay required even when it skips documentation-specific work. When the
 workflow takes the conservative Mermaid path because a file could not be read,
 it also publishes which files triggered that fallback.
+
+# repovec-appliance user's guide
+
+
+## Qdrant service
+
+repovec-appliance ships Qdrant as an appliance-internal Podman Quadlet.
+Operators should treat it as a local dependency of the appliance rather than a
+general-purpose network service.
+
+The checked-in Quadlet is installed to
+`/etc/containers/systemd/qdrant.container`. It pins the official Qdrant image
+to `docker.io/qdrant/qdrant:v1.17.1` and enables `AutoUpdate=registry` so the
+systemd-managed container can participate in Podman's registry-based
+auto-update flow.
+
+Qdrant's REST and gRPC ports are published only on loopback:
+
+- REST: `127.0.0.1:6333`
+- gRPC: `127.0.0.1:6334`
+
+Persistent vector storage lives at `/var/lib/repovec/qdrant-storage` on the
+host and is mounted into the container at `/qdrant/storage`. The mount uses an
+explicit `:Z` SELinux relabel so the rootful Podman service can write to the
+directory on enforcing hosts.
+
+Roadmap item `1.2.2` adds API-key generation and secret management. Until that
+work lands, this guide only documents the network and storage contract for the
+Qdrant service.

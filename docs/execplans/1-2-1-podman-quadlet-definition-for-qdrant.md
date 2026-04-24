@@ -203,6 +203,8 @@ set -o pipefail && make test 2>&1 | tee /tmp/1-2-1-test.log
 - Added `repovec_core::appliance::qdrant_quadlet`, a small section-aware parser
   and validator that loads the checked-in Quadlet and enforces the contract
   statically under `cargo test`.
+- Refactored the validator into `qdrant_quadlet/` submodules so the
+  implementation remains within the repository's 400-line-per-file guidance.
 - Added `rstest` unit tests for the happy path and the required unhappy-path
   regressions.
 - Added `rstest-bdd` behavioural coverage under
@@ -219,6 +221,8 @@ set -o pipefail && make test 2>&1 | tee /tmp/1-2-1-test.log
 - `make lint` completed with the repository's normal Whitaker behaviour:
   the target reported `whitaker` absent on `PATH` and skipped that optional
   sub-check without failing the gate.
+- Reverted an unrelated formatter-only wrap in `docs/rstest-bdd-users-guide.md`
+  so the final change set stays scoped to roadmap item `1.2.1`.
 
 ## 9. Definition of done
 

@@ -128,7 +128,10 @@ mod tests {
     use super::{Input, USAGE, parse_args, print_usage, write_plan};
 
     fn buffer_to_string(buffer: Vec<u8>) -> String {
-        String::from_utf8(buffer).expect("snapshot buffer should contain UTF-8")
+        match String::from_utf8(buffer) {
+            Ok(output) => output,
+            Err(error) => panic!("snapshot buffer should contain UTF-8: {error}"),
+        }
     }
 
     #[test]

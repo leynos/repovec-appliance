@@ -1,7 +1,7 @@
 .PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint nixie
 
 
-CARGO ?= cargo
+CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
 BUILD_JOBS ?=
 BASE_RUST_FLAGS ?= -D warnings
 BASE_RUSTDOC_FLAGS ?= -D warnings

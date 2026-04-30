@@ -54,14 +54,18 @@ fn the_quadlet_is_validated(quadlet_world: &mut QuadletWorld) {
 
 #[then("the Quadlet is accepted")]
 fn the_quadlet_is_accepted(quadlet_world: &QuadletWorld) {
-    let validation_result = validation_result(quadlet_world);
+    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
+        panic!("the validation step should have run");
+    };
 
     assert!(validation_result.is_ok());
 }
 
 #[then("the validation fails with a loopback error for port 6333")]
 fn the_validation_fails_with_a_loopback_error_for_port_6333(quadlet_world: &QuadletWorld) {
-    let validation_result = validation_result(quadlet_world);
+    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
+        panic!("the validation step should have run");
+    };
 
     assert_eq!(
         validation_result,
@@ -74,21 +78,27 @@ fn the_validation_fails_with_a_loopback_error_for_port_6333(quadlet_world: &Quad
 
 #[then("the validation fails because the gRPC port is missing")]
 fn the_validation_fails_because_the_grpc_port_is_missing(quadlet_world: &QuadletWorld) {
-    let validation_result = validation_result(quadlet_world);
+    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
+        panic!("the validation step should have run");
+    };
 
     assert_eq!(validation_result, &Err(QdrantQuadletError::MissingGrpcPort));
 }
 
 #[then("the validation fails because the storage mount is missing")]
 fn the_validation_fails_because_the_storage_mount_is_missing(quadlet_world: &QuadletWorld) {
-    let validation_result = validation_result(quadlet_world);
+    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
+        panic!("the validation step should have run");
+    };
 
     assert_eq!(validation_result, &Err(QdrantQuadletError::MissingStorageMount));
 }
 
 #[then("the validation fails because auto-update is missing")]
 fn the_validation_fails_because_auto_update_is_missing(quadlet_world: &QuadletWorld) {
-    let validation_result = validation_result(quadlet_world);
+    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
+        panic!("the validation step should have run");
+    };
 
     assert_eq!(validation_result, &Err(QdrantQuadletError::MissingAutoUpdate));
 }
@@ -121,10 +131,3 @@ fn persistent_storage_remains_mounted(quadlet_world: QuadletWorld) { let _ = qua
     name = "Podman auto-update remains enabled"
 )]
 fn podman_auto_update_remains_enabled(quadlet_world: QuadletWorld) { let _ = quadlet_world; }
-
-fn validation_result(quadlet_world: &QuadletWorld) -> &Result<(), QdrantQuadletError> {
-    quadlet_world
-        .validation_result
-        .as_ref()
-        .unwrap_or_else(|| panic!("the validation step should have run"))
-}

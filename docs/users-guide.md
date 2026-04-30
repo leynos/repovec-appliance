@@ -65,9 +65,6 @@ job can stay required even when it skips documentation-specific work. When the
 workflow takes the conservative Mermaid path because a file could not be read,
 it also publishes which files triggered that fallback.
 
-# repovec-appliance user's guide
-
-
 ## Qdrant service
 
 repovec-appliance ships Qdrant as an appliance-internal Podman Quadlet.

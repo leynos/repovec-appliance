@@ -1,7 +1,7 @@
 .PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint nixie
 
 
-CARGO ?= cargo
+CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
 BUILD_JOBS ?=
 BASE_RUST_FLAGS ?= -D warnings
 BASE_RUSTDOC_FLAGS ?= -D warnings
@@ -15,7 +15,7 @@ TEST_FLAGS ?= $(CARGO_FLAGS)
 DOCTEST_FLAGS ?= --workspace --all-features
 TEST_CMD := $(if $(shell $(CARGO) nextest --version 2>/dev/null),nextest run --no-tests pass,test)
 HAS_DOCTEST_TARGETS := $(shell $(CARGO) metadata --no-deps --format-version 1 2>/dev/null | grep -q '"doctest":true' && echo 1)
-MDLINT ?= markdownlint-cli2
+MDLINT ?= $(or $(shell command -v markdownlint-cli2 2>/dev/null),$(HOME)/.bun/bin/markdownlint-cli2)
 NIXIE ?= nixie
 
 build: ## Build the entire workspace in debug mode

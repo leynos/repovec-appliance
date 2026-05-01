@@ -63,8 +63,7 @@ A Rust daemon, `repovecd`, provides:
     cross-project search
 - Qdrant:
   - runs locally on the VM (Podman container) as the vector store for grepai
-  - bound to localhost/private interface and protected with API keys (and
-    TLS when not strictly local)
+  - bound to `127.0.0.1` only and protected with API keys
 
 ### Remote MCP endpoint
 
@@ -354,13 +353,14 @@ Security controls:
 - Qdrant supports a static API key; Qdrant recommends API key auth and also
   recommends binding to localhost/private interfaces to prevent unauthenticated
   external access.
-- In appliance mode, Qdrant binds to 127.0.0.1 (or a private interface) and
-  is never exposed publicly; callers are local processes only.
+- In appliance mode, Qdrant binds to `127.0.0.1` only and is never exposed
+  publicly; callers are local processes only.
 - The repository source of truth is
   `packaging/systemd/qdrant.container`, installed to
   `/etc/containers/systemd/qdrant.container` on rootful appliance hosts.
-- The Quadlet pins Qdrant to `docker.io/qdrant/qdrant:v1.17.1` so registry
-  auto-update has a stable, fully qualified image reference to track.
+- The Quadlet tracks Qdrant's `docker.io/qdrant/qdrant:v1` image stream so
+  registry auto-update can advance within the current major version while
+  retaining a stable, fully qualified image reference.
 - The Quadlet publishes `127.0.0.1:6333:6333` and
   `127.0.0.1:6334:6334`, keeping both Qdrant interfaces loopback-only even if
   container defaults change.

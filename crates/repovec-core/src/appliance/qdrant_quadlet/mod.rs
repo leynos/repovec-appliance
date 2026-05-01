@@ -19,7 +19,7 @@ pub const CHECKED_IN_QDRANT_QUADLET_PATH: &str = "packaging/systemd/qdrant.conta
 pub const INSTALLED_QDRANT_QUADLET_PATH: &str = "/etc/containers/systemd/qdrant.container";
 
 const CONTAINER_SECTION: &str = "Container";
-const REQUIRED_IMAGE: &str = "docker.io/qdrant/qdrant:v1.17.1";
+const REQUIRED_IMAGE: &str = "docker.io/qdrant/qdrant:v1";
 const REQUIRED_REST_PORT: &str = "127.0.0.1:6333:6333";
 const REQUIRED_GRPC_PORT: &str = "127.0.0.1:6334:6334";
 const REQUIRED_STORAGE_SOURCE: &str = "/var/lib/repovec/qdrant-storage";
@@ -69,7 +69,7 @@ pub fn validate_checked_in_qdrant_quadlet() -> Result<(), QdrantQuadletError> {
 ///
 /// let contents = "\
 /// [Container]
-/// Image=docker.io/qdrant/qdrant:v1.17.1
+/// Image=docker.io/qdrant/qdrant:v1
 /// AutoUpdate=registry
 /// PublishPort=127.0.0.1:6333:6333
 /// PublishPort=127.0.0.1:6334:6334
@@ -89,9 +89,14 @@ pub fn validate_qdrant_quadlet(contents: &str) -> Result<(), QdrantQuadletError>
 }
 
 fn validate_required_image(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
-    let Some(image) = parsed.values(CONTAINER_SECTION, "Image").first() else {
+    let images = parsed.values(CONTAINER_SECTION, "Image");
+    let Some(image) = images.first() else {
         return Err(QdrantQuadletError::MissingImage);
     };
+
+    if images.len() != 1 {
+        return Err(QdrantQuadletError::UnexpectedImage { image: images.join(",") });
+    }
 
     if !is_fully_qualified_and_pinned(image) {
         return Err(QdrantQuadletError::ImageNotFullyQualified { image: image.clone() });
@@ -121,27 +126,30 @@ fn validate_required_port(
     missing_error: QdrantQuadletError,
 ) -> Result<(), QdrantQuadletError> {
     let publish_ports = parsed.values(CONTAINER_SECTION, "PublishPort");
-
-    if publish_ports.iter().any(|port| port == expected_port) {
-        return Ok(());
-    }
-
     let container_port = expected_port
         .rsplit(':')
         .next()
         .and_then(|port| port.parse::<u16>().ok())
         .unwrap_or_default();
 
-    if let Some(publish_port) =
-        publish_ports.iter().find(|port| published_container_port(port) == Some(container_port))
-    {
+    let matching_publish_ports = publish_ports
+        .iter()
+        .map(String::as_str)
+        .filter(|port| published_container_port(port) == Some(container_port))
+        .collect::<Vec<_>>();
+
+    if matching_publish_ports.is_empty() {
+        return Err(missing_error);
+    }
+
+    if let Some(publish_port) = matching_publish_ports.iter().find(|port| **port != expected_port) {
         return Err(QdrantQuadletError::PortNotBoundToLoopback {
             port: container_port,
-            publish_port: publish_port.clone(),
+            publish_port: (*publish_port).to_owned(),
         });
     }
 
-    Err(missing_error)
+    Ok(())
 }
 
 fn published_container_port(publish_port: &str) -> Option<u16> {
@@ -187,9 +195,16 @@ fn validate_storage_mount(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletErr
 }
 
 fn validate_auto_update(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
-    let Some(auto_update) = parsed.values(CONTAINER_SECTION, "AutoUpdate").first() else {
+    let auto_updates = parsed.values(CONTAINER_SECTION, "AutoUpdate");
+    let Some(auto_update) = auto_updates.first() else {
         return Err(QdrantQuadletError::MissingAutoUpdate);
     };
+
+    if auto_updates.len() != 1 {
+        return Err(QdrantQuadletError::IncorrectAutoUpdate {
+            auto_update: auto_updates.join(","),
+        });
+    }
 
     if auto_update != REQUIRED_AUTO_UPDATE_POLICY {
         return Err(QdrantQuadletError::IncorrectAutoUpdate { auto_update: auto_update.clone() });

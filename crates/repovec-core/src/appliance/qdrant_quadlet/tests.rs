@@ -42,7 +42,29 @@ fn auto_update_missing(qdrant_quadlet_contents: String) -> String {
 
 #[fixture]
 fn image_is_unqualified(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents.replace("docker.io/qdrant/qdrant:v1.17.1", "qdrant/qdrant:latest")
+    qdrant_quadlet_contents.replace("docker.io/qdrant/qdrant:v1", "qdrant/qdrant:latest")
+}
+
+#[fixture]
+fn image_is_duplicated(qdrant_quadlet_contents: String) -> String {
+    qdrant_quadlet_contents.replace(
+        "Image=docker.io/qdrant/qdrant:v1\n",
+        "Image=docker.io/qdrant/qdrant:v1\nImage=docker.io/qdrant/qdrant:v2\n",
+    )
+}
+
+#[fixture]
+fn auto_update_is_duplicated(qdrant_quadlet_contents: String) -> String {
+    qdrant_quadlet_contents
+        .replace("AutoUpdate=registry\n", "AutoUpdate=registry\nAutoUpdate=local\n")
+}
+
+#[fixture]
+fn rest_port_has_conflicting_duplicate(qdrant_quadlet_contents: String) -> String {
+    qdrant_quadlet_contents.replace(
+        "PublishPort=127.0.0.1:6333:6333\n",
+        "PublishPort=127.0.0.1:6333:6333\nPublishPort=0.0.0.0:6333:6333\n",
+    )
 }
 
 #[test]
@@ -55,6 +77,22 @@ fn checked_in_qdrant_quadlet_remains_valid() {
 fn qdrant_quadlet_rejects_rest_port_without_loopback(rest_port_bound_wildcard: String) {
     let error = validate_qdrant_quadlet(&rest_port_bound_wildcard)
         .expect_err("wildcard REST publishing should be rejected");
+
+    assert_eq!(
+        error,
+        QdrantQuadletError::PortNotBoundToLoopback {
+            port: 6333,
+            publish_port: String::from("0.0.0.0:6333:6333"),
+        }
+    );
+}
+
+#[rstest]
+fn qdrant_quadlet_rejects_conflicting_rest_port_duplicate(
+    rest_port_has_conflicting_duplicate: String,
+) {
+    let error = validate_qdrant_quadlet(&rest_port_has_conflicting_duplicate)
+        .expect_err("conflicting REST publishing should be rejected");
 
     assert_eq!(
         error,
@@ -101,6 +139,17 @@ fn qdrant_quadlet_requires_auto_update(auto_update_missing: String) {
 }
 
 #[rstest]
+fn qdrant_quadlet_rejects_duplicate_auto_update(auto_update_is_duplicated: String) {
+    let error = validate_qdrant_quadlet(&auto_update_is_duplicated)
+        .expect_err("duplicate auto-update policy should be rejected");
+
+    assert_eq!(
+        error,
+        QdrantQuadletError::IncorrectAutoUpdate { auto_update: String::from("registry,local") }
+    );
+}
+
+#[rstest]
 fn qdrant_quadlet_rejects_unqualified_images(image_is_unqualified: String) {
     let error = validate_qdrant_quadlet(&image_is_unqualified)
         .expect_err("unqualified images should be rejected");
@@ -108,5 +157,18 @@ fn qdrant_quadlet_rejects_unqualified_images(image_is_unqualified: String) {
     assert_eq!(
         error,
         QdrantQuadletError::ImageNotFullyQualified { image: String::from("qdrant/qdrant:latest") }
+    );
+}
+
+#[rstest]
+fn qdrant_quadlet_rejects_duplicate_images(image_is_duplicated: String) {
+    let error = validate_qdrant_quadlet(&image_is_duplicated)
+        .expect_err("duplicate image values should be rejected");
+
+    assert_eq!(
+        error,
+        QdrantQuadletError::UnexpectedImage {
+            image: String::from("docker.io/qdrant/qdrant:v1,docker.io/qdrant/qdrant:v2"),
+        }
     );
 }

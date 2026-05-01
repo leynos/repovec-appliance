@@ -2,6 +2,9 @@
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
+ifneq ($(shell { command -v "$(CARGO)" >/dev/null 2>&1 || test -x "$(CARGO)"; } && echo yes),yes)
+$(error cargo executable not found; set CARGO or install cargo at $(HOME)/.cargo/bin/cargo)
+endif
 BUILD_JOBS ?=
 BASE_RUST_FLAGS ?= -D warnings
 BASE_RUSTDOC_FLAGS ?= -D warnings
@@ -16,6 +19,9 @@ DOCTEST_FLAGS ?= --workspace --all-features
 TEST_CMD := $(if $(shell $(CARGO) nextest --version 2>/dev/null),nextest run --no-tests pass,test)
 HAS_DOCTEST_TARGETS := $(shell $(CARGO) metadata --no-deps --format-version 1 2>/dev/null | grep -q '"doctest":true' && echo 1)
 MDLINT ?= $(or $(shell command -v markdownlint-cli2 2>/dev/null),$(HOME)/.bun/bin/markdownlint-cli2)
+ifneq ($(shell { command -v "$(MDLINT)" >/dev/null 2>&1 || test -x "$(MDLINT)"; } && echo yes),yes)
+$(error markdownlint-cli2 executable not found; set MDLINT or install markdownlint-cli2 at $(HOME)/.bun/bin/markdownlint-cli2)
+endif
 NIXIE ?= nixie
 
 build: ## Build the entire workspace in debug mode

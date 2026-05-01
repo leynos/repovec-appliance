@@ -1,6 +1,6 @@
 # Keep Qdrant private to the appliance host; repovec services reach it via localhost.
 [Container]
-Image=docker.io/qdrant/qdrant:v1.17.1
+Image=docker.io/qdrant/qdrant:v1
 AutoUpdate=registry
 PublishPort=127.0.0.1:6333:6333
 PublishPort=127.0.0.1:6334:6334

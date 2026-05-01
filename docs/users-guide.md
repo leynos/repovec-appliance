@@ -72,10 +72,10 @@ Operators should treat it as a local dependency of the appliance rather than a
 general-purpose network service.
 
 The checked-in Quadlet is installed to
-`/etc/containers/systemd/qdrant.container`. It pins the official Qdrant image
-to `docker.io/qdrant/qdrant:v1.17.1` and enables `AutoUpdate=registry` so the
-systemd-managed container can participate in Podman's registry-based
-auto-update flow.
+`/etc/containers/systemd/qdrant.container`. It tracks the official Qdrant
+`docker.io/qdrant/qdrant:v1` image stream and enables `AutoUpdate=registry` so
+the systemd-managed container can participate in Podman's registry-based
+auto-update flow within the current major version.
 
 Qdrant's REST and gRPC ports are published only on loopback:
 

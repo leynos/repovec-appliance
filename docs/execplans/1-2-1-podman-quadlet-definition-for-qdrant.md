@@ -52,12 +52,12 @@ roadmap item `1.2.2`.
 - Treat the deployment install path as
   `/etc/containers/systemd/qdrant.container`, which is the rootful system
   Quadlet directory described in Podman's documentation.
-- Use the fully qualified image reference
-  `docker.io/qdrant/qdrant:v1.17.1`. This is required for predictable rollouts
-  and matches Podman's `AutoUpdate=registry` expectations.
+- Use the fully qualified image reference `docker.io/qdrant/qdrant:v1`. This
+  keeps registry auto-update on the current major version while avoiding
+  unqualified or `latest` image references.
 - Bind both published ports explicitly to `127.0.0.1` rather than relying on
   Qdrant's internal host binding alone. This follows Qdrant's guidance to bind
-  to localhost or a private interface for local deployments.
+  to localhost for local deployments.
 - Validate the checked-in Quadlet with a small Rust parser and contract checker
   in `repovec-core`, rather than relying on shell greps in tests. This keeps
   the behaviour testable under `cargo test` and makes failures diagnostic.
@@ -83,8 +83,8 @@ roadmap item `1.2.2`.
 
 ### 4.2. Decide the exact Quadlet shape before writing tests
 
-- Pin the Qdrant image to an explicit version tag and keep the reference fully
-  qualified so `AutoUpdate=registry` remains valid.
+- Track the Qdrant `v1` image stream and keep the reference fully qualified so
+  `AutoUpdate=registry` remains valid.
 - Include the storage mount suffix `:Z` so rootful Podman can relabel
   `/var/lib/repovec/qdrant-storage` correctly on SELinux-enforcing hosts.
 - Keep the Quadlet free of an `[Install]` section. Boot-target wiring remains
@@ -148,7 +148,7 @@ roadmap item `1.2.2`.
   implementation decisions for:
   - repository asset location
   - installed Quadlet location
-  - fully qualified pinned image policy
+  - fully qualified major-version image policy
   - `AutoUpdate=registry`
   - any SELinux mount option that becomes part of the contract
 - Create `docs/users-guide.md` and add an operator-facing section describing:
@@ -195,9 +195,9 @@ set -o pipefail && make test 2>&1 | tee /tmp/1-2-1-test.log
 
 ## 7. Implementation notes
 
-- Added `packaging/systemd/qdrant.container` with the pinned image
-  `docker.io/qdrant/qdrant:v1.17.1`, loopback-only REST and gRPC port
-  publishing, persistent storage mounted at
+- Added `packaging/systemd/qdrant.container` with the image stream
+  `docker.io/qdrant/qdrant:v1`, loopback-only REST and gRPC port publishing,
+  persistent storage mounted at
   `/var/lib/repovec/qdrant-storage:/qdrant/storage:Z`, and
   `AutoUpdate=registry`.
 - Added `repovec_core::appliance::qdrant_quadlet`, a small section-aware parser

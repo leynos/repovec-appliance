@@ -26,12 +26,12 @@ pub enum QdrantQuadletError {
     },
     /// No `Image=` entry exists in the `[Container]` section.
     MissingImage,
-    /// The image reference is not fully qualified and explicitly versioned.
+    /// The image reference is not fully qualified and explicitly tagged.
     ImageNotFullyQualified {
         /// The invalid image reference.
         image: String,
     },
-    /// The image reference does not match the pinned project contract.
+    /// The image reference does not match the project contract.
     UnexpectedImage {
         /// The unexpected image reference.
         image: String,
@@ -84,10 +84,10 @@ impl fmt::Display for QdrantQuadletError {
             }
             Self::MissingImage => f.write_str("missing Image= entry in [Container]"),
             Self::ImageNotFullyQualified { image } => {
-                write!(f, "image reference must be fully qualified and pinned: {image}")
+                write!(f, "image reference must be fully qualified and tagged: {image}")
             }
             Self::UnexpectedImage { image } => {
-                write!(f, "image reference must remain pinned to {REQUIRED_IMAGE}: {image}")
+                write!(f, "image reference must remain {REQUIRED_IMAGE}: {image}")
             }
             Self::MissingRestPort => {
                 write!(f, "missing PublishPort={REQUIRED_REST_PORT} in [Container]")

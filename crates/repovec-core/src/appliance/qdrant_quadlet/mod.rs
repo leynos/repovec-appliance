@@ -90,13 +90,13 @@ pub fn validate_qdrant_quadlet(contents: &str) -> Result<(), QdrantQuadletError>
 
 fn validate_required_image(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
     let images = parsed.values(CONTAINER_SECTION, "Image");
-    let Some(image) = images.first() else {
-        return Err(QdrantQuadletError::MissingImage);
+    let image = match images {
+        [] => return Err(QdrantQuadletError::MissingImage),
+        [image] => image,
+        duplicate_images => {
+            return Err(QdrantQuadletError::UnexpectedImage { image: duplicate_images.join(",") });
+        }
     };
-
-    if images.len() != 1 {
-        return Err(QdrantQuadletError::UnexpectedImage { image: images.join(",") });
-    }
 
     if !is_fully_qualified_and_pinned(image) {
         return Err(QdrantQuadletError::ImageNotFullyQualified { image: image.clone() });
@@ -196,15 +196,15 @@ fn validate_storage_mount(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletErr
 
 fn validate_auto_update(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
     let auto_updates = parsed.values(CONTAINER_SECTION, "AutoUpdate");
-    let Some(auto_update) = auto_updates.first() else {
-        return Err(QdrantQuadletError::MissingAutoUpdate);
+    let auto_update = match auto_updates {
+        [] => return Err(QdrantQuadletError::MissingAutoUpdate),
+        [auto_update] => auto_update,
+        duplicate_auto_updates => {
+            return Err(QdrantQuadletError::IncorrectAutoUpdate {
+                auto_update: duplicate_auto_updates.join(","),
+            });
+        }
     };
-
-    if auto_updates.len() != 1 {
-        return Err(QdrantQuadletError::IncorrectAutoUpdate {
-            auto_update: auto_updates.join(","),
-        });
-    }
 
     if auto_update != REQUIRED_AUTO_UPDATE_POLICY {
         return Err(QdrantQuadletError::IncorrectAutoUpdate { auto_update: auto_update.clone() });

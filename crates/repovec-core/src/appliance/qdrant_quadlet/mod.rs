@@ -163,15 +163,10 @@ fn published_container_port(publish_port: &str) -> Option<u16> {
 
 fn validate_storage_mount(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
     let volumes = parsed.values(CONTAINER_SECTION, "Volume");
-    let Some(volume) = volumes.iter().find(|volume| volume.starts_with(REQUIRED_STORAGE_SOURCE))
+    let Some((volume, parts)) = volumes.iter().find_map(|volume| storage_mount_candidate(volume))
     else {
         return Err(QdrantQuadletError::MissingStorageMount);
     };
-
-    let parts: Vec<_> = volume.split(':').collect();
-    if parts.len() < 2 {
-        return Err(QdrantQuadletError::MissingStorageMount);
-    }
 
     let Some(source) = parts.first().copied() else {
         return Err(QdrantQuadletError::MissingStorageMount);
@@ -188,10 +183,23 @@ fn validate_storage_mount(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletErr
     }
 
     if !parts.get(2..).is_some_and(|options| options.contains(&"Z")) {
-        return Err(QdrantQuadletError::MissingSelinuxRelabel { volume: volume.clone() });
+        return Err(QdrantQuadletError::MissingSelinuxRelabel { volume: volume.to_owned() });
     }
 
     Ok(())
+}
+
+fn storage_mount_candidate(volume: &str) -> Option<(&str, Vec<&str>)> {
+    let parts = volume.split(':').collect::<Vec<_>>();
+    if parts.len() < 2 {
+        return None;
+    }
+
+    let has_required_source =
+        parts.first().is_some_and(|source| *source == REQUIRED_STORAGE_SOURCE);
+    let has_required_target = parts.get(1).is_some_and(|target| *target == REQUIRED_STORAGE_TARGET);
+
+    (has_required_source || has_required_target).then_some((volume, parts))
 }
 
 fn validate_auto_update(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {

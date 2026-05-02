@@ -67,6 +67,39 @@ fn rest_port_has_conflicting_duplicate(qdrant_quadlet_contents: String) -> Strin
     )
 }
 
+#[fixture]
+fn invalid_line_in_container_section() -> String {
+    // Insert a line with no `=` sign into the [Container] section
+    "this-is-not-valid".to_owned()
+}
+
+#[fixture]
+fn property_before_section() -> String {
+    // A key=value line that appears before any section header
+    "Image=docker.io/qdrant/qdrant:v1\n[Container]\n".to_owned()
+}
+
+#[fixture]
+fn image_missing(qdrant_quadlet_contents: String) -> String {
+    qdrant_quadlet_contents
+        .lines()
+        .filter(|l| !l.starts_with("Image="))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
+#[fixture]
+fn storage_source_is_wrong(qdrant_quadlet_contents: String) -> String {
+    qdrant_quadlet_contents
+        .replace("/var/lib/repovec/qdrant-storage", "/var/lib/other/qdrant-storage")
+}
+
+#[fixture]
+fn selinux_relabel_missing(qdrant_quadlet_contents: String) -> String {
+    qdrant_quadlet_contents.replace(":/qdrant/storage:Z", ":/qdrant/storage")
+}
+
 #[test]
 fn checked_in_qdrant_quadlet_remains_valid() {
     validate_checked_in_qdrant_quadlet()
@@ -170,5 +203,60 @@ fn qdrant_quadlet_rejects_duplicate_images(image_is_duplicated: String) {
         QdrantQuadletError::UnexpectedImage {
             image: String::from("docker.io/qdrant/qdrant:v1,docker.io/qdrant/qdrant:v2"),
         }
+    );
+}
+
+#[rstest]
+fn parser_rejects_invalid_line(invalid_line_in_container_section: String) {
+    // Feed a bare [Container] section containing an un-parseable line
+    let input = format!("[Container]\n{invalid_line_in_container_section}\n");
+    let error = validate_qdrant_quadlet(&input).expect_err("a line without `=` should be rejected");
+
+    assert!(
+        matches!(error, QdrantQuadletError::InvalidLine { line_number: 2, .. }),
+        "unexpected error: {error:?}",
+    );
+}
+
+#[rstest]
+fn parser_rejects_property_before_section(property_before_section: String) {
+    let error = validate_qdrant_quadlet(&property_before_section)
+        .expect_err("a key=value before any section header should be rejected");
+
+    assert!(
+        matches!(error, QdrantQuadletError::PropertyBeforeSection { line_number: 1, .. }),
+        "unexpected error: {error:?}",
+    );
+}
+
+#[rstest]
+fn qdrant_quadlet_requires_image_entry(image_missing: String) {
+    let error =
+        validate_qdrant_quadlet(&image_missing).expect_err("absent Image= should be rejected");
+
+    assert_eq!(error, QdrantQuadletError::MissingImage);
+}
+
+#[rstest]
+fn qdrant_quadlet_rejects_wrong_storage_source(storage_source_is_wrong: String) {
+    let error = validate_qdrant_quadlet(&storage_source_is_wrong)
+        .expect_err("incorrect storage source path should be rejected");
+
+    assert_eq!(
+        error,
+        QdrantQuadletError::IncorrectStorageSource {
+            source: String::from("/var/lib/other/qdrant-storage"),
+        }
+    );
+}
+
+#[rstest]
+fn qdrant_quadlet_requires_selinux_relabel(selinux_relabel_missing: String) {
+    let error = validate_qdrant_quadlet(&selinux_relabel_missing)
+        .expect_err("missing SELinux :Z relabel option should be rejected");
+
+    assert!(
+        matches!(error, QdrantQuadletError::MissingSelinuxRelabel { .. }),
+        "unexpected error: {error:?}",
     );
 }

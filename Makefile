@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint nixie
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check nixie
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
@@ -19,9 +19,6 @@ DOCTEST_FLAGS ?= --workspace --all-features
 TEST_CMD := $(if $(shell $(CARGO) nextest --version 2>/dev/null),nextest run --no-tests pass,test)
 HAS_DOCTEST_TARGETS := $(shell $(CARGO) metadata --no-deps --format-version 1 2>/dev/null | grep -q '"doctest":true' && echo 1)
 MDLINT ?= $(or $(shell command -v markdownlint-cli2 2>/dev/null),$(HOME)/.bun/bin/markdownlint-cli2)
-ifneq ($(shell { command -v "$(MDLINT)" >/dev/null 2>&1 || test -x "$(MDLINT)"; } && echo yes),yes)
-$(error markdownlint-cli2 executable not found; set MDLINT or install markdownlint-cli2 at $(HOME)/.bun/bin/markdownlint-cli2)
-endif
 NIXIE ?= nixie
 
 build: ## Build the entire workspace in debug mode
@@ -66,7 +63,21 @@ check-fmt: ## Verify formatting
 	$(CARGO) fmt --all -- --check
 
 markdownlint: ## Lint Markdown files
-	$(MDLINT) '**/*.md'
+	@if command -v "$(MDLINT)" >/dev/null 2>&1 || test -x "$(MDLINT)"; then \
+		$(MDLINT) '**/*.md'; \
+	else \
+		echo "markdownlint-cli2 executable not found; set MDLINT or install markdownlint-cli2 at $(HOME)/.bun/bin/markdownlint-cli2"; \
+		exit 1; \
+	fi
+
+docs-lint: ## Backwards-compatible docs lint target
+	$(MAKE) markdownlint
+
+docs-check: ## Alias for docs lint checks
+	$(MAKE) markdownlint
+
+docs: ## Legacy docs target alias
+	$(MAKE) markdownlint
 
 nixie: ## Validate Mermaid diagrams
 	$(NIXIE) --no-sandbox

@@ -19,6 +19,7 @@ publish = false
 [workspace.dependencies]
 camino = "1.1.12"
 insta = { version = "1.47.2", features = ["yaml"] }
+proptest = "1.11.0"
 rstest = "0.26.1"
 rstest-bdd = "0.5.0"
 rstest-bdd-macros = { version = "0.5.0", features = ["strict-compile-time-validation"] }

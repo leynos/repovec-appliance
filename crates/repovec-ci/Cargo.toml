@@ -11,7 +11,7 @@ camino.workspace = true
 cap-std = { version = "3.4.5", features = ["fs_utf8"] }
 
 [dev-dependencies]
-insta = { version = "1", features = ["yaml"] }
+insta.workspace = true
 rstest.workspace = true
 rstest-bdd.workspace = true
 rstest-bdd-macros.workspace = true

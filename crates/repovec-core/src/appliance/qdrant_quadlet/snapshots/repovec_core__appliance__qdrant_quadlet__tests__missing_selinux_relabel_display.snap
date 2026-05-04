@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/tests.rs
+expression: error.to_string()
+---
+storage mount must include SELinux relabel :Z: /data:/qdrant/storage

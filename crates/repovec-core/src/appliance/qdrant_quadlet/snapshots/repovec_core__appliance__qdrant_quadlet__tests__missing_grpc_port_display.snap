@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/tests.rs
+expression: error.to_string()
+---
+missing PublishPort=127.0.0.1:6334:6334 in [Container]

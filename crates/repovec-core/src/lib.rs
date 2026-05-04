@@ -4,6 +4,8 @@ use std::fmt;
 
 use camino::{Utf8Path, Utf8PathBuf};
 
+pub mod appliance;
+
 /// Service types: daemons (`Repovecd`, `RepovecMcpd`), terminal UI (`RepovecTui`), and CLI (`Repovectl`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServiceKind {

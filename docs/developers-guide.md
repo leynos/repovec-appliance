@@ -182,3 +182,56 @@ gh api \
 
 Keep the workflow job names and the ruleset payload synchronized. Changing a
 required job name without updating the ruleset will block merges.
+
+## 5. Appliance module
+
+### 5.1 Appliance module overview
+
+`crates/repovec-core/src/appliance/` contains appliance-specific validation
+helpers. Keep these helpers close to the assets they validate and avoid placing
+appliance policy in unrelated core modules.
+
+Each appliance asset gets its own submodule under `appliance/`. The submodule
+owns the checked-in asset contract, any local parsing needed for that asset,
+the typed validation error, and focused tests for the contract.
+
+### 5.2 `qdrant_quadlet` validation surface
+
+The `qdrant_quadlet` module exposes the public validation surface for the
+checked-in Qdrant Podman Quadlet:
+
+- `checked_in_qdrant_quadlet() -> &'static str` returns the repository's
+  embedded Quadlet source.
+- `validate_checked_in_qdrant_quadlet() -> Result<(), QdrantQuadletError>`
+  validates the embedded Quadlet asset.
+- `validate_qdrant_quadlet(contents: &str) -> Result<(), QdrantQuadletError>`
+  validates caller-provided Quadlet contents against the same appliance
+  contract.
+- `QdrantQuadletError` is the typed error enum for validation failures. See
+  `crates/repovec-core/src/appliance/qdrant_quadlet/error.rs` for the full
+  variant list.
+
+### 5.3 Extension pattern
+
+To add validation for a new appliance asset:
+
+1. Create a submodule directory under `appliance/` with `mod.rs`, `error.rs`,
+   `parser.rs` if a custom parser is needed, and `tests.rs`.
+2. Re-export the submodule from `appliance/mod.rs`.
+3. Embed the checked-in asset with `include_str!` and expose a
+   `checked_in_*()` function.
+4. Write `validate_*()` returning a typed error enum that implements
+   `std::error::Error` and `fmt::Display`.
+5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
+   scenarios under `crates/repovec-core/tests/features/`.
+
+### 5.4 Test patterns
+
+The appliance validation modules use `rstest` for unit tests and
+`rstest-bdd` with `rstest-bdd-macros` for behavioural tests. Unit tests should
+exercise each typed error variant directly. Behavioural tests should describe
+the appliance contract in feature files and keep the executable scenarios thin.
+
+See [rstest BDD users guide](rstest-bdd-users-guide.md) and
+[Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
+the project-local testing guidance.

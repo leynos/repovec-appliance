@@ -151,7 +151,6 @@ proptest! {
         image1 in valid_image(),
         image2 in valid_image(),
     ) {
-        prop_assume!(image1 != image2);
         let contents = format!(
             "[Container]\n\
              Image={image1}\n\
@@ -174,7 +173,6 @@ proptest! {
         policy1 in auto_update_policy(),
         policy2 in auto_update_policy(),
     ) {
-        prop_assume!(policy1 != policy2);
         let contents = format!(
             "[Container]\n\
              Image=docker.io/qdrant/qdrant:v1\n\

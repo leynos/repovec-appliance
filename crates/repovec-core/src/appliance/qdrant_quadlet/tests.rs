@@ -262,96 +262,60 @@ fn qdrant_quadlet_requires_selinux_relabel(selinux_relabel_missing: String) {
     );
 }
 
-#[test]
-fn display_invalid_line() {
-    let error =
-        QdrantQuadletError::InvalidLine { line_number: 42, line: String::from("bad content") };
-    assert_snapshot!("invalid_line_display", error.to_string());
-}
-
-#[test]
-fn display_property_before_section() {
-    let error = QdrantQuadletError::PropertyBeforeSection {
+#[rstest]
+#[case::invalid_line(
+    QdrantQuadletError::InvalidLine { line_number: 42, line: String::from("bad content") },
+    "invalid_line_display"
+)]
+#[case::property_before_section(
+    QdrantQuadletError::PropertyBeforeSection {
         line_number: 1,
         line: String::from("Key=Value"),
-    };
-    assert_snapshot!("property_before_section_display", error.to_string());
-}
-
-#[test]
-fn display_missing_image() {
-    let error = QdrantQuadletError::MissingImage;
-    assert_snapshot!("missing_image_display", error.to_string());
-}
-
-#[test]
-fn display_image_not_fully_qualified() {
-    let error =
-        QdrantQuadletError::ImageNotFullyQualified { image: String::from("qdrant/qdrant:latest") };
-    assert_snapshot!("image_not_fully_qualified_display", error.to_string());
-}
-
-#[test]
-fn display_unexpected_image() {
-    let error =
-        QdrantQuadletError::UnexpectedImage { image: String::from("docker.io/other/image:v2") };
-    assert_snapshot!("unexpected_image_display", error.to_string());
-}
-
-#[test]
-fn display_missing_rest_port() {
-    let error = QdrantQuadletError::MissingRestPort;
-    assert_snapshot!("missing_rest_port_display", error.to_string());
-}
-
-#[test]
-fn display_missing_grpc_port() {
-    let error = QdrantQuadletError::MissingGrpcPort;
-    assert_snapshot!("missing_grpc_port_display", error.to_string());
-}
-
-#[test]
-fn display_port_not_bound_to_loopback() {
-    let error = QdrantQuadletError::PortNotBoundToLoopback {
+    },
+    "property_before_section_display"
+)]
+#[case::missing_image(QdrantQuadletError::MissingImage, "missing_image_display")]
+#[case::image_not_fully_qualified(
+    QdrantQuadletError::ImageNotFullyQualified { image: String::from("qdrant/qdrant:latest") },
+    "image_not_fully_qualified_display"
+)]
+#[case::unexpected_image(
+    QdrantQuadletError::UnexpectedImage { image: String::from("docker.io/other/image:v2") },
+    "unexpected_image_display"
+)]
+#[case::missing_rest_port(QdrantQuadletError::MissingRestPort, "missing_rest_port_display")]
+#[case::missing_grpc_port(QdrantQuadletError::MissingGrpcPort, "missing_grpc_port_display")]
+#[case::port_not_bound_to_loopback(
+    QdrantQuadletError::PortNotBoundToLoopback {
         port: 6333,
         publish_port: String::from("0.0.0.0:6333:6333"),
-    };
-    assert_snapshot!("port_not_bound_to_loopback_display", error.to_string());
-}
-
-#[test]
-fn display_missing_storage_mount() {
-    let error = QdrantQuadletError::MissingStorageMount;
-    assert_snapshot!("missing_storage_mount_display", error.to_string());
-}
-
-#[test]
-fn display_incorrect_storage_source() {
-    let error = QdrantQuadletError::IncorrectStorageSource { source: String::from("/wrong/path") };
-    assert_snapshot!("incorrect_storage_source_display", error.to_string());
-}
-
-#[test]
-fn display_incorrect_storage_target() {
-    let error = QdrantQuadletError::IncorrectStorageTarget { target: String::from("/srv/qdrant") };
-    assert_snapshot!("incorrect_storage_target_display", error.to_string());
-}
-
-#[test]
-fn display_missing_selinux_relabel() {
-    let error =
-        QdrantQuadletError::MissingSelinuxRelabel { volume: String::from("/data:/qdrant/storage") };
-    assert_snapshot!("missing_selinux_relabel_display", error.to_string());
-}
-
-#[test]
-fn display_missing_auto_update() {
-    let error = QdrantQuadletError::MissingAutoUpdate;
-    assert_snapshot!("missing_auto_update_display", error.to_string());
-}
-
-#[test]
-fn display_incorrect_auto_update() {
-    let error = QdrantQuadletError::IncorrectAutoUpdate { auto_update: String::from("local") };
-    assert_snapshot!("incorrect_auto_update_display", error.to_string());
+    },
+    "port_not_bound_to_loopback_display"
+)]
+#[case::missing_storage_mount(
+    QdrantQuadletError::MissingStorageMount,
+    "missing_storage_mount_display"
+)]
+#[case::incorrect_storage_source(
+    QdrantQuadletError::IncorrectStorageSource { source: String::from("/wrong/path") },
+    "incorrect_storage_source_display"
+)]
+#[case::incorrect_storage_target(
+    QdrantQuadletError::IncorrectStorageTarget { target: String::from("/srv/qdrant") },
+    "incorrect_storage_target_display"
+)]
+#[case::missing_selinux_relabel(
+    QdrantQuadletError::MissingSelinuxRelabel { volume: String::from("/data:/qdrant/storage") },
+    "missing_selinux_relabel_display"
+)]
+#[case::missing_auto_update(QdrantQuadletError::MissingAutoUpdate, "missing_auto_update_display")]
+#[case::incorrect_auto_update(
+    QdrantQuadletError::IncorrectAutoUpdate { auto_update: String::from("local") },
+    "incorrect_auto_update_display"
+)]
+fn qdrant_quadlet_error_display_matches_snapshot(
+    #[case] error: QdrantQuadletError,
+    #[case] snapshot_label: &'static str,
+) {
+    assert_snapshot!(snapshot_label, error.to_string());
 }

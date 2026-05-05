@@ -11,9 +11,12 @@ use super::{QdrantQuadletError, parser::ParsedQuadlet, validate_qdrant_quadlet};
 /// Generates a syntactically valid image reference of the form
 /// `registry/repo:tag` where the tag is not `latest`.
 ///
-/// The registry component must contain at least one dot (e.g.
-/// `docker.io`), the repository must have a path separator, and the
-/// tag must be a non-empty alphanumeric string that is not `latest`.
+/// The regex excludes uppercase and special characters so that only
+/// conventionally valid image name components are produced. The
+/// `prop_filter` rejects `latest` as a tag because validator 1.2.1
+/// requires an explicitly pinned tag.
+///
+/// Example: `docker.io/myrepo/myimage:1`
 fn valid_image() -> impl Strategy<Value = String> {
     (r"[a-z]+\.[a-z]+", r"[a-z]+/[a-z0-9]+", "[a-z0-9]+")
         .prop_filter("tag must not be 'latest'", |(_, _, tag)| tag != "latest")
@@ -22,6 +25,12 @@ fn valid_image() -> impl Strategy<Value = String> {
 
 /// Selects an IPv4 address that is not a loopback address
 /// (`127.x.x.x`), covering public, private, and any-address forms.
+///
+/// The fixed sample set avoids generating loopback-segment addresses
+/// (e.g., `127.0.0.1`) so the strategy always produces an address
+/// that must be rejected by the loopback constraint.
+///
+/// Example: `192.168.1.1`
 fn non_loopback_ip() -> impl Strategy<Value = String> {
     prop::sample::select(vec![
         "0.0.0.0".to_owned(),
@@ -35,15 +44,40 @@ fn non_loopback_ip() -> impl Strategy<Value = String> {
 
 /// Generates a valid unprivileged TCP port number in the range
 /// 1024–65534.
+///
+/// The lower bound excludes privileged ports (0–1023) which require
+/// root; the upper bound is the maximum valid TCP port.
+///
+/// Example: `6333`
 fn host_port() -> impl Strategy<Value = u16> { 1024_u16..65535 }
 
 /// Generates an arbitrary lowercase alphabetic string representing a
 /// candidate `AutoUpdate` policy value.
+///
+/// The regex is limited to `[a-z]+` so that the strategy produces only
+/// simple, conventional-looking policy names without punctuation or
+/// whitespace that would complicate Quadlet line parsing.
+///
+/// Example: `registry`
 fn auto_update_policy() -> impl Strategy<Value = String> { "[a-z]+" }
 
 /// Returns a complete, well-formed Quadlet file string that passes
 /// `validate_qdrant_quadlet` without modification; used as the
 /// baseline for injection-based tests.
+///
+/// The returned string is a verbatim copy of
+/// `packaging/systemd/qdrant.container` and is the only Quadlet layout
+/// accepted by the validator.
+///
+/// Example snippet:
+/// ```text
+/// [Container]
+/// Image=docker.io/qdrant/qdrant:v1
+/// AutoUpdate=registry
+/// PublishPort=127.0.0.1:6333:6333
+/// PublishPort=127.0.0.1:6334:6334
+/// Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z
+/// ```
 fn valid_quadlet_base() -> String {
     String::from(
         "[Container]\n\
@@ -251,9 +285,9 @@ proptest! {
         prop_assert_eq!(error, expected);
     }
 
-    /// Verifies the same constraint as for port 6333: a `PublishPort`
-    /// binding for container port 6334 to a non-loopback host IP is
-    /// rejected with `QdrantQuadletError::PortNotBoundToLoopback`.
+    /// Verifies that a `PublishPort` binding for container port 6334
+    /// to a non-loopback host IP is rejected with
+    /// `QdrantQuadletError::PortNotBoundToLoopback`.
     #[test]
     fn port_6334_requires_loopback(
         host_ip in non_loopback_ip(),

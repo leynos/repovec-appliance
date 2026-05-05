@@ -8,12 +8,20 @@ use super::{QdrantQuadletError, parser::ParsedQuadlet, validate_qdrant_quadlet};
 
 // --------------- Strategy helpers ---------------
 
+/// Generates a syntactically valid image reference of the form
+/// `registry/repo:tag` where the tag is not `latest`.
+///
+/// The registry component must contain at least one dot (e.g.
+/// `docker.io`), the repository must have a path separator, and the
+/// tag must be a non-empty alphanumeric string that is not `latest`.
 fn valid_image() -> impl Strategy<Value = String> {
     (r"[a-z]+\.[a-z]+", r"[a-z]+/[a-z0-9]+", "[a-z0-9]+")
         .prop_filter("tag must not be 'latest'", |(_, _, tag)| tag != "latest")
         .prop_map(|(registry, repo, tag)| format!("{registry}/{repo}:{tag}"))
 }
 
+/// Selects an IPv4 address that is not a loopback address
+/// (`127.x.x.x`), covering public, private, and any-address forms.
 fn non_loopback_ip() -> impl Strategy<Value = String> {
     prop::sample::select(vec![
         "0.0.0.0".to_owned(),
@@ -25,10 +33,17 @@ fn non_loopback_ip() -> impl Strategy<Value = String> {
     ])
 }
 
+/// Generates a valid unprivileged TCP port number in the range
+/// 1024–65534.
 fn host_port() -> impl Strategy<Value = u16> { 1024_u16..65535 }
 
+/// Generates an arbitrary lowercase alphabetic string representing a
+/// candidate `AutoUpdate` policy value.
 fn auto_update_policy() -> impl Strategy<Value = String> { "[a-z]+" }
 
+/// Returns a complete, well-formed Quadlet file string that passes
+/// `validate_qdrant_quadlet` without modification; used as the
+/// baseline for injection-based tests.
 fn valid_quadlet_base() -> String {
     String::from(
         "[Container]\n\
@@ -43,6 +58,8 @@ fn valid_quadlet_base() -> String {
 proptest! {
     // ------ Parser invariance ------
 
+    /// Verifies that arbitrary leading/trailing whitespace around the
+    /// `Image` key and value does not cause validation to fail.
     #[test]
     fn whitespace_tolerance(
         key_pad in r"[ \t]{0,4}",
@@ -60,6 +77,8 @@ proptest! {
             .expect("quadlet with whitespace around Image key/value should remain valid");
     }
 
+    /// Verifies that injecting arbitrary comment lines into a valid
+    /// Quadlet does not affect validation outcome.
     #[test]
     fn comment_injection_invariance(
         comments in prop::collection::vec(r"# .*", 0..=3),
@@ -78,6 +97,8 @@ proptest! {
             .expect("quadlet with trailing comment lines should remain valid");
     }
 
+    /// Verifies that inserting empty lines at any position in a valid
+    /// Quadlet does not affect validation outcome.
     #[test]
     fn empty_line_invariance(
         pos in 0_usize..10,
@@ -94,6 +115,8 @@ proptest! {
             .expect("quadlet with injected empty lines should remain valid");
     }
 
+    /// Verifies that `ParsedQuadlet` preserves the declaration order of
+    /// repeated keys under a section.
     #[test]
     fn key_accumulation_ordering(
         val1 in "[a-z]+",
@@ -113,6 +136,9 @@ proptest! {
         prop_assert_eq!(values, &[val1.as_str(), val2.as_str(), val3.as_str()]);
     }
 
+    /// Verifies that the parsed `Container/Image` value is identical
+    /// regardless of whether the `[Container]` section appears before
+    /// or after another section.
     #[test]
     fn section_ordering_invariance(
         extra_section in r"[A-Z][a-zA-Z]*",
@@ -146,6 +172,9 @@ proptest! {
 
     // ------ Duplicate entry rejection ------
 
+    /// Verifies that any two `Image=` entries, whether their values are
+    /// identical or distinct, cause `validate_qdrant_quadlet` to return
+    /// `QdrantQuadletError::UnexpectedImage`.
     #[test]
     fn rejects_duplicate_images(
         image1 in valid_image(),
@@ -168,6 +197,9 @@ proptest! {
         prop_assert_eq!(error, expected);
     }
 
+    /// Verifies that any two `AutoUpdate=` entries, whether their
+    /// values are identical or distinct, cause `validate_qdrant_quadlet`
+    /// to return `QdrantQuadletError::IncorrectAutoUpdate`.
     #[test]
     fn rejects_duplicate_auto_update(
         policy1 in auto_update_policy(),
@@ -192,6 +224,9 @@ proptest! {
 
     // ------ Port loopback constraint ------
 
+    /// Verifies that a `PublishPort` binding for container port 6333
+    /// to a non-loopback host IP is rejected with
+    /// `QdrantQuadletError::PortNotBoundToLoopback`.
     #[test]
     fn port_6333_requires_loopback(
         host_ip in non_loopback_ip(),
@@ -216,6 +251,9 @@ proptest! {
         prop_assert_eq!(error, expected);
     }
 
+    /// Verifies the same constraint as for port 6333: a `PublishPort`
+    /// binding for container port 6334 to a non-loopback host IP is
+    /// rejected with `QdrantQuadletError::PortNotBoundToLoopback`.
     #[test]
     fn port_6334_requires_loopback(
         host_ip in non_loopback_ip(),
@@ -240,6 +278,9 @@ proptest! {
         prop_assert_eq!(error, expected);
     }
 
+    /// Verifies that a Quadlet containing one loopback and one
+    /// non-loopback binding for the same container port (6333) is still
+    /// rejected.
     #[test]
     fn loopback_and_nonloopback_coexistence_rejection(
         host_ip in non_loopback_ip(),

@@ -268,6 +268,16 @@ both surface `MissingGrpcPort`). Update snapshots deliberately via `cargo insta`
 [`QdrantQuadletError`]: ../crates/repovec-core/src/appliance/qdrant_quadlet/error.rs
 [`insta`]: https://docs.rs/insta
 
+Property-based tests use `proptest` (workspace dev-dependency). `proptest` is
+appropriate for invariants that must hold across arbitrary inputs, as a
+complement to example-based `rstest` unit tests.  When writing property tests,
+`prop_assume!` filters must not be used to exclude cases that the domain code
+under test must handle — filters are reserved for excluding inputs that are
+structurally invalid for the strategy, not for narrowing the test's coverage of
+the invariant.  See
+`crates/repovec-core/src/appliance/qdrant_quadlet/tests_proptest.rs` for a worked
+example.
+
 See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
 the project-local testing guidance.

@@ -115,20 +115,24 @@ proptest! {
     /// Quadlet does not affect validation outcome.
     #[test]
     fn comment_injection_invariance(
-        comments in prop::collection::vec(r"# .*", 0..=3),
+        injections in prop::collection::vec(
+            (r"# .*", 0_usize..10),
+            0..=3,
+        ),
     ) {
         let base = valid_quadlet_base();
-        let mut lines: Vec<&str> = base.lines().collect();
-        for comment in &comments {
+        let mut lines: Vec<String> = base.lines().map(String::from).collect();
+        for (comment, pos) in &injections {
+            let idx = (*pos).min(lines.len());
             if comment.starts_with('#') {
-                lines.push(comment.as_str());
+                lines.insert(idx, comment.clone());
             } else {
-                lines.push("# injected comment");
+                lines.insert(idx, String::from("# injected comment"));
             }
         }
         let contents = lines.join("\n") + "\n";
         validate_qdrant_quadlet(&contents)
-            .expect("quadlet with trailing comment lines should remain valid");
+            .expect("quadlet with injected comment lines should remain valid");
     }
 
     /// Verifies that inserting empty lines at any position in a valid
@@ -335,6 +339,34 @@ proptest! {
             .expect_err("coexisting non-loopback port 6333 should be rejected");
         let expected = QdrantQuadletError::PortNotBoundToLoopback {
             port: 6333,
+            publish_port: bad_publish,
+        };
+        prop_assert_eq!(error, expected);
+    }
+
+    /// Verifies that a Quadlet containing one loopback and one
+    /// non-loopback binding for the same container port (6334) is still
+    /// rejected.
+    #[test]
+    fn loopback_and_nonloopback_coexistence_rejection_6334(
+        host_ip in non_loopback_ip(),
+        port in host_port(),
+    ) {
+        prop_assume!(host_ip != "127.0.0.1");
+        let bad_publish = format!("{host_ip}:{port}:6334");
+        let contents = format!(
+            "[Container]\n\
+             Image=docker.io/qdrant/qdrant:v1\n\
+             AutoUpdate=registry\n\
+             PublishPort=127.0.0.1:6333:6333\n\
+             PublishPort=127.0.0.1:6334:6334\n\
+             PublishPort={bad_publish}\n\
+             Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n"
+        );
+        let error = validate_qdrant_quadlet(&contents)
+            .expect_err("coexisting non-loopback port 6334 should be rejected");
+        let expected = QdrantQuadletError::PortNotBoundToLoopback {
+            port: 6334,
             publish_port: bad_publish,
         };
         prop_assert_eq!(error, expected);

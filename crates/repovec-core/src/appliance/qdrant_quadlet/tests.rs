@@ -1,6 +1,7 @@
-//! Contract tests for `validate_qdrant_quadlet`: fixture mutations of the
-//! checked-in quadlet, behavioural `rstest-bdd` hooks, and committed `insta`
-//! diagnostics beside this module’s `snapshots/` directory.
+//! Contract tests for `validate_qdrant_quadlet`: deterministic mutations of the
+//! shipped quadlet (`checked_in_qdrant_quadlet`) plus committed `insta`
+//! diagnostics colocated under `snapshots/`. Behavioural scenarios also live
+//! in `crates/repovec-core/tests/qdrant_quadlet_bdd.rs`.
 
 use insta::assert_snapshot;
 use rstest::{fixture, rstest};

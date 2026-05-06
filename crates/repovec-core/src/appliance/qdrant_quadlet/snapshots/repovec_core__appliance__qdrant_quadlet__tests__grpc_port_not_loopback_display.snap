@@ -2,4 +2,4 @@
 source: crates/repovec-core/src/appliance/qdrant_quadlet/tests.rs
 expression: err.to_string()
 ---
-invalid quadlet line 2: this-is-not-valid
+port 6334 must be published on 127.0.0.1 only: 0.0.0.0:6334:6334

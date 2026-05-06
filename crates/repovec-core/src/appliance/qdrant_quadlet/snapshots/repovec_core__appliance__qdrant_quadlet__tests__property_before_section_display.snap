@@ -1,5 +1,5 @@
 ---
 source: crates/repovec-core/src/appliance/qdrant_quadlet/tests.rs
-expression: error.to_string()
+expression: err.to_string()
 ---
-quadlet property before section on line 1: Key=Value
+quadlet property before section on line 1: Image=docker.io/qdrant/qdrant:v1

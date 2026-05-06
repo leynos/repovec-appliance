@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/tests.rs
+expression: err.to_string()
+---
+image reference must remain docker.io/qdrant/qdrant:v1: docker.io/qdrant/qdrant:v1,docker.io/qdrant/qdrant:v2

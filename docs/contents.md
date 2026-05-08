@@ -26,6 +26,9 @@
   delivery plan and validation notes for roadmap item `1.2.2`.
 - [Execution plan for 1.1.3: CI gating pipeline](execplans/1-1-3-ci-gating-pipeline.md):
   detailed delivery plan and implementation log for the CI-gating workstream.
+- [ExecPlan 1.3.1](execplans/1-3-1-define-repovec-target-and-static-unit-files.md):
+  pre-implementation plan for the systemd target and static service unit
+  workstream.
 
 ## Reference and style
 

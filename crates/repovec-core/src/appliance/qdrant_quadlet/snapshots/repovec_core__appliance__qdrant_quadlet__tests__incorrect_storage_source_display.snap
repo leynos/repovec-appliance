@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/tests.rs
+expression: err.to_string()
+---
+storage source must be /var/lib/repovec/qdrant-storage: /var/lib/other/qdrant-storage

@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/tests.rs
+expression: error.to_string()
+---
+port 6333 must be published on 127.0.0.1 only: 0.0.0.0:6333:6333

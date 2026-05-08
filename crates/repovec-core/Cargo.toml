@@ -10,6 +10,7 @@ publish.workspace = true
 camino.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 rstest.workspace = true
 rstest-bdd.workspace = true
 rstest-bdd-macros = { workspace = true, features = ["strict-compile-time-validation"] }

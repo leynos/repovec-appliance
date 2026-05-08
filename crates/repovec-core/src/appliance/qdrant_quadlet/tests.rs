@@ -1,5 +1,9 @@
-//! Unit tests covering the static Qdrant Quadlet contract.
+//! Contract tests for `validate_qdrant_quadlet`: deterministic mutations of the
+//! shipped quadlet (`checked_in_qdrant_quadlet`) plus committed `insta`
+//! diagnostics colocated under `snapshots/`. Behavioural scenarios also live
+//! in `crates/repovec-core/tests/qdrant_quadlet_bdd.rs`.
 
+use insta::assert_snapshot;
 use rstest::{fixture, rstest};
 
 use super::{
@@ -7,97 +11,195 @@ use super::{
     validate_qdrant_quadlet,
 };
 
+/// Mutations of the checked-in Quadlet used to reach distinct validation errors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ValidationScenario {
+    InvalidLineInContainer,
+    PropertyBeforeFirstSection,
+    MissingImage,
+    ImageUnqualified,
+    WrongFullyQualifiedImage,
+    DuplicateImageValues,
+    MissingRestPublish,
+    MissingGrpcPublish,
+    RestPublishNotLoopback,
+    ConflictingRestPublishDuplicate,
+    GrpcPublishNotLoopback,
+    StorageVolumeMissing,
+    StorageSourceWrong,
+    StorageTargetWrong,
+    SelinuxRelabelMissing,
+    AutoUpdateMissing,
+    AutoUpdateWrongValue,
+    DuplicateAutoUpdateValues,
+    RestPublishMalformed,
+    GrpcPublishMalformed,
+    VolumeLineWithoutMountContract,
+}
+
+impl ValidationScenario {
+    fn mutated_contents(self, canonical: &str) -> String {
+        match self {
+            Self::InvalidLineInContainer => String::from("[Container]\nthis-is-not-valid\n"),
+            Self::PropertyBeforeFirstSection => {
+                String::from("Image=docker.io/qdrant/qdrant:v1\n[Container]\n")
+            }
+            Self::MissingImage => {
+                canonical
+                    .lines()
+                    .filter(|line| !line.starts_with("Image="))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    + "\n"
+            }
+            Self::ImageUnqualified => {
+                canonical.replace("docker.io/qdrant/qdrant:v1", "qdrant/qdrant:latest")
+            }
+            Self::WrongFullyQualifiedImage => {
+                canonical.replace("docker.io/qdrant/qdrant:v1", "docker.io/other/image:v2")
+            }
+            Self::DuplicateImageValues => {
+                canonical.replace(
+                    "Image=docker.io/qdrant/qdrant:v1\n",
+                    concat!(
+                        "Image=docker.io/qdrant/qdrant:v1\n",
+                        "Image=docker.io/qdrant/qdrant:v2\n",
+                    ),
+                )
+            }
+            Self::MissingRestPublish => canonical.replace("PublishPort=127.0.0.1:6333:6333\n", ""),
+            Self::MissingGrpcPublish => canonical.replace("PublishPort=127.0.0.1:6334:6334\n", ""),
+            Self::RestPublishNotLoopback => {
+                canonical.replace("127.0.0.1:6333:6333", "0.0.0.0:6333:6333")
+            }
+            Self::ConflictingRestPublishDuplicate => canonical.replace(
+                "PublishPort=127.0.0.1:6333:6333\n",
+                concat!("PublishPort=127.0.0.1:6333:6333\n", "PublishPort=0.0.0.0:6333:6333\n",),
+            ),
+            Self::GrpcPublishNotLoopback => {
+                canonical.replace("127.0.0.1:6334:6334", "0.0.0.0:6334:6334")
+            }
+            Self::StorageVolumeMissing => {
+                canonical.replace("Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n", "")
+            }
+            Self::StorageSourceWrong => canonical
+                .replace("/var/lib/repovec/qdrant-storage", "/var/lib/other/qdrant-storage"),
+            Self::StorageTargetWrong => canonical.replace("/qdrant/storage:Z", "/srv/qdrant:Z"),
+            Self::SelinuxRelabelMissing => {
+                canonical.replace(":/qdrant/storage:Z", ":/qdrant/storage")
+            }
+            Self::AutoUpdateMissing => canonical.replace("AutoUpdate=registry\n", ""),
+            Self::AutoUpdateWrongValue => {
+                canonical.replace("AutoUpdate=registry\n", "AutoUpdate=local\n")
+            }
+            Self::DuplicateAutoUpdateValues => canonical.replace(
+                "AutoUpdate=registry\n",
+                concat!("AutoUpdate=registry\n", "AutoUpdate=local\n"),
+            ),
+            Self::RestPublishMalformed => canonical
+                .replace("PublishPort=127.0.0.1:6333:6333\n", "PublishPort=not-a-mapping\n"),
+            Self::GrpcPublishMalformed => canonical.replace(
+                "PublishPort=127.0.0.1:6334:6334\n",
+                "PublishPort=still-not-three-fields\n",
+            ),
+            Self::VolumeLineWithoutMountContract => canonical.replace(
+                "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
+                "Volume=/tmp/nothing-to-do-with-qdrant:/tmp/other:Z\n",
+            ),
+        }
+    }
+
+    fn snapshot_label(self) -> &'static str {
+        match self {
+            Self::InvalidLineInContainer => "invalid_line_display",
+            Self::PropertyBeforeFirstSection => "property_before_section_display",
+            Self::MissingImage => "missing_image_display",
+            Self::ImageUnqualified => "image_not_fully_qualified_display",
+            Self::WrongFullyQualifiedImage => "unexpected_image_display",
+            Self::DuplicateImageValues => "duplicate_image_values_display",
+            Self::MissingRestPublish | Self::RestPublishMalformed => "missing_rest_port_display",
+            Self::MissingGrpcPublish | Self::GrpcPublishMalformed => "missing_grpc_port_display",
+            Self::RestPublishNotLoopback | Self::ConflictingRestPublishDuplicate => {
+                "port_not_bound_to_loopback_display"
+            }
+            Self::GrpcPublishNotLoopback => "grpc_port_not_loopback_display",
+            Self::StorageVolumeMissing | Self::VolumeLineWithoutMountContract => {
+                "missing_storage_mount_display"
+            }
+            Self::StorageSourceWrong => "incorrect_storage_source_display",
+            Self::StorageTargetWrong => "incorrect_storage_target_display",
+            Self::SelinuxRelabelMissing => "missing_selinux_relabel_display",
+            Self::AutoUpdateMissing => "missing_auto_update_display",
+            Self::AutoUpdateWrongValue => "incorrect_auto_update_display",
+            Self::DuplicateAutoUpdateValues => "duplicate_auto_update_policies_display",
+        }
+    }
+
+    fn expected_error(self) -> QdrantQuadletError {
+        match self {
+            Self::InvalidLineInContainer => QdrantQuadletError::InvalidLine {
+                line_number: 2,
+                line: String::from("this-is-not-valid"),
+            },
+            Self::PropertyBeforeFirstSection => QdrantQuadletError::PropertyBeforeSection {
+                line_number: 1,
+                line: String::from("Image=docker.io/qdrant/qdrant:v1"),
+            },
+            Self::MissingImage => QdrantQuadletError::MissingImage,
+            Self::ImageUnqualified => QdrantQuadletError::ImageNotFullyQualified {
+                image: String::from("qdrant/qdrant:latest"),
+            },
+            Self::WrongFullyQualifiedImage => QdrantQuadletError::UnexpectedImage {
+                image: String::from("docker.io/other/image:v2"),
+            },
+            Self::DuplicateImageValues => QdrantQuadletError::UnexpectedImage {
+                image: String::from("docker.io/qdrant/qdrant:v1,docker.io/qdrant/qdrant:v2"),
+            },
+            Self::MissingRestPublish | Self::RestPublishMalformed => {
+                QdrantQuadletError::MissingRestPort
+            }
+            Self::MissingGrpcPublish | Self::GrpcPublishMalformed => {
+                QdrantQuadletError::MissingGrpcPort
+            }
+            Self::RestPublishNotLoopback | Self::ConflictingRestPublishDuplicate => {
+                QdrantQuadletError::PortNotBoundToLoopback {
+                    port: 6333,
+                    publish_port: String::from("0.0.0.0:6333:6333"),
+                }
+            }
+            Self::GrpcPublishNotLoopback => QdrantQuadletError::PortNotBoundToLoopback {
+                port: 6334,
+                publish_port: String::from("0.0.0.0:6334:6334"),
+            },
+            Self::StorageVolumeMissing | Self::VolumeLineWithoutMountContract => {
+                QdrantQuadletError::MissingStorageMount
+            }
+            Self::StorageSourceWrong => QdrantQuadletError::IncorrectStorageSource {
+                source: String::from("/var/lib/other/qdrant-storage"),
+            },
+            Self::StorageTargetWrong => {
+                QdrantQuadletError::IncorrectStorageTarget { target: String::from("/srv/qdrant") }
+            }
+            Self::SelinuxRelabelMissing => QdrantQuadletError::MissingSelinuxRelabel {
+                volume: String::from("/var/lib/repovec/qdrant-storage:/qdrant/storage"),
+            },
+            Self::AutoUpdateMissing => QdrantQuadletError::MissingAutoUpdate,
+            Self::AutoUpdateWrongValue => {
+                QdrantQuadletError::IncorrectAutoUpdate { auto_update: String::from("local") }
+            }
+            Self::DuplicateAutoUpdateValues => QdrantQuadletError::IncorrectAutoUpdate {
+                auto_update: String::from("registry,local"),
+            },
+        }
+    }
+}
+
 #[fixture]
+#[rustfmt::skip]
 fn qdrant_quadlet_contents() -> String {
-    let mut contents = String::new();
-    contents.push_str(checked_in_qdrant_quadlet());
-    contents
-}
-
-#[fixture]
-fn rest_port_bound_wildcard(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents.replace("127.0.0.1:6333:6333", "0.0.0.0:6333:6333")
-}
-
-#[fixture]
-fn grpc_port_missing(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents.replace("PublishPort=127.0.0.1:6334:6334\n", "")
-}
-
-#[fixture]
-fn storage_mount_missing(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents
-        .replace("Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n", "")
-}
-
-#[fixture]
-fn storage_target_is_wrong(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents.replace("/qdrant/storage:Z", "/srv/qdrant:Z")
-}
-
-#[fixture]
-fn auto_update_missing(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents.replace("AutoUpdate=registry\n", "")
-}
-
-#[fixture]
-fn image_is_unqualified(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents.replace("docker.io/qdrant/qdrant:v1", "qdrant/qdrant:latest")
-}
-
-#[fixture]
-fn image_is_duplicated(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents.replace(
-        "Image=docker.io/qdrant/qdrant:v1\n",
-        "Image=docker.io/qdrant/qdrant:v1\nImage=docker.io/qdrant/qdrant:v2\n",
-    )
-}
-
-#[fixture]
-fn auto_update_is_duplicated(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents
-        .replace("AutoUpdate=registry\n", "AutoUpdate=registry\nAutoUpdate=local\n")
-}
-
-#[fixture]
-fn rest_port_has_conflicting_duplicate(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents.replace(
-        "PublishPort=127.0.0.1:6333:6333\n",
-        "PublishPort=127.0.0.1:6333:6333\nPublishPort=0.0.0.0:6333:6333\n",
-    )
-}
-
-#[fixture]
-fn invalid_line_in_container_section() -> String {
-    // Insert a line with no `=` sign into the [Container] section
-    "this-is-not-valid".to_owned()
-}
-
-#[fixture]
-fn property_before_section() -> String {
-    // A key=value line that appears before any section header
-    "Image=docker.io/qdrant/qdrant:v1\n[Container]\n".to_owned()
-}
-
-#[fixture]
-fn image_missing(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents
-        .lines()
-        .filter(|l| !l.starts_with("Image="))
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n"
-}
-
-#[fixture]
-fn storage_source_is_wrong(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents
-        .replace("/var/lib/repovec/qdrant-storage", "/var/lib/other/qdrant-storage")
-}
-
-#[fixture]
-fn selinux_relabel_missing(qdrant_quadlet_contents: String) -> String {
-    qdrant_quadlet_contents.replace(":/qdrant/storage:Z", ":/qdrant/storage")
+    // Rustfmt collapsing this body to one line triggers `unused-braces`; keep an
+    // explicit block despite the terse body.
+    checked_in_qdrant_quadlet().to_owned()
 }
 
 #[test]
@@ -107,156 +209,38 @@ fn checked_in_qdrant_quadlet_remains_valid() {
 }
 
 #[rstest]
-fn qdrant_quadlet_rejects_rest_port_without_loopback(rest_port_bound_wildcard: String) {
-    let error = validate_qdrant_quadlet(&rest_port_bound_wildcard)
-        .expect_err("wildcard REST publishing should be rejected");
-
-    assert_eq!(
-        error,
-        QdrantQuadletError::PortNotBoundToLoopback {
-            port: 6333,
-            publish_port: String::from("0.0.0.0:6333:6333"),
-        }
-    );
-}
-
-#[rstest]
-fn qdrant_quadlet_rejects_conflicting_rest_port_duplicate(
-    rest_port_has_conflicting_duplicate: String,
+#[case::invalid_line(ValidationScenario::InvalidLineInContainer)]
+#[case::property_before_section(ValidationScenario::PropertyBeforeFirstSection)]
+#[case::missing_image(ValidationScenario::MissingImage)]
+#[case::image_unqualified(ValidationScenario::ImageUnqualified)]
+#[case::wrong_fully_qualified_image(ValidationScenario::WrongFullyQualifiedImage)]
+#[case::duplicate_image_values(ValidationScenario::DuplicateImageValues)]
+#[case::missing_rest_publish(ValidationScenario::MissingRestPublish)]
+#[case::malformed_rest_publish(ValidationScenario::RestPublishMalformed)]
+#[case::missing_grpc_publish(ValidationScenario::MissingGrpcPublish)]
+#[case::malformed_grpc_publish(ValidationScenario::GrpcPublishMalformed)]
+#[case::rest_port_not_loopback(ValidationScenario::RestPublishNotLoopback)]
+#[case::conflicting_rest_publish(ValidationScenario::ConflictingRestPublishDuplicate)]
+#[case::grpc_port_not_loopback(ValidationScenario::GrpcPublishNotLoopback)]
+#[case::storage_mount_missing(ValidationScenario::StorageVolumeMissing)]
+#[case::volume_unrelated_to_contract(ValidationScenario::VolumeLineWithoutMountContract)]
+#[case::storage_source_wrong(ValidationScenario::StorageSourceWrong)]
+#[case::storage_target_wrong(ValidationScenario::StorageTargetWrong)]
+#[case::selinux_relabel_missing(ValidationScenario::SelinuxRelabelMissing)]
+#[case::auto_update_missing(ValidationScenario::AutoUpdateMissing)]
+#[case::auto_update_wrong_value(ValidationScenario::AutoUpdateWrongValue)]
+#[case::duplicate_auto_update(ValidationScenario::DuplicateAutoUpdateValues)]
+fn validated_qdrant_quadlet_violations_match_expected_variant_and_diagnostic_snapshots(
+    qdrant_quadlet_contents: String,
+    #[case] scenario: ValidationScenario,
 ) {
-    let error = validate_qdrant_quadlet(&rest_port_has_conflicting_duplicate)
-        .expect_err("conflicting REST publishing should be rejected");
+    let input = scenario.mutated_contents(&qdrant_quadlet_contents);
+    let Err(err) = validate_qdrant_quadlet(&input) else {
+        panic!(
+            "expected {scenario:?} validation to fail — input parsed as valid Quadlet:\n---\n{input}\n---",
+        );
+    };
 
-    assert_eq!(
-        error,
-        QdrantQuadletError::PortNotBoundToLoopback {
-            port: 6333,
-            publish_port: String::from("0.0.0.0:6333:6333"),
-        }
-    );
-}
-
-#[rstest]
-fn qdrant_quadlet_requires_grpc_port(grpc_port_missing: String) {
-    let error = validate_qdrant_quadlet(&grpc_port_missing)
-        .expect_err("missing gRPC publishing should be rejected");
-
-    assert_eq!(error, QdrantQuadletError::MissingGrpcPort);
-}
-
-#[rstest]
-fn qdrant_quadlet_requires_storage_mount(storage_mount_missing: String) {
-    let error = validate_qdrant_quadlet(&storage_mount_missing)
-        .expect_err("missing storage mount should be rejected");
-
-    assert_eq!(error, QdrantQuadletError::MissingStorageMount);
-}
-
-#[rstest]
-fn qdrant_quadlet_requires_expected_storage_target(storage_target_is_wrong: String) {
-    let error = validate_qdrant_quadlet(&storage_target_is_wrong)
-        .expect_err("wrong storage target should be rejected");
-
-    assert_eq!(
-        error,
-        QdrantQuadletError::IncorrectStorageTarget { target: String::from("/srv/qdrant") }
-    );
-}
-
-#[rstest]
-fn qdrant_quadlet_requires_auto_update(auto_update_missing: String) {
-    let error = validate_qdrant_quadlet(&auto_update_missing)
-        .expect_err("missing auto-update should be rejected");
-
-    assert_eq!(error, QdrantQuadletError::MissingAutoUpdate);
-}
-
-#[rstest]
-fn qdrant_quadlet_rejects_duplicate_auto_update(auto_update_is_duplicated: String) {
-    let error = validate_qdrant_quadlet(&auto_update_is_duplicated)
-        .expect_err("duplicate auto-update policy should be rejected");
-
-    assert_eq!(
-        error,
-        QdrantQuadletError::IncorrectAutoUpdate { auto_update: String::from("registry,local") }
-    );
-}
-
-#[rstest]
-fn qdrant_quadlet_rejects_unqualified_images(image_is_unqualified: String) {
-    let error = validate_qdrant_quadlet(&image_is_unqualified)
-        .expect_err("unqualified images should be rejected");
-
-    assert_eq!(
-        error,
-        QdrantQuadletError::ImageNotFullyQualified { image: String::from("qdrant/qdrant:latest") }
-    );
-}
-
-#[rstest]
-fn qdrant_quadlet_rejects_duplicate_images(image_is_duplicated: String) {
-    let error = validate_qdrant_quadlet(&image_is_duplicated)
-        .expect_err("duplicate image values should be rejected");
-
-    assert_eq!(
-        error,
-        QdrantQuadletError::UnexpectedImage {
-            image: String::from("docker.io/qdrant/qdrant:v1,docker.io/qdrant/qdrant:v2"),
-        }
-    );
-}
-
-#[rstest]
-fn parser_rejects_invalid_line(invalid_line_in_container_section: String) {
-    // Feed a bare [Container] section containing an un-parseable line
-    let input = format!("[Container]\n{invalid_line_in_container_section}\n");
-    let error = validate_qdrant_quadlet(&input).expect_err("a line without `=` should be rejected");
-
-    assert!(
-        matches!(error, QdrantQuadletError::InvalidLine { line_number: 2, .. }),
-        "unexpected error: {error:?}",
-    );
-}
-
-#[rstest]
-fn parser_rejects_property_before_section(property_before_section: String) {
-    let error = validate_qdrant_quadlet(&property_before_section)
-        .expect_err("a key=value before any section header should be rejected");
-
-    assert!(
-        matches!(error, QdrantQuadletError::PropertyBeforeSection { line_number: 1, .. }),
-        "unexpected error: {error:?}",
-    );
-}
-
-#[rstest]
-fn qdrant_quadlet_requires_image_entry(image_missing: String) {
-    let error =
-        validate_qdrant_quadlet(&image_missing).expect_err("absent Image= should be rejected");
-
-    assert_eq!(error, QdrantQuadletError::MissingImage);
-}
-
-#[rstest]
-fn qdrant_quadlet_rejects_wrong_storage_source(storage_source_is_wrong: String) {
-    let error = validate_qdrant_quadlet(&storage_source_is_wrong)
-        .expect_err("incorrect storage source path should be rejected");
-
-    assert_eq!(
-        error,
-        QdrantQuadletError::IncorrectStorageSource {
-            source: String::from("/var/lib/other/qdrant-storage"),
-        }
-    );
-}
-
-#[rstest]
-fn qdrant_quadlet_requires_selinux_relabel(selinux_relabel_missing: String) {
-    let error = validate_qdrant_quadlet(&selinux_relabel_missing)
-        .expect_err("missing SELinux :Z relabel option should be rejected");
-
-    assert!(
-        matches!(error, QdrantQuadletError::MissingSelinuxRelabel { .. }),
-        "unexpected error: {error:?}",
-    );
+    assert_eq!(err, scenario.expected_error());
+    assert_snapshot!(scenario.snapshot_label(), err.to_string());
 }

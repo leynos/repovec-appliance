@@ -232,6 +232,26 @@ The appliance validation modules use `rstest` for unit tests and
 exercise each typed error variant directly. Behavioural tests should describe
 the appliance contract in feature files and keep the executable scenarios thin.
 
+**Display and message snapshots (`insta`).** Operator-visible `fmt::Display`
+strings for typed appliance errors (for example every
+[`QdrantQuadletError`][]) should be derived from **`validate_*` failures**, not
+from errors constructed solely in tests. Mutate an embed or copy of the
+checked-in asset (or compose a deliberate invalid parse input), invoke the real
+validator, assert the canonical `PartialEq/Eq` typed error variant, then
+compare `error.to_string()` against a committed YAML snapshot from the [`insta`][]
+crate (workspace-pinned under `[workspace.dependencies]` and pulled in via
+ `[dev-dependencies]`). Prefer one `#[rstest]` harness with cases that enumerate
+scenario-specific mutations alongside their stable snapshot labels, colocated
+under the module `snapshots/` directory (see
+`crates/repovec-core/src/appliance/qdrant_quadlet/`). Duplicate labels across
+distinct cases remain valid whenever the reachable diagnostic matches the same
+operator-facing wording (for instance two malformed `PublishPort=` inputs that
+both surface `MissingGrpcPort`). Update snapshots deliberately via `cargo insta`
+(or `INSTA_UPDATE=…`) when message wording changes.
+
+[`QdrantQuadletError`]: ../crates/repovec-core/src/appliance/qdrant_quadlet/error.rs
+[`insta`]: https://docs.rs/insta
+
 See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
 the project-local testing guidance.

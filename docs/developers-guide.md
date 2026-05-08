@@ -134,7 +134,9 @@ pub fn evaluate_docs_gate_in<I, S>(
     root: &cap_std::fs_utf8::Dir,
     changed_files: I,
 ) -> DocsGatePlan
-where I: IntoIterator<Item = S>, S: AsRef<str>;
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>;
 
 /// Evaluates the docs-gate policy with an injected Mermaid detector.
 /// Use this in tests to avoid real file I/O.
@@ -209,7 +211,7 @@ On failure it writes a human-readable error to stderr and exits with status 1.
 
 The desired repository ruleset is versioned in
 [`/.github/rulesets/main-ci-gating.json`](../.github/rulesets/main-ci-gating.json).
-Apply that payload only after the workflow changes that produce the required
+ Apply that payload only after the workflow changes that produce the required
 checks are available on the default branch.
 
 Example application command:
@@ -256,29 +258,29 @@ checked-in Qdrant Podman Quadlet:
 
 - `checked_in_qdrant_quadlet() -> &'static str` returns the repository's
   embedded Quadlet source.
-- `validate_checked_in_qdrant_quadlet() -> Result<(), QdrantQuadletError>`
-  validates the embedded Quadlet asset.
-- `validate_qdrant_quadlet(contents: &str) -> Result<(), QdrantQuadletError>`
-  validates caller-provided Quadlet contents against the same appliance
-  contract.
+- `validate_checked_in_qdrant_quadlet(...)` validates the embedded Quadlet
+  asset.
+- `validate_qdrant_quadlet(...)` validates caller-provided Quadlet contents
+  against the same appliance contract.
+- `QdrantQuadletObserver` is the telemetry boundary for validation events. Pass
+  `TracingQdrantQuadletObserver` when events should be emitted through
+  `tracing`.
 - `QdrantQuadletError` is the typed error enum for validation failures. See
   `crates/repovec-core/src/appliance/qdrant_quadlet/error.rs` for the full
   variant list.
 
-Keep the Qdrant contract split along the same boundary as the module Rustdoc:
+The validation entry points make telemetry dependencies explicit:
 
-- domain invariants belong in `qdrant_quadlet/mod.rs`;
-- API-key contract checks belong in `qdrant_quadlet/api_key.rs`;
-- appliance host bindings belong in `qdrant_quadlet/platform_bindings.rs`.
+```rust
+pub fn validate_checked_in_qdrant_quadlet(
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError>;
 
-The domain invariants describe what Qdrant itself requires: the supported image
-reference, the in-container storage target, and the REST and gRPC container
-ports. The platform binding adapter describes how the appliance satisfies that
-contract on the host: loopback `PublishPort=` values, the storage source path,
-the SELinux relabel option, and the Podman auto-update policy. Do not add host
-paths, SELinux rules, or other appliance infrastructure constants directly to
-the domain validation body in `mod.rs`; route them through the adapter and keep
-the module Rustdoc synchronized with the boundary.
+pub fn validate_qdrant_quadlet(
+    contents: &str,
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError>;
+```
 
 The validator also enforces the Qdrant API-key authentication contract. A valid
 Quadlet must require and start after `repovec-qdrant-api-key.service`, expose
@@ -286,11 +288,6 @@ the Podman secret `repovec-qdrant-api-key` as `QDRANT__SERVICE__API_KEY`, and
 reject any inline `Environment=QDRANT__SERVICE__API_KEY=...` value. Keep this
 validation pure: it parses strings and reports policy errors, but it must not
 call Podman, systemd, or the filesystem.
-
-Keep observability at the call boundary. The validator returns structured
-`QdrantQuadletError` values and stable display strings; callers that run it
-during startup, tests, or CI are responsible for logging failures, attaching
-spans, or recording success and failure metrics.
 
 The provisioning assets live beside other appliance packaging inputs:
 
@@ -301,6 +298,47 @@ The provisioning assets live beside other appliance packaging inputs:
 The helper is host-facing packaging code. It owns filesystem, user, permission
 and Podman-secret operations; `repovec-core` only validates the static contract
 that those assets expose.
+
+
+#### Observability
+
+`repovec-core` uses `tracing 0.1` as its logging facade. Library crates depend
+only on the facade crate. Binary crates and test harnesses choose and configure
+the subscriber, such as `tracing-subscriber`, at the application boundary.
+
+Qdrant Quadlet validation reports telemetry through `QdrantQuadletObserver`.
+The validation pipeline receives the observer explicitly, making logging
+side effects visible at call sites. `TracingQdrantQuadletObserver` is the
+production adapter that maps observer callbacks to `tracing` events.
+
+Qdrant Quadlet observer adapters follow these instrumentation conventions:
+
+- Define a module `LOG_TARGET` constant, such as
+  `repovec_core::qdrant_quadlet`, and pass it as the `target:` argument from
+  the tracing observer. This keeps per-module filtering predictable with
+  `RUST_LOG`.
+- Emit `info!` from observer callbacks at validation entry and success
+  boundaries.
+- Emit `warn!` from observer callbacks for each contract-violation return
+  point, with at least one structured field carrying the offending value, the
+  expected value, or both.
+- Emit `error!` from observer callbacks for malformed input parse failures,
+  including `line_number` and redacted line-content fields.
+- Redact sensitive values, including API key literals, before placing them in
+  any log field.
+
+When adding instrumentation:
+
+- Define or reuse the module's `LOG_TARGET` constant in the tracing observer.
+- Add a `QdrantQuadletObserver` callback for the validation boundary, and call
+  it from the validator before returning.
+- Emit at the operator-facing level in the tracing observer; do not use
+  `debug!` or `trace!` for contract violations operators must act on.
+- Carry structured fields instead of embedding variable values in the message
+  string.
+- Redact secrets before logging.
+- Add a test that fails if the observer callback or tracing adapter event is
+  removed.
 
 #### Mutual exclusion in the provisioning helper
 
@@ -404,6 +442,7 @@ Daemon binaries call
 `SystemdUnitError` as fatal at that process boundary: log `error.unit()` and
 `error` as structured fields and exit non-zero, so systemd reports a failed
 startup rather than running under a broken checked-in unit contract.
+
 
 ### 5.4 Extension pattern
 

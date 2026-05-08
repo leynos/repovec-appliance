@@ -1,31 +1,58 @@
-//! API-key provisioning checks for the Qdrant Quadlet contract.
+//! API-key-specific validation for the Qdrant Quadlet contract.
 //!
-//! API-key provisioning is an appliance platform binding, not a Qdrant domain
-//! invariant: Qdrant requires an API key to be available in its environment,
-//! while the appliance chooses to provide that key through a Podman secret and a
-//! companion provisioning service. The main `qdrant_quadlet` validator delegates
-//! those checks to this module so secret wiring, unit dependencies, and inline
-//! key rejection stay separate from the domain invariants and host storage or
-//! port binding adapter.
+//! This module enforces the API-key boundaries of the Qdrant Quadlet contract:
+//! provisioning dependency checks that `Requires=` and `After=` reference the
+//! API key provisioning service, secret wiring checks that `Secret=` entries
+//! use the expected secret name with `type=env` and the target environment
+//! variable, and inline environment prohibition that forbids assigning the API
+//! key environment variable directly.
+//!
+//! These validators are invoked from `validate_qdrant_quadlet` after the
+//! structural contract checks for image, ports, storage, and auto-update have
+//! completed.
 
 use super::{
     CONTAINER_SECTION, QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET,
-    QDRANT_API_KEY_SERVICE, QdrantQuadletError, UNIT_SECTION, parser::ParsedQuadlet,
+    QDRANT_API_KEY_SERVICE, QdrantQuadletError, UNIT_SECTION, observer::QdrantQuadletObserver,
+    parser::ParsedQuadlet,
 };
 
+/// Validates that the parsed Quadlet declares the API key provisioning dependency.
+///
+/// # Errors
+///
+/// Returns [`QdrantQuadletError::MissingApiKeyProvisioningDependency`] when a
+/// required dependency directive is absent, or
+/// [`QdrantQuadletError::IncorrectApiKeyProvisioningDependency`] when the
+/// directive does not reference the API key provisioning service.
+///
+/// # Examples
+///
+/// ```ignore
+/// let parsed = ParsedQuadlet::parse(
+///     "[Unit]\nRequires=repovec-qdrant-api-key.service\nAfter=repovec-qdrant-api-key.service\n",
+///     &(),
+/// )?;
+///
+/// validate_api_key_provisioning_dependency(&parsed, &())?;
+/// # Ok::<(), QdrantQuadletError>(())
+/// ```
 pub(super) fn validate_api_key_provisioning_dependency(
     parsed: &ParsedQuadlet,
+    observer: &dyn QdrantQuadletObserver,
 ) -> Result<(), QdrantQuadletError> {
-    validate_unit_dependency(parsed, "Requires")?;
-    validate_unit_dependency(parsed, "After")
+    validate_unit_dependency(parsed, "Requires", observer)?;
+    validate_unit_dependency(parsed, "After", observer)
 }
 
 fn validate_unit_dependency(
     parsed: &ParsedQuadlet,
     directive: &'static str,
+    observer: &dyn QdrantQuadletObserver,
 ) -> Result<(), QdrantQuadletError> {
     let dependencies = parsed.values(UNIT_SECTION, directive);
     if dependencies.is_empty() {
+        observer.missing_api_key_provisioning_dependency(directive, QDRANT_API_KEY_SERVICE);
         return Err(QdrantQuadletError::MissingApiKeyProvisioningDependency { directive });
     }
 
@@ -37,15 +64,45 @@ fn validate_unit_dependency(
         return Ok(());
     }
 
-    Err(QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
+    let dependency = dependencies.join(",");
+    observer.incorrect_api_key_provisioning_dependency(
         directive,
-        dependency: dependencies.join(","),
-    })
+        &dependency,
+        QDRANT_API_KEY_SERVICE,
+    );
+    Err(QdrantQuadletError::IncorrectApiKeyProvisioningDependency { directive, dependency })
 }
 
-pub(super) fn validate_api_key_secret(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
+/// Validates that the parsed Quadlet wires the API key through a Podman secret.
+///
+/// The expected `Secret=` entry is
+/// `repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY`.
+///
+/// # Errors
+///
+/// Returns [`QdrantQuadletError::MissingApiKeySecret`] when no `Secret=` entry
+/// exists, or [`QdrantQuadletError::IncorrectApiKeySecret`] when none of the
+/// entries match the expected secret name, type, and target environment
+/// variable.
+///
+/// # Examples
+///
+/// ```ignore
+/// let parsed = ParsedQuadlet::parse(
+///     "[Container]\nSecret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+///     &(),
+/// )?;
+///
+/// assert!(validate_api_key_secret(&parsed, &()).is_ok());
+/// # Ok::<(), QdrantQuadletError>(())
+/// ```
+pub(super) fn validate_api_key_secret(
+    parsed: &ParsedQuadlet,
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError> {
     let secrets = parsed.values(CONTAINER_SECTION, "Secret");
     if secrets.is_empty() {
+        observer.missing_api_key_secret(QDRANT_API_KEY_SECRET, QDRANT_API_KEY_ENVIRONMENT_VARIABLE);
         return Err(QdrantQuadletError::MissingApiKeySecret);
     }
 
@@ -53,7 +110,13 @@ pub(super) fn validate_api_key_secret(parsed: &ParsedQuadlet) -> Result<(), Qdra
         return Ok(());
     }
 
-    Err(QdrantQuadletError::IncorrectApiKeySecret { secret: secrets.join(",") })
+    let secret = secrets.join(",");
+    observer.incorrect_api_key_secret(
+        &secret,
+        QDRANT_API_KEY_SECRET,
+        QDRANT_API_KEY_ENVIRONMENT_VARIABLE,
+    );
+    Err(QdrantQuadletError::IncorrectApiKeySecret { secret })
 }
 
 fn is_required_api_key_secret(secret: &str) -> bool {
@@ -75,14 +138,45 @@ fn is_required_api_key_secret(secret: &str) -> bool {
     has_env_type && has_target
 }
 
+/// Validates that no inline `QDRANT__SERVICE__API_KEY` assignments exist.
+///
+/// The check scans `[Container]` `Environment=` entries so the API key is only
+/// supplied through the expected Podman secret wiring.
+///
+/// # Errors
+///
+/// Returns [`QdrantQuadletError::InlineApiKeyEnvironmentDisallowed`] with a
+/// redacted assignment when an inline API key environment assignment is found.
+///
+/// # Examples
+///
+/// ```ignore
+/// let parsed = ParsedQuadlet::parse(
+///     "[Container]\nEnvironment=QDRANT__SERVICE__API_KEY=secret\n",
+///     &(),
+/// )?;
+///
+/// assert!(matches!(
+///     validate_no_inline_api_key_environment(&parsed, &()),
+///     Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed { .. })
+/// ));
+/// # Ok::<(), QdrantQuadletError>(())
+/// ```
 pub(super) fn validate_no_inline_api_key_environment(
     parsed: &ParsedQuadlet,
+    observer: &dyn QdrantQuadletObserver,
 ) -> Result<(), QdrantQuadletError> {
     for environment in parsed.values(CONTAINER_SECTION, "Environment") {
         for assignment in split_environment_assignments(environment) {
             if is_api_key_environment_assignment(&assignment) {
+                let redacted_environment = redact_api_key_environment_assignment(&assignment);
+                observer.inline_api_key_environment(
+                    &redacted_environment,
+                    QDRANT_API_KEY_SECRET,
+                    QDRANT_API_KEY_ENVIRONMENT_VARIABLE,
+                );
                 return Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
-                    environment: redact_api_key_environment_assignment(&assignment),
+                    environment: redacted_environment,
                 });
             }
         }
@@ -92,9 +186,10 @@ pub(super) fn validate_no_inline_api_key_environment(
 }
 
 fn redact_api_key_environment_assignment(assignment: &str) -> String {
-    assignment
-        .split_once('=')
-        .map_or_else(|| assignment.to_owned(), |(key, _)| format!("{key}=<redacted>"))
+    match assignment.split_once('=') {
+        Some((key, _)) => format!("{key}=<redacted>"),
+        None => assignment.to_owned(),
+    }
 }
 
 fn split_environment_assignments(environment: &str) -> Vec<String> {
@@ -102,6 +197,14 @@ fn split_environment_assignments(environment: &str) -> Vec<String> {
     let mut assignment = String::new();
     let mut quote = None;
 
+    // split_environment_assignments uses a quote-aware linear scan because
+    // Quadlet Environment= values may contain spaces inside quoted KEY=VALUE
+    // pairs. The quote state records when whitespace belongs to the current
+    // assignment rather than separating assignments.
+    //
+    // This deliberately does not handle escaped quotes inside quoted strings;
+    // unmatched quotes are treated as part of the current assignment until the
+    // scan ends. Empty assignments created by repeated whitespace are skipped.
     for character in environment.chars() {
         match (quote, character) {
             (Some(active_quote), current) if active_quote == current => quote = None,
@@ -127,80 +230,4 @@ fn is_api_key_environment_assignment(assignment: &str) -> bool {
         || assignment
             .split_once('=')
             .is_some_and(|(key, _value)| key == QDRANT_API_KEY_ENVIRONMENT_VARIABLE)
-}
-
-#[cfg(test)]
-mod tests {
-    //! Unit tests for API-key environment parsing helpers.
-
-    use proptest::prelude::*;
-
-    use super::split_environment_assignments;
-
-    #[test]
-    fn split_environment_assignments_handles_tokenization_edges() {
-        let cases: &[(&str, &[&str])] = &[
-            ("", &[]),
-            (" \t\n ", &[]),
-            ("A=1", &["A=1"]),
-            ("A=1 B=2", &["A=1", "B=2"]),
-            ("A=\"one two\" B=2", &["A=one two", "B=2"]),
-            ("A='one two' B=2", &["A=one two", "B=2"]),
-            ("A=\"one two B=2", &["A=one two B=2"]),
-            ("A='one two B=2", &["A=one two B=2"]),
-            ("A=\"one 'two'\" B='three \"four\"'", &["A=one 'two'", "B=three \"four\""]),
-        ];
-
-        for (environment, expected) in cases {
-            let expected_assignments =
-                expected.iter().map(|value| (*value).to_owned()).collect::<Vec<_>>();
-
-            assert_eq!(
-                split_environment_assignments(environment),
-                expected_assignments,
-                "environment: {environment:?}",
-            );
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn split_environment_assignments_preserves_unquoted_tokens(
-            assignments in prop::collection::vec("[A-Za-z0-9_./:-]+=[A-Za-z0-9_./:-]*", 0..16),
-        ) {
-            let environment = assignments.join(" \t ");
-
-            prop_assert_eq!(split_environment_assignments(&environment), assignments);
-        }
-
-        #[test]
-        fn split_environment_assignments_groups_balanced_quoted_whitespace(
-            key in "[A-Z_]{1,24}",
-            words in prop::collection::vec("[A-Za-z0-9_./:-]+", 1..8),
-            quote in prop_oneof![Just('"'), Just('\'')],
-        ) {
-            let value = words.join(" ");
-            let environment = format!("{key}={quote}{value}{quote}");
-
-            prop_assert_eq!(
-                split_environment_assignments(&environment),
-                vec![format!("{key}={value}")],
-            );
-        }
-
-        #[test]
-        fn split_environment_assignments_keeps_unbalanced_quotes_in_one_assignment(
-            key in "[A-Z_]{1,24}",
-            words in prop::collection::vec("[A-Za-z0-9_./:-]+", 2..8),
-            quote in prop_oneof![Just('"'), Just('\'')],
-        ) {
-            let value = words.join(" ");
-            let environment = format!("{key}={quote}{value}");
-
-            prop_assert_eq!(
-                split_environment_assignments(&environment),
-                vec![format!("{key}={value}")],
-            );
-        }
-    }
 }

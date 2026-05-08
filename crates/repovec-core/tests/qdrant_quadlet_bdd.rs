@@ -67,7 +67,7 @@ fn the_api_key_is_inlined_as_an_environment_variable(quadlet_world: &mut Quadlet
 
 #[when("the Quadlet is validated")]
 fn the_quadlet_is_validated(quadlet_world: &mut QuadletWorld) {
-    quadlet_world.validation_result = Some(validate_qdrant_quadlet(&quadlet_world.contents));
+    quadlet_world.validation_result = Some(validate_qdrant_quadlet(&quadlet_world.contents, &()));
 }
 
 #[then("the Quadlet is accepted")]

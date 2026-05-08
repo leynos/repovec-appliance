@@ -1,44 +1,36 @@
-//! Validation helpers for the checked-in Qdrant Podman Quadlet asset.
+//! Public API and validation pipeline for the Qdrant Podman Quadlet contract.
 //!
-//! This module validates the repository's Quadlet asset against the complete
-//! appliance contract. The contract deliberately includes both Qdrant domain
-//! invariants and appliance platform bindings, because the Quadlet is the
-//! integration point where those concerns meet.
+//! This module has two responsibilities. It exposes the public validation
+//! surface, including [`QdrantQuadletError`],
+//! [`validate_checked_in_qdrant_quadlet`], [`validate_qdrant_quadlet`],
+//! [`QdrantQuadletObserver`], [`TracingQdrantQuadletObserver`],
+//! [`CHECKED_IN_QDRANT_QUADLET_PATH`], and [`INSTALLED_QDRANT_QUADLET_PATH`].
+//! It also orchestrates the full validation pipeline over a parsed Quadlet.
 //!
-//! # Domain invariants
+//! [`validate_checked_in_qdrant_quadlet`] verifies the embedded packaging asset
+//! during startup checks. [`validate_qdrant_quadlet`] validates
+//! operator-supplied contract changes at runtime using the same appliance
+//! policy.
 //!
-//! These values express what the appliance expects from Qdrant itself:
+//! `LOG_TARGET` provides one tracing target for the module family. The tracing
+//! observer uses it so operators can filter Qdrant Quadlet diagnostics with
+//! `RUST_LOG=repovec_core::qdrant_quadlet=info`.
 //!
-//! - the OCI image reference remains fully qualified and pinned to the supported
-//!   Qdrant major line;
-//! - persistent storage is mounted inside the container at `/qdrant/storage`;
-//! - the REST API remains available on container port `6333`;
-//! - the gRPC API remains available on container port `6334`.
-//!
-//! # Platform bindings
-//!
-//! Platform values express how the appliance makes those invariants safe and
-//! operational on the host. The checks live in the `platform_bindings` adapter
-//! module so host paths, loopback bindings, `SELinux` relabelling, and Podman
-//! auto-update policy do not sit in the domain validation body:
-//!
-//! - persistent data is sourced from `/var/lib/repovec/qdrant-storage`;
-//! - Qdrant is published on `127.0.0.1` only;
-//! - the storage mount carries the `SELinux` `:Z` relabel option;
-//! - Podman auto-updates use the `registry` policy.
-//!
-//! The public validator composes both sides of the contract: Qdrant defines the
-//! container contract, while the appliance platform adapter defines the
-//! host-side bindings that satisfy it. Validation is a pure static check over
-//! Quadlet text; callers observe only the returned [`QdrantQuadletError`].
+//! The `parser` submodule produces a `ParsedQuadlet`. Structural validators in
+//! this module consume it first, `platform_bindings` validates host-side
+//! appliance bindings, then `api_key` validators consume the same parsed
+//! representation for API-key-specific checks.
 
 mod api_key;
 mod error;
+mod observer;
 mod parser;
 mod platform_bindings;
 
 #[cfg(test)]
 mod api_key_tests;
+#[cfg(test)]
+mod log_tests;
 #[cfg(test)]
 mod provisioning_tests;
 #[cfg(test)]
@@ -53,6 +45,7 @@ use api_key::{
     validate_no_inline_api_key_environment,
 };
 pub use error::QdrantQuadletError;
+pub use observer::{QdrantQuadletObserver, TracingQdrantQuadletObserver};
 use parser::ParsedQuadlet;
 use platform_bindings::validate_platform_bindings;
 
@@ -83,6 +76,7 @@ const REQUIRED_REST_PORT: u16 = 6333;
 const REQUIRED_GRPC_PORT: u16 = 6334;
 /// The in-container path where Qdrant stores persistent data.
 const REQUIRED_STORAGE_TARGET: &str = "/qdrant/storage";
+pub(super) const LOG_TARGET: &str = "repovec_core::qdrant_quadlet";
 
 /// Returns the repository's checked-in Qdrant Quadlet source.
 ///
@@ -106,19 +100,21 @@ pub const fn checked_in_qdrant_quadlet() -> &'static str { CHECKED_IN_QDRANT_QUA
 /// # Examples
 ///
 /// ```
-/// use repovec_core::appliance::qdrant_quadlet::validate_checked_in_qdrant_quadlet;
+/// use repovec_core::appliance::qdrant_quadlet::{
+///     TracingQdrantQuadletObserver, validate_checked_in_qdrant_quadlet,
+/// };
 ///
-/// validate_checked_in_qdrant_quadlet().expect("the checked-in qdrant quadlet remains valid");
+/// validate_checked_in_qdrant_quadlet(&TracingQdrantQuadletObserver)
+///     .expect("the checked-in qdrant quadlet remains valid");
 /// ```
-pub fn validate_checked_in_qdrant_quadlet() -> Result<(), QdrantQuadletError> {
-    validate_qdrant_quadlet(checked_in_qdrant_quadlet())
+pub fn validate_checked_in_qdrant_quadlet(
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError> {
+    observer.validating_checked_in_qdrant_quadlet(CHECKED_IN_QDRANT_QUADLET_PATH);
+    validate_qdrant_quadlet(checked_in_qdrant_quadlet(), observer)
 }
 
 /// Validates arbitrary Qdrant Quadlet contents against the appliance contract.
-///
-/// This is a pure static check over Quadlet text. It does not emit tracing,
-/// logging, or metrics; callers observe validation through the returned
-/// [`QdrantQuadletError`].
 ///
 /// # Errors
 ///
@@ -127,7 +123,9 @@ pub fn validate_checked_in_qdrant_quadlet() -> Result<(), QdrantQuadletError> {
 /// # Examples
 ///
 /// ```
-/// use repovec_core::appliance::qdrant_quadlet::validate_qdrant_quadlet;
+/// use repovec_core::appliance::qdrant_quadlet::{
+///     TracingQdrantQuadletObserver, validate_qdrant_quadlet,
+/// };
 ///
 /// let contents = "\
 /// [Unit]
@@ -143,34 +141,53 @@ pub fn validate_checked_in_qdrant_quadlet() -> Result<(), QdrantQuadletError> {
 /// Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z
 /// ";
 ///
-/// validate_qdrant_quadlet(contents).expect("the inline quadlet should satisfy the contract");
+/// validate_qdrant_quadlet(contents, &TracingQdrantQuadletObserver)
+///     .expect("the inline quadlet should satisfy the contract");
 /// ```
-pub fn validate_qdrant_quadlet(contents: &str) -> Result<(), QdrantQuadletError> {
-    let parsed = ParsedQuadlet::parse(contents)?;
+pub fn validate_qdrant_quadlet(
+    contents: &str,
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError> {
+    observer.validating_qdrant_quadlet_contract();
 
-    validate_required_image(&parsed)?;
-    validate_platform_bindings(&parsed)?;
-    validate_api_key_provisioning_dependency(&parsed)?;
-    validate_api_key_secret(&parsed)?;
-    validate_no_inline_api_key_environment(&parsed)
+    let parsed = ParsedQuadlet::parse(contents, observer)?;
+
+    validate_required_image(&parsed, observer)?;
+    validate_platform_bindings(&parsed, observer)?;
+    validate_api_key_provisioning_dependency(&parsed, observer)?;
+    validate_api_key_secret(&parsed, observer)?;
+    validate_no_inline_api_key_environment(&parsed, observer)?;
+
+    observer.qdrant_quadlet_contract_validation_succeeded();
+
+    Ok(())
 }
 
-fn validate_required_image(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
+fn validate_required_image(
+    parsed: &ParsedQuadlet,
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError> {
     let images = parsed.values(CONTAINER_SECTION, "Image");
-    let image = match images {
-        [] => return Err(QdrantQuadletError::MissingImage),
-        [image] => image,
-        duplicate_images => {
-            return Err(QdrantQuadletError::UnexpectedImage { image: duplicate_images.join(",") });
+    let image = match classify_directive_values(images) {
+        DirectiveValues::Missing => {
+            observer.missing_image(REQUIRED_IMAGE);
+            return Err(QdrantQuadletError::MissingImage);
+        }
+        DirectiveValues::Single(image) => image,
+        DirectiveValues::Duplicate(duplicate_image_values) => {
+            observer.unexpected_image(&duplicate_image_values, REQUIRED_IMAGE);
+            return Err(QdrantQuadletError::UnexpectedImage { image: duplicate_image_values });
         }
     };
 
     if !is_fully_qualified_and_pinned(image) {
-        return Err(QdrantQuadletError::ImageNotFullyQualified { image: image.clone() });
+        observer.image_not_fully_qualified(image, REQUIRED_IMAGE);
+        return Err(QdrantQuadletError::ImageNotFullyQualified { image: image.to_owned() });
     }
 
     if image != REQUIRED_IMAGE {
-        return Err(QdrantQuadletError::UnexpectedImage { image: image.clone() });
+        observer.unexpected_image(image, REQUIRED_IMAGE);
+        return Err(QdrantQuadletError::UnexpectedImage { image: image.to_owned() });
     }
 
     Ok(())
@@ -185,4 +202,18 @@ fn is_fully_qualified_and_pinned(image: &str) -> bool {
     };
 
     registry.contains('.') && !tag.is_empty() && tag != "latest"
+}
+
+enum DirectiveValues<'a> {
+    Missing,
+    Single(&'a str),
+    Duplicate(String),
+}
+
+fn classify_directive_values(values: &[String]) -> DirectiveValues<'_> {
+    match values {
+        [] => DirectiveValues::Missing,
+        [value] => DirectiveValues::Single(value),
+        duplicate_values => DirectiveValues::Duplicate(duplicate_values.join(",")),
+    }
 }

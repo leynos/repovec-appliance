@@ -6,8 +6,8 @@
 //! auto-update policy.
 
 use super::{
-    CONTAINER_SECTION, QdrantQuadletError, REQUIRED_GRPC_PORT, REQUIRED_REST_PORT,
-    REQUIRED_STORAGE_TARGET, parser::ParsedQuadlet,
+    CONTAINER_SECTION, QdrantQuadletError, QdrantQuadletObserver, REQUIRED_GRPC_PORT,
+    REQUIRED_REST_PORT, REQUIRED_STORAGE_TARGET, parser::ParsedQuadlet,
 };
 
 /// The host path where the appliance stores Qdrant's persistent data.
@@ -26,21 +26,26 @@ pub(super) const REQUIRED_AUTO_UPDATE_POLICY: &str = "registry";
 pub(super) const REQUIRED_SELINUX_OPTION: &str = "Z";
 
 /// Validate appliance-owned platform bindings for the Qdrant container.
-pub(super) fn validate_platform_bindings(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
+pub(super) fn validate_platform_bindings(
+    parsed: &ParsedQuadlet,
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError> {
     validate_required_port(
         parsed,
         REQUIRED_REST_PORT,
         REQUIRED_REST_BINDING,
         QdrantQuadletError::MissingRestPort,
+        observer,
     )?;
     validate_required_port(
         parsed,
         REQUIRED_GRPC_PORT,
         REQUIRED_GRPC_BINDING,
         QdrantQuadletError::MissingGrpcPort,
+        observer,
     )?;
-    validate_storage_mount(parsed)?;
-    validate_auto_update(parsed)
+    validate_storage_mount(parsed, observer)?;
+    validate_auto_update(parsed, observer)
 }
 
 fn validate_required_port(
@@ -48,6 +53,7 @@ fn validate_required_port(
     container_port: u16,
     required_binding: &str,
     missing_error: QdrantQuadletError,
+    observer: &dyn QdrantQuadletObserver,
 ) -> Result<(), QdrantQuadletError> {
     let publish_ports = parsed.values(CONTAINER_SECTION, "PublishPort");
 
@@ -58,12 +64,14 @@ fn validate_required_port(
         .collect::<Vec<_>>();
 
     if matching_publish_ports.is_empty() {
+        observer.missing_publish_port(container_port, required_binding);
         return Err(missing_error);
     }
 
     if let Some(publish_port) =
         matching_publish_ports.iter().find(|port| **port != required_binding)
     {
+        observer.publish_port_not_bound_to_loopback(container_port, publish_port, required_binding);
         return Err(QdrantQuadletError::PortNotBoundToLoopback {
             port: container_port,
             publish_port: (*publish_port).to_owned(),
@@ -82,7 +90,10 @@ fn published_container_port(publish_port: &str) -> Option<u16> {
     parts.get(2)?.parse::<u16>().ok()
 }
 
-fn validate_storage_mount(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
+fn validate_storage_mount(
+    parsed: &ParsedQuadlet,
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError> {
     let volumes = parsed.values(CONTAINER_SECTION, "Volume");
     let mut last_candidate_error = None;
 
@@ -116,7 +127,27 @@ fn validate_storage_mount(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletErr
         return Ok(());
     }
 
-    Err(last_candidate_error.unwrap_or(QdrantQuadletError::MissingStorageMount))
+    let error = last_candidate_error.unwrap_or(QdrantQuadletError::MissingStorageMount);
+    observe_storage_mount_error(observer, &error);
+    Err(error)
+}
+
+fn observe_storage_mount_error(
+    observer: &dyn QdrantQuadletObserver,
+    error: &QdrantQuadletError,
+) {
+    match error {
+        QdrantQuadletError::IncorrectStorageSource { source } => {
+            observer.incorrect_storage_source(source, REQUIRED_STORAGE_SOURCE);
+        }
+        QdrantQuadletError::IncorrectStorageTarget { target } => {
+            observer.incorrect_storage_target(target, REQUIRED_STORAGE_TARGET);
+        }
+        QdrantQuadletError::MissingSelinuxRelabel { volume } => {
+            observer.missing_selinux_relabel(volume, REQUIRED_SELINUX_OPTION);
+        }
+        _ => observer.missing_storage_mount(REQUIRED_STORAGE_SOURCE, REQUIRED_STORAGE_TARGET),
+    }
 }
 
 fn has_required_selinux_relabel_option(options: &[&str]) -> bool {
@@ -140,19 +171,31 @@ fn storage_mount_candidate(volume: &str) -> Option<(&str, Vec<&str>)> {
     (has_required_source || has_required_target).then_some((volume, parts))
 }
 
-fn validate_auto_update(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
+fn validate_auto_update(
+    parsed: &ParsedQuadlet,
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError> {
     let auto_updates = parsed.values(CONTAINER_SECTION, "AutoUpdate");
     let auto_update = match auto_updates {
-        [] => return Err(QdrantQuadletError::MissingAutoUpdate),
+        [] => {
+            observer.missing_auto_update(REQUIRED_AUTO_UPDATE_POLICY);
+            return Err(QdrantQuadletError::MissingAutoUpdate);
+        }
         [auto_update] => auto_update,
         duplicate_auto_updates => {
+            let duplicate_auto_update_values = duplicate_auto_updates.join(",");
+            observer.incorrect_auto_update(
+                &duplicate_auto_update_values,
+                REQUIRED_AUTO_UPDATE_POLICY,
+            );
             return Err(QdrantQuadletError::IncorrectAutoUpdate {
-                auto_update: duplicate_auto_updates.join(","),
+                auto_update: duplicate_auto_update_values,
             });
         }
     };
 
     if auto_update != REQUIRED_AUTO_UPDATE_POLICY {
+        observer.incorrect_auto_update(auto_update, REQUIRED_AUTO_UPDATE_POLICY);
         return Err(QdrantQuadletError::IncorrectAutoUpdate { auto_update: auto_update.clone() });
     }
 
@@ -222,10 +265,11 @@ Volume=/var/lib/repovec/qdrant-storage:/wrong-target:Z
 Volume=/other-source:/qdrant/storage:Z
 Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:rw,Z
 ",
+            &(),
         )
         .expect("quadlet fixture should parse");
 
-        assert_eq!(validate_storage_mount(&parsed), Ok(()));
+        assert_eq!(validate_storage_mount(&parsed, &()), Ok(()));
     }
 
     #[test]

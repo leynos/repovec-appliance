@@ -37,7 +37,7 @@ proptest! {
              PublishPort=127.0.0.1:6334:6334\n\
              Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n"
         );
-        validate_qdrant_quadlet(&contents)
+        validate_qdrant_quadlet(&contents, &())
             .expect("quadlet with whitespace around Image key/value should remain valid");
     }
 
@@ -61,7 +61,7 @@ proptest! {
             }
         }
         let contents = lines.join("\n") + "\n";
-        validate_qdrant_quadlet(&contents)
+        validate_qdrant_quadlet(&contents, &())
             .expect("quadlet with injected comment lines should remain valid");
     }
 
@@ -79,7 +79,7 @@ proptest! {
             lines.insert(idx, String::new());
         }
         let contents = lines.join("\n") + "\n";
-        validate_qdrant_quadlet(&contents)
+        validate_qdrant_quadlet(&contents, &())
             .expect("quadlet with injected empty lines should remain valid");
     }
 
@@ -97,7 +97,7 @@ proptest! {
              Key={val2}\n\
              Key={val3}\n"
         );
-        let parsed = ParsedQuadlet::parse(&contents)
+        let parsed = ParsedQuadlet::parse(&contents, &())
             .expect("valid quadlet syntax should parse");
         let values = parsed.values("TestSection", "Key");
         prop_assert_eq!(values, &[val1.as_str(), val2.as_str(), val3.as_str()]);
@@ -131,9 +131,9 @@ proptest! {
              Image=docker.io/qdrant/qdrant:v1\n"
         );
 
-        let parsed_cf = ParsedQuadlet::parse(&container_first)
+        let parsed_cf = ParsedQuadlet::parse(&container_first, &())
             .expect("valid quadlet should parse");
-        let parsed_ef = ParsedQuadlet::parse(&extra_first)
+        let parsed_ef = ParsedQuadlet::parse(&extra_first, &())
             .expect("valid quadlet should parse");
 
         prop_assert_eq!(
@@ -161,7 +161,7 @@ proptest! {
              PublishPort=127.0.0.1:6334:6334\n\
              Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n"
         );
-        let error = validate_qdrant_quadlet(&contents)
+        let error = validate_qdrant_quadlet(&contents, &())
             .expect_err("duplicate Image= should be rejected");
         let expected = QdrantQuadletError::UnexpectedImage {
             image: format!("{image1},{image2}"),
@@ -186,7 +186,7 @@ proptest! {
              PublishPort=127.0.0.1:6334:6334\n\
              Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n"
         );
-        let error = validate_qdrant_quadlet(&contents)
+        let error = validate_qdrant_quadlet(&contents, &())
             .expect_err("duplicate AutoUpdate= should be rejected");
         let expected = QdrantQuadletError::IncorrectAutoUpdate {
             auto_update: format!("{policy1},{policy2}"),
@@ -213,7 +213,7 @@ proptest! {
              PublishPort=127.0.0.1:6334:6334\n\
              Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n"
         );
-        let error = validate_qdrant_quadlet(&contents)
+        let error = validate_qdrant_quadlet(&contents, &())
             .expect_err("non-loopback port 6333 should be rejected");
         let expected = QdrantQuadletError::PortNotBoundToLoopback {
             port: 6333,
@@ -239,7 +239,7 @@ proptest! {
              PublishPort={publish_port}\n\
              Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n"
         );
-        let error = validate_qdrant_quadlet(&contents)
+        let error = validate_qdrant_quadlet(&contents, &())
             .expect_err("non-loopback port 6334 should be rejected");
         let expected = QdrantQuadletError::PortNotBoundToLoopback {
             port: 6334,
@@ -266,7 +266,7 @@ proptest! {
              PublishPort=127.0.0.1:6334:6334\n\
              Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n"
         );
-        let error = validate_qdrant_quadlet(&contents)
+        let error = validate_qdrant_quadlet(&contents, &())
             .expect_err("coexisting non-loopback port 6333 should be rejected");
         let expected = QdrantQuadletError::PortNotBoundToLoopback {
             port: 6333,
@@ -293,7 +293,7 @@ proptest! {
              PublishPort={bad_publish}\n\
              Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n"
         );
-        let error = validate_qdrant_quadlet(&contents)
+        let error = validate_qdrant_quadlet(&contents, &())
             .expect_err("coexisting non-loopback port 6334 should be rejected");
         let expected = QdrantQuadletError::PortNotBoundToLoopback {
             port: 6334,

@@ -101,6 +101,8 @@ ______________________________________________________________________
 
 - [Technical design](docs/repovec-appliance-technical-design.md) —
   architecture, constraints, and rationale
+- [Users guide](docs/users-guide.md) — operator deployment, troubleshooting,
+  CI policy, and configuration
 - [Roadmap](docs/roadmap.md) — planned features and implementation progress
 
 ______________________________________________________________________

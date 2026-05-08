@@ -9,6 +9,8 @@
   user-visible continuous integration (CI) and documentation-gate behaviour.
 - [Developers guide](developers-guide.md): maintainer workflow, quality gates,
   and repository automation policy.
+- [Migration notes for 0.2.0](migrations/0-2-0.md): compatibility guidance for
+  callers updating to the Qdrant Quadlet observer trait-object API.
 
 ## Design and architecture
 

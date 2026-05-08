@@ -4,6 +4,8 @@ mod error;
 mod parser;
 
 #[cfg(test)]
+mod provisioning_tests;
+#[cfg(test)]
 mod tests;
 
 pub use error::QdrantQuadletError;
@@ -18,6 +20,19 @@ pub const CHECKED_IN_QDRANT_QUADLET_PATH: &str = "packaging/systemd/qdrant.conta
 /// The installation path for the rootful system Quadlet.
 pub const INSTALLED_QDRANT_QUADLET_PATH: &str = "/etc/containers/systemd/qdrant.container";
 
+/// The persistent raw Qdrant API key path on appliance hosts.
+pub const QDRANT_API_KEY_PATH: &str = "/etc/repovec/qdrant-api-key";
+
+/// The systemd unit that provisions the Qdrant API key before Qdrant starts.
+pub const QDRANT_API_KEY_SERVICE: &str = "repovec-qdrant-api-key.service";
+
+/// The rootful Podman secret name used to inject the Qdrant API key.
+pub const QDRANT_API_KEY_SECRET: &str = "repovec-qdrant-api-key";
+
+/// The Qdrant environment variable that enables API-key authentication.
+pub const QDRANT_API_KEY_ENVIRONMENT_VARIABLE: &str = "QDRANT__SERVICE__API_KEY";
+
+const UNIT_SECTION: &str = "Unit";
 const CONTAINER_SECTION: &str = "Container";
 const REQUIRED_IMAGE: &str = "docker.io/qdrant/qdrant:v1";
 const REQUIRED_REST_PORT: &str = "127.0.0.1:6333:6333";
@@ -68,9 +83,14 @@ pub fn validate_checked_in_qdrant_quadlet() -> Result<(), QdrantQuadletError> {
 /// use repovec_core::appliance::qdrant_quadlet::validate_qdrant_quadlet;
 ///
 /// let contents = "\
+/// [Unit]
+/// Requires=repovec-qdrant-api-key.service
+/// After=repovec-qdrant-api-key.service
+///
 /// [Container]
 /// Image=docker.io/qdrant/qdrant:v1
 /// AutoUpdate=registry
+/// Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY
 /// PublishPort=127.0.0.1:6333:6333
 /// PublishPort=127.0.0.1:6334:6334
 /// Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z
@@ -85,7 +105,10 @@ pub fn validate_qdrant_quadlet(contents: &str) -> Result<(), QdrantQuadletError>
     validate_required_port(&parsed, REQUIRED_REST_PORT, QdrantQuadletError::MissingRestPort)?;
     validate_required_port(&parsed, REQUIRED_GRPC_PORT, QdrantQuadletError::MissingGrpcPort)?;
     validate_storage_mount(&parsed)?;
-    validate_auto_update(&parsed)
+    validate_auto_update(&parsed)?;
+    validate_api_key_provisioning_dependency(&parsed)?;
+    validate_api_key_secret(&parsed)?;
+    validate_no_inline_api_key_environment(&parsed)
 }
 
 fn validate_required_image(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
@@ -216,6 +239,82 @@ fn validate_auto_update(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError
 
     if auto_update != REQUIRED_AUTO_UPDATE_POLICY {
         return Err(QdrantQuadletError::IncorrectAutoUpdate { auto_update: auto_update.clone() });
+    }
+
+    Ok(())
+}
+
+fn validate_api_key_provisioning_dependency(
+    parsed: &ParsedQuadlet,
+) -> Result<(), QdrantQuadletError> {
+    validate_unit_dependency(parsed, "Requires")?;
+    validate_unit_dependency(parsed, "After")
+}
+
+fn validate_unit_dependency(
+    parsed: &ParsedQuadlet,
+    directive: &'static str,
+) -> Result<(), QdrantQuadletError> {
+    let dependencies = parsed.values(UNIT_SECTION, directive);
+    if dependencies.is_empty() {
+        return Err(QdrantQuadletError::MissingApiKeyProvisioningDependency { directive });
+    }
+
+    if dependencies
+        .iter()
+        .flat_map(|dependency| dependency.split_ascii_whitespace())
+        .any(|dependency| dependency == QDRANT_API_KEY_SERVICE)
+    {
+        return Ok(());
+    }
+
+    Err(QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
+        directive,
+        dependency: dependencies.join(","),
+    })
+}
+
+fn validate_api_key_secret(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
+    let secrets = parsed.values(CONTAINER_SECTION, "Secret");
+    if secrets.is_empty() {
+        return Err(QdrantQuadletError::MissingApiKeySecret);
+    }
+
+    if secrets.iter().any(|secret| is_required_api_key_secret(secret)) {
+        return Ok(());
+    }
+
+    Err(QdrantQuadletError::IncorrectApiKeySecret { secret: secrets.join(",") })
+}
+
+fn is_required_api_key_secret(secret: &str) -> bool {
+    let mut parts = secret.split(',');
+    if parts.next() != Some(QDRANT_API_KEY_SECRET) {
+        return false;
+    }
+
+    let mut has_env_type = false;
+    let mut has_target = false;
+    for part in parts {
+        let Some((key, value)) = part.split_once('=') else {
+            continue;
+        };
+        has_env_type |= key == "type" && value == "env";
+        has_target |= key == "target" && value == QDRANT_API_KEY_ENVIRONMENT_VARIABLE;
+    }
+
+    has_env_type && has_target
+}
+
+fn validate_no_inline_api_key_environment(
+    parsed: &ParsedQuadlet,
+) -> Result<(), QdrantQuadletError> {
+    for environment in parsed.values(CONTAINER_SECTION, "Environment") {
+        if environment.starts_with(&format!("{QDRANT_API_KEY_ENVIRONMENT_VARIABLE}=")) {
+            return Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
+                environment: environment.clone(),
+            });
+        }
     }
 
     Ok(())

@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -139,11 +139,36 @@ it.
   review of systemd/Podman design, Rust validation/testing, and
   documentation/delivery requirements.
 - [x] (2026-05-08T01:52:56Z) Drafted this pre-implementation ExecPlan.
-- [ ] Obtain explicit approval before implementation.
-- [ ] Implement the approved plan.
-- [ ] Run the required gates and capture logs.
-- [ ] Mark roadmap item `1.2.2` done after implementation, validation and
-  documentation updates are complete.
+- [x] (2026-05-08T10:14:00+02:00) Received explicit user approval to
+  implement this ExecPlan.
+- [x] (2026-05-08T10:17:00+02:00) Re-read the plan, branch state, current
+  Quadlet, existing `qdrant_quadlet` validator, behavioural tests and packaging
+  directory before editing.
+- [x] (2026-05-08T10:42:00+02:00) Added
+  `packaging/systemd/repovec-qdrant-api-key.service`,
+  `packaging/libexec/repovec-qdrant-api-key`, and
+  `packaging/sysusers.d/repovec.conf` for first-boot key provisioning.
+- [x] (2026-05-08T10:44:00+02:00) Updated
+  `packaging/systemd/qdrant.container` so `qdrant.service` requires and starts
+  after the provisioning unit and receives the Podman secret as
+  `QDRANT__SERVICE__API_KEY`.
+- [x] (2026-05-08T10:48:00+02:00) Extended
+  `repovec_core::appliance::qdrant_quadlet` with typed validation for
+  provisioning dependencies, Podman secret injection, and inline API-key
+  rejection.
+- [x] (2026-05-08T10:51:00+02:00) Added `rstest` unit coverage for the new
+  Quadlet authentication contract and static provisioning-asset checks.
+- [x] (2026-05-08T10:53:00+02:00) Added `rstest-bdd` scenarios for accepted
+  secret injection, missing API-key secret rejection, and inline API-key
+  rejection.
+- [x] (2026-05-08T10:55:00+02:00) Updated the technical design, users guide,
+  developers guide, documentation index, and roadmap entry for `1.2.2`.
+- [x] (2026-05-08T11:04:00+02:00) Ran the required gates and captured logs
+  under `/tmp`.
+- [x] (2026-05-08T11:06:00+02:00) Marked roadmap item `1.2.2` done after
+  implementation, validation, and documentation updates were complete.
+- [x] (2026-05-08T11:16:00+02:00) Received user approval to proceed with the
+  cohesive change set despite the file-count tolerance exception.
 
 ## Surprises & Discoveries
 
@@ -172,6 +197,27 @@ it.
   Evidence: Podman `--secret` and Quadlet documentation. Impact: a Podman
   secret lets the file remain a raw key while Qdrant receives the required
   environment variable.
+
+- Observation: the repository has no package-install manifest yet; the only
+  existing packaging asset before this item was
+  `packaging/systemd/qdrant.container`. Evidence:
+  `find packaging -maxdepth 3 -type f`. Impact: this item can add the source
+  assets and static validation, but install placement remains a later packaging
+  concern unless the roadmap introduces an installer.
+
+- Observation: `shellcheck` is documented as available, but it is not installed
+  in this worktree environment. Evidence: running
+  `shellcheck packaging/libexec/repovec-qdrant-api-key` returned
+  `/bin/bash: line 1: shellcheck: command not found`. Impact: shell syntax was
+  reviewed through static Rust asset tests and the repository gates, but a
+  dedicated shellcheck run could not be used here.
+
+- Observation: the local development environment is not a disposable
+  systemd/Podman appliance host. Evidence: this worktree runs inside the coding
+  sandbox and the implementation only has source packaging assets, not an
+  installed rootful Quadlet environment. Impact: the end-to-end Qdrant HTTP
+  smoke test remains a reviewer/manual appliance-host check using the commands
+  in this plan.
 
 ## Decision Log
 
@@ -207,12 +253,71 @@ it.
   smoke checks provide better value here. Date/Author: 2026-05-08, Codex with
   Wyvern planning input.
 
+- Decision: Add `packaging/sysusers.d/repovec.conf` and keep a fallback
+  `useradd --system` path in the provisioning helper. Rationale: the sysusers
+  asset is the declarative package-owned source for the minimal user
+  prerequisite, while the helper fallback keeps first-boot provisioning
+  idempotent if the sysusers file has not yet been installed or processed.
+  Date/Author: 2026-05-08, Codex.
+
+- Decision: If the Podman secret already exists and cannot be removed, the
+  provisioning helper exits successfully instead of failing a running system.
+  Rationale: normal boot and restart paths refresh the secret before Qdrant
+  starts. If an operator reruns the helper while Qdrant still uses the secret,
+  preserving the existing secret is safer than breaking the running service or
+  logging secret material. Date/Author: 2026-05-08, Codex.
+
+- Decision: Implementation reached the ExecPlan scope tolerance for file count.
+  Rationale: the plan set an exception trigger at more than 12 changed files.
+  This implementation needs separate files for the existing Rust validator
+  modules, unit tests, BDD feature and step definitions, systemd unit, helper
+  script, sysusers asset, and required documentation updates. Options are:
+  approve the larger but cohesive change set, remove optional discoverability
+  and sysusers assets to reduce the count slightly, or split the work into two
+  commits/PRs. Trade-off: splitting or removing assets lowers file count but
+  makes the feature less self-contained. Date/Author: 2026-05-08, Codex.
+
 ## Outcomes & Retrospective
 
-No implementation outcome exists yet. This draft records the proposed approach
-and approval gate. After implementation, update this section with the files
-changed, gates run, manual smoke evidence, deviations from the plan, and any
-follow-up work such as API-key rotation.
+Implemented roadmap item `1.2.2`. The repository now ships:
+
+- `packaging/libexec/repovec-qdrant-api-key`, a one-shot helper that creates
+  the minimal `repovec` user if needed, creates `/etc/repovec`, generates a raw
+  random key at `/etc/repovec/qdrant-api-key` only when missing, locks the file
+  to `repovec:repovec` mode `0400`, and creates the rootful Podman secret
+  `repovec-qdrant-api-key`.
+- `packaging/systemd/repovec-qdrant-api-key.service`, a systemd oneshot unit
+  that runs the helper before Qdrant.
+- `packaging/sysusers.d/repovec.conf`, the declarative minimal system-user
+  prerequisite.
+- Updated `packaging/systemd/qdrant.container` wiring so Qdrant requires the
+  provisioning unit and receives the Podman secret as
+  `QDRANT__SERVICE__API_KEY`.
+- Extended pure Rust validation and tests in
+  `crates/repovec-core/src/appliance/qdrant_quadlet/` and
+  `crates/repovec-core/tests/`.
+- Updated `docs/repovec-appliance-technical-design.md`, `docs/users-guide.md`,
+  `docs/developers-guide.md`, `docs/contents.md`, and `docs/roadmap.md`.
+
+Validation evidence:
+
+- `make fmt` passed; log:
+  `/tmp/fmt-repovec-1-2-2-qdrant-api-key-impl.out`.
+- `make markdownlint` passed; log:
+  `/tmp/markdownlint-repovec-1-2-2-qdrant-api-key-impl.out`.
+- `make nixie` passed; log:
+  `/tmp/nixie-repovec-1-2-2-qdrant-api-key-impl.out`.
+- `make check-fmt` passed; log:
+  `/tmp/check-fmt-repovec-1-2-2-qdrant-api-key-impl.out`.
+- `make lint` passed after fixing local Clippy findings; log:
+  `/tmp/lint-repovec-1-2-2-qdrant-api-key-impl.out`.
+- `make test` passed with 71 nextest tests and 24 doctests; log:
+  `/tmp/test-repovec-1-2-2-qdrant-api-key-impl.out`.
+
+The manual systemd/Podman smoke test was not run in this coding environment.
+Use the smoke commands in this ExecPlan on a disposable appliance-style host to
+verify the live Qdrant behaviour: unauthenticated `curl` should return `401` or
+`403`, and authenticated `curl` with the stored key should return `200`.
 
 ## Context and orientation
 

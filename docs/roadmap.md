@@ -63,12 +63,15 @@ with API-key authentication, and survives host reboots.
   - Status: complete. The repository now ships
     `packaging/systemd/qdrant.container`, validates the contract from Rust, and
     documents the operator-visible behaviour.
-- [ ] 1.2.2. Configure Qdrant API-key authentication
+- [x] 1.2.2. Configure Qdrant API-key authentication
   - Generate a random API key at first boot and store it in
     `/etc/repovec/qdrant-api-key`.
   - Pass the key to Qdrant via environment variable.
   - Restrict file permissions to the `repovec` system user.
   - Success criteria: unauthenticated requests to Qdrant are rejected.
+  - Status: complete. The repository now ships a provisioning service, helper,
+    sysusers declaration, authenticated Quadlet wiring and Rust validation for
+    the static API-key contract.
 - [ ] 1.2.3. Validate Qdrant liveness from Rust
   - Implement a health-check function in `repovec-core` that connects to
     Qdrant gRPC at `localhost:6334` with the stored API key and confirms the

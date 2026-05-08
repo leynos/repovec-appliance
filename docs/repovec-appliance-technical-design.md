@@ -355,6 +355,20 @@ Security controls:
   external access.
 - In appliance mode, Qdrant binds to `127.0.0.1` only and is never exposed
   publicly; callers are local processes only.
+- A one-shot systemd unit, `repovec-qdrant-api-key.service`, provisions the
+  local API-key material before `qdrant.service` starts. It creates the minimal
+  `repovec` system user prerequisite if needed, creates `/etc/repovec`, and
+  generates `/etc/repovec/qdrant-api-key` only when that file is absent.
+- `/etc/repovec/qdrant-api-key` stores the raw key, not an environment-file
+  assignment. The file is owned by `repovec:repovec` with mode `0400`, so the
+  appliance service user can read it while other unprivileged users cannot.
+- The provisioning helper refreshes the rootful Podman secret
+  `repovec-qdrant-api-key` from the raw key file without printing the key. The
+  Qdrant Quadlet exposes that secret to the container as
+  `QDRANT__SERVICE__API_KEY`, which maps to Qdrant's `service.api_key` setting.
+- Local clients authenticate to Qdrant by sending the stored key in the
+  `api-key` request header. Requests without the header are expected to fail
+  with Qdrant's authentication error response.
 - The repository source of truth is
   `packaging/systemd/qdrant.container`, installed to
   `/etc/containers/systemd/qdrant.container` on rootful appliance hosts.

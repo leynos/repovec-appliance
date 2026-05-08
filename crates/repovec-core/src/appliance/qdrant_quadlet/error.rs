@@ -3,6 +3,7 @@
 use std::{error::Error, fmt};
 
 use super::{
+    QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET, QDRANT_API_KEY_SERVICE,
     REQUIRED_AUTO_UPDATE_POLICY, REQUIRED_GRPC_PORT, REQUIRED_IMAGE, REQUIRED_REST_PORT,
     REQUIRED_STORAGE_SOURCE, REQUIRED_STORAGE_TARGET,
 };
@@ -71,6 +72,30 @@ pub enum QdrantQuadletError {
         /// The unexpected auto-update policy value.
         auto_update: String,
     },
+    /// The Quadlet does not depend on the API-key provisioning unit.
+    MissingApiKeyProvisioningDependency {
+        /// The missing systemd dependency directive.
+        directive: &'static str,
+    },
+    /// The Quadlet depends on the wrong provisioning unit.
+    IncorrectApiKeyProvisioningDependency {
+        /// The systemd dependency directive with the wrong value.
+        directive: &'static str,
+        /// The unexpected dependency value.
+        dependency: String,
+    },
+    /// The API-key Podman secret is not present in the container definition.
+    MissingApiKeySecret,
+    /// The API-key Podman secret is present but wired to the wrong secret or target.
+    IncorrectApiKeySecret {
+        /// The unexpected secret value.
+        secret: String,
+    },
+    /// The Quadlet exposes the Qdrant API key through an inline environment entry.
+    InlineApiKeyEnvironmentDisallowed {
+        /// The offending environment value.
+        environment: String,
+    },
 }
 
 impl fmt::Display for QdrantQuadletError {
@@ -111,6 +136,36 @@ impl fmt::Display for QdrantQuadletError {
             Self::MissingAutoUpdate => f.write_str("missing AutoUpdate= entry in [Container]"),
             Self::IncorrectAutoUpdate { auto_update } => {
                 write!(f, "AutoUpdate must remain {REQUIRED_AUTO_UPDATE_POLICY}: {auto_update}")
+            }
+            Self::MissingApiKeyProvisioningDependency { directive } => {
+                write!(
+                    f,
+                    "missing {directive}={QDRANT_API_KEY_SERVICE} dependency for Qdrant API-key provisioning",
+                )
+            }
+            Self::IncorrectApiKeyProvisioningDependency { directive, dependency } => {
+                write!(
+                    f,
+                    "{directive} must include {QDRANT_API_KEY_SERVICE} for Qdrant API-key provisioning: {dependency}",
+                )
+            }
+            Self::MissingApiKeySecret => {
+                write!(
+                    f,
+                    "missing Secret={QDRANT_API_KEY_SECRET},type=env,target={QDRANT_API_KEY_ENVIRONMENT_VARIABLE}",
+                )
+            }
+            Self::IncorrectApiKeySecret { secret } => {
+                write!(
+                    f,
+                    "Qdrant API-key secret must be {QDRANT_API_KEY_SECRET},type=env,target={QDRANT_API_KEY_ENVIRONMENT_VARIABLE}: {secret}",
+                )
+            }
+            Self::InlineApiKeyEnvironmentDisallowed { environment } => {
+                write!(
+                    f,
+                    "Qdrant API keys must use a Podman secret, not inline Environment=: {environment}",
+                )
             }
         }
     }

@@ -1,0 +1,10 @@
+[Unit]
+Description=Provision the repovec Qdrant API key
+Documentation=man:podman-secret(1)
+Wants=systemd-sysusers.service
+After=systemd-sysusers.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/repovec/repovec-qdrant-api-key
+

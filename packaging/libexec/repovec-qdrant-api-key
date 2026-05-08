@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+
+REPOVEC_USER=repovec
+REPOVEC_GROUP=repovec
+CONFIG_DIR=/etc/repovec
+KEY_FILE="${CONFIG_DIR}/qdrant-api-key"
+SECRET_NAME=repovec-qdrant-api-key
+
+ensure_repovec_user() {
+    if getent passwd "${REPOVEC_USER}" >/dev/null; then
+        return 0
+    fi
+
+    useradd --system \
+        --home-dir /var/lib/repovec \
+        --shell /usr/sbin/nologin \
+        "${REPOVEC_USER}"
+}
+
+generate_key_file() {
+    tmp_file="$(mktemp "${CONFIG_DIR}/qdrant-api-key.XXXXXX")"
+    trap 'rm -f "${tmp_file}"' EXIT HUP INT TERM
+
+    od -An -N32 -tx1 /dev/urandom | tr -d ' \n' >"${tmp_file}"
+    printf '\n' >>"${tmp_file}"
+    chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${tmp_file}"
+    chmod 0400 "${tmp_file}"
+    mv "${tmp_file}" "${KEY_FILE}"
+    trap - EXIT HUP INT TERM
+}
+
+ensure_repovec_user
+install -d -o root -g "${REPOVEC_GROUP}" -m 0750 "${CONFIG_DIR}"
+
+if [ ! -e "${KEY_FILE}" ]; then
+    generate_key_file
+fi
+
+chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${KEY_FILE}"
+chmod 0400 "${KEY_FILE}"
+
+if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
+    podman secret rm "${SECRET_NAME}" >/dev/null 2>&1 || exit 0
+fi
+
+podman secret create "${SECRET_NAME}" "${KEY_FILE}" >/dev/null

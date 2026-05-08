@@ -114,3 +114,39 @@ EOF'
 ```
 
 Requests to Qdrant without the `api-key` header are rejected.
+
+## Appliance systemd target
+
+repovec-appliance ships a base systemd target and static daemon service files
+under `packaging/systemd/`:
+
+- `repovec.target`
+- `repovecd.service`
+- `repovec-mcpd.service`
+
+Install these files to `/etc/systemd/system/`, then reload systemd:
+
+```sh
+sudo install -m 0644 packaging/systemd/repovec.target /etc/systemd/system/repovec.target
+sudo install -m 0644 packaging/systemd/repovecd.service /etc/systemd/system/repovecd.service
+sudo install -m 0644 packaging/systemd/repovec-mcpd.service /etc/systemd/system/repovec-mcpd.service
+sudo systemctl daemon-reload
+```
+
+The target wants `qdrant.service`, `repovecd.service`, `repovec-mcpd.service`,
+and `cloudflared.service`. The Qdrant service name is the generated systemd
+unit from the installed `/etc/containers/systemd/qdrant.container` Quadlet;
+dependant services must use `qdrant.service`.
+
+Enable and start the appliance service group with:
+
+```sh
+sudo systemctl enable repovec.target
+sudo systemctl start repovec.target
+```
+
+Starting the target may still fail until later roadmap items create the
+`repovec` system user, directory layout, Qdrant API-key configuration, and
+production daemon binaries. The checked-in unit contract already records the
+intended ordering: `repovecd.service` starts after and requires Qdrant, and
+`repovec-mcpd.service` starts after and requires both Qdrant and `repovecd`.

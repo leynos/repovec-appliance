@@ -227,12 +227,36 @@ The helper is host-facing packaging code. It owns filesystem, user, permission
 and Podman-secret operations; `repovec-core` only validates the static contract
 that those assets expose.
 
-### 5.3 Extension pattern
+### 5.3 `systemd_units` validation surface
+
+The `systemd_units` module exposes the public validation surface for the
+checked-in repovec target and daemon service files:
+
+- `checked_in_repovec_target() -> &'static str` returns the embedded
+  `packaging/systemd/repovec.target` source.
+- `checked_in_repovecd_service() -> &'static str` returns the embedded
+  `packaging/systemd/repovecd.service` source.
+- `checked_in_repovec_mcpd_service() -> &'static str` returns the embedded
+  `packaging/systemd/repovec-mcpd.service` source.
+- `validate_checked_in_systemd_units() -> Result<(), SystemdUnitError>`
+  validates the embedded unit set.
+- `validate_systemd_units(target, repovecd, mcpd) -> Result<(), SystemdUnitError>`
+  validates caller-provided unit contents against the same appliance contract.
+- `SystemdUnitError` is the typed error enum for validation failures. See
+  `crates/repovec-core/src/appliance/systemd_units/error.rs` for the full
+  variant list.
+
+This module validates static unit-file policy only. It must not call
+`systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
+runtime installation work.
+
+### 5.4 Extension pattern
 
 To add validation for a new appliance asset:
 
 1. Create a submodule directory under `appliance/` with `mod.rs`, `error.rs`,
-   `parser.rs` if a custom parser is needed, and `tests.rs`.
+   `parser.rs` if a custom parser is needed, and `tests.rs` when tests would
+   otherwise make the module too large.
 2. Re-export the submodule from `appliance/mod.rs`.
 3. Embed the checked-in asset with `include_str!` and expose a
    `checked_in_*()` function.
@@ -241,7 +265,7 @@ To add validation for a new appliance asset:
 5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
    scenarios under `crates/repovec-core/tests/features/`.
 
-### 5.4 Test patterns
+### 5.5 Test patterns
 
 The appliance validation modules use `rstest` for unit tests and `rstest-bdd`
 with `rstest-bdd-macros` for behavioural tests. Unit tests should exercise each
@@ -249,21 +273,23 @@ typed error variant directly. Behavioural tests should describe the appliance
 contract in feature files and keep the executable scenarios thin.
 
 **Display and message snapshots (`insta`).** Operator-visible `fmt::Display`
-strings for typed appliance errors (for example every
-[`QdrantQuadletError`][]) should be derived from **`validate_*` failures**, not
-from errors constructed solely in tests. Mutate an embed or copy of the
-checked-in asset (or compose a deliberate invalid parse input), invoke the real
-validator, assert the canonical `PartialEq/Eq` typed error variant, then
-compare `error.to_string()` against a committed YAML snapshot from the [`insta`][]
-crate (workspace-pinned under `[workspace.dependencies]` and pulled in via
- `[dev-dependencies]`). Prefer one `#[rstest]` harness with cases that enumerate
+strings for typed appliance errors (for example every [`QdrantQuadletError`][])
+should be derived from **`validate_*` failures**, not from errors constructed
+solely in tests. Mutate an embed or copy of the checked-in asset (or compose a
+deliberate invalid parse input), invoke the real validator, assert the
+canonical `PartialEq/Eq` typed error variant, then compare `error.to_string()`
+against a committed YAML snapshot from the [`insta`][] crate (workspace-pinned
+under `[workspace.dependencies]` and pulled in via `[dev-dependencies]`).
+Direct literal assertions for `error.to_string()` are acceptable when
+committing one snapshot file per diagnostic would exceed the active ExecPlan's
+file-count tolerance. Prefer one `#[rstest]` harness with cases that enumerate
 scenario-specific mutations alongside their stable snapshot labels, colocated
 under the module `snapshots/` directory (see
 `crates/repovec-core/src/appliance/qdrant_quadlet/`). Duplicate labels across
 distinct cases remain valid whenever the reachable diagnostic matches the same
 operator-facing wording (for instance two malformed `PublishPort=` inputs that
-both surface `MissingGrpcPort`). Update snapshots deliberately via `cargo insta`
-(or `INSTA_UPDATE=…`) when message wording changes.
+both surface `MissingGrpcPort`). Update snapshots deliberately via
+`cargo insta` (or `INSTA_UPDATE=…`) when message wording changes.
 
 [`QdrantQuadletError`]: ../crates/repovec-core/src/appliance/qdrant_quadlet/error.rs
 [`insta`]: https://docs.rs/insta

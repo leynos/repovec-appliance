@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -114,10 +114,24 @@ implement the roadmap item until the user approves this ExecPlan.
 - [x] (2026-05-08T02:23:40Z) Received Wyvern input on the systemd dependency
   graph and the Quadlet naming caveat for `qdrant.service`.
 - [x] (2026-05-08T02:23:40Z) Drafted this pre-implementation ExecPlan.
-- [ ] Await explicit user approval before implementation begins.
-- [ ] Implement static unit files and Rust validation.
-- [ ] Update documentation and roadmap after the feature is implemented.
-- [ ] Run all required gates and commit the approved implementation.
+- [x] (2026-05-08T13:18:00+02:00) Received explicit approval to proceed with
+  implementation of this ExecPlan.
+- [x] (2026-05-08T13:39:00+02:00) Added `repovec.target`,
+  `repovecd.service`, and `repovec-mcpd.service` under `packaging/systemd/`.
+- [x] (2026-05-08T13:47:00+02:00) Added
+  `repovec_core::appliance::systemd_units` with checked-in asset embedding,
+  static validation, typed errors, `rstest` unit coverage, literal diagnostic
+  assertions, and `rstest-bdd` behavioural coverage.
+- [x] (2026-05-08T13:50:00+02:00) Focused validation passed:
+  `cargo test -p repovec-core systemd_units` and
+  `cargo test -p repovec-core --test systemd_units_bdd`.
+- [x] (2026-05-08T13:56:00+02:00) Updated the technical design, users guide,
+  developers guide, and roadmap for the shipped systemd unit contract.
+- [x] (2026-05-08T14:04:00+02:00) Ran `make fmt`, `make markdownlint`,
+  `make nixie`, `make check-fmt`, `make lint`, and `make test`; all pass after
+  one lint-fix cycle.
+- [x] (2026-05-08T14:08:00+02:00) Prepared the approved implementation for a
+  single gated commit.
 
 ## Surprises & Discoveries
 
@@ -134,6 +148,13 @@ implement the roadmap item until the user approves this ExecPlan.
   plan and users guide already describe starting `qdrant.service`. Impact: the
   validator must reject `qdrant.container` and `qdrant.container.service`
   dependency names in the new unit files.
+
+- Observation: committing one `insta` YAML snapshot per systemd diagnostic
+  would add many files and would conflict with the plan's file-count tolerance.
+  Evidence: the first focused test run generated seventeen `.snap.new` files.
+  Impact: the implementation uses literal diagnostic assertions for the new
+  systemd diagnostics while retaining external snapshot files for the existing
+  Qdrant Quadlet tests.
 
 ## Decision Log
 
@@ -160,14 +181,31 @@ implement the roadmap item until the user approves this ExecPlan.
 - Decision: do not add property tests, Kani, or Verus in the initial
   implementation. Rationale: the requested contracts are finite static
   unit-file requirements. Exhaustive mutation cases with `rstest`, behavioural
-  scenarios with `rstest-bdd`, and committed diagnostic snapshots provide
-  direct evidence without adding proof tooling that would merely restate the
-  same fixed contract. Date/Author: 2026-05-08T02:23:40Z / Codex.
+  scenarios with `rstest-bdd`, and checked diagnostics provide direct evidence
+  without adding proof tooling that would merely restate the same fixed
+  contract. Date/Author: 2026-05-08T02:23:40Z / Codex.
+
+- Decision: use literal string assertions for `SystemdUnitError` display
+  diagnostics instead of committing separate `.snap` files. Rationale: the
+  repository requires code files to stay below 400 lines, so tests needed their
+  own `tests.rs`; adding both that file and seventeen external snapshot files
+  would greatly exceed the plan's file-count tolerance. Literal assertions keep
+  diagnostic wording locked while limiting repository file churn. Date/Author:
+  2026-05-08T13:54:00+02:00 / Codex.
 
 ## Outcomes & Retrospective
 
-No implementation outcome exists yet. This plan is in DRAFT state and must be
-approved before code or packaging changes are made.
+Roadmap item `1.3.1` is implemented. The repository now ships
+`packaging/systemd/repovec.target`, `packaging/systemd/repovecd.service`, and
+`packaging/systemd/repovec-mcpd.service`; validates their static dependency
+contract from `repovec_core::appliance::systemd_units`; and documents the
+operator and developer-facing behaviour. `docs/roadmap.md` marks item `1.3.1`
+done.
+
+The main lesson is that external snapshot files are useful for a small number
+of stable diagnostics, but not for a dense finite contract when an ExecPlan
+sets a strict file-count tolerance. Literal diagnostic assertions preserve the
+same wording check for this module without adding seventeen extra files.
 
 ## Context and orientation
 
@@ -320,8 +358,9 @@ missing `repovec-mcpd.service` `Requires=repovecd.service`, missing
 Stage D adds automated tests. Put `rstest` unit tests alongside the validator
 in `crates/repovec-core/src/appliance/systemd_units/tests.rs`. Use fixtures for
 the checked-in unit contents and parameterized mutation cases for each error
-variant. Add `insta` snapshots for operator-visible error messages, using the
-same style documented in `docs/developers-guide.md`.
+variant. Check operator-visible error messages with literal diagnostic
+assertions because separate snapshot files would exceed this plan's file-count
+tolerance.
 
 Add `rstest-bdd` behavioural coverage under
 `crates/repovec-core/tests/features/systemd_units.feature` and
@@ -413,7 +452,7 @@ observable evidence:
   `repovec-core`.
 - `rstest` unit tests cover the happy path, each required missing dependency,
   the wrong Quadlet unit name, wrong service binary names, parse errors, and
-  diagnostic snapshots.
+  operator-visible diagnostics.
 - `rstest-bdd` scenarios describe the appliance unit contract in behavioural
   terms.
 - `docs/repovec-appliance-technical-design.md`, `docs/users-guide.md`,

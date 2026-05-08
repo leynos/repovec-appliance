@@ -1,0 +1,13 @@
+[Unit]
+Description=repovec MCP bridge daemon
+Requires=qdrant.service repovecd.service
+After=qdrant.service repovecd.service
+
+[Service]
+Type=simple
+User=repovec
+Group=repovec
+WorkingDirectory=/var/lib/repovec
+Environment=HOME=/var/lib/repovec
+ExecStart=/usr/bin/repovec-mcpd
+Restart=on-failure

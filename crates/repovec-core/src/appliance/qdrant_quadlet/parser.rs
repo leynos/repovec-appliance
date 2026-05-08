@@ -2,7 +2,11 @@
 
 use std::collections::BTreeMap;
 
+use tracing::error;
+
 use super::QdrantQuadletError;
+
+const LOG_TARGET: &str = "repovec_core::qdrant_quadlet";
 
 #[derive(Debug)]
 pub(super) struct ParsedQuadlet {
@@ -28,10 +32,22 @@ impl ParsedQuadlet {
             }
 
             let Some((key, value)) = line.split_once('=') else {
+                error!(
+                    target: LOG_TARGET,
+                    line_number,
+                    line,
+                    "qdrant quadlet validation rejected invalid line"
+                );
                 return Err(QdrantQuadletError::InvalidLine { line_number, line: line.to_owned() });
             };
 
             let Some(section) = &current_section else {
+                error!(
+                    target: LOG_TARGET,
+                    line_number,
+                    line,
+                    "qdrant quadlet validation rejected property before section"
+                );
                 return Err(QdrantQuadletError::PropertyBeforeSection {
                     line_number,
                     line: line.to_owned(),

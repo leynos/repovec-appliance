@@ -9,7 +9,7 @@ use std::{error::Error, fmt};
 
 use super::{
     REQUIRED_AUTO_UPDATE_POLICY, REQUIRED_GRPC_PORT, REQUIRED_IMAGE, REQUIRED_REST_PORT,
-    REQUIRED_STORAGE_SOURCE, REQUIRED_STORAGE_TARGET,
+    REQUIRED_SELINUX_OPTION, REQUIRED_STORAGE_SOURCE, REQUIRED_STORAGE_TARGET,
 };
 
 /// Contract failures for the Qdrant Quadlet.
@@ -135,7 +135,11 @@ impl fmt::Display for QdrantQuadletError {
                 write!(f, "storage target must be {REQUIRED_STORAGE_TARGET}: {target}")
             }
             Self::MissingSelinuxRelabel { volume } => {
-                write!(f, "storage mount must include SELinux relabel :Z: {volume}")
+                write!(
+                    f,
+                    "storage mount must include SELinux relabel :{REQUIRED_SELINUX_OPTION}: \
+                     {volume}"
+                )
             }
             Self::MissingAutoUpdate => f.write_str("missing AutoUpdate= entry in [Container]"),
             Self::IncorrectAutoUpdate { auto_update } => {

@@ -136,7 +136,7 @@ sudo systemctl daemon-reload
 The target wants `qdrant.service`, `repovecd.service`, `repovec-mcpd.service`,
 and `cloudflared.service`. The Qdrant service name is the generated systemd
 unit from the installed `/etc/containers/systemd/qdrant.container` Quadlet;
-dependant services must use `qdrant.service`.
+dependent services must use `qdrant.service`.
 
 Enable and start the appliance service group with:
 

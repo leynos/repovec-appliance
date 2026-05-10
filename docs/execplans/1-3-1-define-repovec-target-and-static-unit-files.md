@@ -82,8 +82,8 @@ implement the roadmap item until the user approves this ExecPlan.
   editing the package-owned unit. Severity: medium. Likelihood: medium.
   Mitigation: make `repovec.target` want `cloudflared.service`, and consider
   adding `Before=cloudflared.service` to `repovec-mcpd.service` only if static
-  validation can prove that the transaction orders the tunnel after the MCP
-  daemon without owning the tunnel unit.
+  validation can prove that the transaction orders the tunnel after the Model
+  Context Protocol (MCP) daemon without owning the tunnel unit.
 
 - Risk: `qdrant.container` may be mistaken for the unit name that other units
   depend on. Severity: medium. Likelihood: medium. Mitigation: validate that
@@ -297,7 +297,7 @@ The intended `repovec-mcpd.service` unit contract is:
 
 ```ini
 [Unit]
-Description=repovec MCP bridge daemon
+Description=repovec Model Context Protocol (MCP) bridge daemon
 Requires=qdrant.service repovecd.service
 After=qdrant.service repovecd.service
 
@@ -508,7 +508,7 @@ The main systemd naming note to preserve in review is:
 packaging/systemd/qdrant.container -> qdrant.service
 ```
 
-Dependants must use `qdrant.service`.
+Dependent units must use `qdrant.service`.
 
 ## Interfaces and dependencies
 

@@ -4,7 +4,8 @@
 # and mode for REPOVEC_USER:REPOVEC_GROUP, and refresh SECRET_NAME from that
 # file when Podman permits replacement. New secret material is sourced only
 # from /dev/urandom, written to CONFIG_DIR/KEY_FILE with mode 0400, and exposed
-# to Qdrant only through the Podman SECRET_NAME environment secret.
+# to Qdrant only through the Podman SECRET_NAME environment secret. The helper
+# logs lifecycle decisions only; it never echoes or logs KEY_FILE contents.
 set -eu
 
 REPOVEC_USER=repovec

@@ -174,6 +174,10 @@ it.
   tokenization, duplicate BDD coverage, sysusers documentation, safe curl
   documentation, newline-free key generation and Podman-secret removal
   rationale.
+- [x] (2026-05-10T00:00:00+02:00) Addressed additional review comments by
+  centralizing packaging asset inclusion in tests, narrowing the no-leak helper
+  assertion, strengthening the canonical key-path assertion, and adding wrong
+  `Secret=...,type=...` coverage.
 
 ## Surprises & Discoveries
 
@@ -285,6 +289,13 @@ it.
   and whitespace-separated assignments; keeping this local preserves the pure
   validation boundary and avoids a dependency solely for a static asset check.
   Date/Author: 2026-05-10, Codex.
+
+- Decision: Keep packaging asset includes in a small test-local macro rather
+  than duplicating
+  `concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/...")` at each include
+  site. Rationale: `include_str!` still requires compile-time literals, but
+  centralizing the manifest-relative prefix leaves one place to update if the
+  crate moves. Date/Author: 2026-05-10, Codex.
 
 - Decision: Implementation reached the ExecPlan scope tolerance for file count.
   Rationale: the plan set an exception trigger at more than 12 changed files.

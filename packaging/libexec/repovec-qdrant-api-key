@@ -4,7 +4,7 @@ set -eu
 REPOVEC_USER=repovec
 REPOVEC_GROUP=repovec
 CONFIG_DIR=/etc/repovec
-KEY_FILE="${CONFIG_DIR}/qdrant-api-key"
+KEY_FILE=/etc/repovec/qdrant-api-key
 SECRET_NAME=repovec-qdrant-api-key
 
 ensure_repovec_user() {

@@ -88,7 +88,7 @@ implement the roadmap item until the user approves this ExecPlan.
 - Risk: `qdrant.container` may be mistaken for the unit name that other units
   depend on. Severity: medium. Likelihood: medium. Mitigation: validate that
   checked-in units reference `qdrant.service`. Document the Quadlet-generated
-  unit-name convention in the design and developer guide.
+  unit-name convention in the design and developer's guide.
 
 - Risk: real systemd behaviour is difficult to test in Continuous Integration
   (CI). Severity: medium. Likelihood: high. Mitigation: validate the checked-in

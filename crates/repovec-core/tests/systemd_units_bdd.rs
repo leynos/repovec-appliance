@@ -56,12 +56,15 @@ fn the_repovecd_qdrant_ordering_is_removed(systemd_world: &mut SystemdWorld) {
 
 #[given("the repovec-mcpd repovecd requirement is removed")]
 fn the_repovec_mcpd_repovecd_requirement_is_removed(systemd_world: &mut SystemdWorld) {
-    systemd_world.mcpd = systemd_world.mcpd.replace(" repovecd.service", "");
+    systemd_world.mcpd = systemd_world
+        .mcpd
+        .replace("Requires=qdrant.service repovecd.service\n", "Requires=qdrant.service\n");
 }
 
 #[given("repovecd requires qdrant.container instead of qdrant.service")]
 fn repovecd_requires_qdrant_container_instead_of_qdrant_service(systemd_world: &mut SystemdWorld) {
-    systemd_world.repovecd = systemd_world.repovecd.replace("qdrant.service", "qdrant.container");
+    systemd_world.repovecd =
+        systemd_world.repovecd.replace("Requires=qdrant.service\n", "Requires=qdrant.container\n");
 }
 
 #[when("the systemd units are validated")]

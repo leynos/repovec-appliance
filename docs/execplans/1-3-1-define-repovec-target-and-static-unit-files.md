@@ -27,8 +27,8 @@ implement the roadmap item until the user approves this ExecPlan.
   approved.
 - The source-of-truth systemd assets must live under `packaging/systemd/`.
 - The Qdrant Podman Quadlet remains owned by roadmap item `1.2.1` at
-  `packaging/systemd/qdrant.container`. Dependants must reference the generated
-  systemd unit name `qdrant.service`, not `qdrant.container` or
+  `packaging/systemd/qdrant.container`. Dependent units must reference the
+  generated systemd unit name `qdrant.service`, not `qdrant.container` or
   `qdrant.container.service`.
 - The implementation must create `repovec.target`, `repovecd.service`, and
   `repovec-mcpd.service`. It must not invent the future

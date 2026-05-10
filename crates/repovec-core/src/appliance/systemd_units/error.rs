@@ -1,4 +1,9 @@
 //! Semantic validation errors for the repovec systemd unit contract.
+//!
+//! The parent `systemd_units` module returns these errors from its checked-in
+//! and caller-provided validation functions so callers can distinguish parse,
+//! dependency, install-contract, and service command failures without
+//! inspecting display strings.
 
 use std::{error::Error, fmt};
 

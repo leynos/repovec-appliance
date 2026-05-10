@@ -132,6 +132,10 @@ implement the roadmap item until the user approves this ExecPlan.
   one lint-fix cycle.
 - [x] (2026-05-08T14:08:00+02:00) Prepared the approved implementation for a
   single gated commit.
+- [x] (2026-05-10T00:00:00+02:00) Addressed still-valid follow-up checks by
+  expanding the `systemd_units::error` module documentation, adding explicit
+  missing `[Install]` unit coverage, and adding `rstest-bdd` scenarios for
+  semicolon comments and the `WantedBy=multi-user.target` install binding.
 
 ## Surprises & Discoveries
 
@@ -155,6 +159,13 @@ implement the roadmap item until the user approves this ExecPlan.
   Impact: the implementation uses literal diagnostic assertions for the new
   systemd diagnostics while retaining external snapshot files for the existing
   Qdrant Quadlet tests.
+
+- Observation: the empty-looking `rstest-bdd` scenario function bodies are the
+  expected macro pattern in this repository. Evidence: the `#[scenario]` macro
+  executes the registered Given/When/Then step functions, and the scenario
+  body only consumes the final world value. Impact: follow-up work adds missing
+  behavioural scenarios and step assertions rather than moving assertions into
+  the scenario body.
 
 ## Decision Log
 

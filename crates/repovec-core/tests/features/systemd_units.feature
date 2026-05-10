@@ -12,6 +12,18 @@ Feature: repovec systemd unit contract
     When the systemd units are validated
     Then validation fails because the target does not want cloudflared
 
+  Scenario: The target remains enableable
+    Given the checked-in repovec systemd units
+    And the target install binding is removed
+    When the systemd units are validated
+    Then validation fails because the target is not wanted by multi-user
+
+  Scenario: Semicolon comments are accepted
+    Given the checked-in repovec systemd units
+    And a semicolon comment is added to the target
+    When the systemd units are validated
+    Then the systemd unit set is accepted
+
   Scenario: repovecd waits for Qdrant
     Given the checked-in repovec systemd units
     And the repovecd Qdrant ordering is removed

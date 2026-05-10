@@ -38,6 +38,17 @@ fn cloudflared_is_removed_from_the_target_wants_list(systemd_world: &mut Systemd
     systemd_world.target = systemd_world.target.replace(" cloudflared.service", "");
 }
 
+#[given("the target install binding is removed")]
+fn the_target_install_binding_is_removed(systemd_world: &mut SystemdWorld) {
+    systemd_world.target = systemd_world.target.replace("WantedBy=multi-user.target\n", "");
+}
+
+#[given("a semicolon comment is added to the target")]
+fn a_semicolon_comment_is_added_to_the_target(systemd_world: &mut SystemdWorld) {
+    systemd_world.target =
+        systemd_world.target.replace("[Unit]\n", "[Unit]\n; systemd accepts semicolon comments\n");
+}
+
 #[given("the repovecd Qdrant ordering is removed")]
 fn the_repovecd_qdrant_ordering_is_removed(systemd_world: &mut SystemdWorld) {
     systemd_world.repovecd = systemd_world.repovecd.replace("After=qdrant.service\n", "");
@@ -80,6 +91,19 @@ fn validation_fails_because_the_target_does_not_want_cloudflared(systemd_world: 
             section: "Unit",
             key: "Wants",
             dependency: "cloudflared.service",
+        },
+    );
+}
+
+#[then("validation fails because the target is not wanted by multi-user")]
+fn validation_fails_because_the_target_is_not_wanted_by_multi_user(systemd_world: &SystemdWorld) {
+    assert_validation_result(
+        systemd_world,
+        SystemdUnitError::MissingDependency {
+            unit: "repovec.target",
+            section: "Install",
+            key: "WantedBy",
+            dependency: "multi-user.target",
         },
     );
 }
@@ -136,6 +160,12 @@ fn checked_in_unit_set_satisfies_the_appliance_contract(systemd_world: SystemdWo
     name = "The target wants every appliance service"
 )]
 fn target_wants_every_appliance_service(systemd_world: SystemdWorld) { let _ = systemd_world; }
+
+#[scenario(path = "tests/features/systemd_units.feature", name = "The target remains enableable")]
+fn target_remains_enableable(systemd_world: SystemdWorld) { let _ = systemd_world; }
+
+#[scenario(path = "tests/features/systemd_units.feature", name = "Semicolon comments are accepted")]
+fn semicolon_comments_are_accepted(systemd_world: SystemdWorld) { let _ = systemd_world; }
 
 #[scenario(path = "tests/features/systemd_units.feature", name = "repovecd waits for Qdrant")]
 fn repovecd_waits_for_qdrant(systemd_world: SystemdWorld) { let _ = systemd_world; }

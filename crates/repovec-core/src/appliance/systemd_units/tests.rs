@@ -1,5 +1,5 @@
 //! Contract tests for `validate_systemd_units`: deterministic mutations of the
-//! shipped systemd units plus committed `insta` diagnostics.
+//! shipped systemd units plus literal diagnostic assertions.
 
 use rstest::{fixture, rstest};
 
@@ -20,6 +20,7 @@ enum ValidationScenario {
     InvalidLine,
     PropertyBeforeSection,
     MissingTargetUnitSection,
+    MissingTargetInstallSection,
     MissingTargetWantedBy,
     MissingTargetWantsQdrant,
     TargetUsesQdrantContainer,
@@ -46,6 +47,10 @@ impl ValidationScenario {
             }
             Self::MissingTargetUnitSection => {
                 units.replace_file(UnitFile::Target, "[Install]\nWantedBy=multi-user.target\n");
+            }
+            Self::MissingTargetInstallSection => {
+                units.remove_line(UnitFile::Target, "[Install]\n");
+                units.remove_line(UnitFile::Target, "WantedBy=multi-user.target\n");
             }
             Self::MissingTargetWantedBy => {
                 units.remove_line(UnitFile::Target, "WantedBy=multi-user.target\n");
@@ -114,6 +119,9 @@ impl ValidationScenario {
             Self::MissingTargetUnitSection => {
                 SystemdUnitError::MissingSection { unit: "repovec.target", section: "Unit" }
             }
+            Self::MissingTargetInstallSection => {
+                SystemdUnitError::MissingSection { unit: "repovec.target", section: "Install" }
+            }
             Self::MissingTargetWantedBy => missing_install("repovec.target", "multi-user.target"),
             Self::MissingTargetWantsQdrant => missing("repovec.target", "Wants", "qdrant.service"),
             Self::TargetUsesQdrantContainer => {
@@ -166,6 +174,7 @@ impl ValidationScenario {
                 "Requires=qdrant.service",
             ),
             Self::MissingTargetUnitSection => "repovec.target is missing [Unit]",
+            Self::MissingTargetInstallSection => "repovec.target is missing [Install]",
             Self::MissingTargetWantedBy => {
                 "repovec.target is missing WantedBy=multi-user.target in [Install]"
             }
@@ -292,6 +301,7 @@ fn semicolon_comments_are_ignored() {
 #[case::invalid_line(ValidationScenario::InvalidLine)]
 #[case::property_before_section(ValidationScenario::PropertyBeforeSection)]
 #[case::missing_target_unit_section(ValidationScenario::MissingTargetUnitSection)]
+#[case::missing_target_install_section(ValidationScenario::MissingTargetInstallSection)]
 #[case::missing_target_wanted_by(ValidationScenario::MissingTargetWantedBy)]
 #[case::missing_target_wants_qdrant(ValidationScenario::MissingTargetWantsQdrant)]
 #[case::target_uses_qdrant_container(ValidationScenario::TargetUsesQdrantContainer)]

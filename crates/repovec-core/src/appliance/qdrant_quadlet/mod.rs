@@ -4,6 +4,8 @@ mod error;
 mod parser;
 
 #[cfg(test)]
+mod api_key_tests;
+#[cfg(test)]
 mod provisioning_tests;
 #[cfg(test)]
 mod tests;
@@ -310,12 +312,46 @@ fn validate_no_inline_api_key_environment(
     parsed: &ParsedQuadlet,
 ) -> Result<(), QdrantQuadletError> {
     for environment in parsed.values(CONTAINER_SECTION, "Environment") {
-        if environment.starts_with(&format!("{QDRANT_API_KEY_ENVIRONMENT_VARIABLE}=")) {
-            return Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
-                environment: environment.clone(),
-            });
+        for assignment in split_environment_assignments(environment) {
+            if is_api_key_environment_assignment(&assignment) {
+                return Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
+                    environment: assignment,
+                });
+            }
         }
     }
 
     Ok(())
+}
+
+fn split_environment_assignments(environment: &str) -> Vec<String> {
+    let mut assignments = Vec::new();
+    let mut assignment = String::new();
+    let mut quote = None;
+
+    for character in environment.chars() {
+        match (quote, character) {
+            (Some(active_quote), current) if active_quote == current => quote = None,
+            (None, '"' | '\'') => quote = Some(character),
+            (None, current) if current.is_ascii_whitespace() => {
+                if !assignment.is_empty() {
+                    assignments.push(std::mem::take(&mut assignment));
+                }
+            }
+            _ => assignment.push(character),
+        }
+    }
+
+    if !assignment.is_empty() {
+        assignments.push(assignment);
+    }
+
+    assignments
+}
+
+fn is_api_key_environment_assignment(assignment: &str) -> bool {
+    assignment == QDRANT_API_KEY_ENVIRONMENT_VARIABLE
+        || assignment
+            .split_once('=')
+            .is_some_and(|(key, _value)| key == QDRANT_API_KEY_ENVIRONMENT_VARIABLE)
 }

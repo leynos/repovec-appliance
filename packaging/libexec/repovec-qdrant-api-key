@@ -22,8 +22,7 @@ generate_key_file() {
     tmp_file="$(mktemp "${CONFIG_DIR}/qdrant-api-key.XXXXXX")"
     trap 'rm -f "${tmp_file}"' EXIT HUP INT TERM
 
-    od -An -N32 -tx1 /dev/urandom | tr -d ' \n' >"${tmp_file}"
-    printf '\n' >>"${tmp_file}"
+    od -An -N32 -tx1 /dev/urandom | tr -d ' \n' | tee "${tmp_file}" >/dev/null
     chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${tmp_file}"
     chmod 0400 "${tmp_file}"
     mv "${tmp_file}" "${KEY_FILE}"
@@ -41,6 +40,9 @@ chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${KEY_FILE}"
 chmod 0400 "${KEY_FILE}"
 
 if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
+    # If the secret is still in use, keep the running service intact. This also
+    # masks other failures, so future work should log or diagnose non-in-use
+    # errors such as missing Podman access or permission problems.
     podman secret rm "${SECRET_NAME}" >/dev/null 2>&1 || exit 0
 fi
 

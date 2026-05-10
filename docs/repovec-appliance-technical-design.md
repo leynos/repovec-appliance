@@ -355,10 +355,12 @@ Security controls:
   external access.
 - In appliance mode, Qdrant binds to `127.0.0.1` only and is never exposed
   publicly; callers are local processes only.
+- The sysusers asset `packaging/sysusers.d/repovec.conf` is the packaging
+  prerequisite that ensures the minimal `repovec` system user exists.
 - A one-shot systemd unit, `repovec-qdrant-api-key.service`, provisions the
-  local API-key material before `qdrant.service` starts. It creates the minimal
-  `repovec` system user prerequisite if needed, creates `/etc/repovec`, and
-  generates `/etc/repovec/qdrant-api-key` only when that file is absent.
+  local API-key material before `qdrant.service` starts. It creates
+  `/etc/repovec` and generates `/etc/repovec/qdrant-api-key` only when that
+  file is absent.
 - `/etc/repovec/qdrant-api-key` stores the raw key, not an environment-file
   assignment. The file is owned by `repovec:repovec` with mode `0400`, so the
   appliance service user can read it while other unprivileged users cannot.

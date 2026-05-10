@@ -169,6 +169,11 @@ it.
   implementation, validation, and documentation updates were complete.
 - [x] (2026-05-08T11:16:00+02:00) Received user approval to proceed with the
   cohesive change set despite the file-count tolerance exception.
+- [x] (2026-05-10T00:00:00+02:00) Verified follow-up review findings against
+  current code and applied the still-valid fixes for `Environment=`
+  tokenization, duplicate BDD coverage, sysusers documentation, safe curl
+  documentation, newline-free key generation and Podman-secret removal
+  rationale.
 
 ## Surprises & Discoveries
 
@@ -219,6 +224,13 @@ it.
   smoke test remains a reviewer/manual appliance-host check using the commands
   in this plan.
 
+- Observation: follow-up review found that `Environment=` values may contain
+  quoted values or multiple assignments, and the validator only checked each
+  raw Quadlet value as a whole. Evidence:
+  `validate_no_inline_api_key_environment` previously used
+  `environment.starts_with(...)`. Impact: validation now tokenizes
+  `Environment=` values before checking for inline Qdrant API-key assignments.
+
 ## Decision Log
 
 - Decision: This plan uses a raw key file plus Podman secret environment
@@ -266,6 +278,13 @@ it.
   starts. If an operator reruns the helper while Qdrant still uses the secret,
   preserving the existing secret is safer than breaking the running service or
   logging secret material. Date/Author: 2026-05-08, Codex.
+
+- Decision: Use a small quote-aware splitter for Quadlet `Environment=` values
+  rather than introducing a new runtime dependency. Rationale: the validator
+  needs only enough shell-like tokenization to distinguish quoted assignments
+  and whitespace-separated assignments; keeping this local preserves the pure
+  validation boundary and avoids a dependency solely for a static asset check.
+  Date/Author: 2026-05-10, Codex.
 
 - Decision: Implementation reached the ExecPlan scope tolerance for file count.
   Rationale: the plan set an exception trigger at more than 12 changed files.

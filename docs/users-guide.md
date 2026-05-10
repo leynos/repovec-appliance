@@ -106,8 +106,10 @@ it in Qdrant's `api-key` header:
 
 ```sh
 sudo -u repovec sh -c \
-  'curl -H "api-key: $(cat /etc/repovec/qdrant-api-key)" \
-  http://127.0.0.1:6333/collections'
+  'api_key="$(cat /etc/repovec/qdrant-api-key)"
+  curl --config - http://127.0.0.1:6333/collections <<EOF
+header = "api-key: ${api_key}"
+EOF'
 ```
 
 Requests to Qdrant without the `api-key` header are rejected.

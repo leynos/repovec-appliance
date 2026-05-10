@@ -175,14 +175,6 @@ fn podman_auto_update_remains_enabled(quadlet_world: QuadletWorld) { let _ = qua
 
 #[scenario(
     path = "tests/features/qdrant_quadlet.feature",
-    name = "The checked-in Quadlet supplies the Qdrant API key from a Podman secret"
-)]
-fn checked_in_quadlet_supplies_qdrant_api_key_from_podman_secret(quadlet_world: QuadletWorld) {
-    let _ = quadlet_world;
-}
-
-#[scenario(
-    path = "tests/features/qdrant_quadlet.feature",
     name = "The Qdrant API key secret must be present"
 )]
 fn qdrant_api_key_secret_must_be_present(quadlet_world: QuadletWorld) { let _ = quadlet_world; }

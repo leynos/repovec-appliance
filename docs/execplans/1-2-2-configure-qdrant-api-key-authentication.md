@@ -178,6 +178,10 @@ it.
   centralizing packaging asset inclusion in tests, narrowing the no-leak helper
   assertion, strengthening the canonical key-path assertion, and adding wrong
   `Secret=...,type=...` coverage.
+- [x] (2026-05-10T00:00:00+02:00) Addressed architecture and observability
+  checks by simplifying the API-key test helper, making API-key contract
+  constants private, adding Display snapshot coverage, and logging safe
+  provisioning decisions to journald.
 
 ## Surprises & Discoveries
 

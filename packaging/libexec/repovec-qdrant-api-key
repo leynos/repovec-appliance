@@ -7,11 +7,17 @@ CONFIG_DIR=/etc/repovec
 KEY_FILE=/etc/repovec/qdrant-api-key
 SECRET_NAME=repovec-qdrant-api-key
 
+log() {
+    printf '%s\n' "repovec-qdrant-api-key: $*" >&2
+}
+
 ensure_repovec_user() {
     if getent passwd "${REPOVEC_USER}" >/dev/null; then
+        log "repovec user already exists"
         return 0
     fi
 
+    log "creating repovec system user"
     useradd --system \
         --home-dir /var/lib/repovec \
         --shell /usr/sbin/nologin \
@@ -22,6 +28,7 @@ generate_key_file() {
     tmp_file="$(mktemp "${CONFIG_DIR}/qdrant-api-key.XXXXXX")"
     trap 'rm -f "${tmp_file}"' EXIT HUP INT TERM
 
+    log "generating qdrant API key file"
     od -An -N32 -tx1 /dev/urandom | tr -d ' \n' | tee "${tmp_file}" >/dev/null
     chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${tmp_file}"
     chmod 0400 "${tmp_file}"
@@ -34,16 +41,24 @@ install -d -o root -g "${REPOVEC_GROUP}" -m 0750 "${CONFIG_DIR}"
 
 if [ ! -e "${KEY_FILE}" ]; then
     generate_key_file
+else
+    log "qdrant API key file already exists"
 fi
 
 chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${KEY_FILE}"
 chmod 0400 "${KEY_FILE}"
+log "ensured qdrant API key permissions"
 
 if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
     # If the secret is still in use, keep the running service intact. This also
     # masks other failures, so future work should log or diagnose non-in-use
     # errors such as missing Podman access or permission problems.
-    podman secret rm "${SECRET_NAME}" >/dev/null 2>&1 || exit 0
+    if ! podman secret rm "${SECRET_NAME}" >/dev/null 2>&1; then
+        log "podman secret removal failed; leaving existing secret in place"
+        exit 0
+    fi
+    log "removed stale qdrant API-key podman secret"
 fi
 
 podman secret create "${SECRET_NAME}" "${KEY_FILE}" >/dev/null
+log "created qdrant API-key podman secret"

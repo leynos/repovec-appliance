@@ -4,11 +4,7 @@ use rstest::rstest;
 
 use super::{QdrantQuadletError, checked_in_qdrant_quadlet, validate_qdrant_quadlet};
 
-fn qdrant_quadlet_contents() -> String {
-    let mut contents = String::new();
-    contents.push_str(checked_in_qdrant_quadlet());
-    contents
-}
+fn qdrant_quadlet_contents() -> String { checked_in_qdrant_quadlet().to_owned() }
 
 fn quoted_inline_api_key_environment() -> String {
     qdrant_quadlet_contents().replace(
@@ -18,6 +14,41 @@ fn quoted_inline_api_key_environment() -> String {
             "Environment=\"QDRANT__SERVICE__API_KEY=secret\"\n",
         ),
     )
+}
+
+#[test]
+fn api_key_error_display_messages_remain_stable() {
+    insta::assert_snapshot!(
+        QdrantQuadletError::MissingApiKeyProvisioningDependency { directive: "Requires" }
+            .to_string(),
+        @"missing Requires=repovec-qdrant-api-key.service dependency for Qdrant API-key provisioning"
+    );
+    insta::assert_snapshot!(
+        QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
+            directive: "After",
+            dependency: String::from("network-online.target"),
+        }
+        .to_string(),
+        @"After must include repovec-qdrant-api-key.service for Qdrant API-key provisioning: network-online.target"
+    );
+    insta::assert_snapshot!(
+        QdrantQuadletError::MissingApiKeySecret.to_string(),
+        @"missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY"
+    );
+    insta::assert_snapshot!(
+        QdrantQuadletError::IncorrectApiKeySecret {
+            secret: String::from("repovec-qdrant-api-key,type=mount,target=QDRANT__SERVICE__API_KEY"),
+        }
+        .to_string(),
+        @"Qdrant API-key secret must be repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: repovec-qdrant-api-key,type=mount,target=QDRANT__SERVICE__API_KEY"
+    );
+    insta::assert_snapshot!(
+        QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
+            environment: String::from("QDRANT__SERVICE__API_KEY=plaintext"),
+        }
+        .to_string(),
+        @"Qdrant API keys must use a Podman secret, not inline Environment=: QDRANT__SERVICE__API_KEY=plaintext"
+    );
 }
 
 fn multi_assignment_inline_api_key_environment() -> String {

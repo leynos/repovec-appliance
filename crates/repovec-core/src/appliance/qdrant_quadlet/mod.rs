@@ -22,17 +22,11 @@ pub const CHECKED_IN_QDRANT_QUADLET_PATH: &str = "packaging/systemd/qdrant.conta
 /// The installation path for the rootful system Quadlet.
 pub const INSTALLED_QDRANT_QUADLET_PATH: &str = "/etc/containers/systemd/qdrant.container";
 
-/// The persistent raw Qdrant API key path on appliance hosts.
-pub const QDRANT_API_KEY_PATH: &str = "/etc/repovec/qdrant-api-key";
+const QDRANT_API_KEY_SERVICE: &str = "repovec-qdrant-api-key.service";
 
-/// The systemd unit that provisions the Qdrant API key before Qdrant starts.
-pub const QDRANT_API_KEY_SERVICE: &str = "repovec-qdrant-api-key.service";
+const QDRANT_API_KEY_SECRET: &str = "repovec-qdrant-api-key";
 
-/// The rootful Podman secret name used to inject the Qdrant API key.
-pub const QDRANT_API_KEY_SECRET: &str = "repovec-qdrant-api-key";
-
-/// The Qdrant environment variable that enables API-key authentication.
-pub const QDRANT_API_KEY_ENVIRONMENT_VARIABLE: &str = "QDRANT__SERVICE__API_KEY";
+const QDRANT_API_KEY_ENVIRONMENT_VARIABLE: &str = "QDRANT__SERVICE__API_KEY";
 
 const UNIT_SECTION: &str = "Unit";
 const CONTAINER_SECTION: &str = "Container";

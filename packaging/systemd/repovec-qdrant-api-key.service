@@ -7,4 +7,5 @@ After=systemd-sysusers.service
 [Service]
 Type=oneshot
 ExecStart=/usr/libexec/repovec/repovec-qdrant-api-key
-
+StandardOutput=journal
+StandardError=journal

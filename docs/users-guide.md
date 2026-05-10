@@ -97,6 +97,7 @@ Operators can inspect service state without printing the key:
 
 ```sh
 systemctl status repovec-qdrant-api-key.service qdrant.service
+journalctl -u repovec-qdrant-api-key.service
 stat -c '%U:%G %a %n' /etc/repovec/qdrant-api-key
 podman secret inspect repovec-qdrant-api-key
 ```

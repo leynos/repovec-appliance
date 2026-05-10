@@ -3,7 +3,6 @@
 use std::{error::Error, fmt};
 
 use super::{
-    QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET, QDRANT_API_KEY_SERVICE,
     REQUIRED_AUTO_UPDATE_POLICY, REQUIRED_GRPC_PORT, REQUIRED_IMAGE, REQUIRED_REST_PORT,
     REQUIRED_STORAGE_SOURCE, REQUIRED_STORAGE_TARGET,
 };
@@ -140,25 +139,25 @@ impl fmt::Display for QdrantQuadletError {
             Self::MissingApiKeyProvisioningDependency { directive } => {
                 write!(
                     f,
-                    "missing {directive}={QDRANT_API_KEY_SERVICE} dependency for Qdrant API-key provisioning",
+                    "missing {directive}=repovec-qdrant-api-key.service dependency for Qdrant API-key provisioning",
                 )
             }
             Self::IncorrectApiKeyProvisioningDependency { directive, dependency } => {
                 write!(
                     f,
-                    "{directive} must include {QDRANT_API_KEY_SERVICE} for Qdrant API-key provisioning: {dependency}",
+                    "{directive} must include repovec-qdrant-api-key.service for Qdrant API-key provisioning: {dependency}",
                 )
             }
             Self::MissingApiKeySecret => {
                 write!(
                     f,
-                    "missing Secret={QDRANT_API_KEY_SECRET},type=env,target={QDRANT_API_KEY_ENVIRONMENT_VARIABLE}",
+                    "missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY",
                 )
             }
             Self::IncorrectApiKeySecret { secret } => {
                 write!(
                     f,
-                    "Qdrant API-key secret must be {QDRANT_API_KEY_SECRET},type=env,target={QDRANT_API_KEY_ENVIRONMENT_VARIABLE}: {secret}",
+                    "Qdrant API-key secret must be repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
                 )
             }
             Self::InlineApiKeyEnvironmentDisallowed { environment } => {

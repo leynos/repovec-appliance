@@ -368,6 +368,11 @@ Security controls:
   `repovec-qdrant-api-key` from the raw key file without printing the key. The
   Qdrant Quadlet exposes that secret to the container as
   `QDRANT__SERVICE__API_KEY`, which maps to Qdrant's `service.api_key` setting.
+- The provisioning helper logs secret lifecycle decisions to journald through
+  `repovec-qdrant-api-key.service` without printing the key value. Operators
+  detect provisioning failures through the oneshot unit state, journal entries,
+  and later service-health work from roadmap item `1.2.3`; no metrics exporter
+  exists for this first-boot packaging step yet.
 - Local clients authenticate to Qdrant by sending the stored key in the
   `api-key` request header. Requests without the header are expected to fail
   with Qdrant's authentication error response.

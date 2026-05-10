@@ -147,6 +147,7 @@ pub fn validate_systemd_units(
 fn validate_target(target: &ParsedUnit) -> Result<(), SystemdUnitError> {
     target.require_section(UNIT_SECTION)?;
     target.require_section(INSTALL_SECTION)?;
+    target.require_dependency(INSTALL_SECTION, "WantedBy", "multi-user.target")?;
     target.require_dependency(UNIT_SECTION, "Wants", QDRANT_SERVICE)?;
     target.require_dependency(UNIT_SECTION, "Wants", REPOVECD_UNIT)?;
     target.require_dependency(UNIT_SECTION, "Wants", REPOVEC_MCPD_UNIT)?;
@@ -185,7 +186,7 @@ impl ParsedUnit {
         for (line_index, raw_line) in contents.lines().enumerate() {
             let line_number = line_index + 1;
             let line = raw_line.trim();
-            if line.is_empty() || line.starts_with('#') {
+            if is_ignored_line(line) {
                 continue;
             }
 
@@ -282,6 +283,8 @@ impl ParsedUnit {
 }
 
 fn parse_section_header(line: &str) -> Option<&str> { line.strip_prefix('[')?.strip_suffix(']') }
+
+fn is_ignored_line(line: &str) -> bool { line.is_empty() || line.starts_with(['#', ';']) }
 
 fn is_qdrant_quadlet_source(value: &str) -> bool {
     value == QDRANT_CONTAINER || value == QDRANT_CONTAINER_SERVICE

@@ -20,6 +20,7 @@ enum ValidationScenario {
     InvalidLine,
     PropertyBeforeSection,
     MissingTargetUnitSection,
+    MissingTargetWantedBy,
     MissingTargetWantsQdrant,
     TargetUsesQdrantContainer,
     MissingTargetWantsRepovecd,
@@ -45,6 +46,9 @@ impl ValidationScenario {
             }
             Self::MissingTargetUnitSection => {
                 units.replace_file(UnitFile::Target, "[Install]\nWantedBy=multi-user.target\n");
+            }
+            Self::MissingTargetWantedBy => {
+                units.remove_line(UnitFile::Target, "WantedBy=multi-user.target\n");
             }
             Self::MissingTargetWantsQdrant => {
                 units.remove_token(UnitFile::Target, "Wants=", "qdrant.service");
@@ -110,6 +114,7 @@ impl ValidationScenario {
             Self::MissingTargetUnitSection => {
                 SystemdUnitError::MissingSection { unit: "repovec.target", section: "Unit" }
             }
+            Self::MissingTargetWantedBy => missing_install("repovec.target", "multi-user.target"),
             Self::MissingTargetWantsQdrant => missing("repovec.target", "Wants", "qdrant.service"),
             Self::TargetUsesQdrantContainer => {
                 quadlet_source("repovec.target", "Wants", "qdrant.container")
@@ -161,6 +166,9 @@ impl ValidationScenario {
                 "Requires=qdrant.service",
             ),
             Self::MissingTargetUnitSection => "repovec.target is missing [Unit]",
+            Self::MissingTargetWantedBy => {
+                "repovec.target is missing WantedBy=multi-user.target in [Install]"
+            }
             Self::MissingTargetWantsQdrant => {
                 "repovec.target is missing Wants=qdrant.service in [Unit]"
             }
@@ -267,10 +275,24 @@ fn checked_in_systemd_units_remain_valid() {
         .expect("the checked-in repovec systemd unit set should remain valid");
 }
 
+#[test]
+fn semicolon_comments_are_ignored() {
+    let target = checked_in_repovec_target()
+        .replace("[Unit]\n", "[Unit]\n; systemd accepts semicolon comments\n");
+
+    validate_systemd_units(
+        &target,
+        checked_in_repovecd_service(),
+        checked_in_repovec_mcpd_service(),
+    )
+    .expect("semicolon comments should be ignored");
+}
+
 #[rstest]
 #[case::invalid_line(ValidationScenario::InvalidLine)]
 #[case::property_before_section(ValidationScenario::PropertyBeforeSection)]
 #[case::missing_target_unit_section(ValidationScenario::MissingTargetUnitSection)]
+#[case::missing_target_wanted_by(ValidationScenario::MissingTargetWantedBy)]
 #[case::missing_target_wants_qdrant(ValidationScenario::MissingTargetWantsQdrant)]
 #[case::target_uses_qdrant_container(ValidationScenario::TargetUsesQdrantContainer)]
 #[case::missing_target_wants_repovecd(ValidationScenario::MissingTargetWantsRepovecd)]
@@ -311,6 +333,10 @@ fn remove_token_from_line(line: &str, key: &str, token: &str) -> String {
 
 fn missing(unit: &'static str, key: &'static str, dependency: &'static str) -> SystemdUnitError {
     SystemdUnitError::MissingDependency { unit, section: "Unit", key, dependency }
+}
+
+fn missing_install(unit: &'static str, dependency: &'static str) -> SystemdUnitError {
+    SystemdUnitError::MissingDependency { unit, section: "Install", key: "WantedBy", dependency }
 }
 
 fn quadlet_source(unit: &'static str, key: &'static str, dependency: &str) -> SystemdUnitError {

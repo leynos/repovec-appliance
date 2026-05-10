@@ -47,7 +47,7 @@ fn api_key_error_display_messages_remain_stable() {
             environment: String::from("QDRANT__SERVICE__API_KEY=plaintext"),
         }
         .to_string(),
-        @"Qdrant API keys must use a Podman secret, not inline Environment=: QDRANT__SERVICE__API_KEY=plaintext"
+        @"Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>"
     );
 }
 
@@ -93,6 +93,11 @@ fn api_key_after_dependency_missing() -> String {
 fn api_key_requires_dependency_wrong() -> String {
     qdrant_quadlet_contents()
         .replace("Requires=repovec-qdrant-api-key.service", "Requires=network-online.target")
+}
+
+fn api_key_after_dependency_wrong() -> String {
+    qdrant_quadlet_contents()
+        .replace("After=repovec-qdrant-api-key.service", "After=network-online.target")
 }
 
 fn inline_api_key_environment() -> String {
@@ -194,6 +199,21 @@ fn qdrant_quadlet_rejects_wrong_api_key_dependency() {
         error,
         QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
             directive: "Requires",
+            dependency: String::from("network-online.target"),
+        }
+    );
+}
+
+#[test]
+fn qdrant_quadlet_rejects_wrong_api_key_after_dependency() {
+    let contents = api_key_after_dependency_wrong();
+    let error = validate_qdrant_quadlet(&contents)
+        .expect_err("wrong API-key After= dependency should be rejected");
+
+    assert_eq!(
+        error,
+        QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
+            directive: "After",
             dependency: String::from("network-online.target"),
         }
     );

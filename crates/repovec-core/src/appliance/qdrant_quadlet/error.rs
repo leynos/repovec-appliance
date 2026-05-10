@@ -160,12 +160,9 @@ impl fmt::Display for QdrantQuadletError {
                     "Qdrant API-key secret must be repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
                 )
             }
-            Self::InlineApiKeyEnvironmentDisallowed { environment } => {
-                write!(
-                    f,
-                    "Qdrant API keys must use a Podman secret, not inline Environment=: {environment}",
-                )
-            }
+            Self::InlineApiKeyEnvironmentDisallowed { .. } => f.write_str(
+                "Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>",
+            ),
         }
     }
 }

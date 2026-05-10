@@ -1,4 +1,10 @@
 #!/bin/sh
+# Manage the Qdrant API-key secret material for the appliance. The script is
+# idempotent: repeated runs preserve an existing KEY_FILE, repair its ownership
+# and mode for REPOVEC_USER:REPOVEC_GROUP, and refresh SECRET_NAME from that
+# file when Podman permits replacement. New secret material is sourced only
+# from /dev/urandom, written to CONFIG_DIR/KEY_FILE with mode 0400, and exposed
+# to Qdrant only through the Podman SECRET_NAME environment secret.
 set -eu
 
 REPOVEC_USER=repovec
@@ -29,7 +35,12 @@ generate_key_file() {
     trap 'rm -f "${tmp_file}"' EXIT HUP INT TERM
 
     log "generating qdrant API key file"
-    od -An -N32 -tx1 /dev/urandom | tr -d ' \n' | tee "${tmp_file}" >/dev/null
+    candidate_key="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+    if [ "${#candidate_key}" -ne 64 ] || printf '%s' "${candidate_key}" | grep -q '[^0-9a-fA-F]'; then
+        log "failed to generate a valid qdrant API key"
+        exit 1
+    fi
+    printf '%s' "${candidate_key}" >"${tmp_file}"
     chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${tmp_file}"
     chmod 0400 "${tmp_file}"
     mv "${tmp_file}" "${KEY_FILE}"

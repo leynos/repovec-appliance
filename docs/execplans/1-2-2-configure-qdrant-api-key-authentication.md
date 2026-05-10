@@ -17,13 +17,14 @@ creates one random Qdrant API key, stores the raw key at
 enabled. A local process that calls Qdrant without the `api-key` header is
 rejected; a local process that supplies the stored key succeeds.
 
-This plan is pre-implementation. It records the intended design and validation
-work, but does not authorize implementation until the user explicitly approves
-it.
+Implementation is complete. The progress log records the approval,
+implementation, validation, review follow-ups, and rebase outcomes for this
+roadmap item.
 
 ## Constraints
 
-- Do not implement this plan until the user approves it explicitly.
+- Implementation was approved before code changes began; this completed plan
+  now records the final state and validation evidence.
 - Keep the scope to roadmap item `1.2.2`. Do not implement Qdrant health checks
   from `1.2.3`, the full `repovec.target` and daemon unit layout from `1.3.1`,
   or the full data-directory layout from `1.3.3`.
@@ -182,6 +183,10 @@ it.
   checks by simplifying the API-key test helper, making API-key contract
   constants private, adding Display snapshot coverage, and logging safe
   provisioning decisions to journald.
+- [x] (2026-05-11T00:00:00+02:00) Addressed final review findings by redacting
+  inline API-key Display output, adding wrong `After=` coverage, hardening
+  helper key generation, and removing argv secret exposure from the ExecPlan
+  smoke command.
 
 ## Surprises & Discoveries
 
@@ -634,8 +639,8 @@ sudo -u repovec test -r /etc/repovec/qdrant-api-key
 curl -sS -o /tmp/qdrant-unauthenticated.out -w '%{http_code}\n' \
   http://127.0.0.1:6333/collections
 sudo -u repovec sh -c \
-  'curl -sS -o /tmp/qdrant-authenticated.out -w "%{http_code}\n" \
-  -H "api-key: $(cat /etc/repovec/qdrant-api-key)" \
+  'awk "{ print \"api-key: \" \$0 }" /etc/repovec/qdrant-api-key | \
+  curl -sS -o /tmp/qdrant-authenticated.out -w "%{http_code}\n" --header @- \
   http://127.0.0.1:6333/collections'
 ```
 

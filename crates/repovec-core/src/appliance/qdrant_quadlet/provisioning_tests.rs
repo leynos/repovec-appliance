@@ -44,6 +44,10 @@ fn provisioning_helper_uses_the_canonical_secret_contract() {
 #[test]
 fn provisioning_helper_preserves_existing_keys_and_locks_permissions() {
     assert!(PROVISIONING_HELPER.contains("if [ ! -e \"${KEY_FILE}\" ]; then"));
+    assert!(PROVISIONING_HELPER.contains("candidate_key=\"$(od -An -N32 -tx1 /dev/urandom"));
+    assert!(PROVISIONING_HELPER.contains("[ \"${#candidate_key}\" -ne 64 ]"));
+    assert!(PROVISIONING_HELPER.contains("grep -q '[^0-9a-fA-F]'"));
+    assert!(PROVISIONING_HELPER.contains("printf '%s' \"${candidate_key}\" >\"${tmp_file}\""));
     assert!(
         PROVISIONING_HELPER.contains("chown \"${REPOVEC_USER}:${REPOVEC_GROUP}\" \"${KEY_FILE}\"")
     );

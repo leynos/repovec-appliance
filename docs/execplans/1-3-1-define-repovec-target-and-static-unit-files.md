@@ -125,8 +125,8 @@ implement the roadmap item until the user approves this ExecPlan.
 - [x] (2026-05-08T13:50:00+02:00) Focused validation passed:
   `cargo test -p repovec-core systemd_units` and
   `cargo test -p repovec-core --test systemd_units_bdd`.
-- [x] (2026-05-08T13:56:00+02:00) Updated the technical design, users guide,
-  developers guide, and roadmap for the shipped systemd unit contract.
+- [x] (2026-05-08T13:56:00+02:00) Updated the technical design, user's guide,
+  developer's guide, and roadmap for the shipped systemd unit contract.
 - [x] (2026-05-08T14:04:00+02:00) Ran `make fmt`, `make markdownlint`,
   `make nixie`, `make check-fmt`, `make lint`, and `make test`; all pass after
   one lint-fix cycle.
@@ -149,7 +149,7 @@ implement the roadmap item until the user approves this ExecPlan.
 - Observation: `packaging/systemd/qdrant.container` is the source Quadlet, but
   dependent systemd units should reference `qdrant.service`. Evidence: Podman
   Quadlet generates the service unit from the file stem, and the prior `1.2.1`
-  plan and users guide already describe starting `qdrant.service`. Impact: the
+  plan and user's guide already describe starting `qdrant.service`. Impact: the
   validator must reject `qdrant.container` and `qdrant.container.service`
   dependency names in the new unit files.
 
@@ -162,8 +162,8 @@ implement the roadmap item until the user approves this ExecPlan.
 
 - Observation: the empty-looking `rstest-bdd` scenario function bodies are the
   expected macro pattern in this repository. Evidence: the `#[scenario]` macro
-  executes the registered Given/When/Then step functions, and the scenario
-  body only consumes the final world value. Impact: follow-up work adds missing
+  executes the registered Given/When/Then step functions, and the scenario body
+  only consumes the final world value. Impact: follow-up work adds missing
   behavioural scenarios and step assertions rather than moving assertions into
   the scenario body.
 
@@ -433,12 +433,18 @@ set passes.
 6. Run the full gates sequentially with logs:
 
    ```sh
-   set -o pipefail && make fmt 2>&1 | tee /tmp/fmt-repovec-1-3-1-systemd-units.out
-   set -o pipefail && make markdownlint 2>&1 | tee /tmp/markdownlint-repovec-1-3-1-systemd-units.out
-   set -o pipefail && make nixie 2>&1 | tee /tmp/nixie-repovec-1-3-1-systemd-units.out
-   set -o pipefail && make check-fmt 2>&1 | tee /tmp/check-fmt-repovec-1-3-1-systemd-units.out
-   set -o pipefail && make lint 2>&1 | tee /tmp/lint-repovec-1-3-1-systemd-units.out
-   set -o pipefail && make test 2>&1 | tee /tmp/test-repovec-1-3-1-systemd-units.out
+   set -o pipefail && make fmt 2>&1 \
+     | tee /tmp/fmt-repovec-1-3-1-systemd-units.out
+   set -o pipefail && make markdownlint 2>&1 \
+     | tee /tmp/markdownlint-repovec-1-3-1-systemd-units.out
+   set -o pipefail && make nixie 2>&1 \
+     | tee /tmp/nixie-repovec-1-3-1-systemd-units.out
+   set -o pipefail && make check-fmt 2>&1 \
+     | tee /tmp/check-fmt-repovec-1-3-1-systemd-units.out
+   set -o pipefail && make lint 2>&1 \
+     | tee /tmp/lint-repovec-1-3-1-systemd-units.out
+   set -o pipefail && make test 2>&1 \
+     | tee /tmp/test-repovec-1-3-1-systemd-units.out
    ```
 
    Expected result: every command exits `0`. `make lint` may print the
@@ -477,9 +483,12 @@ Manual smoke validation on a disposable appliance host can provide additional
 evidence:
 
 ```sh
-sudo install -m 0644 packaging/systemd/repovec.target /etc/systemd/system/repovec.target
-sudo install -m 0644 packaging/systemd/repovecd.service /etc/systemd/system/repovecd.service
-sudo install -m 0644 packaging/systemd/repovec-mcpd.service /etc/systemd/system/repovec-mcpd.service
+sudo install -m 0644 packaging/systemd/repovec.target \
+  /etc/systemd/system/repovec.target
+sudo install -m 0644 packaging/systemd/repovecd.service \
+  /etc/systemd/system/repovecd.service
+sudo install -m 0644 packaging/systemd/repovec-mcpd.service \
+  /etc/systemd/system/repovec-mcpd.service
 sudo systemctl daemon-reload
 systemctl show -p Wants repovec.target
 systemctl show -p Requires -p After repovecd.service

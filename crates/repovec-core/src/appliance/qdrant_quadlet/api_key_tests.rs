@@ -103,9 +103,11 @@ fn api_key_error_display_messages_remain_stable(
     #[case] contents: String,
     #[case] snapshot_label: &str,
 ) {
-    let display = validate_qdrant_quadlet(&contents)
-        .expect_err("mutated Quadlet should fail API-key validation")
-        .to_string();
+    #[expect(
+        clippy::unwrap_used,
+        reason = "the Display snapshot harness is required to call unwrap_err() directly"
+    )]
+    let display = validate_qdrant_quadlet(&contents).unwrap_err().to_string();
 
     assert_snapshot!(snapshot_label, display);
 }

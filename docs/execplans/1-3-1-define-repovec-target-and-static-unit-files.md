@@ -10,10 +10,10 @@ Status: COMPLETE
 ## Purpose / big picture
 
 Roadmap item `1.3.1` adds the first systemd orchestration layer for the repovec
-appliance. After the approved implementation lands, an operator can install the
-checked-in unit files, enable `repovec.target`, and start the appliance service
-group with Qdrant, `repovecd`, `repovec-mcpd`, and `cloudflared` queued as one
-managed target.
+appliance. The completed implementation lets an operator install the checked-in
+unit files, enable `repovec.target`, and start the appliance service group with
+Qdrant, `repovecd`, `repovec-mcpd`, and `cloudflared` queued as one managed
+target.
 
 The observable behaviour is static and operational rather than interactive:
 `repovec.target` names the appliance services it starts, `repovecd.service`
@@ -23,7 +23,8 @@ the user explicitly approved this ExecPlan.
 
 ## Constraints
 
-- Implementation began only after this ExecPlan was explicitly approved.
+- Implementation began after this ExecPlan was explicitly approved, as recorded
+  in Progress.
 - The source-of-truth systemd assets must live under `packaging/systemd/`.
 - The Qdrant Podman Quadlet remains owned by roadmap item `1.2.1` at
   `packaging/systemd/qdrant.container`. Dependent units must reference the

@@ -47,6 +47,24 @@ fn podman_auto_update_is_removed(quadlet_world: &mut QuadletWorld) {
     quadlet_world.contents = quadlet_world.contents.replace("AutoUpdate=registry\n", "");
 }
 
+#[given("the API key secret is removed")]
+fn the_api_key_secret_is_removed(quadlet_world: &mut QuadletWorld) {
+    quadlet_world.contents = quadlet_world
+        .contents
+        .replace("Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n", "");
+}
+
+#[given("the API key is inlined as an environment variable")]
+fn the_api_key_is_inlined_as_an_environment_variable(quadlet_world: &mut QuadletWorld) {
+    quadlet_world.contents = quadlet_world.contents.replace(
+        "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+        concat!(
+            "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+            "Environment=QDRANT__SERVICE__API_KEY=not-secret\n",
+        ),
+    );
+}
+
 #[when("the Quadlet is validated")]
 fn the_quadlet_is_validated(quadlet_world: &mut QuadletWorld) {
     quadlet_world.validation_result = Some(validate_qdrant_quadlet(&quadlet_world.contents));
@@ -103,6 +121,29 @@ fn the_validation_fails_because_auto_update_is_missing(quadlet_world: &QuadletWo
     assert_eq!(validation_result, &Err(QdrantQuadletError::MissingAutoUpdate));
 }
 
+#[then("the validation fails because the API key secret is missing")]
+fn the_validation_fails_because_the_api_key_secret_is_missing(quadlet_world: &QuadletWorld) {
+    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
+        panic!("the validation step should have run");
+    };
+
+    assert_eq!(validation_result, &Err(QdrantQuadletError::MissingApiKeySecret));
+}
+
+#[then("the validation fails because inline API keys are not allowed")]
+fn the_validation_fails_because_inline_api_keys_are_not_allowed(quadlet_world: &QuadletWorld) {
+    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
+        panic!("the validation step should have run");
+    };
+
+    assert_eq!(
+        validation_result,
+        &Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
+            environment: String::from("QDRANT__SERVICE__API_KEY=<redacted>"),
+        })
+    );
+}
+
 #[scenario(
     path = "tests/features/qdrant_quadlet.feature",
     name = "The checked-in Quadlet satisfies the appliance contract"
@@ -131,3 +172,15 @@ fn persistent_storage_remains_mounted(quadlet_world: QuadletWorld) { let _ = qua
     name = "Podman auto-update remains enabled"
 )]
 fn podman_auto_update_remains_enabled(quadlet_world: QuadletWorld) { let _ = quadlet_world; }
+
+#[scenario(
+    path = "tests/features/qdrant_quadlet.feature",
+    name = "The Qdrant API key secret must be present"
+)]
+fn qdrant_api_key_secret_must_be_present(quadlet_world: QuadletWorld) { let _ = quadlet_world; }
+
+#[scenario(
+    path = "tests/features/qdrant_quadlet.feature",
+    name = "Inline Qdrant API keys are rejected"
+)]
+fn inline_qdrant_api_keys_are_rejected(quadlet_world: QuadletWorld) { let _ = quadlet_world; }

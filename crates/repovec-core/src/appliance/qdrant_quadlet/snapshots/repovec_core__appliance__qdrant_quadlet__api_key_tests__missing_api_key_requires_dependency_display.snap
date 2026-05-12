@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/api_key_tests.rs
+expression: display
+---
+missing Requires=repovec-qdrant-api-key.service dependency for Qdrant API-key provisioning

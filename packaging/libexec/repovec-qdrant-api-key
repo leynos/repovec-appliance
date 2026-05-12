@@ -1,0 +1,88 @@
+#!/bin/sh
+# Manage the Qdrant API-key secret material for the appliance. The script is
+# idempotent: repeated runs preserve an existing KEY_FILE, repair its ownership
+# and mode for REPOVEC_USER:REPOVEC_GROUP, and refresh SECRET_NAME from that
+# file when Podman permits replacement. New secret material is sourced only
+# from /dev/urandom, written to CONFIG_DIR/KEY_FILE with mode 0400, and exposed
+# to Qdrant only through the Podman SECRET_NAME environment secret. The helper
+# logs lifecycle decisions only; it never echoes or logs KEY_FILE contents.
+set -eu
+
+REPOVEC_USER=repovec
+REPOVEC_GROUP=repovec
+CONFIG_DIR=/etc/repovec
+KEY_FILE=/etc/repovec/qdrant-api-key
+SECRET_NAME=repovec-qdrant-api-key
+
+log() {
+    printf '%s\n' "repovec-qdrant-api-key: $*" >&2
+}
+
+ensure_repovec_user() {
+    if getent passwd "${REPOVEC_USER}" >/dev/null; then
+        log "repovec user already exists"
+        return 0
+    fi
+
+    log "creating repovec system user"
+    useradd --system \
+        --home-dir /var/lib/repovec \
+        --shell /usr/sbin/nologin \
+        "${REPOVEC_USER}"
+}
+
+generate_key_file() {
+    tmp_file="$(mktemp "${CONFIG_DIR}/qdrant-api-key.XXXXXX")"
+    trap 'rm -f "${tmp_file}"' EXIT HUP INT TERM
+
+    log "generating qdrant API key file"
+    candidate_key="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+    if [ "${#candidate_key}" -ne 64 ] || printf '%s' "${candidate_key}" | grep -q '[^0-9a-fA-F]'; then
+        log "failed to generate a valid qdrant API key"
+        exit 1
+    fi
+    printf '%s' "${candidate_key}" >"${tmp_file}"
+    chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${tmp_file}"
+    chmod 0400 "${tmp_file}"
+    mv "${tmp_file}" "${KEY_FILE}"
+    trap - EXIT HUP INT TERM
+}
+
+ensure_repovec_user
+install -d -o root -g "${REPOVEC_GROUP}" -m 0750 "${CONFIG_DIR}"
+
+if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
+    rm_error="$(mktemp "${CONFIG_DIR}/qdrant-secret-rm.XXXXXX")"
+    trap 'rm -f "${rm_error}"' EXIT HUP INT TERM
+    if ! podman secret rm "${SECRET_NAME}" > /dev/null 2>"${rm_error}"; then
+        if grep -qi 'in use' "${rm_error}"; then
+            log "podman secret is in use; leaving existing secret in place"
+            exit 0
+        fi
+        log "podman secret removal failed: $(cat "${rm_error}")"
+        exit 1
+    fi
+    rm -f "${rm_error}"
+    trap - EXIT HUP INT TERM
+    log "removed stale qdrant API-key podman secret"
+fi
+
+if [ ! -e "${KEY_FILE}" ]; then
+    generate_key_file
+else
+    log "qdrant API key file already exists"
+fi
+
+chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${KEY_FILE}"
+chmod 0400 "${KEY_FILE}"
+log "ensured qdrant API key permissions"
+
+create_error="$(mktemp "${CONFIG_DIR}/qdrant-secret-create.XXXXXX")"
+trap 'rm -f "${create_error}"' EXIT HUP INT TERM
+if ! podman secret create "${SECRET_NAME}" "${KEY_FILE}" >/dev/null 2>"${create_error}"; then
+    log "podman secret creation failed: $(cat "${create_error}")"
+    exit 1
+fi
+rm -f "${create_error}"
+trap - EXIT HUP INT TERM
+log "created qdrant API-key podman secret"

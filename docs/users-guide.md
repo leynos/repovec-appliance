@@ -87,6 +87,30 @@ host and is mounted into the container at `/qdrant/storage`. The mount uses an
 explicit `:Z` SELinux relabel so the rootful Podman service can write to the
 directory on enforcing hosts.
 
-Roadmap item `1.2.2` adds API-key generation and secret management. Until that
-work lands, this guide only documents the network and storage contract for the
-Qdrant service.
+Qdrant requires an API key. On first boot, `repovec-qdrant-api-key.service`
+generates a random raw key at `/etc/repovec/qdrant-api-key`, restricts the file
+to `repovec:repovec` with mode `0400`, and refreshes the rootful Podman secret
+`repovec-qdrant-api-key`. The Qdrant Quadlet injects that Podman secret as
+`QDRANT__SERVICE__API_KEY` inside the container.
+
+Operators can inspect service state without printing the key:
+
+```sh
+systemctl status repovec-qdrant-api-key.service qdrant.service
+journalctl -u repovec-qdrant-api-key.service
+stat -c '%U:%G %a %n' /etc/repovec/qdrant-api-key
+podman secret inspect repovec-qdrant-api-key
+```
+
+Local clients authenticate by reading the key as the `repovec` user and sending
+it in Qdrant's `api-key` header:
+
+```sh
+sudo -u repovec sh -c \
+  'api_key="$(cat /etc/repovec/qdrant-api-key)"
+  curl --config - http://127.0.0.1:6333/collections <<EOF
+header = "api-key: ${api_key}"
+EOF'
+```
+
+Requests to Qdrant without the `api-key` header are rejected.

@@ -1,7 +1,12 @@
 # Keep Qdrant private to the appliance host; repovec services reach it via localhost.
+[Unit]
+Requires=repovec-qdrant-api-key.service
+After=repovec-qdrant-api-key.service
+
 [Container]
 Image=docker.io/qdrant/qdrant:v1
 AutoUpdate=registry
+Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY
 PublishPort=127.0.0.1:6333:6333
 PublishPort=127.0.0.1:6334:6334
 Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z

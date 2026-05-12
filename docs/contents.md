@@ -5,8 +5,8 @@
 
 ## Contributor guides
 
-- [Users guide](users-guide.md): contributor and operator view of the user-visible
-  continuous integration (CI) and documentation-gate behaviour.
+- [Users guide](users-guide.md): contributor and operator view of the
+  user-visible continuous integration (CI) and documentation-gate behaviour.
 - [Developers guide](developers-guide.md): maintainer workflow, quality gates,
   and repository automation policy.
 
@@ -22,6 +22,8 @@
 
 - [Roadmap](roadmap.md): staged implementation plan and task tracking for the
   appliance.
+- [Qdrant API-key authentication ExecPlan](execplans/1-2-2-configure-qdrant-api-key-authentication.md):
+  delivery plan and validation notes for roadmap item `1.2.2`.
 - [Execution plan for 1.1.3: CI gating pipeline](execplans/1-1-3-ci-gating-pipeline.md):
   detailed delivery plan and implementation log for the CI-gating workstream.
 

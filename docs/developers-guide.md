@@ -26,8 +26,7 @@ set -o pipefail
 make test 2>&1 | tee /tmp/repovec-make-test.log
 ```
 
-When a change touches Markdown or documentation-tooling configuration, also
-run:
+When a change touches Markdown or documentation-tooling configuration, also run:
 
 ```sh
 set -o pipefail
@@ -110,11 +109,11 @@ where I: IntoIterator<Item = S>, S: AsRef<str>, F: FnMut(&str) -> MermaidDetecti
 ```
 
 `DocsGateReason` records why the documentation gate should run or be skipped.
-`DocsGatePlan` is the computed result that the workflow consumes. `MermaidDetection`
-captures whether a Markdown file contains Mermaid content or falls back to the
-conservative unreadable-file path. `evaluate_docs_gate_in` evaluates the policy
-with the real file system, and `evaluate_docs_gate_with` evaluates the same
-policy with an injected detector.
+`DocsGatePlan` is the computed result that the workflow consumes.
+`MermaidDetection` captures whether a Markdown file contains Mermaid content or
+falls back to the conservative unreadable-file path. `evaluate_docs_gate_in`
+evaluates the policy with the real file system, and `evaluate_docs_gate_with`
+evaluates the same policy with an injected detector.
 
 `evaluate_docs_gate_in` uses `cap_std::fs_utf8::Dir` to read file contents.
 `evaluate_docs_gate_with` accepts an injected closure, making the policy fully
@@ -125,8 +124,8 @@ testable without any file I/O.
 `cap-std` (with the `fs_utf8` feature) is used instead of `std::fs` because it
 provides capability-safe, UTF-8-native file-system access; this makes the
 file-reading boundary explicit and keeps the core policy logic
-(`evaluate_docs_gate_with`) free of ambient authority, making it straightforward
-to test with a stub closure.
+(`evaluate_docs_gate_with`) free of ambient authority, making it
+straightforward to test with a stub closure.
 
 ### 3.3 `repovec-ci` binary
 
@@ -136,14 +135,14 @@ USAGE:
     repovec-ci --stdin
 ```
 
-| Flag | Description |
-| --- | --- |
-| `--changed-file <path>` | Treat `<path>` as a changed file (repeatable; mutually exclusive with `--stdin`) |
-| `--stdin` | Read newline-delimited changed-file paths from stdin (mutually exclusive with `--changed-file`) |
-| `-h`, `--help` | Print usage text and exit |
+| Flag                    | Description                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `--changed-file <path>` | Treat `<path>` as a changed file (repeatable; mutually exclusive with `--stdin`)                |
+| `--stdin`               | Read newline-delimited changed-file paths from stdin (mutually exclusive with `--changed-file`) |
+| `-h`, `--help`          | Print usage text and exit                                                                       |
 
-The binary writes `key=value` lines to stdout for use with `$GITHUB_OUTPUT`
-and is invoked by the `docs-gate` CI job. The output keys are:
+The binary writes `key=value` lines to stdout for use with `$GITHUB_OUTPUT` and
+is invoked by the `docs-gate` CI job. The output keys are:
 
 - `should_run`
 - `docs_gate_required`
@@ -211,6 +210,23 @@ checked-in Qdrant Podman Quadlet:
   `crates/repovec-core/src/appliance/qdrant_quadlet/error.rs` for the full
   variant list.
 
+The validator also enforces the Qdrant API-key authentication contract. A valid
+Quadlet must require and start after `repovec-qdrant-api-key.service`, expose
+the Podman secret `repovec-qdrant-api-key` as `QDRANT__SERVICE__API_KEY`, and
+reject any inline `Environment=QDRANT__SERVICE__API_KEY=...` value. Keep this
+validation pure: it parses strings and reports policy errors, but it must not
+call Podman, systemd, or the filesystem.
+
+The provisioning assets live beside other appliance packaging inputs:
+
+- `packaging/systemd/repovec-qdrant-api-key.service`
+- `packaging/libexec/repovec-qdrant-api-key`
+- `packaging/sysusers.d/repovec.conf`
+
+The helper is host-facing packaging code. It owns filesystem, user, permission
+and Podman-secret operations; `repovec-core` only validates the static contract
+that those assets expose.
+
 ### 5.3 Extension pattern
 
 To add validation for a new appliance asset:
@@ -227,10 +243,10 @@ To add validation for a new appliance asset:
 
 ### 5.4 Test patterns
 
-The appliance validation modules use `rstest` for unit tests and
-`rstest-bdd` with `rstest-bdd-macros` for behavioural tests. Unit tests should
-exercise each typed error variant directly. Behavioural tests should describe
-the appliance contract in feature files and keep the executable scenarios thin.
+The appliance validation modules use `rstest` for unit tests and `rstest-bdd`
+with `rstest-bdd-macros` for behavioural tests. Unit tests should exercise each
+typed error variant directly. Behavioural tests should describe the appliance
+contract in feature files and keep the executable scenarios thin.
 
 **Display and message snapshots (`insta`).** Operator-visible `fmt::Display`
 strings for typed appliance errors (for example every

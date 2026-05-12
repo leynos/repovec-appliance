@@ -55,6 +55,18 @@ fn provisioning_helper_fails_closed_on_unexpected_secret_removal_errors() {
 }
 
 #[test]
+fn provisioning_helper_removes_stale_secret_before_generating_key_file() {
+    let secret_removal = PROVISIONING_HELPER
+        .find("podman secret rm \"${SECRET_NAME}\"")
+        .expect("helper should remove stale Podman secrets");
+    let key_generation = PROVISIONING_HELPER
+        .find("if [ ! -e \"${KEY_FILE}\" ]; then")
+        .expect("helper should generate a missing key file");
+
+    assert!(secret_removal < key_generation);
+}
+
+#[test]
 fn provisioning_helper_logs_secret_creation_errors() {
     assert!(PROVISIONING_HELPER.contains("qdrant-secret-create."));
     assert!(PROVISIONING_HELPER.contains("podman secret create \"${SECRET_NAME}\""));

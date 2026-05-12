@@ -51,16 +51,6 @@ generate_key_file() {
 ensure_repovec_user
 install -d -o root -g "${REPOVEC_GROUP}" -m 0750 "${CONFIG_DIR}"
 
-if [ ! -e "${KEY_FILE}" ]; then
-    generate_key_file
-else
-    log "qdrant API key file already exists"
-fi
-
-chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${KEY_FILE}"
-chmod 0400 "${KEY_FILE}"
-log "ensured qdrant API key permissions"
-
 if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
     rm_error="$(mktemp "${CONFIG_DIR}/qdrant-secret-rm.XXXXXX")"
     trap 'rm -f "${rm_error}"' EXIT HUP INT TERM
@@ -76,6 +66,16 @@ if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
     trap - EXIT HUP INT TERM
     log "removed stale qdrant API-key podman secret"
 fi
+
+if [ ! -e "${KEY_FILE}" ]; then
+    generate_key_file
+else
+    log "qdrant API key file already exists"
+fi
+
+chown "${REPOVEC_USER}:${REPOVEC_GROUP}" "${KEY_FILE}"
+chmod 0400 "${KEY_FILE}"
+log "ensured qdrant API key permissions"
 
 create_error="$(mktemp "${CONFIG_DIR}/qdrant-secret-create.XXXXXX")"
 trap 'rm -f "${create_error}"' EXIT HUP INT TERM

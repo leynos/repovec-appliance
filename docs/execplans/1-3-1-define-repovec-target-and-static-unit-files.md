@@ -18,13 +18,12 @@ managed target.
 The observable behaviour is static and operational rather than interactive:
 `repovec.target` names the appliance services it starts, `repovecd.service`
 waits for and requires `qdrant.service`, and `repovec-mcpd.service` waits for
-and requires the local services it depends on. The plan deliberately does not
-implement the roadmap item until the user approves this ExecPlan.
+and requires the local services it depends on. Implementation began only after
+the user explicitly approved this ExecPlan.
 
 ## Constraints
 
-- The implementation must not begin until this DRAFT plan is explicitly
-  approved.
+- Implementation began only after this ExecPlan was explicitly approved.
 - The source-of-truth systemd assets must live under `packaging/systemd/`.
 - The Qdrant Podman Quadlet remains owned by roadmap item `1.2.1` at
   `packaging/systemd/qdrant.container`. Dependent units must reference the

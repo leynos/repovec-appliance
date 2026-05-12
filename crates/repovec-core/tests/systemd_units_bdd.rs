@@ -155,37 +155,54 @@ fn validation_fails_because_the_quadlet_source_name_was_used(systemd_world: &Sys
     name = "The checked-in unit set satisfies the appliance contract"
 )]
 fn checked_in_unit_set_satisfies_the_appliance_contract(systemd_world: SystemdWorld) {
-    let _ = systemd_world;
+    assert_scenario_steps_ran(&systemd_world);
 }
 
 #[scenario(
     path = "tests/features/systemd_units.feature",
     name = "The target wants every appliance service"
 )]
-fn target_wants_every_appliance_service(systemd_world: SystemdWorld) { let _ = systemd_world; }
+fn target_wants_every_appliance_service(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
 
 #[scenario(path = "tests/features/systemd_units.feature", name = "The target remains enableable")]
-fn target_remains_enableable(systemd_world: SystemdWorld) { let _ = systemd_world; }
+fn target_remains_enableable(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
 
 #[scenario(path = "tests/features/systemd_units.feature", name = "Semicolon comments are accepted")]
-fn semicolon_comments_are_accepted(systemd_world: SystemdWorld) { let _ = systemd_world; }
+fn semicolon_comments_are_accepted(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
 
 #[scenario(path = "tests/features/systemd_units.feature", name = "repovecd waits for Qdrant")]
-fn repovecd_waits_for_qdrant(systemd_world: SystemdWorld) { let _ = systemd_world; }
+fn repovecd_waits_for_qdrant(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
 
 #[scenario(
     path = "tests/features/systemd_units.feature",
     name = "repovec-mcpd waits for the control-plane daemon"
 )]
 fn repovec_mcpd_waits_for_the_control_plane_daemon(systemd_world: SystemdWorld) {
-    let _ = systemd_world;
+    assert_scenario_steps_ran(&systemd_world);
 }
 
 #[scenario(
     path = "tests/features/systemd_units.feature",
     name = "The generated Qdrant service name is required"
 )]
-fn generated_qdrant_service_name_is_required(systemd_world: SystemdWorld) { let _ = systemd_world; }
+fn generated_qdrant_service_name_is_required(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
+
+fn assert_scenario_steps_ran(systemd_world: &SystemdWorld) {
+    assert!(
+        systemd_world.validation_result.is_some(),
+        "the scenario should execute its validation step"
+    );
+}
 
 fn assert_validation_result(systemd_world: &SystemdWorld, expected: SystemdUnitError) {
     let Some(validation_result) = systemd_world.validation_result.as_ref() else {

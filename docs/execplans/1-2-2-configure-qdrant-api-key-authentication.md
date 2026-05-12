@@ -378,15 +378,15 @@ roadmap item `1.2.1` added:
   Qdrant network and storage contract and mention that API-key authentication
   remains future work.
 
-Qdrant accepts an API key through configuration key `service.api_key`.
+Qdrant accepts an API key through configuration key `service.api_key`.[^1]
 Environment variables with the `QDRANT__` prefix and double-underscore nested
 keys override file configuration, so `QDRANT__SERVICE__API_KEY=<secret>`
-enables API-key authentication for the service. Qdrant REST clients send the
-key with the `api-key` HTTP header.
+enables API-key authentication for the service.[^1] Qdrant REST clients send
+the key with the `api-key` HTTP header.[^2]
 
 Podman secrets can be exposed either as files or as environment variables. In
-Quadlet, the container file can use the `Secret=` key. For this task, the
-intended shape is:
+Quadlet, the container file can use the `Secret=` key.[^3][^4] For this task,
+the intended shape is:
 
 ```plaintext
 Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY
@@ -442,7 +442,7 @@ key.
 ### Stage C: wire Qdrant Quadlet authentication
 
 Update `packaging/systemd/qdrant.container` to depend on the provisioning unit
-and to pass the Podman secret to Qdrant as an environment variable. The
+and to pass the Podman secret to Qdrant as an environment variable.[^3] The
 intended Quadlet contract is:
 
 ```plaintext
@@ -719,21 +719,10 @@ Primary local documents and code paths:
 - `crates/repovec-core/tests/features/qdrant_quadlet.feature`
 - `crates/repovec-core/tests/qdrant_quadlet_bdd.rs`
 
-External references used while drafting:
-
-- Qdrant configuration documentation: environment variables use the
-  `QDRANT__` prefix and nested keys separated by double underscores;
-  `QDRANT__SERVICE__API_KEY` configures `service.api_key`.
-- Qdrant security documentation: API-key authentication requires the `api-key`
-  header in REST and gRPC clients.
-- Podman secret documentation: `type=env,target=<name>` exposes a secret as an
-  environment variable.
-- Podman Quadlet documentation: `.container` units support `Secret=` and pass
-  standard `[Unit]` dependencies through to the generated service.
-
 ## Interfaces and dependencies
 
-The planned static Quadlet contract is:
+The planned static Quadlet contract is built around Quadlet `Secret=` support
+and standard `[Unit]` dependency pass-through:[^4]
 
 ```plaintext
 [Unit]
@@ -786,3 +775,13 @@ This ExecPlan was created on 2026-05-08 for roadmap item `1.2.2`. The completed
 implementation resolved the raw key file versus environment-variable injection
 choice by selecting a Podman secret, and implementation remained blocked until
 the user explicitly approved the plan.
+
+[^1]: Qdrant configuration documentation: environment variables use the
+    `QDRANT__` prefix and nested keys separated by double underscores;
+    `QDRANT__SERVICE__API_KEY` configures `service.api_key`.
+[^2]: Qdrant security documentation: API-key authentication requires the
+    `api-key` header in REST and gRPC clients.
+[^3]: Podman secret documentation: `type=env,target=<name>` exposes a secret as
+    an environment variable.
+[^4]: Podman Quadlet documentation: `.container` units support `Secret=` and
+    pass standard `[Unit]` dependencies through to the generated service.

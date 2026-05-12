@@ -77,5 +77,12 @@ if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
     log "removed stale qdrant API-key podman secret"
 fi
 
-podman secret create "${SECRET_NAME}" "${KEY_FILE}" >/dev/null
+create_error="$(mktemp "${CONFIG_DIR}/qdrant-secret-create.XXXXXX")"
+trap 'rm -f "${create_error}"' EXIT HUP INT TERM
+if ! podman secret create "${SECRET_NAME}" "${KEY_FILE}" >/dev/null 2>"${create_error}"; then
+    log "podman secret creation failed: $(cat "${create_error}")"
+    exit 1
+fi
+rm -f "${create_error}"
+trap - EXIT HUP INT TERM
 log "created qdrant API-key podman secret"

@@ -1,5 +1,11 @@
 //! Unit tests covering Qdrant API-key-specific Quadlet validation.
+//!
+//! These tests exercise API-key-specific validation paths of
+//! `validate_qdrant_quadlet`, which is defined in `mod.rs`. Display-stability
+//! snapshots here complement the broader Quadlet contract snapshots in the
+//! sibling `tests.rs` module.
 
+use insta::assert_snapshot;
 use rstest::rstest;
 
 use super::{QdrantQuadletError, checked_in_qdrant_quadlet, validate_qdrant_quadlet};
@@ -14,41 +20,6 @@ fn quoted_inline_api_key_environment() -> String {
             "Environment=\"QDRANT__SERVICE__API_KEY=secret\"\n",
         ),
     )
-}
-
-#[test]
-fn api_key_error_display_messages_remain_stable() {
-    insta::assert_snapshot!(
-        QdrantQuadletError::MissingApiKeyProvisioningDependency { directive: "Requires" }
-            .to_string(),
-        @"missing Requires=repovec-qdrant-api-key.service dependency for Qdrant API-key provisioning"
-    );
-    insta::assert_snapshot!(
-        QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
-            directive: "After",
-            dependency: String::from("network-online.target"),
-        }
-        .to_string(),
-        @"After must include repovec-qdrant-api-key.service for Qdrant API-key provisioning: network-online.target"
-    );
-    insta::assert_snapshot!(
-        QdrantQuadletError::MissingApiKeySecret.to_string(),
-        @"missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY"
-    );
-    insta::assert_snapshot!(
-        QdrantQuadletError::IncorrectApiKeySecret {
-            secret: String::from("repovec-qdrant-api-key,type=mount,target=QDRANT__SERVICE__API_KEY"),
-        }
-        .to_string(),
-        @"Qdrant API-key secret must be repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: repovec-qdrant-api-key,type=mount,target=QDRANT__SERVICE__API_KEY"
-    );
-    insta::assert_snapshot!(
-        QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
-            environment: String::from("QDRANT__SERVICE__API_KEY=<redacted>"),
-        }
-        .to_string(),
-        @"Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>"
-    );
 }
 
 fn multi_assignment_inline_api_key_environment() -> String {
@@ -108,6 +79,35 @@ fn inline_api_key_environment() -> String {
             "Environment=QDRANT__SERVICE__API_KEY=not-secret\n",
         ),
     )
+}
+
+#[rstest]
+#[case::missing_api_key_requires_dependency(
+    api_key_requires_dependency_missing(),
+    "missing_api_key_requires_dependency_display"
+)]
+#[case::incorrect_api_key_after_dependency(
+    api_key_after_dependency_wrong(),
+    "incorrect_api_key_after_dependency_display"
+)]
+#[case::missing_api_key_secret(api_key_secret_missing(), "missing_api_key_secret_display")]
+#[case::incorrect_api_key_secret_type(
+    api_key_secret_type_is_wrong(),
+    "incorrect_api_key_secret_type_display"
+)]
+#[case::inline_api_key_environment(
+    inline_api_key_environment(),
+    "inline_api_key_environment_display"
+)]
+fn api_key_error_display_messages_remain_stable(
+    #[case] contents: String,
+    #[case] snapshot_label: &str,
+) {
+    let display = validate_qdrant_quadlet(&contents)
+        .expect_err("mutated Quadlet should fail API-key validation")
+        .to_string();
+
+    assert_snapshot!(snapshot_label, display);
 }
 
 #[test]

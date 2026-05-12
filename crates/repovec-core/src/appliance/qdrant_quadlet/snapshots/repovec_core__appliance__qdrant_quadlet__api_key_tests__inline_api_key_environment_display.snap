@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/api_key_tests.rs
+expression: display
+---
+Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>

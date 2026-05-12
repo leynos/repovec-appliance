@@ -1,4 +1,9 @@
 //! Unit tests covering the static Qdrant API-key provisioning assets.
+//!
+//! These tests validate the static contract between the `mod.rs` constants
+//! `QDRANT_API_KEY_SECRET`, `QDRANT_API_KEY_SERVICE`, and
+//! `QDRANT_API_KEY_ENVIRONMENT_VARIABLE`, and the packaging assets under
+//! `packaging/`.
 
 use super::{QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET, QDRANT_API_KEY_SERVICE};
 
@@ -46,6 +51,14 @@ fn provisioning_helper_fails_closed_on_unexpected_secret_removal_errors() {
     assert!(PROVISIONING_HELPER.contains("podman secret rm \"${SECRET_NAME}\""));
     assert!(PROVISIONING_HELPER.contains("grep -qi 'in use' \"${rm_error}\""));
     assert!(PROVISIONING_HELPER.contains("log \"podman secret removal failed: $(cat"));
+    assert!(PROVISIONING_HELPER.contains("exit 1"));
+}
+
+#[test]
+fn provisioning_helper_logs_secret_creation_errors() {
+    assert!(PROVISIONING_HELPER.contains("qdrant-secret-create."));
+    assert!(PROVISIONING_HELPER.contains("podman secret create \"${SECRET_NAME}\""));
+    assert!(PROVISIONING_HELPER.contains("log \"podman secret creation failed: $(cat"));
     assert!(PROVISIONING_HELPER.contains("exit 1"));
 }
 

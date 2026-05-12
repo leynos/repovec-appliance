@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/api_key_tests.rs
+expression: display
+---
+After must include repovec-qdrant-api-key.service for Qdrant API-key provisioning: network-online.target

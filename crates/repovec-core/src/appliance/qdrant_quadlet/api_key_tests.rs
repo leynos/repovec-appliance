@@ -44,7 +44,7 @@ fn api_key_error_display_messages_remain_stable() {
     );
     insta::assert_snapshot!(
         QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
-            environment: String::from("QDRANT__SERVICE__API_KEY=plaintext"),
+            environment: String::from("QDRANT__SERVICE__API_KEY=<redacted>"),
         }
         .to_string(),
         @"Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>"
@@ -227,25 +227,22 @@ fn qdrant_quadlet_rejects_inline_api_key_environment() {
     assert_eq!(
         error,
         QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
-            environment: String::from("QDRANT__SERVICE__API_KEY=not-secret"),
+            environment: String::from("QDRANT__SERVICE__API_KEY=<redacted>"),
         }
     );
 }
 
 #[rstest]
-#[case(quoted_inline_api_key_environment(), "QDRANT__SERVICE__API_KEY=secret")]
-#[case(multi_assignment_inline_api_key_environment(), "QDRANT__SERVICE__API_KEY=secret")]
-fn qdrant_quadlet_rejects_shell_tokenized_inline_api_key_environment(
-    #[case] contents: String,
-    #[case] expected_assignment: &str,
-) {
+#[case(quoted_inline_api_key_environment())]
+#[case(multi_assignment_inline_api_key_environment())]
+fn qdrant_quadlet_rejects_shell_tokenized_inline_api_key_environment(#[case] contents: String) {
     let error = validate_qdrant_quadlet(&contents)
         .expect_err("inline API keys should be rejected after tokenization");
 
     assert_eq!(
         error,
         QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
-            environment: expected_assignment.to_owned(),
+            environment: String::from("QDRANT__SERVICE__API_KEY=<redacted>"),
         }
     );
 }

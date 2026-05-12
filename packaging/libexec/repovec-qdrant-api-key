@@ -62,13 +62,18 @@ chmod 0400 "${KEY_FILE}"
 log "ensured qdrant API key permissions"
 
 if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
-    # If the secret is still in use, keep the running service intact. This also
-    # masks other failures, so future work should log or diagnose non-in-use
-    # errors such as missing Podman access or permission problems.
-    if ! podman secret rm "${SECRET_NAME}" >/dev/null 2>&1; then
-        log "podman secret removal failed; leaving existing secret in place"
-        exit 0
+    rm_error="$(mktemp "${CONFIG_DIR}/qdrant-secret-rm.XXXXXX")"
+    trap 'rm -f "${rm_error}"' EXIT HUP INT TERM
+    if ! podman secret rm "${SECRET_NAME}" > /dev/null 2>"${rm_error}"; then
+        if grep -qi 'in use' "${rm_error}"; then
+            log "podman secret is in use; leaving existing secret in place"
+            exit 0
+        fi
+        log "podman secret removal failed: $(cat "${rm_error}")"
+        exit 1
     fi
+    rm -f "${rm_error}"
+    trap - EXIT HUP INT TERM
     log "removed stale qdrant API-key podman secret"
 fi
 

@@ -309,13 +309,19 @@ fn validate_no_inline_api_key_environment(
         for assignment in split_environment_assignments(environment) {
             if is_api_key_environment_assignment(&assignment) {
                 return Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
-                    environment: assignment,
+                    environment: redact_api_key_environment_assignment(&assignment),
                 });
             }
         }
     }
 
     Ok(())
+}
+
+fn redact_api_key_environment_assignment(assignment: &str) -> String {
+    assignment
+        .split_once('=')
+        .map_or_else(|| assignment.to_owned(), |(key, _)| format!("{key}=<redacted>"))
 }
 
 fn split_environment_assignments(environment: &str) -> Vec<String> {

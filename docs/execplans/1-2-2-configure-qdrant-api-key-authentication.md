@@ -782,7 +782,7 @@ enums. Do not expose opaque `eyre::Report` from library APIs.
 
 ## Revision note
 
-Initial draft created on 2026-05-08. The draft records the proposed
-pre-implementation design for roadmap item `1.2.2`, resolves the raw key file
-versus environment-variable injection choice by selecting a Podman secret, and
-keeps implementation blocked until explicit approval.
+This ExecPlan was created on 2026-05-08 for roadmap item `1.2.2`. The completed
+implementation resolved the raw key file versus environment-variable injection
+choice by selecting a Podman secret, and implementation remained blocked until
+the user explicitly approved the plan.

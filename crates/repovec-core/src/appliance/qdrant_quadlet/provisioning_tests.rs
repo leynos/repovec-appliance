@@ -42,6 +42,14 @@ fn provisioning_helper_uses_the_canonical_secret_contract() {
 }
 
 #[test]
+fn provisioning_helper_fails_closed_on_unexpected_secret_removal_errors() {
+    assert!(PROVISIONING_HELPER.contains("podman secret rm \"${SECRET_NAME}\""));
+    assert!(PROVISIONING_HELPER.contains("grep -qi 'in use' \"${rm_error}\""));
+    assert!(PROVISIONING_HELPER.contains("log \"podman secret removal failed: $(cat"));
+    assert!(PROVISIONING_HELPER.contains("exit 1"));
+}
+
+#[test]
 fn provisioning_helper_preserves_existing_keys_and_locks_permissions() {
     assert!(PROVISIONING_HELPER.contains("if [ ! -e \"${KEY_FILE}\" ]; then"));
     assert!(PROVISIONING_HELPER.contains("candidate_key=\"$(od -An -N32 -tx1 /dev/urandom"));

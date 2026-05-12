@@ -139,7 +139,7 @@ fn the_validation_fails_because_inline_api_keys_are_not_allowed(quadlet_world: &
     assert_eq!(
         validation_result,
         &Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
-            environment: String::from("QDRANT__SERVICE__API_KEY=not-secret"),
+            environment: String::from("QDRANT__SERVICE__API_KEY=<redacted>"),
         })
     );
 }

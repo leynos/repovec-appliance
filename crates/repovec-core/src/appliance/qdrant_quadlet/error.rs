@@ -92,7 +92,7 @@ pub enum QdrantQuadletError {
     },
     /// The Quadlet exposes the Qdrant API key through an inline environment entry.
     InlineApiKeyEnvironmentDisallowed {
-        /// The offending environment value.
+        /// The redacted offending environment value.
         environment: String,
     },
 }

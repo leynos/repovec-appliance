@@ -250,6 +250,12 @@ This module validates static unit-file policy only. It must not call
 `systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
 runtime installation work.
 
+Daemon binaries are expected to call `validate_checked_in_systemd_units()` near
+the start of `main()`, before starting an async runtime or other long-running
+work. Treat `SystemdUnitError` as fatal at that process boundary: log the error
+with structured diagnostics and exit non-zero so systemd reports a failed
+startup rather than running under a broken checked-in unit contract.
+
 ### 5.4 Extension pattern
 
 To add validation for a new appliance asset:

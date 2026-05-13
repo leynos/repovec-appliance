@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 repovec-core = { path = "../repovec-core" }
 tracing.workspace = true
+tracing-subscriber = { version = "0.1", features = ["fmt"] }
 
 [lints]
 workspace = true

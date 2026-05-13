@@ -145,6 +145,13 @@ sudo systemctl enable repovec.target
 sudo systemctl start repovec.target
 ```
 
+> **Note:** `repovecd` and `repovec-mcpd` validate the checked-in systemd unit
+> contract at startup before doing any other work. If validation fails, the
+> daemon exits immediately with a non-zero exit code. Inspect the journal with
+> `journalctl -u repovecd.service --no-pager | tail -20` or
+> `journalctl -u repovec-mcpd.service --no-pager | tail -20`; the error message
+> identifies the unit and contract clause that was violated.
+
 Starting the target may still fail until later roadmap items create the
 `repovec` system user, directory layout, Qdrant API-key configuration, and
 production daemon binaries. The checked-in unit contract already records the

@@ -75,7 +75,6 @@ const REQUIRED_STORAGE_SOURCE: &str = "/var/lib/repovec/qdrant-storage";
 const REQUIRED_STORAGE_TARGET: &str = "/qdrant/storage";
 /// The Podman auto-update policy required for the appliance-managed service.
 const REQUIRED_AUTO_UPDATE_POLICY: &str = "registry";
-
 /// The `SELinux` relabel option required for the host storage mount.
 const REQUIRED_SELINUX_OPTION: &str = "Z";
 pub const fn checked_in_qdrant_quadlet() -> &'static str { CHECKED_IN_QDRANT_QUADLET }

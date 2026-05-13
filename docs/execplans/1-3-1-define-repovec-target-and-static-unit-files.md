@@ -204,6 +204,14 @@ the user explicitly approved this ExecPlan.
   diagnostic wording locked while limiting repository file churn. Date/Author:
   2026-05-08T13:54:00+02:00 / Codex.
 
+- Decision: validate `[Service]` identity directives (`User`, `Group`,
+  `WorkingDirectory`, `Environment`) in both service validators, treating any
+  deviation as a fatal contract violation
+  (`SystemdUnitError::IncorrectServiceDirective`). Rationale: running daemons
+  under the wrong identity is a security regression; static enforcement at
+  compile-linked unit text is cheap and prevents packaging drift. Date/Author:
+  2026-05-13T00:00:00+02:00 / Codex.
+
 ## Outcomes & Retrospective
 
 Roadmap item `1.3.1` is implemented. The repository now ships

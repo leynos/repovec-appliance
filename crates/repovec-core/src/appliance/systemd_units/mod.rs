@@ -3,9 +3,6 @@
 mod error;
 
 #[cfg(test)]
-mod service_runtime_tests;
-
-#[cfg(test)]
 mod tests;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -174,8 +171,11 @@ fn validate_repovecd(repovecd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     repovecd.require_section(SERVICE_SECTION)?;
     repovecd.require_dependency(UNIT_SECTION, "Requires", QDRANT_SERVICE)?;
     repovecd.require_dependency(UNIT_SECTION, "After", QDRANT_SERVICE)?;
-    repovecd.require_service_runtime()?;
-    repovecd.require_exec_start("/usr/bin/repovecd")
+    repovecd.require_exec_start("/usr/bin/repovecd")?;
+    repovecd.require_service_directive("User", SERVICE_USER)?;
+    repovecd.require_service_directive("Group", SERVICE_GROUP)?;
+    repovecd.require_service_directive("WorkingDirectory", SERVICE_WORKING_DIRECTORY)?;
+    repovecd.require_service_directive("Environment", SERVICE_HOME_ENVIRONMENT)
 }
 
 fn validate_mcpd(mcpd: &ParsedUnit) -> Result<(), SystemdUnitError> {
@@ -185,8 +185,11 @@ fn validate_mcpd(mcpd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     mcpd.require_dependency(UNIT_SECTION, "Requires", REPOVECD_UNIT)?;
     mcpd.require_dependency(UNIT_SECTION, "After", QDRANT_SERVICE)?;
     mcpd.require_dependency(UNIT_SECTION, "After", REPOVECD_UNIT)?;
-    mcpd.require_service_runtime()?;
-    mcpd.require_exec_start("/usr/bin/repovec-mcpd")
+    mcpd.require_exec_start("/usr/bin/repovec-mcpd")?;
+    mcpd.require_service_directive("User", SERVICE_USER)?;
+    mcpd.require_service_directive("Group", SERVICE_GROUP)?;
+    mcpd.require_service_directive("WorkingDirectory", SERVICE_WORKING_DIRECTORY)?;
+    mcpd.require_service_directive("Environment", SERVICE_HOME_ENVIRONMENT)
 }
 
 #[derive(Debug)]
@@ -286,45 +289,21 @@ impl ParsedUnit {
         })
     }
 
-    fn require_service_runtime(&self) -> Result<(), SystemdUnitError> {
-        self.require_setting(SERVICE_SECTION, "User", SERVICE_USER)?;
-        self.require_setting(SERVICE_SECTION, "Group", SERVICE_GROUP)?;
-        self.require_setting(SERVICE_SECTION, "WorkingDirectory", SERVICE_WORKING_DIRECTORY)?;
-        self.require_env(SERVICE_HOME_ENVIRONMENT)
-    }
-
-    fn require_setting(
+    fn require_service_directive(
         &self,
-        section: &'static str,
         key: &'static str,
         expected: &'static str,
     ) -> Result<(), SystemdUnitError> {
-        let values = self.values(section, key);
-        if values.first().is_some_and(|actual| actual == expected) && values.len() == 1 {
+        let values = self.values(SERVICE_SECTION, key);
+        if values.first().is_some_and(|value| value == expected) && values.len() == 1 {
             return Ok(());
         }
 
-        Err(SystemdUnitError::MissingSetting {
+        Err(SystemdUnitError::IncorrectServiceDirective {
             unit: self.unit,
-            section,
             key,
             expected,
             actual: values.join(","),
-        })
-    }
-
-    fn require_env(&self, expected: &'static str) -> Result<(), SystemdUnitError> {
-        let tokens = self.directive_tokens(SERVICE_SECTION, "Environment");
-        if tokens.contains(expected) {
-            return Ok(());
-        }
-
-        Err(SystemdUnitError::MissingSetting {
-            unit: self.unit,
-            section: SERVICE_SECTION,
-            key: "Environment",
-            expected,
-            actual: self.values(SERVICE_SECTION, "Environment").join(","),
         })
     }
 

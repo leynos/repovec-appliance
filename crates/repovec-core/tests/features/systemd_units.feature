@@ -41,3 +41,15 @@ Feature: repovec systemd unit contract
     And repovecd requires qdrant.container instead of qdrant.service
     When the systemd units are validated
     Then validation fails because the Quadlet source name was used
+
+  Scenario: repovecd keeps the appliance service identity
+    Given the checked-in repovec systemd units
+    And repovecd runs as root instead of repovec
+    When the systemd units are validated
+    Then validation fails because repovecd has the wrong service user
+
+  Scenario: repovec-mcpd keeps the appliance home environment
+    Given the checked-in repovec systemd units
+    And the repovec-mcpd home environment is removed
+    When the systemd units are validated
+    Then validation fails because repovec-mcpd has no appliance home environment

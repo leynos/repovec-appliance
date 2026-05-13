@@ -66,17 +66,15 @@ pub enum SystemdUnitError {
         /// The observed executable paths joined by commas.
         actual: String,
     },
-    /// A required service setting is absent or has a different value.
-    MissingSetting {
+    /// A required `[Service]` identity directive is absent or has the wrong value.
+    IncorrectServiceDirective {
         /// The logical unit file name.
         unit: &'static str,
-        /// The section containing the directive.
-        section: &'static str,
-        /// The directive name.
+        /// The directive key (e.g. `"User"`).
         key: &'static str,
-        /// The expected directive value.
+        /// The required value.
         expected: &'static str,
-        /// The observed directive values joined by commas.
+        /// The observed value(s) joined by commas, or an empty string if absent.
         actual: String,
     },
 }
@@ -103,8 +101,8 @@ impl fmt::Display for SystemdUnitError {
             Self::IncorrectExecStart { unit, expected, actual } => {
                 write!(f, "{unit} must use ExecStart={expected}: {actual}")
             }
-            Self::MissingSetting { unit, section, key, expected, actual } => {
-                write!(f, "{unit} must set {key}={expected} in [{section}]: {actual}")
+            Self::IncorrectServiceDirective { unit, key, expected, actual } => {
+                write!(f, "{unit} must have {key}={expected} in [Service]: {actual}")
             }
         }
     }

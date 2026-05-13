@@ -67,6 +67,16 @@ fn repovecd_requires_qdrant_container_instead_of_qdrant_service(systemd_world: &
         systemd_world.repovecd.replace("Requires=qdrant.service\n", "Requires=qdrant.container\n");
 }
 
+#[given("repovecd runs as root instead of repovec")]
+fn repovecd_runs_as_root_instead_of_repovec(systemd_world: &mut SystemdWorld) {
+    systemd_world.repovecd = systemd_world.repovecd.replace("User=repovec\n", "User=root\n");
+}
+
+#[given("the repovec-mcpd home environment is removed")]
+fn the_repovec_mcpd_home_environment_is_removed(systemd_world: &mut SystemdWorld) {
+    systemd_world.mcpd = systemd_world.mcpd.replace("Environment=HOME=/var/lib/repovec\n", "");
+}
+
 #[when("the systemd units are validated")]
 fn the_systemd_units_are_validated(systemd_world: &mut SystemdWorld) {
     systemd_world.validation_result = Some(validate_systemd_units(
@@ -150,6 +160,34 @@ fn validation_fails_because_the_quadlet_source_name_was_used(systemd_world: &Sys
     );
 }
 
+#[then("validation fails because repovecd has the wrong service user")]
+fn validation_fails_because_repovecd_has_the_wrong_service_user(systemd_world: &SystemdWorld) {
+    assert_validation_result(
+        systemd_world,
+        SystemdUnitError::IncorrectServiceDirective {
+            unit: "repovecd.service",
+            key: "User",
+            expected: "repovec",
+            actual: String::from("root"),
+        },
+    );
+}
+
+#[then("validation fails because repovec-mcpd has no appliance home environment")]
+fn validation_fails_because_repovec_mcpd_has_no_appliance_home_environment(
+    systemd_world: &SystemdWorld,
+) {
+    assert_validation_result(
+        systemd_world,
+        SystemdUnitError::IncorrectServiceDirective {
+            unit: "repovec-mcpd.service",
+            key: "Environment",
+            expected: "HOME=/var/lib/repovec",
+            actual: String::new(),
+        },
+    );
+}
+
 #[scenario(
     path = "tests/features/systemd_units.feature",
     name = "The checked-in unit set satisfies the appliance contract"
@@ -194,6 +232,22 @@ fn repovec_mcpd_waits_for_the_control_plane_daemon(systemd_world: SystemdWorld) 
     name = "The generated Qdrant service name is required"
 )]
 fn generated_qdrant_service_name_is_required(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
+
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "repovecd keeps the appliance service identity"
+)]
+fn repovecd_keeps_the_appliance_service_identity(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
+
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "repovec-mcpd keeps the appliance home environment"
+)]
+fn repovec_mcpd_keeps_the_appliance_home_environment(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }
 

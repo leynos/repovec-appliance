@@ -59,21 +59,35 @@ const QDRANT_API_KEY_ENVIRONMENT_VARIABLE: &str = "QDRANT__SERVICE__API_KEY";
 
 const UNIT_SECTION: &str = "Unit";
 const CONTAINER_SECTION: &str = "Container";
+
+// Domain invariants.
 /// The supported Qdrant OCI image reference for the appliance contract.
 const REQUIRED_IMAGE: &str = "docker.io/qdrant/qdrant:v1";
 /// The REST API port Qdrant exposes inside the container.
 const REQUIRED_REST_PORT: &str = "127.0.0.1:6333:6333";
 /// The gRPC API port Qdrant exposes inside the container.
 const REQUIRED_GRPC_PORT: &str = "127.0.0.1:6334:6334";
-/// The host path where the appliance stores Qdrant's persistent data.
-const REQUIRED_STORAGE_SOURCE: &str = "/var/lib/repovec/qdrant-storage";
 /// The in-container path where Qdrant stores persistent data.
 const REQUIRED_STORAGE_TARGET: &str = "/qdrant/storage";
+
+// Platform bindings.
+/// The host path where the appliance stores Qdrant's persistent data.
+const REQUIRED_STORAGE_SOURCE: &str = "/var/lib/repovec/qdrant-storage";
 /// The Podman auto-update policy required for the appliance-managed service.
 const REQUIRED_AUTO_UPDATE_POLICY: &str = "registry";
-
 /// The `SELinux` relabel option required for the host storage mount.
 const REQUIRED_SELINUX_OPTION: &str = "Z";
+
+/// Returns the repository's checked-in Qdrant Quadlet source.
+///
+/// # Examples
+///
+/// ```
+/// use repovec_core::appliance::qdrant_quadlet::checked_in_qdrant_quadlet;
+///
+/// assert!(checked_in_qdrant_quadlet().contains("[Container]"));
+/// ```
+#[must_use]
 pub const fn checked_in_qdrant_quadlet() -> &'static str { CHECKED_IN_QDRANT_QUADLET }
 
 /// Validates the repository's checked-in Qdrant Quadlet definition.

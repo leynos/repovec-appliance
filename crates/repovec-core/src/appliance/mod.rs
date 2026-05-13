@@ -1,7 +1,8 @@
 //! Appliance-specific assets and validation helpers.
 //!
-//! This module groups the two static validation surfaces that enforce the
-//! repovec appliance's packaging contract at compile time:
+//! This module groups the two static validation surfaces that validate the
+//! repovec appliance's packaging contract against checked-in assets at startup
+//! or during tests:
 //!
 //! - [`qdrant_quadlet`] validates the checked-in Qdrant Quadlet container
 //!   definition (`packaging/systemd/qdrant.container`), enforcing the pinned
@@ -15,9 +16,10 @@
 //!
 //! The two submodules are independent: [`qdrant_quadlet`] covers the
 //! Podman/Quadlet layer, while [`systemd_units`] covers the systemd service
-//! orchestration layer. Daemon binaries call
-//! [`systemd_units::validate_checked_in_systemd_units`] at startup and treat
-//! any [`systemd_units::SystemdUnitError`] as a fatal error.
+//! orchestration layer. Daemon binaries enforce the runtime startup contract by
+//! calling [`systemd_units::validate_checked_in_systemd_units`] before doing
+//! other work and treating any [`systemd_units::SystemdUnitError`] as a fatal
+//! error.
 
 pub mod qdrant_quadlet;
 pub mod systemd_units;

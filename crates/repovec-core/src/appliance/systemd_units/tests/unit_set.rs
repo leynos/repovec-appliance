@@ -21,7 +21,18 @@ impl UnitSet {
 
     pub(super) fn remove_line(&mut self, file: UnitFile, line: &str) {
         let contents = self.file_mut(file);
-        *contents = contents.replace(line, "");
+        let had_final_newline = contents.ends_with('\n');
+        let line_to_remove = line.trim_end_matches(['\r', '\n']);
+        let mut retained = contents
+            .lines()
+            .filter(|candidate| *candidate != line_to_remove)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if had_final_newline && !retained.is_empty() {
+            retained.push('\n');
+        }
+        *contents = retained;
     }
 
     pub(super) fn replace_token(&mut self, file: UnitFile, from: &str, to: &str) {

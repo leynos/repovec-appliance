@@ -1,4 +1,33 @@
 //! Validation helpers for the checked-in Qdrant Podman Quadlet asset.
+//!
+//! This module validates the repository's Quadlet asset against the complete
+//! appliance contract. The contract deliberately includes both Qdrant domain
+//! invariants and appliance platform bindings, because the Quadlet is the
+//! integration point where those concerns meet.
+//!
+//! # Domain invariants
+//!
+//! These values express what the appliance expects from Qdrant itself:
+//!
+//! - the OCI image reference remains fully qualified and pinned to the supported
+//!   Qdrant major line;
+//! - persistent storage is mounted inside the container at `/qdrant/storage`;
+//! - the REST API remains available on container port `6333`;
+//! - the gRPC API remains available on container port `6334`.
+//!
+//! # Platform bindings
+//!
+//! These values express how the appliance makes those invariants safe and
+//! operational on the host:
+//!
+//! - persistent data is sourced from `/var/lib/repovec/qdrant-storage`;
+//! - Qdrant is published on `127.0.0.1` only;
+//! - the storage mount carries the `SELinux` `:Z` relabel option;
+//! - Podman auto-updates use the `registry` policy.
+//!
+//! Keeping the checks colocated makes the intentional boundary visible: Qdrant
+//! defines the container contract, while the appliance platform defines the
+//! host-side bindings that satisfy it.
 
 mod error;
 mod parser;
@@ -30,12 +59,24 @@ const QDRANT_API_KEY_ENVIRONMENT_VARIABLE: &str = "QDRANT__SERVICE__API_KEY";
 
 const UNIT_SECTION: &str = "Unit";
 const CONTAINER_SECTION: &str = "Container";
+
+// Domain invariants.
+/// The supported Qdrant OCI image reference for the appliance contract.
 const REQUIRED_IMAGE: &str = "docker.io/qdrant/qdrant:v1";
+/// The REST API port Qdrant exposes inside the container.
 const REQUIRED_REST_PORT: &str = "127.0.0.1:6333:6333";
+/// The gRPC API port Qdrant exposes inside the container.
 const REQUIRED_GRPC_PORT: &str = "127.0.0.1:6334:6334";
-const REQUIRED_STORAGE_SOURCE: &str = "/var/lib/repovec/qdrant-storage";
+/// The in-container path where Qdrant stores persistent data.
 const REQUIRED_STORAGE_TARGET: &str = "/qdrant/storage";
+
+// Platform bindings.
+/// The host path where the appliance stores Qdrant's persistent data.
+const REQUIRED_STORAGE_SOURCE: &str = "/var/lib/repovec/qdrant-storage";
+/// The Podman auto-update policy required for the appliance-managed service.
 const REQUIRED_AUTO_UPDATE_POLICY: &str = "registry";
+/// The `SELinux` relabel option required for the host storage mount.
+const REQUIRED_SELINUX_OPTION: &str = "Z";
 
 /// Returns the repository's checked-in Qdrant Quadlet source.
 ///
@@ -201,7 +242,7 @@ fn validate_storage_mount(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletErr
         return Err(QdrantQuadletError::IncorrectStorageTarget { target: target.to_owned() });
     }
 
-    if !parts.get(2..).is_some_and(|options| options.contains(&"Z")) {
+    if !parts.get(2..).is_some_and(|options| options.contains(&REQUIRED_SELINUX_OPTION)) {
         return Err(QdrantQuadletError::MissingSelinuxRelabel { volume: volume.to_owned() });
     }
 

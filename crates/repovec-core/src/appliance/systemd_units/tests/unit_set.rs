@@ -42,12 +42,16 @@ impl UnitSet {
 
     pub(super) fn remove_token(&mut self, file: UnitFile, key: &str, token: &str) {
         let contents = self.file_mut(file);
+        let had_final_newline = contents.ends_with('\n');
         let mut lines = contents
             .lines()
             .map(|line| remove_token_from_line(line, key, token))
             .collect::<Vec<_>>()
             .join("\n");
-        lines.push('\n');
+
+        if had_final_newline && !lines.is_empty() {
+            lines.push('\n');
+        }
         *contents = lines;
     }
 
@@ -64,6 +68,10 @@ fn remove_token_from_line(line: &str, key: &str, token: &str) -> String {
     let Some(value) = line.strip_prefix(key) else {
         return line.to_owned();
     };
+    if !value.split_whitespace().any(|candidate| candidate == token) {
+        return line.to_owned();
+    }
+
     let retained = value.split_whitespace().filter(|candidate| *candidate != token);
 
     format!("{key}{}", retained.collect::<Vec<_>>().join(" "))

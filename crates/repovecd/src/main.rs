@@ -3,13 +3,11 @@
 use repovec_core::appliance::systemd_units::validate_checked_in_systemd_units;
 
 fn main() {
-    init_tracing();
+    tracing_subscriber::fmt::init();
     validate_systemd_unit_contract();
 
     let _arguments = std::env::args_os();
 }
-
-fn init_tracing() { tracing_subscriber::fmt::init(); }
 
 fn validate_systemd_unit_contract() {
     if let Err(error) = validate_checked_in_systemd_units() {

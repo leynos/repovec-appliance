@@ -114,3 +114,46 @@ EOF'
 ```
 
 Requests to Qdrant without the `api-key` header are rejected.
+
+## Appliance systemd target
+
+repovec-appliance ships a base systemd target and static daemon service files
+under `packaging/systemd/`:
+
+- `repovec.target`
+- `repovecd.service`
+- `repovec-mcpd.service`
+
+Install these files to `/etc/systemd/system/`, then reload systemd:
+
+```sh
+sudo install -m 0644 packaging/systemd/repovec.target /etc/systemd/system/repovec.target
+sudo install -m 0644 packaging/systemd/repovecd.service /etc/systemd/system/repovecd.service
+sudo install -m 0644 packaging/systemd/repovec-mcpd.service /etc/systemd/system/repovec-mcpd.service
+sudo systemctl daemon-reload
+```
+
+The target wants `qdrant.service`, `repovecd.service`, `repovec-mcpd.service`,
+and `cloudflared.service`. The Qdrant service name is the generated systemd
+unit from the installed `/etc/containers/systemd/qdrant.container` Quadlet;
+dependent services must use `qdrant.service`.
+
+Enable and start the appliance service group with:
+
+```sh
+sudo systemctl enable repovec.target
+sudo systemctl start repovec.target
+```
+
+> **Note:** `repovecd` and `repovec-mcpd` validate the checked-in systemd unit
+> contract at startup before doing any other work. If validation fails, the
+> daemon exits immediately with a non-zero exit code. Inspect the journal with
+> `journalctl -u repovecd.service --no-pager | tail -20` or
+> `journalctl -u repovec-mcpd.service --no-pager | tail -20`; the error message
+> identifies the unit and contract clause that was violated.
+
+Starting the target may still fail until later roadmap items create the
+`repovec` system user, directory layout, Qdrant API-key configuration, and
+production daemon binaries. The checked-in unit contract already records the
+intended ordering: `repovecd.service` starts after and requires Qdrant, and
+`repovec-mcpd.service` starts after and requires both Qdrant and `repovecd`.

@@ -83,7 +83,7 @@ with API-key authentication, and survives host reboots.
 Objective: a `repovec.target` that orchestrates all appliance units with
 correct ordering and dependency declarations.
 
-- [ ] 1.3.1. Define `repovec.target` and static unit files
+- [x] 1.3.1. Define `repovec.target` and static unit files
   - Create `repovec.target` that wants `qdrant.service`, `repovecd.service`,
     `repovec-mcpd.service`, and `cloudflared.service`.
     See repovec-appliance-technical-design.md, "Service layout".

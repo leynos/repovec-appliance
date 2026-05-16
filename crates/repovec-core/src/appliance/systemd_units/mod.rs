@@ -1,4 +1,60 @@
 //! Validation helpers for the checked-in repovec systemd unit assets.
+//!
+//! This module belongs to [`crate::appliance`]. It embeds the repovec appliance
+//! systemd unit files at compile time with [`include_str!`] and exposes the
+//! static validation surface for the service-layout contract used by the
+//! appliance packaging and daemon startup paths.
+//!
+//! ## Public Accessors
+//!
+//! - [`checked_in_repovec_target`] returns the embedded `repovec.target` text.
+//! - [`checked_in_repovecd_service`] returns the embedded `repovecd.service`
+//!   text.
+//! - [`checked_in_repovec_mcpd_service`] returns the embedded
+//!   `repovec-mcpd.service` text.
+//!
+//! ## Validation Entry Points
+//!
+//! - [`validate_checked_in_systemd_units`] validates the three embedded unit
+//!   assets shipped in the repository. Use it when the checked-in appliance
+//!   contract must be proved before a daemon starts.
+//! - [`validate_systemd_units`] validates caller-supplied unit text. Use it in
+//!   tests or tooling that needs to analyse unit contents sourced outside the
+//!   checked-in files.
+//!
+//! Both entry points return `Ok(())` when the unit set satisfies the contract,
+//! or [`SystemdUnitError`] describing the first violation found. The
+//! [`SystemdUnitError`] type is defined in this module's private `error`
+//! submodule and re-exported here for callers.
+//!
+//! ## Contract Scope
+//!
+//! The validators perform static analysis on systemd unit text. They do not
+//! invoke `systemctl`, inspect the live systemd manager, or read unit files from
+//! `/etc/systemd/`. The checked-in validation path reads no filesystem state at
+//! runtime beyond the compile-time [`include_str!`] asset embedding.
+//!
+//! The service-layout contract enforces:
+//!
+//! - Required section headers for the relevant unit type: `[Unit]`, `[Service]`,
+//!   and `[Install]`.
+//! - Dependency and ordering directives: `Wants=`, `Requires=`, `After=`, and
+//!   `WantedBy=`.
+//! - Rejection of Quadlet-derived Qdrant dependency names such as
+//!   `qdrant.container` and `qdrant.container.service`.
+//! - `ExecStart=` executable paths for `repovecd` and `repovec-mcpd`.
+//! - `[Service]` identity and runtime-directory directives: `User=`, `Group=`,
+//!   `WorkingDirectory=`, and `Environment=HOME=`.
+//!
+//! The validators do not verify that referenced binaries, users, groups,
+//! directories, or services exist on the host.
+//!
+//! ## Daemon Startup Contract
+//!
+//! The daemon binaries (`repovecd` and `repovec-mcpd`) call
+//! [`validate_checked_in_systemd_units`] as the first substantive action in
+//! `main()`. Any [`SystemdUnitError`] is fatal at startup: the daemon logs the
+//! violation with `tracing::error!` and exits with code 1.
 
 mod error;
 

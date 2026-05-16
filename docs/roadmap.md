@@ -77,6 +77,11 @@ with API-key authentication, and survives host reboots.
     Qdrant gRPC at `localhost:6334` with the stored API key and confirms the
     service is ready.
   - Add an integration test that starts Qdrant and runs the health check.
+- [x] 1.2.4. Add property-based tests for Qdrant Quadlet parser and validator
+  - Add `proptest` as a workspace dev-dependency.
+  - Implement property tests covering parser invariants, duplicate-entry
+    rejection, and port loopback enforcement.
+  - Closes `#17`.
 
 ### 1.3. Systemd service layout
 

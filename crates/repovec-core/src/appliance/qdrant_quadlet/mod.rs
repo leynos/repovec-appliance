@@ -9,6 +9,8 @@ mod api_key_tests;
 mod provisioning_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_proptest;
 
 pub use error::QdrantQuadletError;
 use parser::ParsedQuadlet;

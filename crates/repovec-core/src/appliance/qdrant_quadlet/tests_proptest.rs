@@ -43,13 +43,13 @@ fn non_loopback_ip() -> impl Strategy<Value = String> {
 }
 
 /// Generates a valid unprivileged TCP port number in the range
-/// 1024–65534.
+/// 1024–65535.
 ///
 /// The lower bound excludes privileged ports (0–1023) which require
 /// root; the upper bound is the maximum valid TCP port.
 ///
 /// Example: `6333`
-fn host_port() -> impl Strategy<Value = u16> { 1024_u16..65535 }
+fn host_port() -> impl Strategy<Value = u16> { 1024_u16..=65535 }
 
 /// Generates an arbitrary lowercase alphabetic string representing a
 /// candidate `AutoUpdate` policy value.
@@ -161,7 +161,6 @@ proptest! {
         val2 in "[a-z]+",
         val3 in "[a-z]+",
     ) {
-        prop_assume!(val1 != val2 && val2 != val3 && val1 != val3);
         let contents = format!(
             "[TestSection]\n\
              Key={val1}\n\
@@ -183,7 +182,6 @@ proptest! {
         extra_key in r"[A-Z][a-zA-Z]*",
         extra_val in "[a-z]+",
     ) {
-        prop_assume!(extra_section != "Container");
         let container_first = format!(
             "[Container]\n\
              Image=docker.io/qdrant/qdrant:v1\n\
@@ -270,7 +268,6 @@ proptest! {
         host_ip in non_loopback_ip(),
         port in host_port(),
     ) {
-        prop_assume!(host_ip != "127.0.0.1");
         let publish_port = format!("{host_ip}:{port}:6333");
         let contents = format!(
             "[Container]\n\
@@ -297,7 +294,6 @@ proptest! {
         host_ip in non_loopback_ip(),
         port in host_port(),
     ) {
-        prop_assume!(host_ip != "127.0.0.1");
         let publish_port = format!("{host_ip}:{port}:6334");
         let contents = format!(
             "[Container]\n\
@@ -324,7 +320,6 @@ proptest! {
         host_ip in non_loopback_ip(),
         port in host_port(),
     ) {
-        prop_assume!(host_ip != "127.0.0.1");
         let bad_publish = format!("{host_ip}:{port}:6333");
         let contents = format!(
             "[Container]\n\
@@ -352,7 +347,6 @@ proptest! {
         host_ip in non_loopback_ip(),
         port in host_port(),
     ) {
-        prop_assume!(host_ip != "127.0.0.1");
         let bad_publish = format!("{host_ip}:{port}:6334");
         let contents = format!(
             "[Container]\n\

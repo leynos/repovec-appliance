@@ -1,0 +1,11 @@
+[Unit]
+Description=Repovec control-plane daemon
+Requires=qdrant.service
+After=qdrant.service
+
+[Service]
+User=repovec
+Group=repovec
+WorkingDirectory=/var/lib/repovec
+Environment=HOME=/var/lib/repovec
+ExecStart=/usr/bin/repovecd

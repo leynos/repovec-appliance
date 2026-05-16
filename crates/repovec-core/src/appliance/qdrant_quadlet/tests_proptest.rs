@@ -71,18 +71,28 @@ fn auto_update_policy() -> impl Strategy<Value = String> { "[a-z]+" }
 ///
 /// Example snippet:
 /// ```text
+/// [Unit]
+/// Requires=repovec-qdrant-api-key.service
+/// After=repovec-qdrant-api-key.service
+///
 /// [Container]
 /// Image=docker.io/qdrant/qdrant:v1
 /// AutoUpdate=registry
+/// Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY
 /// PublishPort=127.0.0.1:6333:6333
 /// PublishPort=127.0.0.1:6334:6334
 /// Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z
 /// ```
 fn valid_quadlet_base() -> String {
     String::from(
-        "[Container]\n\
+        "[Unit]\n\
+         Requires=repovec-qdrant-api-key.service\n\
+         After=repovec-qdrant-api-key.service\n\
+         \n\
+         [Container]\n\
          Image=docker.io/qdrant/qdrant:v1\n\
          AutoUpdate=registry\n\
+         Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n\
          PublishPort=127.0.0.1:6333:6333\n\
          PublishPort=127.0.0.1:6334:6334\n\
          Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
@@ -100,9 +110,14 @@ proptest! {
         val_pad in r"[ \t]{0,4}",
     ) {
         let contents = format!(
-            "[Container]\n\
+            "[Unit]\n\
+             Requires=repovec-qdrant-api-key.service\n\
+             After=repovec-qdrant-api-key.service\n\
+             \n\
+             [Container]\n\
              {key_pad}Image{key_pad}={val_pad}docker.io/qdrant/qdrant:v1{val_pad}\n\
              AutoUpdate=registry\n\
+             Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n\
              PublishPort=127.0.0.1:6333:6333\n\
              PublishPort=127.0.0.1:6334:6334\n\
              Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n"

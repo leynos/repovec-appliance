@@ -9,7 +9,12 @@ mod api_key_tests;
 mod provisioning_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
 mod tests_proptest;
+
+pub use error::QdrantQuadletError;
+use parser::ParsedQuadlet;
+
 const CHECKED_IN_QDRANT_QUADLET: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/qdrant.container"));
 

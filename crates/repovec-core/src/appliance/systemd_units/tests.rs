@@ -179,7 +179,6 @@ impl ValidationScenario {
     fn expected_error(self) -> SystemdUnitError {
         match self {
             Self::InvalidLine
-            | Self::PropertyBeforeSection
             | Self::MissingTargetUnitSection
             | Self::MissingTargetInstallSection
             | Self::MissingTargetWantedBy
@@ -188,7 +187,8 @@ impl ValidationScenario {
             | Self::MissingTargetWantsRepovecd
             | Self::MissingTargetWantsMcpd
             | Self::MissingTargetWantsCloudflared => self.expected_target_error(),
-            Self::MissingRepovecdServiceSection
+            Self::PropertyBeforeSection
+            | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
             | Self::MissingRepovecdAfterQdrant
             | Self::RepovecdUsesQdrantContainerService
@@ -212,11 +212,6 @@ impl ValidationScenario {
                 unit: "repovec.target",
                 line_number: 2,
                 line: String::from("not valid"),
-            },
-            Self::PropertyBeforeSection => SystemdUnitError::PropertyBeforeSection {
-                unit: "repovecd.service",
-                line_number: 1,
-                line: String::from("Requires=qdrant.service"),
             },
             Self::MissingTargetUnitSection => {
                 SystemdUnitError::MissingSection { unit: "repovec.target", section: "Unit" }
@@ -244,6 +239,11 @@ impl ValidationScenario {
 
     fn expected_repovecd_error(self) -> SystemdUnitError {
         match self {
+            Self::PropertyBeforeSection => SystemdUnitError::PropertyBeforeSection {
+                unit: "repovecd.service",
+                line_number: 1,
+                line: String::from("Requires=qdrant.service"),
+            },
             Self::MissingRepovecdServiceSection => {
                 SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" }
             }

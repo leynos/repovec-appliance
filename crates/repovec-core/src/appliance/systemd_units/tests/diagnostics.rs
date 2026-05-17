@@ -5,7 +5,6 @@ use super::ValidationScenario;
 pub(super) fn expected_diagnostic(scenario: ValidationScenario) -> &'static str {
     match scenario {
         ValidationScenario::InvalidLine
-        | ValidationScenario::PropertyBeforeSection
         | ValidationScenario::MissingTargetUnitSection
         | ValidationScenario::MissingTargetInstallSection
         | ValidationScenario::MissingTargetWantedBy
@@ -14,7 +13,8 @@ pub(super) fn expected_diagnostic(scenario: ValidationScenario) -> &'static str 
         | ValidationScenario::MissingTargetWantsRepovecd
         | ValidationScenario::MissingTargetWantsMcpd
         | ValidationScenario::MissingTargetWantsCloudflared => expected_target_diagnostic(scenario),
-        ValidationScenario::MissingRepovecdServiceSection
+        ValidationScenario::PropertyBeforeSection
+        | ValidationScenario::MissingRepovecdServiceSection
         | ValidationScenario::MissingRepovecdRequiresQdrant
         | ValidationScenario::MissingRepovecdAfterQdrant
         | ValidationScenario::RepovecdUsesQdrantContainerService
@@ -35,10 +35,6 @@ pub(super) fn expected_diagnostic(scenario: ValidationScenario) -> &'static str 
 fn expected_target_diagnostic(scenario: ValidationScenario) -> &'static str {
     match scenario {
         ValidationScenario::InvalidLine => "invalid systemd line in repovec.target at 2: not valid",
-        ValidationScenario::PropertyBeforeSection => concat!(
-            "systemd property before section in repovecd.service on line 1: ",
-            "Requires=qdrant.service",
-        ),
         ValidationScenario::MissingTargetUnitSection => "repovec.target is missing [Unit]",
         ValidationScenario::MissingTargetInstallSection => "repovec.target is missing [Install]",
         ValidationScenario::MissingTargetWantedBy => {
@@ -66,6 +62,10 @@ fn expected_target_diagnostic(scenario: ValidationScenario) -> &'static str {
 
 fn expected_repovecd_diagnostic(scenario: ValidationScenario) -> &'static str {
     match scenario {
+        ValidationScenario::PropertyBeforeSection => concat!(
+            "systemd property before section in repovecd.service on line 1: ",
+            "Requires=qdrant.service",
+        ),
         ValidationScenario::MissingRepovecdServiceSection => {
             "repovecd.service is missing [Service]"
         }

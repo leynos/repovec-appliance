@@ -99,6 +99,11 @@ fn valid_quadlet_base() -> String {
     )
 }
 
+fn insertion_position() -> impl Strategy<Value = usize> {
+    let line_count = valid_quadlet_base().lines().count();
+    0..=line_count
+}
+
 proptest! {
     // ------ Parser invariance ------
 
@@ -131,7 +136,7 @@ proptest! {
     #[test]
     fn comment_injection_invariance(
         injections in prop::collection::vec(
-            (r"# .*", 0_usize..10),
+            (r"# .*", insertion_position()),
             0..=3,
         ),
     ) {
@@ -154,7 +159,7 @@ proptest! {
     /// Quadlet does not affect validation outcome.
     #[test]
     fn empty_line_invariance(
-        pos in 0_usize..10,
+        pos in insertion_position(),
         count in 0_usize..=4,
     ) {
         let base = valid_quadlet_base();

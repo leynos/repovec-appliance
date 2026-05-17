@@ -232,7 +232,7 @@ fn validate_repovecd(repovecd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     repovecd.require_service_directive("User", SERVICE_USER)?;
     repovecd.require_service_directive("Group", SERVICE_GROUP)?;
     repovecd.require_service_directive("WorkingDirectory", SERVICE_WORKING_DIRECTORY)?;
-    repovecd.require_service_directive("Environment", SERVICE_HOME_ENVIRONMENT)
+    repovecd.require_service_environment(SERVICE_HOME_ENVIRONMENT)
 }
 
 fn validate_mcpd(mcpd: &ParsedUnit) -> Result<(), SystemdUnitError> {
@@ -246,7 +246,7 @@ fn validate_mcpd(mcpd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     mcpd.require_service_directive("User", SERVICE_USER)?;
     mcpd.require_service_directive("Group", SERVICE_GROUP)?;
     mcpd.require_service_directive("WorkingDirectory", SERVICE_WORKING_DIRECTORY)?;
-    mcpd.require_service_directive("Environment", SERVICE_HOME_ENVIRONMENT)
+    mcpd.require_service_environment(SERVICE_HOME_ENVIRONMENT)
 }
 
 #[derive(Debug)]
@@ -359,6 +359,20 @@ impl ParsedUnit {
         Err(SystemdUnitError::IncorrectServiceDirective {
             unit: self.unit,
             key,
+            expected,
+            actual: values.join(","),
+        })
+    }
+
+    fn require_service_environment(&self, expected: &'static str) -> Result<(), SystemdUnitError> {
+        let values = self.values(SERVICE_SECTION, "Environment");
+        if values.iter().any(|value| value == expected) {
+            return Ok(());
+        }
+
+        Err(SystemdUnitError::IncorrectServiceDirective {
+            unit: self.unit,
+            key: "Environment",
             expected,
             actual: values.join(","),
         })

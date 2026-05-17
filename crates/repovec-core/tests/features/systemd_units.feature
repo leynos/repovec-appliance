@@ -24,6 +24,12 @@ Feature: repovec systemd unit contract
     When the systemd units are validated
     Then the systemd unit set is accepted
 
+  Scenario: Additional service environment entries are accepted
+    Given the checked-in repovec systemd units
+    And additional service environment entries are added
+    When the systemd units are validated
+    Then the systemd unit set is accepted
+
   Scenario: repovecd waits for Qdrant
     Given the checked-in repovec systemd units
     And the repovecd Qdrant ordering is removed

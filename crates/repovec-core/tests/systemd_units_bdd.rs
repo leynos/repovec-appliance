@@ -49,6 +49,18 @@ fn a_semicolon_comment_is_added_to_the_target(systemd_world: &mut SystemdWorld) 
         systemd_world.target.replace("[Unit]\n", "[Unit]\n; systemd accepts semicolon comments\n");
 }
 
+#[given("additional service environment entries are added")]
+fn additional_service_environment_entries_are_added(systemd_world: &mut SystemdWorld) {
+    systemd_world.repovecd = systemd_world.repovecd.replace(
+        "Environment=HOME=/var/lib/repovec\n",
+        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
+    );
+    systemd_world.mcpd = systemd_world.mcpd.replace(
+        "Environment=HOME=/var/lib/repovec\n",
+        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
+    );
+}
+
 #[given("the repovecd Qdrant ordering is removed")]
 fn the_repovecd_qdrant_ordering_is_removed(systemd_world: &mut SystemdWorld) {
     systemd_world.repovecd = systemd_world.repovecd.replace("After=qdrant.service\n", "");
@@ -211,6 +223,14 @@ fn target_remains_enableable(systemd_world: SystemdWorld) {
 
 #[scenario(path = "tests/features/systemd_units.feature", name = "Semicolon comments are accepted")]
 fn semicolon_comments_are_accepted(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
+
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "Additional service environment entries are accepted"
+)]
+fn additional_service_environment_entries_are_accepted(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }
 

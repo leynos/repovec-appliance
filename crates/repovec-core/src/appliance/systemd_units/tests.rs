@@ -335,6 +335,21 @@ fn semicolon_comments_are_ignored() {
     .expect("semicolon comments should be ignored");
 }
 
+#[test]
+fn additional_service_environment_lines_are_accepted() {
+    let repovecd = checked_in_repovecd_service().replace(
+        "Environment=HOME=/var/lib/repovec\n",
+        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
+    );
+    let mcpd = checked_in_repovec_mcpd_service().replace(
+        "Environment=HOME=/var/lib/repovec\n",
+        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
+    );
+
+    validate_systemd_units(checked_in_repovec_target(), &repovecd, &mcpd)
+        .expect("additional service environment lines should be accepted");
+}
+
 #[rstest]
 #[case::invalid_line(ValidationScenario::InvalidLine)]
 #[case::property_before_section(ValidationScenario::PropertyBeforeSection)]

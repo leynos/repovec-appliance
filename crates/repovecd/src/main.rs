@@ -12,7 +12,18 @@ fn main() {
 
 fn validate_systemd_unit_contract()
 -> Result<(), repovec_core::appliance::systemd_units::SystemdUnitError> {
-    let result = repovec_core::appliance::systemd_units::validate_checked_in_systemd_units();
+    validate_systemd_unit_contract_with(
+        repovec_core::appliance::systemd_units::validate_checked_in_systemd_units,
+    )
+}
+
+fn validate_systemd_unit_contract_with<F>(
+    validator: F,
+) -> Result<(), repovec_core::appliance::systemd_units::SystemdUnitError>
+where
+    F: FnOnce() -> Result<(), repovec_core::appliance::systemd_units::SystemdUnitError>,
+{
+    let result = validator();
     if result.is_ok() {
         tracing::debug!("systemd unit contract validated");
     }
@@ -25,12 +36,26 @@ mod tests {
 
     use repovec_core::appliance::systemd_units::{SystemdUnitError, validate_systemd_units};
 
+    use super::validate_systemd_unit_contract_with;
+
     #[test]
     fn validate_systemd_unit_contract_succeeds_for_checked_in_units() {
         // The helper is wired to validate_checked_in_systemd_units(); exercise
         // the public entry point directly to prove the wiring.
-        repovec_core::appliance::systemd_units::validate_checked_in_systemd_units()
-            .expect("checked-in units must satisfy the contract at compile time");
+        validate_systemd_unit_contract_with(
+            repovec_core::appliance::systemd_units::validate_checked_in_systemd_units,
+        )
+        .expect("checked-in units must satisfy the contract at compile time");
+    }
+
+    #[test]
+    fn validate_systemd_unit_contract_with_returns_injected_error() {
+        let injected_error =
+            SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" };
+
+        let result = validate_systemd_unit_contract_with(|| Err(injected_error.clone()));
+
+        assert_eq!(result, Err(injected_error));
     }
 
     #[test]

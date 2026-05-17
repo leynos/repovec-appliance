@@ -14,13 +14,15 @@ pub(super) fn expected_diagnostic(scenario: ValidationScenario) -> &'static str 
         | ValidationScenario::MissingTargetWantsRepovecd
         | ValidationScenario::MissingTargetWantsMcpd
         | ValidationScenario::MissingTargetWantsCloudflared => expected_target_diagnostic(scenario),
-        ValidationScenario::MissingRepovecdRequiresQdrant
+        ValidationScenario::MissingRepovecdServiceSection
+        | ValidationScenario::MissingRepovecdRequiresQdrant
         | ValidationScenario::MissingRepovecdAfterQdrant
         | ValidationScenario::RepovecdUsesQdrantContainerService
         | ValidationScenario::WrongRepovecdExecStart
         | ValidationScenario::RepovecdWrongUser
         | ValidationScenario::RepovecdMissingGroup => expected_repovecd_diagnostic(scenario),
-        ValidationScenario::MissingMcpdRequiresQdrant
+        ValidationScenario::MissingMcpdServiceSection
+        | ValidationScenario::MissingMcpdRequiresQdrant
         | ValidationScenario::MissingMcpdRequiresRepovecd
         | ValidationScenario::MissingMcpdAfterQdrant
         | ValidationScenario::MissingMcpdAfterRepovecd
@@ -64,6 +66,9 @@ fn expected_target_diagnostic(scenario: ValidationScenario) -> &'static str {
 
 fn expected_repovecd_diagnostic(scenario: ValidationScenario) -> &'static str {
     match scenario {
+        ValidationScenario::MissingRepovecdServiceSection => {
+            "repovecd.service is missing [Service]"
+        }
         ValidationScenario::MissingRepovecdRequiresQdrant => {
             "repovecd.service is missing Requires=qdrant.service in [Unit]"
         }
@@ -89,6 +94,9 @@ fn expected_repovecd_diagnostic(scenario: ValidationScenario) -> &'static str {
 
 fn expected_mcpd_diagnostic(scenario: ValidationScenario) -> &'static str {
     match scenario {
+        ValidationScenario::MissingMcpdServiceSection => {
+            "repovec-mcpd.service is missing [Service]"
+        }
         ValidationScenario::MissingMcpdRequiresQdrant => {
             "repovec-mcpd.service is missing Requires=qdrant.service in [Unit]"
         }

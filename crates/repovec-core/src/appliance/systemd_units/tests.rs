@@ -3,10 +3,13 @@
 
 #[path = "tests/diagnostics.rs"]
 mod diagnostics;
+#[path = "tests/error_builders.rs"]
+mod error_builders;
 #[path = "tests/unit_set.rs"]
 mod unit_set;
 
 use diagnostics::expected_diagnostic;
+use error_builders::{exec_start, missing, missing_install, quadlet_source, service_directive};
 use rstest::{fixture, rstest};
 use unit_set::{UnitFile, UnitSet};
 
@@ -27,12 +30,14 @@ pub(super) enum ValidationScenario {
     MissingTargetWantsRepovecd,
     MissingTargetWantsMcpd,
     MissingTargetWantsCloudflared,
+    MissingRepovecdServiceSection,
     MissingRepovecdRequiresQdrant,
     MissingRepovecdAfterQdrant,
     RepovecdUsesQdrantContainerService,
     WrongRepovecdExecStart,
     RepovecdWrongUser,
     RepovecdMissingGroup,
+    MissingMcpdServiceSection,
     MissingMcpdRequiresQdrant,
     MissingMcpdRequiresRepovecd,
     MissingMcpdAfterQdrant,
@@ -55,13 +60,15 @@ impl ValidationScenario {
             | Self::MissingTargetWantsMcpd
             | Self::MissingTargetWantsCloudflared => self.mutate_target(&mut units),
             Self::PropertyBeforeSection
+            | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
             | Self::MissingRepovecdAfterQdrant
             | Self::RepovecdUsesQdrantContainerService
             | Self::WrongRepovecdExecStart
             | Self::RepovecdWrongUser
             | Self::RepovecdMissingGroup => self.mutate_repovecd(&mut units),
-            Self::MissingMcpdRequiresQdrant
+            Self::MissingMcpdServiceSection
+            | Self::MissingMcpdRequiresQdrant
             | Self::MissingMcpdRequiresRepovecd
             | Self::MissingMcpdAfterQdrant
             | Self::MissingMcpdAfterRepovecd
@@ -110,6 +117,9 @@ impl ValidationScenario {
             Self::PropertyBeforeSection => {
                 units.replace_file(UnitFile::Repovecd, "Requires=qdrant.service\n[Unit]\n");
             }
+            Self::MissingRepovecdServiceSection => {
+                units.remove_line(UnitFile::Repovecd, "[Service]\n");
+            }
             Self::MissingRepovecdRequiresQdrant => {
                 units.remove_line(UnitFile::Repovecd, "Requires=qdrant.service\n");
             }
@@ -136,6 +146,9 @@ impl ValidationScenario {
 
     fn mutate_mcpd(self, units: &mut UnitSet) {
         match self {
+            Self::MissingMcpdServiceSection => {
+                units.remove_line(UnitFile::Mcpd, "[Service]\n");
+            }
             Self::MissingMcpdRequiresQdrant => {
                 units.remove_token(UnitFile::Mcpd, "Requires=", "qdrant.service");
             }
@@ -175,13 +188,15 @@ impl ValidationScenario {
             | Self::MissingTargetWantsRepovecd
             | Self::MissingTargetWantsMcpd
             | Self::MissingTargetWantsCloudflared => self.expected_target_error(),
-            Self::MissingRepovecdRequiresQdrant
+            Self::MissingRepovecdServiceSection
+            | Self::MissingRepovecdRequiresQdrant
             | Self::MissingRepovecdAfterQdrant
             | Self::RepovecdUsesQdrantContainerService
             | Self::WrongRepovecdExecStart
             | Self::RepovecdWrongUser
             | Self::RepovecdMissingGroup => self.expected_repovecd_error(),
-            Self::MissingMcpdRequiresQdrant
+            Self::MissingMcpdServiceSection
+            | Self::MissingMcpdRequiresQdrant
             | Self::MissingMcpdRequiresRepovecd
             | Self::MissingMcpdAfterQdrant
             | Self::MissingMcpdAfterRepovecd
@@ -229,6 +244,9 @@ impl ValidationScenario {
 
     fn expected_repovecd_error(self) -> SystemdUnitError {
         match self {
+            Self::MissingRepovecdServiceSection => {
+                SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" }
+            }
             Self::MissingRepovecdRequiresQdrant => {
                 missing("repovecd.service", "Requires", "qdrant.service")
             }
@@ -253,6 +271,10 @@ impl ValidationScenario {
 
     fn expected_mcpd_error(self) -> SystemdUnitError {
         match self {
+            Self::MissingMcpdServiceSection => SystemdUnitError::MissingSection {
+                unit: "repovec-mcpd.service",
+                section: "Service",
+            },
             Self::MissingMcpdRequiresQdrant => {
                 missing("repovec-mcpd.service", "Requires", "qdrant.service")
             }
@@ -324,6 +346,7 @@ fn semicolon_comments_are_ignored() {
 #[case::missing_target_wants_repovecd(ValidationScenario::MissingTargetWantsRepovecd)]
 #[case::missing_target_wants_mcpd(ValidationScenario::MissingTargetWantsMcpd)]
 #[case::missing_target_wants_cloudflared(ValidationScenario::MissingTargetWantsCloudflared)]
+#[case::missing_repovecd_service_section(ValidationScenario::MissingRepovecdServiceSection)]
 #[case::missing_repovecd_requires_qdrant(ValidationScenario::MissingRepovecdRequiresQdrant)]
 #[case::missing_repovecd_after_qdrant(ValidationScenario::MissingRepovecdAfterQdrant)]
 #[case::repovecd_uses_qdrant_container_service(
@@ -332,6 +355,7 @@ fn semicolon_comments_are_ignored() {
 #[case::wrong_repovecd_exec_start(ValidationScenario::WrongRepovecdExecStart)]
 #[case::repovecd_wrong_user(ValidationScenario::RepovecdWrongUser)]
 #[case::repovecd_missing_group(ValidationScenario::RepovecdMissingGroup)]
+#[case::missing_mcpd_service_section(ValidationScenario::MissingMcpdServiceSection)]
 #[case::missing_mcpd_requires_qdrant(ValidationScenario::MissingMcpdRequiresQdrant)]
 #[case::missing_mcpd_requires_repovecd(ValidationScenario::MissingMcpdRequiresRepovecd)]
 #[case::missing_mcpd_after_qdrant(ValidationScenario::MissingMcpdAfterQdrant)]
@@ -350,34 +374,4 @@ fn validated_systemd_unit_violations_match_expected_variant_and_diagnostic_snaps
 
     assert_eq!(err, scenario.expected_error());
     assert_eq!(err.to_string(), expected_diagnostic(scenario));
-}
-
-fn missing(unit: &'static str, key: &'static str, dependency: &'static str) -> SystemdUnitError {
-    SystemdUnitError::MissingDependency { unit, section: "Unit", key, dependency }
-}
-
-fn missing_install(unit: &'static str, dependency: &'static str) -> SystemdUnitError {
-    SystemdUnitError::MissingDependency { unit, section: "Install", key: "WantedBy", dependency }
-}
-
-fn quadlet_source(unit: &'static str, key: &'static str, dependency: &str) -> SystemdUnitError {
-    SystemdUnitError::UsesQuadletSourceDependency {
-        unit,
-        section: "Unit",
-        key,
-        dependency: dependency.to_owned(),
-    }
-}
-
-fn exec_start(unit: &'static str, expected: &'static str, actual: &str) -> SystemdUnitError {
-    SystemdUnitError::IncorrectExecStart { unit, expected, actual: actual.to_owned() }
-}
-
-fn service_directive(
-    unit: &'static str,
-    key: &'static str,
-    expected: &'static str,
-    actual: &str,
-) -> SystemdUnitError {
-    SystemdUnitError::IncorrectServiceDirective { unit, key, expected, actual: actual.to_owned() }
 }

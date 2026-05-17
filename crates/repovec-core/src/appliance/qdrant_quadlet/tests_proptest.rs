@@ -66,8 +66,8 @@ fn auto_update_policy() -> impl Strategy<Value = String> { "[a-z]+" }
 /// baseline for injection-based tests.
 ///
 /// The returned string is a verbatim copy of
-/// `packaging/systemd/qdrant.container` and is the only Quadlet layout
-/// accepted by the validator.
+/// `packaging/systemd/qdrant.container` and represents one Quadlet
+/// layout accepted by the validator.
 ///
 /// Example snippet:
 /// ```text
@@ -193,8 +193,14 @@ proptest! {
     /// or after another section.
     #[test]
     fn section_ordering_invariance(
-        extra_section in r"[A-Z][a-zA-Z]*",
-        extra_key in r"[A-Z][a-zA-Z]*",
+        extra_section in r"[A-Z][a-zA-Z]*"
+            .prop_filter("section name must not collide with reserved identifiers", |section| {
+                section != "Container" && section != "Image"
+            }),
+        extra_key in r"[A-Z][a-zA-Z]*"
+            .prop_filter("key name must not collide with reserved identifiers", |key| {
+                key != "Container" && key != "Image"
+            }),
         extra_val in "[a-z]+",
     ) {
         let container_first = format!(

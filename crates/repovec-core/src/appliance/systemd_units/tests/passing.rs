@@ -1,4 +1,11 @@
-//! Passing cases for systemd unit validator tests.
+//! Acceptance-path tests for the systemd unit validator.
+//!
+//! This module exercises valid configurations, comments, extended
+//! `Environment=` settings, and other edge-but-valid variants to prove that
+//! legitimate variation is accepted. It complements the failure-case mutation
+//! tests by checking the `crate::appliance::systemd_units::validate_*`
+//! functions against the checked-in unit accessors and the
+//! `validate_systemd_units` / `validate_checked_in_systemd_units` helpers.
 
 use super::super::{
     checked_in_repovec_mcpd_service, checked_in_repovec_target, checked_in_repovecd_service,
@@ -13,7 +20,11 @@ fn checked_in_systemd_units_remain_valid() {
 
 #[test]
 fn semicolon_comments_are_ignored() {
-    assert!(checked_in_repovec_target().contains("[Unit]\n"));
+    assert!(
+        checked_in_repovec_target().contains("[Unit]\n"),
+        "expected checked-in repovec target to contain '[Unit]\\n' but got: {}",
+        checked_in_repovec_target(),
+    );
     let target = checked_in_repovec_target()
         .replace("[Unit]\n", "[Unit]\n; systemd accepts semicolon comments\n");
 
@@ -27,12 +38,22 @@ fn semicolon_comments_are_ignored() {
 
 #[test]
 fn additional_service_environment_lines_are_accepted() {
-    assert!(checked_in_repovecd_service().contains("Environment=HOME=/var/lib/repovec\n"));
+    assert!(
+        checked_in_repovecd_service().contains("Environment=HOME=/var/lib/repovec\n"),
+        "expected checked-in repovecd service to contain \
+         'Environment=HOME=/var/lib/repovec\\n' but got: {}",
+        checked_in_repovecd_service(),
+    );
     let repovecd = checked_in_repovecd_service().replace(
         "Environment=HOME=/var/lib/repovec\n",
         "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
     );
-    assert!(checked_in_repovec_mcpd_service().contains("Environment=HOME=/var/lib/repovec\n"));
+    assert!(
+        checked_in_repovec_mcpd_service().contains("Environment=HOME=/var/lib/repovec\n"),
+        "expected checked-in repovec-mcpd service to contain \
+         'Environment=HOME=/var/lib/repovec\\n' but got: {}",
+        checked_in_repovec_mcpd_service(),
+    );
     let mcpd = checked_in_repovec_mcpd_service().replace(
         "Environment=HOME=/var/lib/repovec\n",
         "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",

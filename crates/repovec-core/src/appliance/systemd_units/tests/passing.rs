@@ -12,6 +12,20 @@ use super::super::{
     validate_checked_in_systemd_units, validate_systemd_units,
 };
 
+fn assert_mutated_service(original: &str, service_name: &str) -> String {
+    assert!(
+        original.contains("Environment=HOME=/var/lib/repovec\n"),
+        "expected checked-in {service_name} service to contain \
+         'Environment=HOME=/var/lib/repovec\\n' but got: {original}",
+    );
+    let mutated = original.replace(
+        "Environment=HOME=/var/lib/repovec\n",
+        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
+    );
+    assert_ne!(mutated, original, "replacement should mutate the {service_name} service");
+    mutated
+}
+
 #[test]
 fn checked_in_systemd_units_remain_valid() {
     validate_checked_in_systemd_units()
@@ -39,29 +53,8 @@ fn semicolon_comments_are_ignored() {
 
 #[test]
 fn additional_service_environment_lines_are_accepted() {
-    let original_repovecd = checked_in_repovecd_service();
-    assert!(
-        original_repovecd.contains("Environment=HOME=/var/lib/repovec\n"),
-        "expected checked-in repovecd service to contain \
-         'Environment=HOME=/var/lib/repovec\\n' but got: {original_repovecd}",
-    );
-    let repovecd = original_repovecd.replace(
-        "Environment=HOME=/var/lib/repovec\n",
-        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
-    );
-    assert_ne!(repovecd, original_repovecd, "replacement should mutate the repovecd service");
-
-    let original_mcpd = checked_in_repovec_mcpd_service();
-    assert!(
-        original_mcpd.contains("Environment=HOME=/var/lib/repovec\n"),
-        "expected checked-in repovec-mcpd service to contain \
-         'Environment=HOME=/var/lib/repovec\\n' but got: {original_mcpd}",
-    );
-    let mcpd = original_mcpd.replace(
-        "Environment=HOME=/var/lib/repovec\n",
-        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
-    );
-    assert_ne!(mcpd, original_mcpd, "replacement should mutate the repovec-mcpd service");
+    let repovecd = assert_mutated_service(checked_in_repovecd_service(), "repovecd");
+    let mcpd = assert_mutated_service(checked_in_repovec_mcpd_service(), "repovec-mcpd");
 
     validate_systemd_units(checked_in_repovec_target(), &repovecd, &mcpd)
         .expect("additional service environment lines should be accepted");

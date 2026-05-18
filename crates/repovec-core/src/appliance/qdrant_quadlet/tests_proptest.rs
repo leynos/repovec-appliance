@@ -16,7 +16,7 @@ use super::{QdrantQuadletError, parser::ParsedQuadlet, validate_qdrant_quadlet};
 /// `prop_filter` rejects `latest` as a tag because validator 1.2.1
 /// requires an explicitly pinned tag.
 ///
-/// Example: `docker.io/myrepo/myimage:1`
+/// Example: `abc.def/repo/name123:tag456`
 fn valid_image() -> impl Strategy<Value = String> {
     (r"[a-z]+\.[a-z]+", r"[a-z]+/[a-z0-9]+", "[a-z0-9]+")
         .prop_filter("tag must not be 'latest'", |(_, _, tag)| tag != "latest")
@@ -99,6 +99,12 @@ fn valid_quadlet_base() -> String {
     )
 }
 
+/// Generates valid insertion indices for generated Quadlet edits.
+///
+/// The range is based on `valid_quadlet_base()` and includes the tail
+/// position. If it has 3 lines, this yields indices `0..=3`.
+///
+/// Use this to pick where to insert generated Quadlet edits.
 fn insertion_position() -> impl Strategy<Value = usize> {
     let line_count = valid_quadlet_base().lines().count();
     0..=line_count

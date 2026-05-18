@@ -326,6 +326,27 @@ Systemd manages the appliance lifecycle via a dedicated target:
     `repovec-mcpd.service`, `cloudflared.service`
   - wants: per-repo indexers `repovec-grepai@<repo>.service`
 
+Roadmap item `1.3.1` ships the static source files for the base target and
+daemon services under `packaging/systemd/`:
+
+- `packaging/systemd/repovec.target`
+- `packaging/systemd/repovecd.service`
+- `packaging/systemd/repovec-mcpd.service`
+
+On an appliance host, install these units to `/etc/systemd/system/`. The
+existing Qdrant Quadlet remains installed to
+`/etc/containers/systemd/qdrant.container`; systemd exposes that generated
+container unit as `qdrant.service`, which is the name every dependent service
+uses. `repovecd.service` declares both `Requires=qdrant.service` and
+`After=qdrant.service`. `repovec-mcpd.service` declares
+`Requires=qdrant.service repovecd.service` and
+`After=qdrant.service repovecd.service`.
+
+`cloudflared.service` is package-owned and is not supplied by the appliance
+unit set. The target queues it with `Wants=cloudflared.service`; tighter tunnel
+ordering belongs with the later Cloudflare provisioning work if that package
+unit needs additional drop-ins.
+
 Key service properties:
 
 - indexers run as unprivileged user (e.g. `repovec`) with fixed HOME

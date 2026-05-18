@@ -1,6 +1,6 @@
 //! Typed error constructors for systemd unit validator tests.
 
-use super::SystemdUnitError;
+use crate::appliance::systemd_units::SystemdUnitError;
 
 pub(super) fn missing(
     unit: &'static str,

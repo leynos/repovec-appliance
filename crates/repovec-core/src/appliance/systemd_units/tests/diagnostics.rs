@@ -20,13 +20,17 @@ pub(super) fn expected_diagnostic(scenario: ValidationScenario) -> &'static str 
         | ValidationScenario::RepovecdUsesQdrantContainerService
         | ValidationScenario::WrongRepovecdExecStart
         | ValidationScenario::RepovecdWrongUser
-        | ValidationScenario::RepovecdMissingGroup => expected_repovecd_diagnostic(scenario),
+        | ValidationScenario::RepovecdMissingGroup
+        | ValidationScenario::RepovecdWrongWorkingDirectory
+        | ValidationScenario::RepovecdMissingEnvironment => expected_repovecd_diagnostic(scenario),
         ValidationScenario::MissingMcpdServiceSection
         | ValidationScenario::MissingMcpdRequiresQdrant
         | ValidationScenario::MissingMcpdRequiresRepovecd
         | ValidationScenario::MissingMcpdAfterQdrant
         | ValidationScenario::MissingMcpdAfterRepovecd
         | ValidationScenario::WrongMcpdExecStart
+        | ValidationScenario::McpdWrongUser
+        | ValidationScenario::McpdMissingGroup
         | ValidationScenario::McpdWrongWorkingDirectory
         | ValidationScenario::McpdMissingEnvironment => expected_mcpd_diagnostic(scenario),
     }
@@ -88,6 +92,14 @@ fn expected_repovecd_diagnostic(scenario: ValidationScenario) -> &'static str {
         ValidationScenario::RepovecdMissingGroup => {
             "repovecd.service must have Group=repovec in [Service]: "
         }
+        ValidationScenario::RepovecdWrongWorkingDirectory => concat!(
+            "repovecd.service must have WorkingDirectory=/var/lib/repovec ",
+            "in [Service]: /tmp",
+        ),
+        ValidationScenario::RepovecdMissingEnvironment => concat!(
+            "repovecd.service must have Environment=HOME=/var/lib/repovec ",
+            "in [Service]: ",
+        ),
         _ => panic!("repovecd diagnostic called for non-repovecd scenario"),
     }
 }
@@ -113,6 +125,12 @@ fn expected_mcpd_diagnostic(scenario: ValidationScenario) -> &'static str {
             "repovec-mcpd.service must use ExecStart=/usr/bin/repovec-mcpd: ",
             "/usr/bin/other-mcpd",
         ),
+        ValidationScenario::McpdWrongUser => {
+            "repovec-mcpd.service must have User=repovec in [Service]: root"
+        }
+        ValidationScenario::McpdMissingGroup => {
+            "repovec-mcpd.service must have Group=repovec in [Service]: "
+        }
         ValidationScenario::McpdWrongWorkingDirectory => concat!(
             "repovec-mcpd.service must have WorkingDirectory=/var/lib/repovec ",
             "in [Service]: /tmp",

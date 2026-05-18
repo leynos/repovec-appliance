@@ -5,17 +5,20 @@
 mod diagnostics;
 #[path = "tests/error_builders.rs"]
 mod error_builders;
+#[path = "tests/expected_errors.rs"]
+mod expected_errors;
+#[path = "tests/passing.rs"]
+mod passing;
 #[path = "tests/unit_set.rs"]
 mod unit_set;
 
 use diagnostics::expected_diagnostic;
-use error_builders::{exec_start, missing, missing_install, quadlet_source, service_directive};
 use rstest::{fixture, rstest};
 use unit_set::{UnitFile, UnitSet};
 
 use super::{
-    SystemdUnitError, checked_in_repovec_mcpd_service, checked_in_repovec_target,
-    checked_in_repovecd_service, validate_checked_in_systemd_units, validate_systemd_units,
+    checked_in_repovec_mcpd_service, checked_in_repovec_target, checked_in_repovecd_service,
+    validate_systemd_units,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -37,12 +40,16 @@ pub(super) enum ValidationScenario {
     WrongRepovecdExecStart,
     RepovecdWrongUser,
     RepovecdMissingGroup,
+    RepovecdWrongWorkingDirectory,
+    RepovecdMissingEnvironment,
     MissingMcpdServiceSection,
     MissingMcpdRequiresQdrant,
     MissingMcpdRequiresRepovecd,
     MissingMcpdAfterQdrant,
     MissingMcpdAfterRepovecd,
     WrongMcpdExecStart,
+    McpdWrongUser,
+    McpdMissingGroup,
     McpdWrongWorkingDirectory,
     McpdMissingEnvironment,
 }
@@ -66,13 +73,17 @@ impl ValidationScenario {
             | Self::RepovecdUsesQdrantContainerService
             | Self::WrongRepovecdExecStart
             | Self::RepovecdWrongUser
-            | Self::RepovecdMissingGroup => self.mutate_repovecd(&mut units),
+            | Self::RepovecdMissingGroup
+            | Self::RepovecdWrongWorkingDirectory
+            | Self::RepovecdMissingEnvironment => self.mutate_repovecd(&mut units),
             Self::MissingMcpdServiceSection
             | Self::MissingMcpdRequiresQdrant
             | Self::MissingMcpdRequiresRepovecd
             | Self::MissingMcpdAfterQdrant
             | Self::MissingMcpdAfterRepovecd
             | Self::WrongMcpdExecStart
+            | Self::McpdWrongUser
+            | Self::McpdMissingGroup
             | Self::McpdWrongWorkingDirectory
             | Self::McpdMissingEnvironment => self.mutate_mcpd(&mut units),
         }
@@ -140,6 +151,14 @@ impl ValidationScenario {
             Self::RepovecdMissingGroup => {
                 units.remove_line(UnitFile::Repovecd, "Group=repovec\n");
             }
+            Self::RepovecdWrongWorkingDirectory => units.replace_token(
+                UnitFile::Repovecd,
+                "WorkingDirectory=/var/lib/repovec",
+                "WorkingDirectory=/tmp",
+            ),
+            Self::RepovecdMissingEnvironment => {
+                units.remove_line(UnitFile::Repovecd, "Environment=HOME=/var/lib/repovec\n");
+            }
             _ => panic!("repovecd mutation called for non-repovecd scenario"),
         }
     }
@@ -164,6 +183,12 @@ impl ValidationScenario {
             Self::WrongMcpdExecStart => {
                 units.replace_token(UnitFile::Mcpd, "/usr/bin/repovec-mcpd", "/usr/bin/other-mcpd");
             }
+            Self::McpdWrongUser => {
+                units.replace_token(UnitFile::Mcpd, "User=repovec", "User=root");
+            }
+            Self::McpdMissingGroup => {
+                units.remove_line(UnitFile::Mcpd, "Group=repovec\n");
+            }
             Self::McpdWrongWorkingDirectory => units.replace_token(
                 UnitFile::Mcpd,
                 "WorkingDirectory=/var/lib/repovec",
@@ -175,136 +200,6 @@ impl ValidationScenario {
             _ => panic!("repovec-mcpd mutation called for non-mcpd scenario"),
         }
     }
-
-    fn expected_error(self) -> SystemdUnitError {
-        match self {
-            Self::InvalidLine
-            | Self::MissingTargetUnitSection
-            | Self::MissingTargetInstallSection
-            | Self::MissingTargetWantedBy
-            | Self::MissingTargetWantsQdrant
-            | Self::TargetUsesQdrantContainer
-            | Self::MissingTargetWantsRepovecd
-            | Self::MissingTargetWantsMcpd
-            | Self::MissingTargetWantsCloudflared => self.expected_target_error(),
-            Self::PropertyBeforeSection
-            | Self::MissingRepovecdServiceSection
-            | Self::MissingRepovecdRequiresQdrant
-            | Self::MissingRepovecdAfterQdrant
-            | Self::RepovecdUsesQdrantContainerService
-            | Self::WrongRepovecdExecStart
-            | Self::RepovecdWrongUser
-            | Self::RepovecdMissingGroup => self.expected_repovecd_error(),
-            Self::MissingMcpdServiceSection
-            | Self::MissingMcpdRequiresQdrant
-            | Self::MissingMcpdRequiresRepovecd
-            | Self::MissingMcpdAfterQdrant
-            | Self::MissingMcpdAfterRepovecd
-            | Self::WrongMcpdExecStart
-            | Self::McpdWrongWorkingDirectory
-            | Self::McpdMissingEnvironment => self.expected_mcpd_error(),
-        }
-    }
-
-    fn expected_target_error(self) -> SystemdUnitError {
-        match self {
-            Self::InvalidLine => SystemdUnitError::InvalidLine {
-                unit: "repovec.target",
-                line_number: 2,
-                line: String::from("not valid"),
-            },
-            Self::MissingTargetUnitSection => {
-                SystemdUnitError::MissingSection { unit: "repovec.target", section: "Unit" }
-            }
-            Self::MissingTargetInstallSection => {
-                SystemdUnitError::MissingSection { unit: "repovec.target", section: "Install" }
-            }
-            Self::MissingTargetWantedBy => missing_install("repovec.target", "multi-user.target"),
-            Self::MissingTargetWantsQdrant => missing("repovec.target", "Wants", "qdrant.service"),
-            Self::TargetUsesQdrantContainer => {
-                quadlet_source("repovec.target", "Wants", "qdrant.container")
-            }
-            Self::MissingTargetWantsRepovecd => {
-                missing("repovec.target", "Wants", "repovecd.service")
-            }
-            Self::MissingTargetWantsMcpd => {
-                missing("repovec.target", "Wants", "repovec-mcpd.service")
-            }
-            Self::MissingTargetWantsCloudflared => {
-                missing("repovec.target", "Wants", "cloudflared.service")
-            }
-            _ => panic!("target error called for non-target scenario"),
-        }
-    }
-
-    fn expected_repovecd_error(self) -> SystemdUnitError {
-        match self {
-            Self::PropertyBeforeSection => SystemdUnitError::PropertyBeforeSection {
-                unit: "repovecd.service",
-                line_number: 1,
-                line: String::from("Requires=qdrant.service"),
-            },
-            Self::MissingRepovecdServiceSection => {
-                SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" }
-            }
-            Self::MissingRepovecdRequiresQdrant => {
-                missing("repovecd.service", "Requires", "qdrant.service")
-            }
-            Self::MissingRepovecdAfterQdrant => {
-                missing("repovecd.service", "After", "qdrant.service")
-            }
-            Self::RepovecdUsesQdrantContainerService => {
-                quadlet_source("repovecd.service", "Requires", "qdrant.container.service")
-            }
-            Self::WrongRepovecdExecStart => {
-                exec_start("repovecd.service", "/usr/bin/repovecd", "/usr/bin/otherd")
-            }
-            Self::RepovecdWrongUser => {
-                service_directive("repovecd.service", "User", "repovec", "root")
-            }
-            Self::RepovecdMissingGroup => {
-                service_directive("repovecd.service", "Group", "repovec", "")
-            }
-            _ => panic!("repovecd error called for non-repovecd scenario"),
-        }
-    }
-
-    fn expected_mcpd_error(self) -> SystemdUnitError {
-        match self {
-            Self::MissingMcpdServiceSection => SystemdUnitError::MissingSection {
-                unit: "repovec-mcpd.service",
-                section: "Service",
-            },
-            Self::MissingMcpdRequiresQdrant => {
-                missing("repovec-mcpd.service", "Requires", "qdrant.service")
-            }
-            Self::MissingMcpdRequiresRepovecd => {
-                missing("repovec-mcpd.service", "Requires", "repovecd.service")
-            }
-            Self::MissingMcpdAfterQdrant => {
-                missing("repovec-mcpd.service", "After", "qdrant.service")
-            }
-            Self::MissingMcpdAfterRepovecd => {
-                missing("repovec-mcpd.service", "After", "repovecd.service")
-            }
-            Self::WrongMcpdExecStart => {
-                exec_start("repovec-mcpd.service", "/usr/bin/repovec-mcpd", "/usr/bin/other-mcpd")
-            }
-            Self::McpdWrongWorkingDirectory => service_directive(
-                "repovec-mcpd.service",
-                "WorkingDirectory",
-                "/var/lib/repovec",
-                "/tmp",
-            ),
-            Self::McpdMissingEnvironment => service_directive(
-                "repovec-mcpd.service",
-                "Environment",
-                "HOME=/var/lib/repovec",
-                "",
-            ),
-            _ => panic!("repovec-mcpd error called for non-mcpd scenario"),
-        }
-    }
 }
 
 #[fixture]
@@ -314,40 +209,6 @@ fn checked_in_unit_set() -> UnitSet {
         repovecd: checked_in_repovecd_service().to_owned(),
         mcpd: checked_in_repovec_mcpd_service().to_owned(),
     }
-}
-
-#[test]
-fn checked_in_systemd_units_remain_valid() {
-    validate_checked_in_systemd_units()
-        .expect("the checked-in repovec systemd unit set should remain valid");
-}
-
-#[test]
-fn semicolon_comments_are_ignored() {
-    let target = checked_in_repovec_target()
-        .replace("[Unit]\n", "[Unit]\n; systemd accepts semicolon comments\n");
-
-    validate_systemd_units(
-        &target,
-        checked_in_repovecd_service(),
-        checked_in_repovec_mcpd_service(),
-    )
-    .expect("semicolon comments should be ignored");
-}
-
-#[test]
-fn additional_service_environment_lines_are_accepted() {
-    let repovecd = checked_in_repovecd_service().replace(
-        "Environment=HOME=/var/lib/repovec\n",
-        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
-    );
-    let mcpd = checked_in_repovec_mcpd_service().replace(
-        "Environment=HOME=/var/lib/repovec\n",
-        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
-    );
-
-    validate_systemd_units(checked_in_repovec_target(), &repovecd, &mcpd)
-        .expect("additional service environment lines should be accepted");
 }
 
 #[rstest]
@@ -370,12 +231,16 @@ fn additional_service_environment_lines_are_accepted() {
 #[case::wrong_repovecd_exec_start(ValidationScenario::WrongRepovecdExecStart)]
 #[case::repovecd_wrong_user(ValidationScenario::RepovecdWrongUser)]
 #[case::repovecd_missing_group(ValidationScenario::RepovecdMissingGroup)]
+#[case::repovecd_wrong_working_directory(ValidationScenario::RepovecdWrongWorkingDirectory)]
+#[case::repovecd_missing_environment(ValidationScenario::RepovecdMissingEnvironment)]
 #[case::missing_mcpd_service_section(ValidationScenario::MissingMcpdServiceSection)]
 #[case::missing_mcpd_requires_qdrant(ValidationScenario::MissingMcpdRequiresQdrant)]
 #[case::missing_mcpd_requires_repovecd(ValidationScenario::MissingMcpdRequiresRepovecd)]
 #[case::missing_mcpd_after_qdrant(ValidationScenario::MissingMcpdAfterQdrant)]
 #[case::missing_mcpd_after_repovecd(ValidationScenario::MissingMcpdAfterRepovecd)]
 #[case::wrong_mcpd_exec_start(ValidationScenario::WrongMcpdExecStart)]
+#[case::mcpd_wrong_user(ValidationScenario::McpdWrongUser)]
+#[case::mcpd_missing_group(ValidationScenario::McpdMissingGroup)]
 #[case::mcpd_wrong_working_directory(ValidationScenario::McpdWrongWorkingDirectory)]
 #[case::mcpd_missing_environment(ValidationScenario::McpdMissingEnvironment)]
 fn validated_systemd_unit_violations_match_expected_variant_and_diagnostic_snapshots(

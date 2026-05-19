@@ -11,6 +11,8 @@ mod provisioning_tests;
 mod tests;
 #[cfg(test)]
 mod tests_proptest;
+#[cfg(test)]
+mod tests_proptest_strategies;
 
 pub use error::QdrantQuadletError;
 use parser::ParsedQuadlet;

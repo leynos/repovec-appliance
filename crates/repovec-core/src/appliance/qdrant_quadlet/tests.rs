@@ -208,6 +208,13 @@ fn checked_in_qdrant_quadlet_remains_valid() {
         .expect("the checked-in Qdrant Quadlet should remain valid");
 }
 
+#[test]
+fn qdrant_quadlet_accepts_lowercase_selinux_relabel_option() {
+    let contents = checked_in_qdrant_quadlet().replace(":/qdrant/storage:Z", ":/qdrant/storage:z");
+
+    validate_qdrant_quadlet(&contents).expect("Podman accepts lowercase SELinux relabel options");
+}
+
 #[rstest]
 #[case::invalid_line(ValidationScenario::InvalidLineInContainer)]
 #[case::property_before_section(ValidationScenario::PropertyBeforeFirstSection)]

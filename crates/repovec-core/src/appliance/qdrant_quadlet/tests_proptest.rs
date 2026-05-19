@@ -6,8 +6,6 @@ use proptest::prelude::*;
 
 use super::{QdrantQuadletError, parser::ParsedQuadlet, validate_qdrant_quadlet};
 
-// --------------- Strategy helpers ---------------
-
 /// Generates a syntactically valid image reference of the form
 /// `registry/repo:tag` where the tag is not `latest`.
 ///

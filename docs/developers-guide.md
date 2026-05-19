@@ -210,6 +210,21 @@ checked-in Qdrant Podman Quadlet:
   `crates/repovec-core/src/appliance/qdrant_quadlet/error.rs` for the full
   variant list.
 
+Keep the Qdrant contract split along the same boundary as the module Rustdoc:
+
+- domain invariants belong in `qdrant_quadlet/mod.rs`;
+- API-key contract checks belong in `qdrant_quadlet/api_key.rs`;
+- appliance host bindings belong in `qdrant_quadlet/platform_bindings.rs`.
+
+The domain invariants describe what Qdrant itself requires: the supported image
+reference, the in-container storage target, and the REST and gRPC container
+ports. The platform binding adapter describes how the appliance satisfies that
+contract on the host: loopback `PublishPort=` values, the storage source path,
+the SELinux relabel option, and the Podman auto-update policy. Do not add host
+paths, SELinux rules, or other appliance infrastructure constants directly to
+the domain validation body in `mod.rs`; route them through the adapter and keep
+the module Rustdoc synchronized with the boundary.
+
 The validator also enforces the Qdrant API-key authentication contract. A valid
 Quadlet must require and start after `repovec-qdrant-api-key.service`, expose
 the Podman secret `repovec-qdrant-api-key` as `QDRANT__SERVICE__API_KEY`, and

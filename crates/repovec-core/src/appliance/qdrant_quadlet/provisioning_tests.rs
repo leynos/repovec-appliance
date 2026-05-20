@@ -13,6 +13,23 @@ macro_rules! include_packaging_asset {
     };
 }
 
+macro_rules! helper_offset {
+    ($needle:expr) => {
+        PROVISIONING_HELPER.find($needle).expect("helper should contain expected text")
+    };
+}
+
+macro_rules! helper_offset_after {
+    ($needle:expr, $offset:expr) => {
+        $offset
+            + PROVISIONING_HELPER
+                .get($offset..)
+                .expect("helper offset should be a valid byte boundary")
+                .find($needle)
+                .expect("helper should contain expected text after offset")
+    };
+}
+
 const PROVISIONING_SERVICE: &str =
     include_packaging_asset!("systemd/repovec-qdrant-api-key.service");
 const PROVISIONING_HELPER: &str = include_packaging_asset!("libexec/repovec-qdrant-api-key");
@@ -48,10 +65,18 @@ fn provisioning_helper_uses_the_canonical_secret_contract() {
 
 #[test]
 fn provisioning_helper_fails_closed_on_unexpected_secret_removal_errors() {
-    assert!(PROVISIONING_HELPER.contains("podman secret rm \"${SECRET_NAME}\""));
-    assert!(PROVISIONING_HELPER.contains("grep -qi 'in use' \"${rm_error}\""));
-    assert!(PROVISIONING_HELPER.contains("log \"podman secret removal failed: $(cat"));
-    assert!(PROVISIONING_HELPER.contains("exit 1"));
+    let removal = helper_offset!("podman secret rm \"${SECRET_NAME}\"");
+    let in_use_check = helper_offset!("grep -qi 'in use' \"${rm_error}\"");
+    let in_use_exit = helper_offset!("log \"podman secret is in use; leaving existing secret");
+    let unexpected_branch = helper_offset!("else\n            # Fail closed:");
+    let unexpected_log = helper_offset!("log \"podman secret removal failed: $(cat");
+    let unexpected_exit = helper_offset_after!("exit 1", unexpected_log);
+
+    assert!(removal < in_use_check);
+    assert!(in_use_check < in_use_exit);
+    assert!(in_use_exit < unexpected_branch);
+    assert!(unexpected_branch < unexpected_log);
+    assert!(unexpected_log < unexpected_exit);
 }
 
 #[test]
@@ -64,6 +89,26 @@ fn provisioning_helper_removes_stale_secret_before_generating_key_file() {
         .expect("helper should generate a missing key file");
 
     assert!(secret_removal < key_generation);
+}
+
+#[test]
+fn provisioning_helper_uses_flock_for_mutual_exclusion() {
+    let lock_file = helper_offset!("/var/lock/repovec-qdrant-api-key.lock");
+    let flock = helper_offset!("flock 9");
+    let secret_inspection = helper_offset!("podman secret inspect \"${SECRET_NAME}\"");
+    let secret_removal = helper_offset!("podman secret rm \"${SECRET_NAME}\"");
+    let missing_key_branch = helper_offset!("if [ ! -e \"${KEY_FILE}\" ]; then");
+    let key_generation = helper_offset_after!("generate_key_file", missing_key_branch);
+    let secret_creation = helper_offset!("podman secret create \"${SECRET_NAME}\"");
+
+    assert!(PROVISIONING_HELPER.contains("od -An -N32 -tx1"));
+    assert!(PROVISIONING_HELPER.contains("debug_log \"acquired ${LOCK_FILE}\""));
+    assert!(PROVISIONING_HELPER.contains("debug_log \"released ${LOCK_FILE}\""));
+    assert!(lock_file < flock);
+    assert!(flock < secret_inspection);
+    assert!(flock < secret_removal);
+    assert!(flock < key_generation);
+    assert!(flock < secret_creation);
 }
 
 #[test]

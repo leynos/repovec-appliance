@@ -201,3 +201,20 @@ jobs:
       - name: Skip documentation gates
         if: steps.docs_gate_plan.outputs.docs_gate_required != 'true'
         run: echo "No documentation inputs detected; documentation gates skipped."
+
+  systemd-gate:
+    name: systemd-gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Setup Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@b61ad14766ae81b830abdaf066eb3d9b6c4f537b
+      - name: Build systemd-gate helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --quiet -p repovec-ci
+      - name: Validate checked-in systemd units
+        run: target/debug/repovec-ci systemd-gate

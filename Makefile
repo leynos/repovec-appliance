@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie validate-systemd
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
@@ -87,6 +87,10 @@ docs: ## Legacy docs target alias
 
 nixie: ## Validate Mermaid diagrams
 	$(NIXIE) --no-sandbox
+
+validate-systemd: ensure-cargo ## Validate checked-in systemd unit contracts
+	$(CARGO) build --quiet -p repovec-ci
+	target/debug/repovec-ci systemd-gate
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \

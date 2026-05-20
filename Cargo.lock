@@ -946,6 +946,7 @@ dependencies = [
  "camino",
  "cap-std",
  "insta",
+ "repovec-core",
  "rstest",
  "rstest-bdd",
  "rstest-bdd-macros",

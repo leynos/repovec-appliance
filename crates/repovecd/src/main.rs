@@ -3,7 +3,11 @@
 fn main() {
     tracing_subscriber::fmt::init();
     if let Err(error) = validate_systemd_unit_contract() {
-        tracing::error!(error = %error, "systemd unit contract violation — aborting startup");
+        tracing::error!(
+            unit = %error.unit(),
+            error = %error,
+            "systemd unit contract violation — aborting startup",
+        );
         std::process::exit(1);
     }
 
@@ -25,7 +29,7 @@ where
 {
     let result = validator();
     if result.is_ok() {
-        tracing::debug!("systemd unit contract validated");
+        tracing::trace!("systemd unit contract validated");
     }
     result
 }

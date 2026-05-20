@@ -79,6 +79,22 @@ pub enum SystemdUnitError {
     },
 }
 
+impl SystemdUnitError {
+    /// Returns the logical systemd unit name associated with this validation error.
+    #[must_use]
+    pub const fn unit(&self) -> &str {
+        match self {
+            Self::InvalidLine { unit, .. }
+            | Self::PropertyBeforeSection { unit, .. }
+            | Self::MissingSection { unit, .. }
+            | Self::MissingDependency { unit, .. }
+            | Self::UsesQuadletSourceDependency { unit, .. }
+            | Self::IncorrectExecStart { unit, .. }
+            | Self::IncorrectServiceDirective { unit, .. } => unit,
+        }
+    }
+}
+
 impl fmt::Display for SystemdUnitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -109,3 +125,65 @@ impl fmt::Display for SystemdUnitError {
 }
 
 impl Error for SystemdUnitError {}
+
+#[cfg(test)]
+mod tests {
+    //! Unit coverage for systemd unit validation errors.
+
+    use super::SystemdUnitError;
+
+    #[test]
+    fn unit_returns_logical_unit_name() {
+        let cases = [
+            SystemdUnitError::InvalidLine {
+                unit: "repovec.target",
+                line_number: 1,
+                line: "not valid".to_owned(),
+            },
+            SystemdUnitError::PropertyBeforeSection {
+                unit: "repovecd.service",
+                line_number: 1,
+                line: "User=repovec".to_owned(),
+            },
+            SystemdUnitError::MissingSection { unit: "repovec-mcpd.service", section: "Service" },
+            SystemdUnitError::MissingDependency {
+                unit: "repovec.target",
+                section: "Unit",
+                key: "Wants",
+                dependency: "qdrant.service",
+            },
+            SystemdUnitError::UsesQuadletSourceDependency {
+                unit: "repovecd.service",
+                section: "Unit",
+                key: "Requires",
+                dependency: "qdrant.container".to_owned(),
+            },
+            SystemdUnitError::IncorrectExecStart {
+                unit: "repovecd.service",
+                expected: "/usr/bin/repovecd",
+                actual: "/usr/bin/wrong-binary".to_owned(),
+            },
+            SystemdUnitError::IncorrectServiceDirective {
+                unit: "repovec-mcpd.service",
+                key: "User",
+                expected: "repovec",
+                actual: "root".to_owned(),
+            },
+        ];
+
+        let observed_units = cases.map(|error| error.unit().to_owned());
+
+        assert_eq!(
+            observed_units,
+            [
+                "repovec.target",
+                "repovecd.service",
+                "repovec-mcpd.service",
+                "repovec.target",
+                "repovecd.service",
+                "repovecd.service",
+                "repovec-mcpd.service",
+            ],
+        );
+    }
+}

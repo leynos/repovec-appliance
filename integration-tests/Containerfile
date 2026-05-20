@@ -1,0 +1,14 @@
+FROM registry.fedoraproject.org/fedora:latest
+
+RUN dnf install -y \
+        bats \
+        podman \
+        shadow-utils \
+    && dnf clean all
+
+WORKDIR /workspace
+
+COPY packaging/ packaging/
+COPY integration-tests/ integration-tests/
+
+CMD ["bats", "--recursive", "integration-tests/provisioning"]

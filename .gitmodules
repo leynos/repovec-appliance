@@ -1,0 +1,9 @@
+[submodule "integration-tests/vendor/bats-core"]
+	path = integration-tests/vendor/bats-core
+	url = https://github.com/bats-core/bats-core.git
+[submodule "integration-tests/vendor/bats-support"]
+	path = integration-tests/vendor/bats-support
+	url = https://github.com/bats-core/bats-support.git
+[submodule "integration-tests/vendor/bats-assert"]
+	path = integration-tests/vendor/bats-assert
+	url = https://github.com/bats-core/bats-assert.git

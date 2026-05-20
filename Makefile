@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie
+.PHONY: help all clean test integration-test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
@@ -15,6 +15,7 @@ TEST_FLAGS ?= $(CARGO_FLAGS)
 DOCTEST_FLAGS ?= --workspace --all-features
 MDLINT ?= $(or $(shell command -v markdownlint-cli2 2>/dev/null),$(HOME)/.bun/bin/markdownlint-cli2)
 NIXIE ?= nixie
+BATS ?= $(or $(shell command -v bats 2>/dev/null),integration-tests/vendor/bats-core/bin/bats)
 
 ensure-cargo: ## Validate cargo toolchain is available for Rust targets
 	@if { command -v "$(CARGO)" >/dev/null 2>&1 || test -x "$(CARGO)"; } then \
@@ -45,6 +46,17 @@ test: ensure-cargo ## Run tests with warnings treated as errors
 	if [ "$$TEST_CMD" != "test" ] && $(CARGO) metadata --no-deps --format-version 1 2>/dev/null | grep -q '"doctest":true'; then \
 		RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(CARGO) test --doc $(DOCTEST_FLAGS) $(BUILD_JOBS); \
 	fi
+
+integration-test: ## Run rootful provisioning integration tests when available
+	@if ! { command -v "$(BATS)" >/dev/null 2>&1 || test -x "$(BATS)"; }; then \
+		echo "bats not found; skipping provisioning integration tests."; \
+		exit 0; \
+	fi; \
+	if ! command -v podman >/dev/null 2>&1; then \
+		echo "podman not found; skipping provisioning integration tests."; \
+		exit 0; \
+	fi; \
+	"$(BATS)" --recursive integration-tests/provisioning
 
 lint: ensure-cargo ## Run Clippy with warnings denied
 	RUSTDOCFLAGS="$(EFFECTIVE_RUSTDOC_FLAGS)" $(CARGO) doc --no-deps --workspace

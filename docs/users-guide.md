@@ -115,7 +115,6 @@ EOF'
 
 Requests to Qdrant without the `api-key` header are rejected.
 
-
 ### Qdrant Quadlet validation diagnostics
 
 `repovec_core::appliance::qdrant_quadlet` exposes `validate_qdrant_quadlet` and
@@ -158,6 +157,7 @@ strings are stable operator diagnostics and use these formats:
 - `InlineApiKeyEnvironmentDisallowed`:
   `Qdrant API keys must use a Podman secret, not inline Environment=:
   <redacted>`.
+
 ## Appliance systemd target
 
 repovec-appliance ships a base systemd target and static daemon service files

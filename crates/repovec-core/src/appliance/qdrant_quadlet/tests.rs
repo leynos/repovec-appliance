@@ -211,6 +211,8 @@ fn checked_in_qdrant_quadlet_remains_valid() {
 #[rstest]
 #[case::uppercase("Z")]
 #[case::lowercase("z")]
+#[case::comma_delimited("rw,Z")]
+#[case::comma_delimited_with_spaces("rw, z")]
 fn qdrant_quadlet_accepts_selinux_relabel_option_variants(#[case] option: &str) {
     let contents = checked_in_qdrant_quadlet()
         .replace(":/qdrant/storage:Z", &format!(":/qdrant/storage:{option}"));

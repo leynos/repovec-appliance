@@ -111,7 +111,11 @@ fn validate_storage_mount(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletErr
 }
 
 fn has_required_selinux_relabel_option(options: &[&str]) -> bool {
-    options.iter().any(|option| option.eq_ignore_ascii_case(REQUIRED_SELINUX_OPTION))
+    options
+        .iter()
+        .flat_map(|group| group.split(','))
+        .map(str::trim)
+        .any(|option| option.eq_ignore_ascii_case(REQUIRED_SELINUX_OPTION))
 }
 
 fn storage_mount_candidate(volume: &str) -> Option<(&str, Vec<&str>)> {

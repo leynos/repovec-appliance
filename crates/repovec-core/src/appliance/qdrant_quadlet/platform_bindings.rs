@@ -154,10 +154,12 @@ fn validate_auto_update(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError
 mod tests {
     //! Unit tests for appliance platform binding parsing helpers.
 
+    use proptest::prelude::*;
     use rstest::rstest;
 
     use super::{
-        has_required_selinux_relabel_option, published_container_port, storage_mount_candidate,
+        REQUIRED_SELINUX_OPTION, REQUIRED_STORAGE_SOURCE, has_required_selinux_relabel_option,
+        published_container_port, storage_mount_candidate,
     };
 
     #[rstest]
@@ -221,6 +223,109 @@ mod tests {
                 *expected,
                 "options: {options:?}",
             );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn published_container_port_returns_any_valid_u16_container_port(
+            host in "[^:]*",
+            host_port in "[^:]*",
+            container_port in any::<u16>(),
+        ) {
+            let publish_port = format!("{host}:{host_port}:{container_port}");
+
+            prop_assert_eq!(published_container_port(&publish_port), Some(container_port));
+        }
+
+        #[test]
+        fn published_container_port_rejects_mappings_without_three_fields(
+            fields in prop::collection::vec("[^:]*", 0..8)
+                .prop_filter("field count must not be three", |fields| fields.len() != 3),
+        ) {
+            let publish_port = fields.join(":");
+
+            prop_assert_eq!(published_container_port(&publish_port), None);
+        }
+
+        #[test]
+        fn storage_mount_candidate_rejects_values_with_too_few_parts(
+            fields in prop::collection::vec("[^:]*", 0..2),
+        ) {
+            let volume = fields.join(":");
+
+            prop_assert!(storage_mount_candidate(&volume).is_none());
+        }
+
+        #[test]
+        fn storage_mount_candidate_accepts_any_required_source_mount(
+            target in "[^:]*",
+            options in prop::collection::vec("[^:]*", 0..4),
+        ) {
+            let mut fields = vec![REQUIRED_STORAGE_SOURCE.to_owned(), target];
+            fields.extend(options);
+            let volume = fields.join(":");
+
+            prop_assert!(storage_mount_candidate(&volume).is_some());
+        }
+
+        #[test]
+        fn storage_mount_candidate_accepts_any_required_target_mount(
+            source in "[^:]*",
+            options in prop::collection::vec("[^:]*", 0..4),
+        ) {
+            let mut fields = vec![source, super::REQUIRED_STORAGE_TARGET.to_owned()];
+            fields.extend(options);
+            let volume = fields.join(":");
+
+            prop_assert!(storage_mount_candidate(&volume).is_some());
+        }
+
+        #[test]
+        fn storage_mount_candidate_rejects_unrelated_mounts(
+            source in "[^:]*",
+            target in "[^:]*",
+            options in prop::collection::vec("[^:]*", 0..4),
+        ) {
+            prop_assume!(source != REQUIRED_STORAGE_SOURCE);
+            prop_assume!(target != super::REQUIRED_STORAGE_TARGET);
+
+            let mut fields = vec![source, target];
+            fields.extend(options);
+            let volume = fields.join(":");
+
+            prop_assert!(storage_mount_candidate(&volume).is_none());
+        }
+
+        #[test]
+        fn has_required_selinux_relabel_option_matches_case_and_whitespace_variants(
+            before in "[ \\t]{0,8}",
+            after in "[ \\t]{0,8}",
+            uppercase in any::<bool>(),
+            prefix in prop::collection::vec("[A-Ya-y0-9]{0,8}", 0..4),
+            suffix in prop::collection::vec("[A-Ya-y0-9]{0,8}", 0..4),
+        ) {
+            let relabel_token = if uppercase {
+                REQUIRED_SELINUX_OPTION.to_owned()
+            } else {
+                REQUIRED_SELINUX_OPTION.to_ascii_lowercase()
+            };
+            let relabel = format!("{before}{relabel_token}{after}");
+            let mut tokens = prefix;
+            tokens.push(relabel);
+            tokens.extend(suffix);
+            let group = tokens.join(",");
+
+            prop_assert!(has_required_selinux_relabel_option(&[group.as_str()]));
+        }
+
+        #[test]
+        fn has_required_selinux_relabel_option_rejects_options_without_relabel_token(
+            options in prop::collection::vec("[A-Ya-y0-9, \\t]{0,16}", 0..8),
+        ) {
+            let option_refs = options.iter().map(String::as_str).collect::<Vec<_>>();
+
+            prop_assert!(!has_required_selinux_relabel_option(&option_refs));
         }
     }
 }

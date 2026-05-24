@@ -1,4 +1,12 @@
-//! API key provisioning checks for the Qdrant Quadlet contract.
+//! API-key provisioning checks for the Qdrant Quadlet contract.
+//!
+//! API-key provisioning is an appliance platform binding, not a Qdrant domain
+//! invariant: Qdrant requires an API key to be available in its environment,
+//! while the appliance chooses to provide that key through a Podman secret and a
+//! companion provisioning service. The main `qdrant_quadlet` validator delegates
+//! those checks to this module so secret wiring, unit dependencies, and inline
+//! key rejection stay separate from the domain invariants and host storage or
+//! port binding adapter.
 
 use super::{
     CONTAINER_SECTION, QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET,
@@ -125,6 +133,8 @@ fn is_api_key_environment_assignment(assignment: &str) -> bool {
 mod tests {
     //! Unit tests for API-key environment parsing helpers.
 
+    use proptest::prelude::*;
+
     use super::split_environment_assignments;
 
     #[test]
@@ -149,6 +159,47 @@ mod tests {
                 split_environment_assignments(environment),
                 expected_assignments,
                 "environment: {environment:?}",
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn split_environment_assignments_preserves_unquoted_tokens(
+            assignments in prop::collection::vec("[A-Za-z0-9_./:-]+=[A-Za-z0-9_./:-]*", 0..16),
+        ) {
+            let environment = assignments.join(" \t ");
+
+            prop_assert_eq!(split_environment_assignments(&environment), assignments);
+        }
+
+        #[test]
+        fn split_environment_assignments_groups_balanced_quoted_whitespace(
+            key in "[A-Z_]{1,24}",
+            words in prop::collection::vec("[A-Za-z0-9_./:-]+", 1..8),
+            quote in prop_oneof![Just('"'), Just('\'')],
+        ) {
+            let value = words.join(" ");
+            let environment = format!("{key}={quote}{value}{quote}");
+
+            prop_assert_eq!(
+                split_environment_assignments(&environment),
+                vec![format!("{key}={value}")],
+            );
+        }
+
+        #[test]
+        fn split_environment_assignments_keeps_unbalanced_quotes_in_one_assignment(
+            key in "[A-Z_]{1,24}",
+            words in prop::collection::vec("[A-Za-z0-9_./:-]+", 2..8),
+            quote in prop_oneof![Just('"'), Just('\'')],
+        ) {
+            let value = words.join(" ");
+            let environment = format!("{key}={quote}{value}");
+
+            prop_assert_eq!(
+                split_environment_assignments(&environment),
+                vec![format!("{key}={value}")],
             );
         }
     }

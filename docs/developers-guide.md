@@ -232,6 +232,11 @@ reject any inline `Environment=QDRANT__SERVICE__API_KEY=...` value. Keep this
 validation pure: it parses strings and reports policy errors, but it must not
 call Podman, systemd, or the filesystem.
 
+Keep observability at the call boundary. The validator returns structured
+`QdrantQuadletError` values and stable display strings; callers that run it
+during startup, tests, or CI are responsible for logging failures, attaching
+spans, or recording success and failure metrics.
+
 The provisioning assets live beside other appliance packaging inputs:
 
 - `packaging/systemd/repovec-qdrant-api-key.service`

@@ -122,6 +122,10 @@ the public `QdrantQuadletError` type for checking the packaged Quadlet
 contract. The validator reports the first contract violation it finds. Display
 strings are stable operator diagnostics and use these formats:
 
+The validator is a static contract check. It does not emit tracing spans,
+logs, or metrics itself; callers should log or count the returned
+`QdrantQuadletError` when they need runtime observability.
+
 - `InvalidLine`: `invalid quadlet line {line_number}: {line}`.
 - `PropertyBeforeSection`:
   `quadlet property before section on line {line_number}: {line}`.

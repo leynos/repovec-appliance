@@ -63,6 +63,10 @@ pub fn validate_checked_in_qdrant_quadlet() -> Result<(), QdrantQuadletError> {
 
 /// Validates arbitrary Qdrant Quadlet contents against the appliance contract.
 ///
+/// This is a pure static check over Quadlet text. It does not emit tracing,
+/// logging, or metrics; callers observe validation through the returned
+/// [`QdrantQuadletError`].
+///
 /// # Errors
 ///
 /// Returns [`QdrantQuadletError`] describing the first contract violation.
@@ -161,6 +165,7 @@ fn is_fully_qualified_and_pinned(image: &str) -> bool {
 //!
 //! The public validator composes both sides of the contract: Qdrant defines the
 //! container contract, while the appliance platform adapter defines the
-//! host-side bindings that satisfy it.
+//! host-side bindings that satisfy it. Validation is a pure static check over
+//! Quadlet text; callers observe only the returned [`QdrantQuadletError`].
 
 mod api_key;

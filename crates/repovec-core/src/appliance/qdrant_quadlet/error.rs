@@ -1,9 +1,11 @@
 //! Semantic validation errors for the Qdrant Quadlet contract.
 //!
 //! `QdrantQuadletError` is returned exclusively by `validate_qdrant_quadlet` in
-//! `mod.rs`. Its `Display` output is snapshot-tested in `api_key_tests.rs` for
-//! API-key-specific failures and in the sibling `tests.rs` module for the
-//! broader Quadlet contract.
+//! `mod.rs`. It is the validator's public observability surface: callers
+//! inspect the returned typed error, not tracing, logging, or metrics emitted
+//! during validation. Its `Display` output is snapshot-tested in
+//! `api_key_tests.rs` for API-key-specific failures and in the sibling
+//! `tests.rs` module for the broader Quadlet contract.
 
 use std::{error::Error, fmt};
 

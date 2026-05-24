@@ -120,3 +120,36 @@ fn is_api_key_environment_assignment(assignment: &str) -> bool {
             .split_once('=')
             .is_some_and(|(key, _value)| key == QDRANT_API_KEY_ENVIRONMENT_VARIABLE)
 }
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for API-key environment parsing helpers.
+
+    use super::split_environment_assignments;
+
+    #[test]
+    fn split_environment_assignments_handles_tokenization_edges() {
+        let cases: &[(&str, &[&str])] = &[
+            ("", &[]),
+            (" \t\n ", &[]),
+            ("A=1", &["A=1"]),
+            ("A=1 B=2", &["A=1", "B=2"]),
+            ("A=\"one two\" B=2", &["A=one two", "B=2"]),
+            ("A='one two' B=2", &["A=one two", "B=2"]),
+            ("A=\"one two B=2", &["A=one two B=2"]),
+            ("A='one two B=2", &["A=one two B=2"]),
+            ("A=\"one 'two'\" B='three \"four\"'", &["A=one 'two'", "B=three \"four\""]),
+        ];
+
+        for (environment, expected) in cases {
+            let expected_assignments =
+                expected.iter().map(|value| (*value).to_owned()).collect::<Vec<_>>();
+
+            assert_eq!(
+                split_environment_assignments(environment),
+                expected_assignments,
+                "environment: {environment:?}",
+            );
+        }
+    }
+}

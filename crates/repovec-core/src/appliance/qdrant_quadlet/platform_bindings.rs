@@ -149,3 +149,78 @@ fn validate_auto_update(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for appliance platform binding parsing helpers.
+
+    use rstest::rstest;
+
+    use super::{
+        has_required_selinux_relabel_option, published_container_port, storage_mount_candidate,
+    };
+
+    #[rstest]
+    #[case::rest_binding("127.0.0.1:6333:6333", Some(6333))]
+    #[case::grpc_binding("127.0.0.1:6334:6334", Some(6334))]
+    #[case::minimum_port("127.0.0.1:0:0", Some(0))]
+    #[case::maximum_port("127.0.0.1:65535:65535", Some(65535))]
+    #[case::too_few_fields("6333", None)]
+    #[case::too_many_fields("127.0.0.1:6333:6333:tcp", None)]
+    #[case::empty_container_port("127.0.0.1:6333:", None)]
+    #[case::non_numeric_container_port("127.0.0.1:6333:http", None)]
+    #[case::out_of_range_container_port("127.0.0.1:6333:65536", None)]
+    fn published_container_port_accepts_only_three_field_numeric_mappings(
+        #[case] publish_port: &str,
+        #[case] expected: Option<u16>,
+    ) {
+        assert_eq!(published_container_port(publish_port), expected);
+    }
+
+    #[rstest]
+    #[case::required_source("/var/lib/repovec/qdrant-storage:/other", true)]
+    #[case::required_target("/other:/qdrant/storage", true)]
+    #[case::required_source_and_target("/var/lib/repovec/qdrant-storage:/qdrant/storage:Z", true)]
+    #[case::too_few_parts("/var/lib/repovec/qdrant-storage", false)]
+    #[case::unrelated_mount("/tmp/other:/tmp/target:Z", false)]
+    #[case::empty("", false)]
+    fn storage_mount_candidate_matches_required_source_or_target(
+        #[case] volume: &str,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(storage_mount_candidate(volume).is_some(), expected);
+    }
+
+    #[test]
+    fn storage_mount_candidate_returns_original_volume_and_split_parts() {
+        let volume = "/var/lib/repovec/qdrant-storage:/qdrant/storage:rw,Z";
+        let (candidate, parts) =
+            storage_mount_candidate(volume).expect("required storage mount should match");
+
+        assert_eq!(candidate, volume);
+        assert_eq!(parts, vec!["/var/lib/repovec/qdrant-storage", "/qdrant/storage", "rw,Z"]);
+    }
+
+    #[test]
+    fn has_required_selinux_relabel_option_matches_split_trimmed_case_insensitive_tokens() {
+        let cases: &[(&[&str], bool)] = &[
+            (&[], false),
+            (&["rw"], false),
+            (&["Y"], false),
+            (&["Z"], true),
+            (&["z"], true),
+            (&["rw", "Z"], true),
+            (&["rw,Z"], true),
+            (&["rw, z"], true),
+            (&["rw, z,ro"], true),
+        ];
+
+        for (options, expected) in cases {
+            assert_eq!(
+                has_required_selinux_relabel_option(options),
+                *expected,
+                "options: {options:?}",
+            );
+        }
+    }
+}

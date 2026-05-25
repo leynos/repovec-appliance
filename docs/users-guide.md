@@ -115,6 +115,53 @@ EOF'
 
 Requests to Qdrant without the `api-key` header are rejected.
 
+### Qdrant Quadlet validation diagnostics
+
+`repovec_core::appliance::qdrant_quadlet` exposes `validate_qdrant_quadlet` and
+the public `QdrantQuadletError` type for checking the packaged Quadlet
+contract. The validator reports the first contract violation it finds. Display
+strings are stable operator diagnostics and use these formats:
+
+The validator is a static contract check. It does not emit tracing spans,
+logs, or metrics itself; callers should log or count the returned
+`QdrantQuadletError` when they need runtime observability.
+
+- `InvalidLine`: `invalid quadlet line {line_number}: {line}`.
+- `PropertyBeforeSection`:
+  `quadlet property before section on line {line_number}: {line}`.
+- `MissingImage`: `missing Image= entry in [Container]`.
+- `ImageNotFullyQualified`:
+  `image reference must be fully qualified and tagged: {image}`.
+- `UnexpectedImage`:
+  `image reference must remain docker.io/qdrant/qdrant:v1: {image}`.
+- `MissingRestPort`: `missing PublishPort=6333 in [Container]`.
+- `MissingGrpcPort`: `missing PublishPort=6334 in [Container]`.
+- `PortNotBoundToLoopback`:
+  `port {port} must be published on 127.0.0.1 only: {publish_port}`.
+- `MissingStorageMount`: `missing persistent Qdrant storage mount`.
+- `IncorrectStorageSource`:
+  `storage source must be /var/lib/repovec/qdrant-storage: {source}`.
+- `IncorrectStorageTarget`:
+  `storage target must be /qdrant/storage: {target}`.
+- `MissingSelinuxRelabel`:
+  `storage mount must include SELinux relabel :Z: {volume}`.
+- `MissingAutoUpdate`: `missing AutoUpdate= entry in [Container]`.
+- `IncorrectAutoUpdate`: `AutoUpdate must remain registry: {auto_update}`.
+- `MissingApiKeyProvisioningDependency`:
+  `missing {directive}=repovec-qdrant-api-key.service dependency for Qdrant
+  API-key provisioning`.
+- `IncorrectApiKeyProvisioningDependency`:
+  `{directive} must include repovec-qdrant-api-key.service for Qdrant API-key
+  provisioning: {dependency}`.
+- `MissingApiKeySecret`:
+  `missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY`.
+- `IncorrectApiKeySecret`:
+  `Qdrant API-key secret must be
+  repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}`.
+- `InlineApiKeyEnvironmentDisallowed`:
+  `Qdrant API keys must use a Podman secret, not inline Environment=:
+  <redacted>`.
+
 ## Appliance systemd target
 
 repovec-appliance ships a base systemd target and static daemon service files

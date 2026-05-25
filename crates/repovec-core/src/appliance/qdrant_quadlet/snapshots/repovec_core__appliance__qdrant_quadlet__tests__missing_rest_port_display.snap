@@ -1,5 +1,6 @@
 ---
 source: crates/repovec-core/src/appliance/qdrant_quadlet/tests.rs
-expression: error.to_string()
+assertion_line: 252
+expression: err.to_string()
 ---
-missing PublishPort=127.0.0.1:6333:6333 in [Container]
+missing PublishPort=6333 in [Container]

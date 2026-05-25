@@ -209,6 +209,33 @@ fn checked_in_qdrant_quadlet_remains_valid() {
 }
 
 #[rstest]
+#[case::uppercase("Z")]
+#[case::lowercase("z")]
+#[case::comma_delimited("rw,Z")]
+#[case::comma_delimited_with_spaces("rw, z")]
+fn qdrant_quadlet_accepts_selinux_relabel_option_variants(#[case] option: &str) {
+    let contents = checked_in_qdrant_quadlet()
+        .replace(":/qdrant/storage:Z", &format!(":/qdrant/storage:{option}"));
+
+    validate_qdrant_quadlet(&contents).expect("Podman accepts SELinux relabel option variants");
+}
+
+#[test]
+fn qdrant_quadlet_rejects_non_selinux_relabel_mount_option() {
+    let contents = checked_in_qdrant_quadlet().replace(":/qdrant/storage:Z", ":/qdrant/storage:Y");
+
+    let err = validate_qdrant_quadlet(&contents)
+        .expect_err("only the required SELinux relabel option should satisfy the contract");
+
+    assert_eq!(
+        err,
+        QdrantQuadletError::MissingSelinuxRelabel {
+            volume: String::from("/var/lib/repovec/qdrant-storage:/qdrant/storage:Y"),
+        }
+    );
+}
+
+#[rstest]
 #[case::invalid_line(ValidationScenario::InvalidLineInContainer)]
 #[case::property_before_section(ValidationScenario::PropertyBeforeFirstSection)]
 #[case::missing_image(ValidationScenario::MissingImage)]

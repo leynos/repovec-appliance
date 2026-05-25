@@ -28,6 +28,8 @@
   execution evidence and validation notes for roadmap item `2.1.1`.
 - [Qdrant API-key authentication ExecPlan](execplans/1-2-2-configure-qdrant-api-key-authentication.md):
   delivery plan and validation notes for roadmap item `1.2.2`.
+- [Qdrant liveness validation ExecPlan](execplans/1-2-3-validate-qdrant-liveness-from-rust.md):
+  pre-implementation delivery plan for roadmap item `1.2.3`.
 - [Execution plan for 1.1.3: CI gating pipeline](execplans/1-1-3-ci-gating-pipeline.md):
   detailed delivery plan and implementation log for the CI-gating workstream.
 - [Execution plan: Repovec target and static unit files (1.3.1)][execplan-1-3-1]:

@@ -1,0 +1,478 @@
+# Define template unit for per-repo indexers
+
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+ `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
+
+Status: DRAFT
+
+## Purpose / big picture
+
+Roadmap item `1.3.2` adds the systemd template used to run one grepai indexer
+per active repository branch. After this feature is implemented and approved,
+the repository will ship `packaging/systemd/repovec-grepai@.service`; the
+static systemd validator in `repovec-core` will prove that the checked-in
+template runs as the unprivileged `repovec` user, uses `HOME=/var/lib/repovec`,
+depends on local Qdrant, and sends stdout and stderr to journald rather than
+bespoke log files.
+
+The observable behaviour is still mostly static in this roadmap item. A human
+can inspect the checked-in template, run the Rust validator, and see unit and
+behavioural tests reject broken variants of the template. Later roadmap item
+`3.2.1` will instantiate the template for active branches during reconciliation.
+
+Implementation must not begin until the user explicitly approves this plan.
+
+## Constraints
+
+- This branch is planning-only until this ExecPlan receives explicit approval.
+- The template source of truth must live at
+  `packaging/systemd/repovec-grepai@.service`.
+- The existing `packaging/systemd/repovec.target`, `repovecd.service`,
+  `repovec-mcpd.service`, and `qdrant.container` contracts must remain
+  compatible unless the plan is revised and approved.
+- The Qdrant dependency in systemd units must use the generated service name
+  `qdrant.service`, not `qdrant.container` or `qdrant.container.service`.
+- The template must run as `User=repovec` and `Group=repovec`, with
+  `Environment=HOME=/var/lib/repovec`.
+- Journald must capture all template output. Do not add log-file paths,
+  shell-level redirection, `tee`, `StandardOutput=file:`, or
+  `StandardError=file:`.
+- The implementation must preserve hexagonal boundaries. Static unit-file
+  validation belongs in `repovec-core::appliance::systemd_units`; live
+  `systemctl`, filesystem installation, process execution, and host state
+  remain adapter, packaging, or operator concerns.
+- New Rust validation must use typed errors. Do not make display strings the
+  programmatic contract.
+- New unit tests must use `rstest`. Behavioural tests must use `rstest-bdd`
+  where applicable.
+- Property tests, Kani, or Verus are not required for this finite static
+  packaging contract. Add them only if implementation introduces a real
+  invariant over an open input space.
+- Documentation must use en-GB Oxford spelling, wrap Markdown paragraphs at
+  80 columns, and follow `docs/documentation-style-guide.md`.
+- Before each implementation commit and before any CodeRabbit review, run the
+  applicable gates sequentially with `tee` logs under `/tmp`: at minimum
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test`. Run
+  `make fmt`, `make markdownlint`, and `make nixie` after documentation changes.
+- Do not mark roadmap item `1.3.2` as done until implementation, validation,
+  documentation, CodeRabbit review, and final commit are complete.
+
+If satisfying the objective requires violating a constraint, stop, document the
+conflict in `Decision Log`, and ask for direction.
+
+## Tolerances
+
+- Scope: if implementation requires more than twelve repository files or more
+  than 650 net lines, stop and ask whether to split the work.
+- Interface: if an existing public Rust API signature must change, stop and
+  ask for approval. Additive APIs in `repovec-core::appliance::systemd_units`
+  are within tolerance.
+- Dependencies: if a new external crate or system package is required, stop
+  and ask for approval.
+- Systemd scope: if correct behaviour requires drop-ins for
+  `cloudflared.service`, changes to the host's live systemd configuration, or
+  ownership of future instantiated units, stop and ask for approval.
+- Runtime scope: if automated validation requires root privileges, a live
+  systemd manager, Podman, Qdrant, grepai, network access, or branch worktrees,
+  replace that with static validation unless the user approves a broader
+  integration environment.
+- Instance naming: if a safe mapping from template instance to worktree path
+  cannot be expressed without changing the roadmap's future
+  `repovec-grepai@{owner}-{repo}-{branch}.service` shape, stop and present the
+  options.
+- Test iterations: if `make lint` or `make test` still fails after three
+  focused fix attempts, stop, record the failing command and log path, and ask
+  for direction.
+- CodeRabbit: if `coderabbit review --agent` raises a concern that conflicts
+  with this plan or requires scope beyond these tolerances, stop and ask for
+  approval before widening the change.
+
+## Risks
+
+- Risk: systemd template instance names may not safely encode
+  `{owner}/{repo}/{branch}` when owners, repositories, or branches contain
+  hyphens, slashes, or other characters that systemd escapes. Severity: high.
+  Likelihood: medium. Mitigation: make the implementation treat the instance
+  identifier as an opaque systemd-escaped value and validate only the template
+  contract in this item. Record the exact instance-to-worktree mapping decision
+  in the design document. If the chosen mapping contradicts roadmap item
+  `3.2.1`, stop and ask whether to update the roadmap language.
+
+- Risk: the exact long-running `grepai watch` command shape may change or may
+  require workspace/project flags that are not yet represented in this
+  repository. Severity: medium. Likelihood: medium. Mitigation: use upstream
+  grepai documentation only for the stable command existence (`grepai watch`)
+  and avoid over-validating future flags in this feature. Keep
+  workspace/project configuration for roadmap item `3.1`.
+
+- Risk: static validation can prove the checked-in unit contract, but cannot
+  prove that grepai, Qdrant, worktrees, or the `repovec` system user exist on a
+  host. Severity: medium. Likelihood: high. Mitigation: document the boundary.
+  Host liveness belongs to roadmap items `1.2.3`, `1.3.3`, `3.1`, and `3.2`.
+
+- Risk: explicit journald directives may be mistaken for custom logging policy
+  rather than a guard against file logging. Severity: low. Likelihood: medium.
+  Mitigation: document that `StandardOutput=journal` and
+  `StandardError=journal` are intentional and that no log files are created.
+
+- Risk: the prompt's completion criteria mention interactive sessions, resize
+  events, and terminal exit-code handling, which do not match a non-interactive
+  systemd template for `grepai watch`. Severity: medium. Likelihood: high.
+  Mitigation: record this mismatch. This feature should not allocate a TTY or
+  implement PTY resize handling. It should ensure systemd tracks the main
+  process exit status accurately.
+
+## Progress
+
+- [x] (2026-05-26T01:30:28+02:00) Read repository instructions and loaded the
+  `leta`, `hexagonal-architecture`, `rust-router`, `execplans`,
+  `domain-cli-and-daemons`, `rust-errors`, `commit-message`, `pr-creation`,
+  `firecrawl-mcp`, and `en-gb-oxendict-style` skills.
+- [x] (2026-05-26T01:30:28+02:00) Created the leta workspace for this
+  worktree with `leta workspace add`.
+- [x] (2026-05-26T01:30:28+02:00) Renamed the branch to
+  `1-3-2-template-unit-for-per-repo-indexers`.
+- [x] (2026-05-26T01:30:28+02:00) Used Firecrawl to check upstream systemd
+  service-template, execution-environment, journald, and grepai command
+  documentation.
+- [x] (2026-05-26T01:30:28+02:00) Asked a Wyvern planning agent for
+  repository-local validation guidance; it recommended extending the existing
+  `systemd_units` validator and BDD test pattern.
+- [x] (2026-05-26T01:30:28+02:00) Asked a second Wyvern planning agent for
+  systemd/indexer lifecycle guidance; it exhausted its context before returning
+  a usable result, so this plan proceeds from local inspection and Firecrawl
+  evidence.
+- [x] (2026-05-26T01:30:28+02:00) Drafted this pre-implementation ExecPlan.
+
+## Surprises & Discoveries
+
+- Observation: `docs/repovec-appliance-technical-design.md` already states
+  that `repovec.target` wants per-repo indexers named
+  `repovec-grepai@<repo>.service`, while `docs/roadmap.md` later says
+  `repovec-grepai@{owner}-{repo}-{branch}.service`. Impact: the instance naming
+  convention is not settled enough for this item to own all lifecycle
+  semantics. This plan keeps the template contract separate from the future
+  reconciler's instance-ID policy.
+
+- Observation: the existing `systemd_units` module validates static assets
+  with `include_str!`, typed errors, finite `rstest` mutations, and
+  `rstest-bdd` scenarios. Impact: `1.3.2` should extend that module rather than
+  create a second validator or run live `systemctl` checks.
+
+- Observation: upstream systemd documentation says template services receive
+  one argument through the `service@argument.service` syntax, and that the
+  instance name is available through specifiers. Impact: this feature can use
+  specifiers in the template, but the exact escaping policy must be documented
+  and should not be inferred from a lossy hyphenated name.
+
+- Observation: upstream systemd documentation recommends `Type=exec` for
+  long-running services, when missing users or binaries should be reported by
+  `systemctl start`. Impact: the implementation should consider `Type=exec` for
+  the new indexer template while leaving existing `Type=simple` daemon units
+  unchanged unless a separate approved refactor covers them.
+
+- Observation: upstream grepai public documentation shows `grepai watch` as
+  the file-watcher command and describes it as keeping the index fresh. It does
+  not settle repovec's workspace/project invocation details. Impact: the unit
+  contract should validate that the template starts `grepai watch`, but avoid
+  claiming that workspace configuration or provider flags are complete in this
+  item.
+
+## Decision Log
+
+- Decision: keep this branch as a pre-implementation planning branch until the
+  user explicitly approves this ExecPlan. Rationale: the `execplans` skill and
+  the user request both require approval before implementation. Date/Author:
+  2026-05-26T01:30:28+02:00 / Codex.
+
+- Decision: extend `repovec_core::appliance::systemd_units` instead of adding
+  a new validation module. Rationale: the existing module already owns the
+  service-layout contract, parser, typed errors, unit tests, and behavioural
+  tests for checked-in systemd assets. Date/Author: 2026-05-26T01:30:28+02:00 /
+  Codex.
+
+- Decision: treat `repovec-grepai@.service` as a static template contract, not
+  as the lifecycle manager for concrete branch instances. Rationale: the
+  reconciler-owned start/stop behaviour belongs to roadmap item `3.2.1`.
+  Date/Author: 2026-05-26T01:30:28+02:00 / Codex.
+
+- Decision: do not add property tests, Kani, or Verus for the initial
+  implementation. Rationale: the requested behaviour is a finite unit-file
+  contract with a closed list of required directives. Exhaustive mutation tests
+  and BDD scenarios give more direct evidence than proof tooling here.
+  Date/Author: 2026-05-26T01:30:28+02:00 / Codex.
+
+- Decision: classify the interactive-session completion criteria as a scope
+  mismatch unless the user revises the plan. Rationale: a systemd-managed
+  `grepai watch` service is non-interactive and should not allocate a terminal;
+  resize propagation belongs to PTY/TUI work, not to this template.
+  Date/Author: 2026-05-26T01:30:28+02:00 / Codex.
+
+## Outcomes & Retrospective
+
+No implementation has happened yet. This draft identifies the work, validation
+strategy, risks, and approval gate for roadmap item `1.3.2`.
+
+After implementation, update this section with the committed unit template,
+validator changes, test results, CodeRabbit outcome, documentation updates, and
+any deviations from the plan.
+
+## Context and orientation
+
+This repository is a Rust workspace. Appliance-specific static validation lives
+under `crates/repovec-core/src/appliance/`. The existing
+`crates/repovec-core/src/appliance/systemd_units/` module embeds checked-in
+systemd assets from `packaging/systemd/`, parses a small subset of systemd unit
+syntax, and returns `SystemdUnitError` when a checked-in asset violates the
+appliance contract.
+
+The systemd assets currently shipped by roadmap item `1.3.1` are:
+
+- `packaging/systemd/repovec.target`
+- `packaging/systemd/repovecd.service`
+- `packaging/systemd/repovec-mcpd.service`
+
+Roadmap item `1.3.2` adds:
+
+- `packaging/systemd/repovec-grepai@.service`
+
+The future continuous-indexing work in roadmap item `3.2.1` will instantiate
+the template for active branches. That future work will decide when to start,
+stop, enable, disable, or purge concrete indexer units.
+
+The following repository documents are source material for implementation:
+
+- `docs/roadmap.md`
+- `docs/repovec-appliance-technical-design.md`
+- `docs/developers-guide.md`
+- `docs/users-guide.md`
+- `docs/rust-testing-with-rstest-fixtures.md`
+- `docs/rust-doctest-dry-guide.md`
+- `docs/reliable-testing-in-rust-via-dependency-injection.md`
+- `docs/complexity-antipatterns-and-refactoring-strategies.md`
+- `docs/ortho-config-users-guide.md`
+- `docs/rstest-bdd-users-guide.md`
+- `docs/documentation-style-guide.md`
+
+Relevant skills for implementation are:
+
+- `leta`, for source navigation and symbol relationships
+- `rust-router`, followed by `domain-cli-and-daemons` and `rust-errors`, for
+  daemon lifecycle and typed error boundaries
+- `hexagonal-architecture`, for keeping policy validation separate from
+  systemd execution and packaging adapters
+- `execplans`, for keeping this living document current
+- `commit-message`, for file-based commit messages
+- `pr-creation` and `en-gb-oxendict-style`, for the pull request
+
+Relevant external references checked during planning are:
+
+- systemd service templates:
+  <https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html>
+- systemd execution environment and logging directives:
+  <https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html>
+- grepai README and quick-start commands:
+  <https://raw.githubusercontent.com/yoanbernabeu/grepai/main/README.md>
+- grepai project site:
+  <https://yoanbernabeu.github.io/grepai/>
+
+## Proposed implementation details
+
+The implementation should start by writing failing tests that describe the
+template contract, then add the template and validator changes to make those
+tests pass.
+
+The intended template shape is:
+
+```systemd
+[Unit]
+Description=repovec grepai indexer for %I
+Requires=qdrant.service
+After=qdrant.service repovecd.service
+PartOf=repovec.target
+
+[Service]
+Type=exec
+User=repovec
+Group=repovec
+WorkingDirectory=/var/lib/repovec/worktrees/%I
+Environment=HOME=/var/lib/repovec
+ExecStart=/usr/bin/grepai watch
+Restart=on-failure
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=repovec.target
+```
+
+This is a proposal, not an approved implementation. If local systemd syntax or
+grepai command checks show that `%I` is unsafe for the worktree layout, stop
+and revise the plan before implementation continues.
+
+The validator should check the template for:
+
+- `[Unit]`, `[Service]`, and `[Install]` sections
+- `Requires=qdrant.service`
+- `After=qdrant.service`
+- an ordering relationship after `repovecd.service`
+- `PartOf=repovec.target`
+- `WantedBy=repovec.target`
+- `User=repovec`
+- `Group=repovec`
+- `WorkingDirectory=/var/lib/repovec/worktrees/%I`, unless the approved
+  implementation chooses a safer documented specifier
+- `Environment=HOME=/var/lib/repovec`
+- `ExecStart=/usr/bin/grepai watch`
+- `Restart=on-failure`
+- explicit journald output with `StandardOutput=journal` and
+  `StandardError=journal`
+- rejection of `qdrant.container` and `qdrant.container.service`
+
+The validator should not check for the existence of `/usr/bin/grepai`,
+`/var/lib/repovec/worktrees/%I`, the `repovec` user, or live systemd units.
+
+## Implementation milestones
+
+### Milestone 1: Red tests for the template contract
+
+Extend the existing systemd unit test harness so it can hold and mutate a
+fourth unit file, `repovec-grepai@.service`.
+
+Add `rstest` cases that fail before implementation for missing or incorrect
+template directives, including service identity, `HOME`, Qdrant dependency,
+`ExecStart`, journald output, and install binding.
+
+Extend `crates/repovec-core/tests/features/systemd_units.feature` and
+`crates/repovec-core/tests/systemd_units_bdd.rs` with behavioural scenarios for
+the checked-in template and representative unhappy paths.
+
+Run focused failing tests and record the expected failures in `Progress`:
+
+```sh
+cargo test -p repovec-core systemd_units 2>&1 \
+  | tee /tmp/systemd-units-$(git branch --show-current).out
+cargo test -p repovec-core --test systemd_units_bdd 2>&1 \
+  | tee /tmp/systemd-units-bdd-$(git branch --show-current).out
+```
+
+### Milestone 2: Template and validator implementation
+
+Add `packaging/systemd/repovec-grepai@.service`.
+
+Extend `crates/repovec-core/src/appliance/systemd_units/mod.rs` with:
+
+- `CHECKED_IN_REPOVEC_GREPAI_TEMPLATE`
+- `CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH`
+- `checked_in_repovec_grepai_template()`
+- an additive validation entry point if needed, or an approved extension of
+  `validate_systemd_units`
+- `validate_grepai_template`
+
+Extend `SystemdUnitError` only where existing variants cannot express the
+failure clearly. Prefer reusing `MissingDependency`, `IncorrectExecStart`, and
+`IncorrectServiceDirective` when they remain accurate.
+
+Make the focused unit and BDD tests pass, then run:
+
+```sh
+make check-fmt 2>&1 | tee /tmp/check-fmt-$(git branch --show-current).out
+make typecheck 2>&1 | tee /tmp/typecheck-$(git branch --show-current).out
+make lint 2>&1 | tee /tmp/lint-$(git branch --show-current).out
+make test 2>&1 | tee /tmp/test-$(git branch --show-current).out
+```
+
+Run CodeRabbit only after those gates pass:
+
+```sh
+coderabbit review --agent
+```
+
+Resolve all applicable CodeRabbit concerns before moving on.
+
+### Milestone 3: Documentation
+
+Update `docs/repovec-appliance-technical-design.md` to record the template
+unit, the instance-name/worktree-path decision, journald logging, and the
+boundary between static template validation and future lifecycle management.
+
+Update `docs/users-guide.md` with operator-visible installation notes for the
+template and explain that concrete instances are managed by later
+reconciliation work.
+
+Update `docs/developers-guide.md` section `5.3` with the expanded validation
+surface, including the new accessor and template path.
+
+Update `docs/roadmap.md` only after the implementation is complete and all
+gates pass, marking item `1.3.2` done with a short status note.
+
+Run documentation formatting and validation:
+
+```sh
+make fmt 2>&1 | tee /tmp/fmt-$(git branch --show-current).out
+make markdownlint 2>&1 | tee /tmp/markdownlint-$(git branch --show-current).out
+make nixie 2>&1 | tee /tmp/nixie-$(git branch --show-current).out
+```
+
+Then rerun the full requested gates:
+
+```sh
+make check-fmt 2>&1 | tee /tmp/check-fmt-$(git branch --show-current).out
+make typecheck 2>&1 | tee /tmp/typecheck-$(git branch --show-current).out
+make lint 2>&1 | tee /tmp/lint-$(git branch --show-current).out
+make test 2>&1 | tee /tmp/test-$(git branch --show-current).out
+```
+
+Run CodeRabbit again after the gates pass:
+
+```sh
+coderabbit review --agent
+```
+
+Resolve all applicable concerns before committing.
+
+### Milestone 4: Commit and pull request
+
+Review the full diff, update this ExecPlan's `Progress`,
+`Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective`, and
+make an atomic implementation commit with a file-based commit message.
+
+Push `1-3-2-template-unit-for-per-repo-indexers` to
+`origin/1-3-2-template-unit-for-per-repo-indexers`.
+
+Open or update the draft pull request. The title must include `(1.3.2)`, and
+the summary must link this ExecPlan. Include the lody session link in a final
+`## References` section.
+
+## Acceptance criteria
+
+- `packaging/systemd/repovec-grepai@.service` exists and contains no bespoke
+  log-file routing.
+- The checked-in template runs as `repovec:repovec` with
+  `HOME=/var/lib/repovec`.
+- The checked-in template starts `grepai watch` without shell wrappers,
+  pipelines, or redirection.
+- The checked-in template is ordered after Qdrant and tied to
+  `repovec.target`.
+- The static validator rejects missing or incorrect template identity,
+  dependency, command, environment, journald, and install directives.
+- `rstest` unit tests cover happy and unhappy paths for the template.
+- `rstest-bdd` behavioural tests describe the user-facing systemd template
+  contract.
+- Documentation explains how the template is installed, how future instances
+  relate to it, where output goes, and what validation does not prove.
+- `make check-fmt`, `make typecheck`, `make lint`, and `make test` pass after
+  the final implementation milestone.
+- `coderabbit review --agent` has no unresolved applicable concerns.
+- `docs/roadmap.md` marks item `1.3.2` done only after the implementation is
+  complete.
+
+## Rollback plan
+
+Because this feature is additive, rollback is straightforward. Revert the
+implementation commit that adds `repovec-grepai@.service`, validator changes,
+tests, documentation updates, and the roadmap status change. Re-run
+`make check-fmt`, `make typecheck`, `make lint`, and `make test` after the
+revert. If the branch has already been pushed, push the revert as a new commit,
+so review history remains intact.

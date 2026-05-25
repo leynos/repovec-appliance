@@ -30,7 +30,7 @@ fn published_container_port_accepts_only_three_field_numeric_mappings(
 #[case::required_source("/var/lib/repovec/qdrant-storage:/other", true)]
 #[case::required_target("/other:/qdrant/storage", true)]
 #[case::required_source_and_target("/var/lib/repovec/qdrant-storage:/qdrant/storage:Z", true)]
-#[case::too_few_parts("/var/lib/repovec/qdrant-storage", false)]
+#[case::required_source_without_target("/var/lib/repovec/qdrant-storage", true)]
 #[case::unrelated_mount("/tmp/other:/tmp/target:Z", false)]
 #[case::empty("", false)]
 fn storage_mount_candidate_matches_required_source_or_target(
@@ -112,6 +112,7 @@ proptest! {
         fields in prop::collection::vec("[^:]*", 0..2),
     ) {
         let volume = fields.join(":");
+        prop_assume!(volume != REQUIRED_STORAGE_SOURCE);
 
         prop_assert!(storage_mount_candidate(&volume).is_none());
     }

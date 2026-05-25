@@ -31,6 +31,12 @@ struct RequiredPortBinding {
     missing_error: QdrantQuadletError,
 }
 
+enum AutoUpdateValues<'a> {
+    Empty,
+    Single(&'a String),
+    Duplicates(String),
+}
+
 /// Validate appliance-owned platform bindings for the Qdrant container.
 pub(super) fn validate_platform_bindings(
     parsed: &ParsedQuadlet,
@@ -111,6 +117,11 @@ fn validate_storage_mount(
 
     for (volume, parts) in volumes.iter().filter_map(|volume| storage_mount_candidate(volume)) {
         let Some(source) = parts.first().copied() else {
+            observer.missing_storage_mount_volume(
+                volume,
+                REQUIRED_STORAGE_SOURCE,
+                REQUIRED_STORAGE_TARGET,
+            );
             last_candidate_error = Some(QdrantQuadletError::MissingStorageMount);
             continue;
         };
@@ -121,6 +132,11 @@ fn validate_storage_mount(
         }
 
         let Some(target) = parts.get(1).copied() else {
+            observer.missing_storage_mount_volume(
+                volume,
+                REQUIRED_STORAGE_SOURCE,
+                REQUIRED_STORAGE_TARGET,
+            );
             last_candidate_error = Some(QdrantQuadletError::MissingStorageMount);
             continue;
         };
@@ -169,10 +185,6 @@ fn has_required_selinux_relabel_option(options: &[&str]) -> bool {
 
 fn storage_mount_candidate(volume: &str) -> Option<(&str, Vec<&str>)> {
     let parts = volume.split(':').collect::<Vec<_>>();
-    if parts.len() < 2 {
-        return None;
-    }
-
     let has_required_source =
         parts.first().is_some_and(|source| *source == REQUIRED_STORAGE_SOURCE);
     let has_required_target = parts.get(1).is_some_and(|target| *target == REQUIRED_STORAGE_TARGET);
@@ -185,14 +197,13 @@ fn validate_auto_update(
     observer: &dyn QdrantQuadletObserver,
 ) -> Result<(), QdrantQuadletError> {
     let auto_updates = parsed.values(CONTAINER_SECTION, "AutoUpdate");
-    let auto_update = match auto_updates {
-        [] => {
+    let auto_update = match classify_auto_update_values(auto_updates) {
+        AutoUpdateValues::Empty => {
             observer.missing_auto_update(REQUIRED_AUTO_UPDATE_POLICY);
             return Err(QdrantQuadletError::MissingAutoUpdate);
         }
-        [auto_update] => auto_update,
-        duplicate_auto_updates => {
-            let duplicate_auto_update_values = duplicate_auto_updates.join(",");
+        AutoUpdateValues::Single(auto_update) => auto_update,
+        AutoUpdateValues::Duplicates(duplicate_auto_update_values) => {
             observer
                 .incorrect_auto_update(&duplicate_auto_update_values, REQUIRED_AUTO_UPDATE_POLICY);
             return Err(QdrantQuadletError::IncorrectAutoUpdate {
@@ -207,6 +218,14 @@ fn validate_auto_update(
     }
 
     Ok(())
+}
+
+fn classify_auto_update_values(auto_updates: &[String]) -> AutoUpdateValues<'_> {
+    match auto_updates {
+        [] => AutoUpdateValues::Empty,
+        [auto_update] => AutoUpdateValues::Single(auto_update),
+        duplicate_auto_updates => AutoUpdateValues::Duplicates(duplicate_auto_updates.join(",")),
+    }
 }
 
 #[cfg(test)]

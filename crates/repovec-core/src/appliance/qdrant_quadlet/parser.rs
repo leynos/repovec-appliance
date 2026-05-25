@@ -83,14 +83,10 @@ impl ParsedQuadlet {
 fn parse_section_header(line: &str) -> Option<&str> { line.strip_prefix('[')?.strip_suffix(']') }
 
 fn redact_line(line: &str) -> String {
-    if let Some(redacted_assignment) = redact_sensitive_assignment(line) {
-        return redacted_assignment;
-    }
-
     let mut redacted = Vec::new();
     let mut tokens = line.split_ascii_whitespace();
     while let Some(token) = tokens.next() {
-        if token.eq_ignore_ascii_case("bearer") {
+        if token.eq_ignore_ascii_case("bearer") || token.to_ascii_lowercase().ends_with("=bearer") {
             redacted.push(String::from("Bearer <redacted>"));
             let _ignored_token = tokens.next();
         } else {
@@ -98,11 +94,6 @@ fn redact_line(line: &str) -> String {
         }
     }
     redacted.join(" ")
-}
-
-fn redact_sensitive_assignment(line: &str) -> Option<String> {
-    let (key, value) = line.split_once('=')?;
-    if is_sensitive_assignment(key, value) { Some(format!("{key}=<redacted>")) } else { None }
 }
 
 fn redact_token(token: &str) -> String {

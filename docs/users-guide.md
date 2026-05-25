@@ -112,7 +112,6 @@ EOF'
 
 Requests to Qdrant without the `api-key` header are rejected.
 
-
 ### Troubleshooting
 
 Qdrant Quadlet validation emits structured events with the target
@@ -154,7 +153,7 @@ Quadlet satisfies the appliance contract.
   `/var/lib/repovec/qdrant-storage`.
 - If validation fails with
   `qdrant quadlet validation failed: incorrect storage target`, inspect the
-  `target` and `expected_target` fields. Ensure the mount target is
+  `storage_target` and `expected_target` fields. Ensure the mount target is
   `/qdrant/storage`.
 - If validation fails with
   `qdrant quadlet validation failed: missing selinux relabel`, inspect the

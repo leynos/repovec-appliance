@@ -803,11 +803,11 @@ The existing public validation functions remain:
 ```rust
 pub const fn checked_in_qdrant_quadlet() -> &'static str;
 pub fn validate_checked_in_qdrant_quadlet(
-    observer: &impl QdrantQuadletObserver,
+    observer: &dyn QdrantQuadletObserver,
 ) -> Result<(), QdrantQuadletError>;
 pub fn validate_qdrant_quadlet(
     contents: &str,
-    observer: &impl QdrantQuadletObserver,
+    observer: &dyn QdrantQuadletObserver,
 ) -> Result<(), QdrantQuadletError>;
 ```
 

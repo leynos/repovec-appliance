@@ -34,6 +34,17 @@ pub(super) fn property_before_section() -> LogScenario {
     }
 }
 
+pub(super) fn bearer_assignment_before_section() -> LogScenario {
+    LogScenario {
+        contents: String::from("auth=Bearer very-secret-token\n[Container]\n"),
+        expected: event(
+            Level::ERROR,
+            "qdrant quadlet validation rejected property before section",
+            &[("line_number", "1"), ("redacted_line", "Bearer <redacted>")],
+        ),
+    }
+}
+
 pub(super) fn missing_image() -> LogScenario {
     LogScenario {
         contents: canonical().replace("Image=docker.io/qdrant/qdrant:v1\n", ""),
@@ -134,6 +145,24 @@ pub(super) fn missing_storage_mount() -> LogScenario {
             Level::WARN,
             "qdrant quadlet validation failed: missing storage mount",
             &[
+                ("expected_source", "/var/lib/repovec/qdrant-storage"),
+                ("expected_target", "/qdrant/storage"),
+            ],
+        ),
+    }
+}
+
+pub(super) fn malformed_storage_mount() -> LogScenario {
+    LogScenario {
+        contents: canonical().replace(
+            "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z",
+            "Volume=/var/lib/repovec/qdrant-storage",
+        ),
+        expected: event(
+            Level::WARN,
+            "qdrant quadlet validation failed: missing storage mount",
+            &[
+                ("volume", "/var/lib/repovec/qdrant-storage"),
                 ("expected_source", "/var/lib/repovec/qdrant-storage"),
                 ("expected_target", "/qdrant/storage"),
             ],

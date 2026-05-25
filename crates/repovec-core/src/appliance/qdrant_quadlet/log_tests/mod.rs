@@ -17,11 +17,12 @@ use std::{
 
 use insta::assert_debug_snapshot;
 use log_test_cases::{
-    duplicate_image, grpc_port_not_loopback, image_not_pinned, incorrect_after_dependency,
-    incorrect_api_key_secret, incorrect_auto_update, incorrect_requires_dependency,
-    incorrect_storage_source, incorrect_storage_target, inline_api_key_environment, invalid_line,
-    missing_after_dependency, missing_api_key_secret, missing_auto_update, missing_grpc_publish,
-    missing_image, missing_requires_dependency, missing_rest_publish, missing_selinux_relabel,
+    bearer_assignment_before_section, duplicate_image, grpc_port_not_loopback, image_not_pinned,
+    incorrect_after_dependency, incorrect_api_key_secret, incorrect_auto_update,
+    incorrect_requires_dependency, incorrect_storage_source, incorrect_storage_target,
+    inline_api_key_environment, invalid_line, malformed_storage_mount, missing_after_dependency,
+    missing_api_key_secret, missing_auto_update, missing_grpc_publish, missing_image,
+    missing_requires_dependency, missing_rest_publish, missing_selinux_relabel,
     missing_storage_mount, property_before_section, rest_port_not_loopback, unexpected_image,
 };
 use rstest::rstest;
@@ -186,6 +187,7 @@ fn parser_redacts_nested_environment_assignment_event_shape() {
 #[rstest]
 #[case::invalid_line(invalid_line())]
 #[case::property_before_section(property_before_section())]
+#[case::bearer_assignment_before_section(bearer_assignment_before_section())]
 #[case::missing_image(missing_image())]
 #[case::image_not_pinned(image_not_pinned())]
 #[case::unexpected_image(unexpected_image())]
@@ -195,6 +197,7 @@ fn parser_redacts_nested_environment_assignment_event_shape() {
 #[case::rest_port_not_loopback(rest_port_not_loopback())]
 #[case::grpc_port_not_loopback(grpc_port_not_loopback())]
 #[case::missing_storage_mount(missing_storage_mount())]
+#[case::malformed_storage_mount(malformed_storage_mount())]
 #[case::incorrect_storage_source(incorrect_storage_source())]
 #[case::incorrect_storage_target(incorrect_storage_target())]
 #[case::missing_selinux_relabel(missing_selinux_relabel())]

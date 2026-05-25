@@ -84,30 +84,39 @@ fn published_container_port(publish_port: &str) -> Option<u16> {
 
 fn validate_storage_mount(parsed: &ParsedQuadlet) -> Result<(), QdrantQuadletError> {
     let volumes = parsed.values(CONTAINER_SECTION, "Volume");
-    let Some((volume, parts)) = volumes.iter().find_map(|volume| storage_mount_candidate(volume))
-    else {
-        return Err(QdrantQuadletError::MissingStorageMount);
-    };
+    let mut last_candidate_error = None;
 
-    let Some(source) = parts.first().copied() else {
-        return Err(QdrantQuadletError::MissingStorageMount);
-    };
-    if source != REQUIRED_STORAGE_SOURCE {
-        return Err(QdrantQuadletError::IncorrectStorageSource { source: source.to_owned() });
+    for (volume, parts) in volumes.iter().filter_map(|volume| storage_mount_candidate(volume)) {
+        let Some(source) = parts.first().copied() else {
+            last_candidate_error = Some(QdrantQuadletError::MissingStorageMount);
+            continue;
+        };
+        if source != REQUIRED_STORAGE_SOURCE {
+            last_candidate_error =
+                Some(QdrantQuadletError::IncorrectStorageSource { source: source.to_owned() });
+            continue;
+        }
+
+        let Some(target) = parts.get(1).copied() else {
+            last_candidate_error = Some(QdrantQuadletError::MissingStorageMount);
+            continue;
+        };
+        if target != REQUIRED_STORAGE_TARGET {
+            last_candidate_error =
+                Some(QdrantQuadletError::IncorrectStorageTarget { target: target.to_owned() });
+            continue;
+        }
+
+        if !parts.get(2..).is_some_and(has_required_selinux_relabel_option) {
+            last_candidate_error =
+                Some(QdrantQuadletError::MissingSelinuxRelabel { volume: volume.to_owned() });
+            continue;
+        }
+
+        return Ok(());
     }
 
-    let Some(target) = parts.get(1).copied() else {
-        return Err(QdrantQuadletError::MissingStorageMount);
-    };
-    if target != REQUIRED_STORAGE_TARGET {
-        return Err(QdrantQuadletError::IncorrectStorageTarget { target: target.to_owned() });
-    }
-
-    if !parts.get(2..).is_some_and(has_required_selinux_relabel_option) {
-        return Err(QdrantQuadletError::MissingSelinuxRelabel { volume: volume.to_owned() });
-    }
-
-    Ok(())
+    Err(last_candidate_error.unwrap_or(QdrantQuadletError::MissingStorageMount))
 }
 
 fn has_required_selinux_relabel_option(options: &[&str]) -> bool {
@@ -159,8 +168,9 @@ mod tests {
 
     use super::{
         REQUIRED_SELINUX_OPTION, REQUIRED_STORAGE_SOURCE, has_required_selinux_relabel_option,
-        published_container_port, storage_mount_candidate,
+        published_container_port, storage_mount_candidate, validate_storage_mount,
     };
+    use crate::appliance::qdrant_quadlet::parser::ParsedQuadlet;
 
     #[rstest]
     #[case::rest_binding("127.0.0.1:6333:6333", Some(6333))]
@@ -201,6 +211,21 @@ mod tests {
 
         assert_eq!(candidate, volume);
         assert_eq!(parts, vec!["/var/lib/repovec/qdrant-storage", "/qdrant/storage", "rw,Z"]);
+    }
+
+    #[test]
+    fn validate_storage_mount_accepts_later_valid_candidate() {
+        let parsed = ParsedQuadlet::parse(
+            "\
+[Container]
+Volume=/var/lib/repovec/qdrant-storage:/wrong-target:Z
+Volume=/other-source:/qdrant/storage:Z
+Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:rw,Z
+",
+        )
+        .expect("quadlet fixture should parse");
+
+        assert_eq!(validate_storage_mount(&parsed), Ok(()));
     }
 
     #[test]

@@ -8,7 +8,7 @@ publish.workspace = true
 
 [dependencies]
 camino.workspace = true
-cap-std = { version = "3.4.5", features = ["fs_utf8"] }
+cap-std = { version = "4.0.2", features = ["fs_utf8"] }
 
 [dev-dependencies]
 insta.workspace = true

@@ -22,6 +22,8 @@
 
 - [Roadmap](roadmap.md): staged implementation plan and task tracking for the
   appliance.
+- [GitHub device-flow OAuth client ExecPlan][execplan-2-1-1]:
+  pre-implementation plan for roadmap item `2.1.1`.
 - [Qdrant API-key authentication ExecPlan](execplans/1-2-2-configure-qdrant-api-key-authentication.md):
   delivery plan and validation notes for roadmap item `1.2.2`.
 - [Execution plan for 1.1.3: CI gating pipeline](execplans/1-1-3-ci-gating-pipeline.md):
@@ -50,4 +52,8 @@
 - [Scripting standards](scripting-standards.md): repository guidance for shell
   and CI glue scripts.
 
-[execplan-1-3-1]: execplans/1-3-1-define-repovec-target-and-static-unit-files.md
+[execplan-1-3-1]:
+execplans/1-3-1-define-repovec-target-and-static-unit-files.md
+
+[execplan-2-1-1]:
+execplans/2-1-1-implement-device-flow-oauth-client.md

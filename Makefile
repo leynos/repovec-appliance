@@ -90,7 +90,7 @@ nixie: ## Validate Mermaid diagrams
 
 validate-systemd: ensure-cargo ## Validate checked-in systemd unit contracts
 	$(CARGO) build --quiet -p repovec-ci
-	target/debug/repovec-ci systemd-gate
+	$(CARGO) run --quiet -p repovec-ci -- systemd-gate
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \

@@ -12,7 +12,7 @@ REPOVEC_USER=repovec
 REPOVEC_GROUP=repovec
 CONFIG_DIR=/etc/repovec
 KEY_FILE=/etc/repovec/qdrant-api-key
-LOCK_FILE=/var/lock/repovec-qdrant-api-key.lock
+LOCK_FILE=/etc/repovec/repovec-qdrant-api-key.lock
 SECRET_NAME=repovec-qdrant-api-key
 
 log() {

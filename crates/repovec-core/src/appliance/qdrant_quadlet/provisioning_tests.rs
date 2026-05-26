@@ -92,8 +92,18 @@ fn provisioning_helper_removes_stale_secret_before_generating_key_file() {
 }
 
 #[test]
-fn provisioning_helper_uses_flock_for_mutual_exclusion() {
-    let lock_file = helper_offset!("/var/lock/repovec-qdrant-api-key.lock");
+fn provisioning_helper_uses_a_root_controlled_lock_path() {
+    let lock_file = helper_offset!("/etc/repovec/repovec-qdrant-api-key.lock");
+    let flock = helper_offset!("flock 9");
+
+    assert!(PROVISIONING_HELPER.contains("debug_log \"acquired ${LOCK_FILE}\""));
+    assert!(PROVISIONING_HELPER.contains("debug_log \"released ${LOCK_FILE}\""));
+    assert!(!PROVISIONING_HELPER.contains("LOCK_FILE=/var/lock/"));
+    assert!(lock_file < flock);
+}
+
+#[test]
+fn provisioning_helper_serializes_secret_and_key_operations() {
     let flock = helper_offset!("flock 9");
     let secret_inspection = helper_offset!("podman secret inspect \"${SECRET_NAME}\"");
     let secret_removal = helper_offset!("podman secret rm \"${SECRET_NAME}\"");
@@ -102,9 +112,6 @@ fn provisioning_helper_uses_flock_for_mutual_exclusion() {
     let secret_creation = helper_offset!("podman secret create \"${SECRET_NAME}\"");
 
     assert!(PROVISIONING_HELPER.contains("od -An -N32 -tx1"));
-    assert!(PROVISIONING_HELPER.contains("debug_log \"acquired ${LOCK_FILE}\""));
-    assert!(PROVISIONING_HELPER.contains("debug_log \"released ${LOCK_FILE}\""));
-    assert!(lock_file < flock);
     assert!(flock < secret_inspection);
     assert!(flock < secret_removal);
     assert!(flock < key_generation);

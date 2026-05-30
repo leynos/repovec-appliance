@@ -1,0 +1,41 @@
+# Fedora-based image for repovec-appliance provisioning integration tests.
+#
+# Build context: repository root, so packaging assets are reachable as
+# `packaging/...`. The pytest harness in `integration-tests/conftest.py`
+# builds this image via testcontainers-python; manual smoke-testing is
+# documented in `integration-tests/README.md`.
+FROM registry.fedoraproject.org/fedora:41
+
+# Tooling required by the provisioning helper and the lifecycle assertions.
+# `shadow-utils` provides `useradd`/`userdel`; `coreutils` provides the
+# `stat`/`install`/`od` helpers the script and tests depend on. `procps-ng`
+# keeps `sleep infinity` and friends available even on slim base layers.
+RUN dnf -y install \
+        podman \
+        shadow-utils \
+        passwd \
+        coreutils \
+        findutils \
+        grep \
+        util-linux \
+        procps-ng \
+        openssl \
+        ca-certificates \
+    && dnf clean all
+
+# Copy the packaging assets verbatim. The helper script lives under
+# `/usr/libexec/repovec/repovec-qdrant-api-key` to mirror the production
+# install layout. Sysusers/systemd assets are copied alongside so future
+# service-level tests can pick them up without rebuilding the image.
+RUN install -d /usr/libexec/repovec
+COPY packaging/libexec/repovec-qdrant-api-key /usr/libexec/repovec/repovec-qdrant-api-key
+RUN chmod 0755 /usr/libexec/repovec/repovec-qdrant-api-key
+
+RUN install -d /usr/lib/sysusers.d /usr/lib/systemd/system
+COPY packaging/sysusers.d/repovec.conf /usr/lib/sysusers.d/repovec.conf
+COPY packaging/systemd/repovec-qdrant-api-key.service \
+     /usr/lib/systemd/system/repovec-qdrant-api-key.service
+
+# Keep the container alive so pytest can exec inside it. The harness uses
+# `docker exec`-style invocations rather than the default command.
+CMD ["sleep", "infinity"]

@@ -76,14 +76,14 @@ documentation-tooling configuration change or missing changed-file input
 requires the conservative path. The user-visible flow is documented in
 [users-guide.md](users-guide.md).
 
-`systemd-gate` validates the checked-in systemd unit source files
-(`packaging/systemd/repovec.target`, `repovecd.service`,
-`repovec-mcpd.service`) against the appliance service-layout contract. Each
-unit must define the required properties, dependencies, and service identity
-that the appliance daemons expect at runtime. The job runs
-`make validate-systemd`, which builds `repovec-ci` and invokes it in
-`systemd-gate` mode. Unlike the other gates, `systemd-gate` always validates
-the embedded units — it does not inspect the changed-file list.
+`systemd-gate` always reports a result so it can be configured as a required
+check. It runs `make validate-systemd`, which builds the `repovec-ci` helper
+and calls `repovec-ci systemd-gate` to verify that the checked-in systemd unit
+files still satisfy the appliance service-layout contract. A non-zero exit from
+the gate is a fatal CI failure.
+
+Run `make validate-systemd` locally before proposing a change to any file under
+`packaging/systemd/` or `crates/repovec-core/src/appliance/systemd_units/`.
 
 ## 3. CI policy helper
 
@@ -146,13 +146,14 @@ USAGE:
     repovec-ci systemd-gate
 ```
 
-| Subcommand / Flag       | Description                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------- |
-| `docs-gate` (default)   | Evaluate documentation-gate policy (the default mode when no subcommand is given)               |
-| `--changed-file <path>` | Treat `<path>` as a changed file (repeatable; mutually exclusive with `--stdin`)                |
-| `--stdin`               | Read newline-delimited changed-file paths from stdin (mutually exclusive with `--changed-file`) |
-| `-h`, `--help`          | Print usage text and exit                                                                       |
-| `systemd-gate`          | Validate the checked-in systemd units against the appliance contract                            |
+| Subcommand / Flag       | Description                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| *(no subcommand)*       | Equivalent to `docs-gate`; retained for backwards compatibility.                                                    |
+| `docs-gate`             | Evaluate the documentation-gate policy and print `key=value` lines for `$GITHUB_OUTPUT`.                            |
+| `systemd-gate`          | Validate the checked-in systemd unit files against the appliance contract; exit non-zero on any contract violation. |
+| `--changed-file <path>` | (docs-gate only) Treat `<path>` as a changed file; repeatable; mutually exclusive with `--stdin`.                   |
+| `--stdin`               | (docs-gate only) Read newline-delimited changed-file paths from stdin; mutually exclusive with `--changed-file`.    |
+| `-h`, `--help`          | Print usage text and exit.                                                                                          |
 
 In `docs-gate` mode the binary writes `key=value` lines to stdout for use with
 `$GITHUB_OUTPUT` and is invoked by the `docs-gate` CI job. The output keys are:
@@ -166,11 +167,13 @@ In `docs-gate` mode the binary writes `key=value` lines to stdout for use with
 - `conservative_fallback_files_count`
 - `conservative_fallback_files`
 
-In `systemd-gate` mode the binary validates the embedded systemd unit source
-files against the appliance service-layout contract and prints a confirmation
-message on success. On failure it writes the validation error to stderr and
-exits non-zero. The `systemd-gate` CI job invokes this mode through
-`make validate-systemd`.
+`systemd-gate` writes a single confirmation line to stdout on success:
+
+```text
+checked-in systemd units satisfy the appliance contract
+```
+
+On failure it writes a human-readable error to stderr and exits with status 1.
 
 ## 4. Required-check enforcement
 

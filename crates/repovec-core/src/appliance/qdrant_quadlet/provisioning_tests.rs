@@ -13,12 +13,18 @@ macro_rules! include_packaging_asset {
     };
 }
 
+/// Returns the byte offset of the first occurrence of `needle` in
+/// `PROVISIONING_HELPER`, panicking if the needle is missing.
 macro_rules! helper_offset {
     ($needle:expr) => {
         PROVISIONING_HELPER.find($needle).expect("helper should contain expected text")
     };
 }
 
+/// Returns the byte offset of the first occurrence of `needle` in
+/// `PROVISIONING_HELPER` after `offset`, useful for ordering assertions.
+/// Panics if `offset` is not a valid UTF-8 boundary or if no matching
+/// occurrence exists after `offset`.
 macro_rules! helper_offset_after {
     ($needle:expr, $offset:expr) => {
         $offset
@@ -95,10 +101,14 @@ fn provisioning_helper_removes_stale_secret_before_generating_key_file() {
 fn provisioning_helper_uses_a_root_controlled_lock_path() {
     let lock_file = helper_offset!("/etc/repovec/repovec-qdrant-api-key.lock");
     let flock = helper_offset!("flock 9");
+    let debug_waiting = helper_offset!("debug_log \"waiting for ${LOCK_FILE}\"");
+    let debug_acquired = helper_offset!("debug_log \"acquired ${LOCK_FILE}\"");
 
     assert!(PROVISIONING_HELPER.contains("debug_log \"acquired ${LOCK_FILE}\""));
     assert!(PROVISIONING_HELPER.contains("debug_log \"released ${LOCK_FILE}\""));
     assert!(!PROVISIONING_HELPER.contains("LOCK_FILE=/var/lock/"));
+    assert!(debug_waiting < flock);
+    assert!(flock < debug_acquired);
     assert!(lock_file < flock);
 }
 

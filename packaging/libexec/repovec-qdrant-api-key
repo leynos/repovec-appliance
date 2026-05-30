@@ -61,13 +61,13 @@ generate_key_file() {
     trap - EXIT HUP INT TERM
 }
 
-ensure_repovec_user
-install -d -o root -g "${REPOVEC_GROUP}" -m 0750 "${CONFIG_DIR}"
-
 exec 9>"${LOCK_FILE}"
 debug_log "waiting for ${LOCK_FILE}"
 flock 9
 debug_log "acquired ${LOCK_FILE}"
+
+ensure_repovec_user
+install -d -o root -g "${REPOVEC_GROUP}" -m 0750 "${CONFIG_DIR}"
 
 if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
     rm_error="$(mktemp "${CONFIG_DIR}/qdrant-secret-rm.XXXXXX")"

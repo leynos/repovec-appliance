@@ -1,3 +1,9 @@
 target/
 **/*.rs.bk
 .agents/mcp/context_pack/packs/.repo.lock
+
+# Python integration-test harness
+integration-tests/.venv/
+integration-tests/**/__pycache__/
+integration-tests/.pytest_cache/
+integration-tests/*.egg-info/

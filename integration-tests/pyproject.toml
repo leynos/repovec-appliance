@@ -1,0 +1,34 @@
+[project]
+name = "repovec-appliance-integration-tests"
+version = "0.0.0"
+description = "Integration tests for the repovec-appliance packaging helpers."
+requires-python = ">=3.13"
+dependencies = [
+    "pytest>=8.3,<10",
+    "testcontainers>=4.9,<5",
+    "cuprum>=0.1,<1",
+    "cmd-mox>=0.2,<1",
+]
+
+# The harness is intentionally not an installable wheel; it exists only as
+# a vehicle for pytest discovery and ``uv sync``. Telling setuptools there
+# are no packages keeps ``uv pip install -e .`` (and the wider ``uv sync``
+# workflow) usable without a custom build backend.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["provisioning"]
+markers = [
+    "integration: requires a Docker-compatible container runtime and privileged nested Podman",
+    "cmd_mox: command-contract tests using cmd-mox shims",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:testcontainers.*",
+]

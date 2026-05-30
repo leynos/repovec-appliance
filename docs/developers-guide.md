@@ -247,6 +247,41 @@ The helper is host-facing packaging code. It owns filesystem, user, permission
 and Podman-secret operations; `repovec-core` only validates the static contract
 that those assets expose.
 
+#### Mutual exclusion in the provisioning helper
+
+
+##### `LOCK_FILE`
+
+The helper uses `/etc/repovec/repovec-qdrant-api-key.lock` as its lock file.
+It opens the file on descriptor 9 with `exec 9>"${LOCK_FILE}"` and acquires an
+exclusive lock via `flock 9`.  The lock file is placed in `/etc/repovec`
+rather than `/var/lock` because `/etc/repovec` is a root-owned directory with
+mode `0750` that is not world-writable.  This prevents unprivileged users from
+substituting the lock file in a way that could interfere with the mutual
+exclusion protocol.
+
+
+##### Critical section boundaries
+
+The lock is acquired after the initial `install -d -o root -g root` bootstrap
+step.  That bootstrap runs unlocked so the lock file's parent directory already
+exists when the helper attempts to open it.  Once held, the lock covers
+`ensure_repovec_user`, the group-ownership `install -d`, secret inspection,
+secret removal, key generation, and secret creation.  The lock is released via
+the explicit `release_lock` helper, which calls `flock -u 9` and emits a debug
+log.  Signal handlers on `EXIT`, `HUP`, `INT`, and `TERM` also call
+`release_lock` before cleaning up temporary files, ensuring the lock is not
+held by a signal-interrupted process for longer than necessary.
+
+
+##### Fail-closed invariant
+
+Unexpected failures from `podman secret rm` (anything other than "in use")
+cause the helper to exit non-zero.  This fail-closed behaviour ensures the
+caller observes a failure rather than silently proceeding with the existing
+secret, which might be stale or compromised.  The "in use" case exits zero
+because the existing secret remains valid and usable.
+
 ### 5.3 `systemd_units` validation surface
 
 The `systemd_units` module exposes the public validation surface for the

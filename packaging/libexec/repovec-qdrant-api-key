@@ -45,7 +45,7 @@ ensure_repovec_user() {
 
 generate_key_file() {
     tmp_file="$(mktemp "${CONFIG_DIR}/qdrant-api-key.XXXXXX")"
-    trap 'rm -f "${tmp_file}"' EXIT HUP INT TERM
+    trap 'rm -f "${tmp_file}"; release_lock' EXIT HUP INT TERM
 
     log "generating qdrant API key file"
     candidate_key="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
@@ -73,7 +73,7 @@ install -d -o root -g "${REPOVEC_GROUP}" -m 0750 "${CONFIG_DIR}"
 
 if podman secret inspect "${SECRET_NAME}" >/dev/null 2>&1; then
     rm_error="$(mktemp "${CONFIG_DIR}/qdrant-secret-rm.XXXXXX")"
-    trap 'rm -f "${rm_error}"' EXIT HUP INT TERM
+    trap 'rm -f "${rm_error}"; release_lock' EXIT HUP INT TERM
     if ! podman secret rm "${SECRET_NAME}" > /dev/null 2>"${rm_error}"; then
         if grep -qi 'in use' "${rm_error}"; then
             log "podman secret is in use; leaving existing secret in place"
@@ -103,7 +103,7 @@ chmod 0400 "${KEY_FILE}"
 log "ensured qdrant API key permissions"
 
 create_error="$(mktemp "${CONFIG_DIR}/qdrant-secret-create.XXXXXX")"
-trap 'rm -f "${create_error}"' EXIT HUP INT TERM
+trap 'rm -f "${create_error}"; release_lock' EXIT HUP INT TERM
 if ! podman secret create "${SECRET_NAME}" "${KEY_FILE}" >/dev/null 2>"${create_error}"; then
     log "podman secret creation failed: $(cat "${create_error}")"
     release_lock

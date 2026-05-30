@@ -151,6 +151,29 @@ fn provisioning_helper_preserves_existing_keys_and_locks_permissions() {
 }
 
 #[test]
+fn provisioning_helper_releases_lock_before_every_error_exit() {
+    let release_lock_a = helper_offset!("release_lock");
+    let exit_a = helper_offset_after!("exit 1", release_lock_a);
+    assert!(release_lock_a < exit_a);
+
+    let release_lock_b = helper_offset_after!("release_lock", exit_a);
+    let exit_b = helper_offset_after!("exit 0", release_lock_b);
+    assert!(release_lock_b < exit_b);
+
+    let release_lock_c = helper_offset_after!("release_lock", exit_b);
+    let exit_c = helper_offset_after!("exit 1", release_lock_c);
+    assert!(release_lock_c < exit_c);
+
+    let release_lock_d = helper_offset_after!("release_lock", exit_c);
+    let exit_d = helper_offset_after!("exit 1", release_lock_d);
+    assert!(release_lock_d < exit_d);
+
+    let created_log = helper_offset!("created qdrant API-key podman secret");
+    let release_lock_e = helper_offset_after!("release_lock", created_log);
+    assert!(created_log < release_lock_e);
+}
+
+#[test]
 fn provisioning_helper_does_not_commit_or_echo_a_raw_key_literal() {
     assert!(!PROVISIONING_HELPER.contains("QDRANT__SERVICE__API_KEY="));
     assert!(!PROVISIONING_HELPER.contains("echo \"${KEY_FILE}\""));

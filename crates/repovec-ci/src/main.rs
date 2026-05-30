@@ -68,8 +68,17 @@ fn run_docs_gate(out: &mut impl io::Write, input: Input) -> io::Result<()> {
 }
 
 fn run_systemd_gate(out: &mut impl io::Write) -> io::Result<()> {
-    repovec_core::appliance::systemd_units::validate_checked_in_systemd_units()
-        .map_err(io::Error::other)?;
+    run_systemd_gate_with(
+        out,
+        repovec_core::appliance::systemd_units::validate_checked_in_systemd_units,
+    )
+}
+
+fn run_systemd_gate_with<F>(out: &mut impl io::Write, validator: F) -> io::Result<()>
+where
+    F: FnOnce() -> Result<(), repovec_core::appliance::systemd_units::SystemdUnitError>,
+{
+    validator().map_err(io::Error::other)?;
     writeln!(out, "checked-in systemd units satisfy the appliance contract")?;
     out.flush()
 }
@@ -179,8 +188,12 @@ mod tests {
 
     use insta::assert_snapshot;
     use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
+    use repovec_core::appliance::systemd_units::SystemdUnitError;
 
-    use super::{Command, Input, USAGE, parse_args, print_usage, run_systemd_gate, write_plan};
+    use super::{
+        Command, Input, USAGE, parse_args, print_usage, run_systemd_gate, run_systemd_gate_with,
+        write_plan,
+    };
 
     fn buffer_to_string(buffer: Vec<u8>) -> String {
         match String::from_utf8(buffer) {
@@ -320,10 +333,22 @@ mod tests {
 
         run_systemd_gate(&mut buffer).expect("checked-in systemd units should be valid");
 
-        assert_eq!(
-            buffer_to_string(buffer),
-            "checked-in systemd units satisfy the appliance contract\n",
-        );
+        assert_snapshot!("systemd_gate_success_output", buffer_to_string(buffer));
+    }
+
+    #[test]
+    fn systemd_gate_reports_validation_failure() {
+        let injected_error =
+            SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" };
+
+        let mut buffer = Vec::new();
+
+        let Err(error) = run_systemd_gate_with(&mut buffer, || Err(injected_error)) else {
+            panic!("run_systemd_gate_with should propagate validation errors");
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert!(buffer.is_empty());
     }
 
     #[test]

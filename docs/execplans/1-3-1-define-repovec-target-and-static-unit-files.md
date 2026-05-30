@@ -1,9 +1,8 @@
 # Define repovec target and static units
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -50,8 +49,8 @@ the user explicitly approved this ExecPlan.
   at 80 columns.
 - Before committing the implementation, run the repository gates in sequence,
   not in parallel: `make fmt`, `make markdownlint`, `make nixie`,
-  `make check-fmt`, `make lint`, and `make test`. At minimum, the
-  user-requested `make check-fmt`, `make lint`, and `make test` must pass.
+  `make check-fmt`, `make lint`, and `make test`. At minimum, the user-requested
+  `make check-fmt`, `make lint`, and `make test` must pass.
 
 ## Tolerances
 
@@ -235,8 +234,8 @@ embeds `packaging/systemd/qdrant.container` with `include_str!`, parses the
 small subset of Quadlet syntax needed for the contract, returns a typed error
 enum, and validates the checked-in asset with unit and behavioural tests.
 
-Roadmap item `1.3.1` in `docs/roadmap.md` asks for a `repovec.target` that
-wants `qdrant.service`, `repovecd.service`, `repovec-mcpd.service`, and
+Roadmap item `1.3.1` in `docs/roadmap.md` asks for a `repovec.target` that wants
+`qdrant.service`, `repovecd.service`, `repovec-mcpd.service`, and
 `cloudflared.service`. It also asks for stub unit files for `repovecd.service`
 and `repovec-mcpd.service` with correct `After=` and `Requires=` relationships.
 
@@ -370,12 +369,12 @@ line, property before section, missing required unit file section, missing
 target `Wants=`, target using `qdrant.container`, missing `repovecd.service`
 `Requires=qdrant.service`, missing `repovecd.service` `After=qdrant.service`,
 missing `repovec-mcpd.service` `Requires=repovecd.service`, missing
-`repovec-mcpd.service` `Requires=qdrant.service`, missing
-`repovec-mcpd.service` `After=repovecd.service`, missing `repovec-mcpd.service`
+`repovec-mcpd.service` `Requires=qdrant.service`, missing `repovec-mcpd.service`
+`After=repovecd.service`, missing `repovec-mcpd.service`
 `After=qdrant.service`, and wrong `ExecStart=` binary names.
 
-Stage D adds automated tests. Put `rstest` unit tests alongside the validator
-in `crates/repovec-core/src/appliance/systemd_units/tests.rs`. Use fixtures for
+Stage D adds automated tests. Put `rstest` unit tests alongside the validator in
+`crates/repovec-core/src/appliance/systemd_units/tests.rs`. Use fixtures for
 the checked-in unit contents and parameterized mutation cases for each error
 variant. Check operator-visible error messages with literal diagnostic
 assertions because separate snapshot files would exceed this plan's file-count

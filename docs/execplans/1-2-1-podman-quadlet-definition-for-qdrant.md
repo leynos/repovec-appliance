@@ -7,9 +7,8 @@
 - **Created:** 2026-04-11
 - **Primary references:** [roadmap](../roadmap.md),
   [technical design](../repovec-appliance-technical-design.md), [Podman Quadlet
-  documentation][podman-quadlet-docs], [Qdrant configuration
-  documentation][qdrant-config-docs], and [Qdrant security
-  documentation][qdrant-security-docs]
+  documentation][podman-quadlet-docs], [Qdrant configuration documentation][
+  qdrant-config-docs], and [Qdrant security documentation][qdrant-security-docs]
 
 ## 1. Summary
 
@@ -42,8 +41,8 @@ roadmap item `1.2.2`.
   Podman and systemd are available.
 - The prompt's completion criteria about interactive sessions, resize
   propagation, and exit-code handling do not describe this roadmap item. Treat
-  them as a carried-over mismatch and do not use them as the acceptance gate
-  for `1.2.1` without clarification.
+  them as a carried-over mismatch and do not use them as the acceptance gate for
+  `1.2.1` without clarification.
 
 ## 3. Proposed design decisions
 
@@ -239,7 +238,6 @@ Roadmap item `1.2.1` is complete when all of the following are true:
 - `docs/roadmap.md` marks `1.2.1` as done
 
 [podman-quadlet-docs]:
-https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html
-[qdrant-config-docs]:
-https://qdrant.tech/documentation/operations/configuration/
-[qdrant-security-docs]: https://qdrant.tech/documentation/operations/security/
+<https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html> [
+qdrant-config-docs]: <https://qdrant.tech/documentation/operations/configuration/>
+[qdrant-security-docs]: <https://qdrant.tech/documentation/operations/security/>

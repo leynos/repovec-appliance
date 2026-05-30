@@ -42,13 +42,14 @@ not duplicate or partially reimplement them in workflow YAML.
 
 ## 2. GitHub Actions gate set
 
-The repository CI workflow exposes five stable, required job names:
+The repository CI workflow exposes six stable, required job names:
 
 - `build`
 - `check-fmt`
 - `lint`
 - `test`
 - `docs-gate`
+- `systemd-gate`
 
 The first four jobs run on pull request updates, pushes to `main`, and manual
 workflow dispatch.
@@ -74,6 +75,15 @@ when one of the changed Markdown files contains a Mermaid diagram, or when a
 documentation-tooling configuration change or missing changed-file input
 requires the conservative path. The user-visible flow is documented in
 [users-guide.md](users-guide.md).
+
+`systemd-gate` validates the checked-in systemd unit source files
+(`packaging/systemd/repovec.target`, `repovecd.service`,
+`repovec-mcpd.service`) against the appliance service-layout contract. Each
+unit must define the required properties, dependencies, and service identity
+that the appliance daemons expect at runtime. The job runs
+`make validate-systemd`, which builds `repovec-ci` and invokes it in
+`systemd-gate` mode. Unlike the other gates, `systemd-gate` always validates
+the embedded units — it does not inspect the changed-file list.
 
 ## 3. CI policy helper
 
@@ -131,18 +141,21 @@ straightforward to test with a stub closure.
 
 ```text
 USAGE:
-    repovec-ci [--changed-file <path> [--changed-file <path>]...] [--help]
-    repovec-ci --stdin
+    repovec-ci [docs-gate] [--changed-file <path> [--changed-file <path>]...] [--help]
+    repovec-ci [docs-gate] --stdin
+    repovec-ci systemd-gate
 ```
 
-| Flag                    | Description                                                                                     |
+| Subcommand / Flag       | Description                                                                                     |
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `docs-gate` (default)   | Evaluate documentation-gate policy (the default mode when no subcommand is given)               |
 | `--changed-file <path>` | Treat `<path>` as a changed file (repeatable; mutually exclusive with `--stdin`)                |
 | `--stdin`               | Read newline-delimited changed-file paths from stdin (mutually exclusive with `--changed-file`) |
 | `-h`, `--help`          | Print usage text and exit                                                                       |
+| `systemd-gate`          | Validate the checked-in systemd units against the appliance contract                            |
 
-The binary writes `key=value` lines to stdout for use with `$GITHUB_OUTPUT` and
-is invoked by the `docs-gate` CI job. The output keys are:
+In `docs-gate` mode the binary writes `key=value` lines to stdout for use with
+`$GITHUB_OUTPUT` and is invoked by the `docs-gate` CI job. The output keys are:
 
 - `should_run`
 - `docs_gate_required`
@@ -153,11 +166,17 @@ is invoked by the `docs-gate` CI job. The output keys are:
 - `conservative_fallback_files_count`
 - `conservative_fallback_files`
 
+In `systemd-gate` mode the binary validates the embedded systemd unit source
+files against the appliance service-layout contract and prints a confirmation
+message on success. On failure it writes the validation error to stderr and
+exits non-zero. The `systemd-gate` CI job invokes this mode through
+`make validate-systemd`.
+
 ## 4. Required-check enforcement
 
 The desired repository ruleset is versioned in
 [`/.github/rulesets/main-ci-gating.json`](../.github/rulesets/main-ci-gating.json).
- Apply that payload only after the workflow changes that produce the required
+Apply that payload only after the workflow changes that produce the required
 checks are available on the default branch.
 
 Example application command:
@@ -282,13 +301,13 @@ contract in feature files and keep the executable scenarios thin.
 strings for typed appliance errors (for example every [`QdrantQuadletError`][])
 should be derived from **`validate_*` failures**, not from errors constructed
 solely in tests. Mutate an embed or copy of the checked-in asset (or compose a
-deliberate invalid parse input), invoke the real validator, assert the
-canonical `PartialEq/Eq` typed error variant, then compare `error.to_string()`
-against a committed YAML snapshot from the [`insta`][] crate (workspace-pinned
-under `[workspace.dependencies]` and pulled in via `[dev-dependencies]`).
-Direct literal assertions for `error.to_string()` are acceptable when
-committing one snapshot file per diagnostic would exceed the active ExecPlan's
-file-count tolerance. Prefer one `#[rstest]` harness with cases that enumerate
+deliberate invalid parse input), invoke the real validator, assert the canonical
+`PartialEq/Eq` typed error variant, then compare `error.to_string()` against a
+committed YAML snapshot from the [`insta`][] crate (workspace-pinned under
+`[workspace.dependencies]` and pulled in via `[dev-dependencies]`). Direct
+literal assertions for `error.to_string()` are acceptable when committing one
+snapshot file per diagnostic would exceed the active ExecPlan's file-count
+tolerance. Prefer one `#[rstest]` harness with cases that enumerate
 scenario-specific mutations alongside their stable snapshot labels, colocated
 under the module `snapshots/` directory (see
 `crates/repovec-core/src/appliance/qdrant_quadlet/`). Duplicate labels across
@@ -307,8 +326,8 @@ complement to example-based `rstest` unit tests.  When writing property tests,
 under test must handle — filters are reserved for excluding inputs that are
 structurally invalid for the strategy, not for narrowing the test's coverage of
 the invariant.  See
-`crates/repovec-core/src/appliance/qdrant_quadlet/tests_proptest.rs` for a worked
-example.
+`crates/repovec-core/src/appliance/qdrant_quadlet/tests_proptest.rs` for a
+worked example.
 
 See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for

@@ -1,7 +1,10 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie validate-systemd
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie validate-systemd integration-test integration-command-test
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
+PYTHON ?= python3
+INTEGRATION_TESTS_DIR ?= integration-tests
+PYTEST_FLAGS ?=
 BUILD_JOBS ?=
 BASE_RUST_FLAGS ?= -D warnings
 BASE_RUSTDOC_FLAGS ?= -D warnings
@@ -91,6 +94,35 @@ nixie: ## Validate Mermaid diagrams
 validate-systemd: ensure-cargo ## Validate checked-in systemd unit contracts
 	$(CARGO) build --quiet -p repovec-ci
 	$(CARGO) run --quiet -p repovec-ci -- systemd-gate
+
+integration-test: ## Run testcontainers-based provisioning lifecycle tests
+	@if ! command -v "$(PYTHON)" >/dev/null 2>&1; then \
+		echo "$(PYTHON) not found on PATH; skipping integration-test."; \
+		exit 0; \
+	fi; \
+	if ! "$(PYTHON)" -c 'import pytest, testcontainers' >/dev/null 2>&1; then \
+		echo "pytest or testcontainers not installed; skipping integration-test."; \
+		echo "Install dependencies via: cd $(INTEGRATION_TESTS_DIR) && uv sync"; \
+		exit 0; \
+	fi; \
+	if ! "$(PYTHON)" -c 'import docker; docker.from_env().ping()' >/dev/null 2>&1; then \
+		echo "No Docker-compatible runtime reachable; skipping integration-test."; \
+		echo "Start Podman: podman system service --time=0 & export DOCKER_HOST=unix://\$$XDG_RUNTIME_DIR/podman/podman.sock"; \
+		exit 0; \
+	fi; \
+	cd $(INTEGRATION_TESTS_DIR) && "$(PYTHON)" -m pytest -m integration provisioning $(PYTEST_FLAGS)
+
+integration-command-test: ## Run cmd-mox-based command-contract tests
+	@if ! command -v "$(PYTHON)" >/dev/null 2>&1; then \
+		echo "$(PYTHON) not found on PATH; skipping integration-command-test."; \
+		exit 0; \
+	fi; \
+	if ! "$(PYTHON)" -c 'import pytest, cmd_mox, cuprum' >/dev/null 2>&1; then \
+		echo "pytest, cmd-mox, or cuprum not installed; skipping integration-command-test."; \
+		echo "Install dependencies via: cd $(INTEGRATION_TESTS_DIR) && uv sync"; \
+		exit 0; \
+	fi; \
+	cd $(INTEGRATION_TESTS_DIR) && "$(PYTHON)" -m pytest -m cmd_mox provisioning $(PYTEST_FLAGS)
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \

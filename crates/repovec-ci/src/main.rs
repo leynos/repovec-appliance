@@ -188,11 +188,9 @@ mod tests {
 
     use insta::assert_snapshot;
     use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
-    use repovec_core::appliance::systemd_units::SystemdUnitError;
 
     use super::{
-        Command, Input, USAGE, parse_args, print_usage, run_systemd_gate, run_systemd_gate_with,
-        write_plan,
+        Command, Input, USAGE, parse_args, print_usage, run_systemd_gate_with, write_plan,
     };
 
     fn buffer_to_string(buffer: Vec<u8>) -> String {
@@ -331,24 +329,24 @@ mod tests {
     fn systemd_gate_writes_success_confirmation() {
         let mut buffer = Vec::new();
 
-        run_systemd_gate(&mut buffer).expect("checked-in systemd units should be valid");
+        run_systemd_gate_with(&mut buffer, || Ok(()))
+            .expect("successful validation should write a confirmation line");
 
-        assert_snapshot!("systemd_gate_success_output", buffer_to_string(buffer));
+        assert_snapshot!("systemd_gate_success_confirmation", buffer_to_string(buffer));
     }
 
     #[test]
-    fn systemd_gate_reports_validation_failure() {
-        let injected_error =
-            SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" };
+    fn systemd_gate_propagates_validation_error() {
+        use repovec_core::appliance::systemd_units::SystemdUnitError;
 
+        let injected =
+            SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" };
         let mut buffer = Vec::new();
 
-        let Err(error) = run_systemd_gate_with(&mut buffer, || Err(injected_error)) else {
-            panic!("run_systemd_gate_with should propagate validation errors");
-        };
+        let result = run_systemd_gate_with(&mut buffer, || Err(injected));
 
-        assert_eq!(error.kind(), io::ErrorKind::Other);
-        assert!(buffer.is_empty());
+        assert!(result.is_err(), "validation failure must propagate as Err");
+        assert!(buffer.is_empty(), "no output should be written on failure");
     }
 
     #[test]

@@ -1,5 +1,6 @@
 ---
 source: crates/repovec-ci/src/main.rs
+assertion_line: 335
 expression: buffer_to_string(buffer)
 ---
 checked-in systemd units satisfy the appliance contract

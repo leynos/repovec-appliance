@@ -6,10 +6,9 @@
 - **Status:** Implemented
 - **Created:** 2026-04-11
 - **Primary references:** [roadmap](../roadmap.md),
-  [technical design](../repovec-appliance-technical-design.md),
-  [Podman Quadlet documentation][podman-quadlet-docs],
-  [Qdrant configuration documentation][qdrant-config-docs], and
-  [Qdrant security documentation][qdrant-security-docs]
+  [technical design](../repovec-appliance-technical-design.md), [Podman Quadlet
+  documentation][podman-quadlet-docs], [Qdrant configuration documentation][
+  qdrant-config-docs], and [Qdrant security documentation][qdrant-security-docs]
 
 ## 1. Summary
 

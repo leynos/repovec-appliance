@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.commands import run_host
+from lib.commands import HostCommandResult, run_host
 from lib.constants import (
     KEY_HEX_LENGTH,
     REPOVEC_GROUP,
@@ -33,7 +33,7 @@ pytest_plugins = ("cmd_mox.pytest_plugin",)
 pytestmark = pytest.mark.cmd_mox
 
 
-def _invoke_helper(helper: Path, env: dict[str, str]) -> object:
+def _invoke_helper(helper: Path, env: dict[str, str]) -> HostCommandResult:
     """Run the patched helper through cuprum and return the structured result."""
 
     return run_host("sh", str(helper), env=env)
@@ -106,7 +106,9 @@ def test_generates_key_when_key_file_is_absent(
     branch is exercised. Only the privilege-dependent commands are shimmed.
     """
 
-    assert not helper_key_file.exists()
+    assert not helper_key_file.exists(), (
+        f"precondition failed: helper key file already exists at {helper_key_file}"
+    )
 
     cmd_mox.mock("getent").with_args("passwd", REPOVEC_USER).returns(exit_code=0)
     cmd_mox.stub("install").returns(exit_code=0)
@@ -202,8 +204,13 @@ def test_does_not_regenerate_valid_existing_key(
     # the helper did not regenerate the key.
     assert mv_spy.call_count == 0, list(mv_spy.invocations)
 
-    assert helper_key_file.read_text(encoding="utf-8") == original
-    assert helper_key_file.stat().st_mtime_ns == original_mtime
+    assert helper_key_file.read_text(encoding="utf-8") == original, (
+        "key content changed unexpectedly on idempotent rerun"
+    )
+    assert helper_key_file.stat().st_mtime_ns == original_mtime, (
+        f"key mtime changed unexpectedly: "
+        f"{helper_key_file.stat().st_mtime_ns} != {original_mtime}"
+    )
 
     sub_commands = [
         tuple(inv.args[:2]) for inv in podman_spy.invocations if len(inv.args) >= 2

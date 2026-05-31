@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from cuprum import CommandResult, Program
+    from cuprum import CommandResult, Program, ProgramCatalogue
 
 
 def _build_catalogue() -> tuple[Program, ...]:
@@ -48,7 +48,7 @@ def _build_catalogue() -> tuple[Program, ...]:
     )
 
 
-def host_catalogue() -> "ProgramCatalogue":  # type: ignore[name-defined]
+def host_catalogue() -> ProgramCatalogue:
     """Return the cuprum :class:`ProgramCatalogue` shared by host-side helpers."""
 
     from cuprum import ProgramCatalogue, ProjectSettings

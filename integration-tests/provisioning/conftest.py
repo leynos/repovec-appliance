@@ -37,6 +37,24 @@ def patched_helper(tmp_path: Path) -> Path:
         f"KEY_FILE={config_dir / 'qdrant-api-key'}",
     )
 
+    # Fail loud if a future rename in the helper script makes the str.replace
+    # calls a no-op: silently running the unpatched helper would try to write
+    # to the real /etc/repovec and (with sufficient privileges) mutate the
+    # host. Asserting the originals are gone catches the refactor at fixture
+    # setup, not deep in a confusing test failure.
+    for literal in (
+        "CONFIG_DIR=/etc/repovec",
+        "KEY_FILE=/etc/repovec/qdrant-api-key",
+    ):
+        if literal in patched:
+            msg = (
+                f"patched_helper fixture failed: '{literal}' is still present "
+                "in the helper script after the rewrite. The helper's path "
+                "constants likely changed; update the rewrite in "
+                "integration-tests/provisioning/conftest.py to match."
+            )
+            raise RuntimeError(msg)
+
     dest = tmp_path / "repovec-qdrant-api-key"
     dest.write_text(patched, encoding="utf-8")
     dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)

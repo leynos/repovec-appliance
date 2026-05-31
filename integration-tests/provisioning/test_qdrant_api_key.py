@@ -66,7 +66,9 @@ def test_creates_repovec_system_user_when_absent(
     entry = assert_repovec_user(container_session)
     # ``useradd --system`` allocates a UID below the regular range; we only
     # care that the helper made the user exist with the documented attributes.
-    assert entry.name == REPOVEC_USER
+    assert entry.name == REPOVEC_USER, (
+        f"unexpected passwd entry name: {entry.name!r} (full entry: {entry})"
+    )
 
 
 def test_creates_key_file_with_mode_0400_and_ownership_repovec(
@@ -97,7 +99,10 @@ def test_creates_podman_secret_repovec_qdrant_api_key(
     _run_helper(container_session)
 
     secret_id = assert_podman_secret_exists(container_session)
-    assert secret_id  # non-empty ID proves the secret is fully materialised
+    # A non-empty ID proves the secret is fully materialised; an empty string
+    # back from ``podman secret inspect`` means the helper succeeded but the
+    # secret entry is half-created.
+    assert secret_id, f"podman secret {SECRET_NAME!r} returned an empty ID"
     assert_podman_secret_name(container_session)
 
 
@@ -120,13 +125,27 @@ def test_preserves_existing_key_file_on_rerun(
     second_stat = stat_file(container_session, KEY_FILE)
     second_contents = container_session.must_run("cat", KEY_FILE).stdout
 
-    assert second_contents == first_contents
-    assert second_stat.mode == first_stat.mode
-    assert second_stat.user == first_stat.user
-    assert second_stat.group == first_stat.group
+    assert second_contents == first_contents, (
+        "key file contents changed across runs (helper is not idempotent)"
+    )
+    assert second_stat.mode == first_stat.mode, (
+        f"key file mode changed across runs: "
+        f"{first_stat.mode!r} -> {second_stat.mode!r}"
+    )
+    assert second_stat.user == first_stat.user, (
+        f"key file owner changed across runs: "
+        f"{first_stat.user!r} -> {second_stat.user!r}"
+    )
+    assert second_stat.group == first_stat.group, (
+        f"key file group changed across runs: "
+        f"{first_stat.group!r} -> {second_stat.group!r}"
+    )
     # The helper's contract is "do not touch a valid existing key", so the
     # mtime must not have advanced even though the script ran end-to-end.
-    assert second_stat.mtime == first_stat.mtime, (first_stat, second_stat)
+    assert second_stat.mtime == first_stat.mtime, (
+        f"key file mtime advanced across idempotent runs "
+        f"(before: {first_stat}, after: {second_stat})"
+    )
 
     # The secret should still be present, even if its ID rolled over because
     # the helper rms+creates on every run when a stale secret is found.
@@ -150,7 +169,9 @@ def test_regenerates_key_file_when_absent_and_refreshes_secret(
 
     new_contents = assert_key_file_contract(container_session)
     assert new_contents != original_contents, "helper did not regenerate the key"
-    assert HEX_KEY_RE.fullmatch(new_contents.strip("\n"))
+    assert HEX_KEY_RE.fullmatch(new_contents.strip("\n")), (
+        f"regenerated key is not a valid 64-hex string: {new_contents!r}"
+    )
 
     new_secret_id = assert_podman_secret_exists(container_session)
     assert new_secret_id != original_secret_id, (
@@ -176,5 +197,11 @@ def test_creates_etc_repovec_with_mode_0750_and_ownership_root_repovec(
     # The key file lives directly under this directory; sanity-check that the
     # path remains the documented constant so refactors of the helper that
     # accidentally move it are caught here.
-    assert PurePosixPath(KEY_FILE).parent == PurePosixPath(REPOVEC_ETC_DIR)
-    assert get_passwd_entry(container_session, REPOVEC_USER).name == REPOVEC_USER
+    assert PurePosixPath(KEY_FILE).parent == PurePosixPath(REPOVEC_ETC_DIR), (
+        f"KEY_FILE parent {PurePosixPath(KEY_FILE).parent!r} does not match "
+        f"REPOVEC_ETC_DIR {REPOVEC_ETC_DIR!r}; constants drifted apart."
+    )
+    passwd_entry = get_passwd_entry(container_session, REPOVEC_USER)
+    assert passwd_entry.name == REPOVEC_USER, (
+        f"passwd lookup returned wrong name: {passwd_entry.name!r} (entry: {passwd_entry})"
+    )

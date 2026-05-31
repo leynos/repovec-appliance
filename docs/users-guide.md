@@ -126,16 +126,16 @@ variable is intended for troubleshooting only.  It must not be set in
 production systemd service units, and the default behaviour (no debug output)
 is safe for production.
 
-#### Flock-based serialisation
+#### Flock-based serialization
 
-The `repovec-qdrant-api-key` helper serialises all mutable operations behind an
+The `repovec-qdrant-api-key` helper serializes all mutable operations behind an
 exclusive `flock` on `/etc/repovec/repovec-qdrant-api-key.lock`.  Concurrent
 invocations block until the lock is available, preventing races between user
 creation, directory creation, secret inspection, key generation, and secret
 creation.  The lock file is owned by `root:root` and resides in `/etc/repovec`,
 a root-owned directory with mode `0750` that is not world-writable.  This
 ensures that an unprivileged process cannot substitute the lock file to
-interfere with serialisation.
+interfere with serialization.
 
 #### Fail-closed secret-removal behaviour
 

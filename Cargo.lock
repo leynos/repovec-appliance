@@ -986,7 +986,6 @@ dependencies = [
 name = "repovecd"
 version = "0.1.0"
 dependencies = [
- "insta",
  "repovec-core",
  "tracing",
  "tracing-subscriber",

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import shutil
 import stat
 from pathlib import Path
 
@@ -61,16 +59,24 @@ def helper_key_file(helper_config_dir: Path) -> Path:
 
 @pytest.fixture()
 def helper_env(patched_helper: Path) -> dict[str, str]:
-    """Return a clean environment for running the patched helper.
+    """Return a minimal environment overlay for running the patched helper.
 
-    cmd-mox mutates ``PATH`` to point at its shim directory; this fixture
-    starts from a minimal baseline so tests do not accidentally rely on the
-    developer's interactive ``PATH``.
+    cmd-mox mutates ``os.environ["PATH"]`` in-place when its fixture enters,
+    prepending the shim directory so intercepted commands resolve to mocks
+    before the real binaries. Snapshotting ``PATH`` here would freeze a
+    pre-mutation value and silently bypass the shims; if pytest set this
+    fixture up before ``cmd_mox``, the helper script would then run against
+    the real ``getent`` / ``useradd`` / ``podman`` and could mutate the host
+    when invoked with sufficient privileges.
+
+    Instead we deliberately omit ``PATH``. Cuprum's ``ExecutionContext.env``
+    overlays atop the live ``os.environ`` at invocation time
+    (see :func:`cuprum._process_lifecycle._merge_env`), so ``PATH`` is
+    sourced from whatever cmd-mox has installed by then — regardless of the
+    order pytest happens to evaluate the per-test fixtures.
     """
 
-    base = {
-        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+    return {
         "HOME": str(patched_helper.parent),
         "LANG": "C.UTF-8",
     }
-    return base

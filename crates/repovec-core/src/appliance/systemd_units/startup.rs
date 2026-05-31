@@ -51,7 +51,9 @@ mod tests {
         let injected_error =
             SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" };
 
-        let result = validate_and_trace_systemd_units_with(|| Err(injected_error.clone()));
+        let result = validate_and_trace_systemd_units_with(|| {
+            Err(SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" })
+        });
 
         assert_eq!(result, Err(injected_error));
     }

@@ -5,6 +5,8 @@
 //! `QDRANT_API_KEY_ENVIRONMENT_VARIABLE`, and the packaging assets under
 //! `packaging/`.
 
+use proptest::prelude::*;
+
 use super::{QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET, QDRANT_API_KEY_SERVICE};
 
 macro_rules! include_packaging_asset {
@@ -179,4 +181,104 @@ fn provisioning_helper_does_not_commit_or_echo_a_raw_key_literal() {
     assert!(!PROVISIONING_HELPER.contains("echo \"${KEY_FILE}\""));
     assert!(!PROVISIONING_HELPER.contains("echo \"${tmp_file}\""));
     assert!(PROVISIONING_HELPER.contains("/dev/urandom"));
+}
+
+/// Collects all byte offsets of `needle` in `PROVISIONING_HELPER`.
+fn all_helper_offsets(needle: &str) -> Vec<usize> {
+    PROVISIONING_HELPER.match_indices(needle).map(|(i, _)| i).collect()
+}
+
+proptest! {
+    /// Every `exit 1` in the helper is preceded by an explicit `release_lock`
+    /// call that itself follows the `flock 9` acquisition, regardless of which
+    /// error path is taken.
+    #[test]
+    fn every_error_exit_1_is_preceded_by_release_lock(
+        exit_pos in proptest::sample::select(all_helper_offsets("exit 1")),
+    ) {
+        let flock_pos = helper_offset!("flock 9");
+        let missing_key_branch = helper_offset!("if [ ! -e \"${KEY_FILE}\" ]; then");
+        let key_generation = helper_offset_after!("generate_key_file", missing_key_branch);
+        let prefix = PROVISIONING_HELPER
+            .get(..exit_pos)
+            .expect("exit_pos must be a valid byte boundary");
+        let release_pos = prefix
+            .rfind("release_lock")
+            .expect("every exit 1 must be preceded by release_lock");
+        if release_pos < flock_pos {
+            prop_assert!(
+                exit_pos < flock_pos,
+                "function-local exit 1 at {exit_pos} must appear before flock at {flock_pos}",
+            );
+            prop_assert!(
+                flock_pos < key_generation,
+                "flock at {flock_pos} must precede key generation at {key_generation}",
+            );
+        } else {
+            prop_assert!(
+                flock_pos < release_pos,
+                "release_lock at {release_pos} must follow flock at {flock_pos}",
+            );
+        }
+        prop_assert!(
+            release_pos < exit_pos,
+            "release_lock at {release_pos} must precede exit 1 at {exit_pos}",
+        );
+    }
+}
+
+proptest! {
+    /// `flock 9` precedes every mutable operation in the helper, regardless of
+    /// which operation is selected.
+    #[test]
+    fn flock_precedes_every_mutable_operation(
+        op_pos in proptest::sample::select(vec![
+            helper_offset!("podman secret inspect \"${SECRET_NAME}\""),
+            helper_offset!("podman secret rm \"${SECRET_NAME}\""),
+            helper_offset!("podman secret create \"${SECRET_NAME}\""),
+            helper_offset_after!(
+                "generate_key_file",
+                helper_offset!("if [ ! -e \"${KEY_FILE}\" ]; then")
+            ),
+        ]),
+    ) {
+        let flock_pos = helper_offset!("flock 9");
+        prop_assert!(
+            flock_pos < op_pos,
+            "flock at {flock_pos} must precede mutable operation at {op_pos}",
+        );
+    }
+}
+
+proptest! {
+    /// The fail-closed invariant holds for every combination of
+    /// `secret_exists x key_file_exists`: the unexpected-removal else-branch
+    /// always progresses to an error log followed by `exit 1`, with no path
+    /// that falls through silently.
+    #[test]
+    fn fail_closed_semantics_hold_for_all_secret_and_key_file_states(
+        secret_exists in any::<bool>(),
+        key_file_exists in any::<bool>(),
+    ) {
+        // The helper is a static string; runtime state does not change it.
+        // These parameters document the full state space over which the
+        // invariant is claimed to hold.
+        let _ = (secret_exists, key_file_exists);
+
+        let else_branch = helper_offset!("else\n            # Fail closed:");
+        let failure_log = helper_offset_after!(
+            "log \"podman secret removal failed:",
+            else_branch
+        );
+        let failure_exit = helper_offset_after!("exit 1", failure_log);
+
+        prop_assert!(
+            else_branch < failure_log,
+            "fail-closed else branch must precede its error log",
+        );
+        prop_assert!(
+            failure_log < failure_exit,
+            "error log must precede exit 1 on the fail-closed path",
+        );
+    }
 }

@@ -191,7 +191,6 @@ pub fn validate_checked_in_systemd_units() -> Result<(), SystemdUnitError> {
 ///
 /// validate_systemd_units(target, repovecd, mcpd).expect("inline units satisfy the contract");
 /// ```
-#[tracing::instrument(skip_all)]
 pub fn validate_systemd_units(
     repovec_target: &str,
     repovecd_service: &str,

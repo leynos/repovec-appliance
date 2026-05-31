@@ -249,7 +249,6 @@ that those assets expose.
 
 #### Mutual exclusion in the provisioning helper
 
-
 ##### `LOCK_FILE`
 
 The helper uses `/etc/repovec/repovec-qdrant-api-key.lock` as its lock file.
@@ -259,7 +258,6 @@ rather than `/var/lock` because `/etc/repovec` is a root-owned directory with
 mode `0750` that is not world-writable.  This prevents unprivileged users from
 substituting the lock file in a way that could interfere with the mutual
 exclusion protocol.
-
 
 ##### Critical section boundaries
 
@@ -272,7 +270,6 @@ the explicit `release_lock` helper, which calls `flock -u 9` and emits a debug
 log.  Signal handlers on `EXIT`, `HUP`, `INT`, and `TERM` also call
 `release_lock` before cleaning up temporary files, ensuring the lock is not
 held by a signal-interrupted process for longer than necessary.
-
 
 ##### Fail-closed invariant
 

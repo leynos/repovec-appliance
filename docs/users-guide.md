@@ -117,7 +117,6 @@ Requests to Qdrant without the `api-key` header are rejected.
 
 ### Qdrant API-key provisioning behaviour
 
-
 #### `REPOVEC_DEBUG` environment variable
 
 Setting `REPOVEC_DEBUG=1` enables debug-level log lines emitted to stderr by
@@ -126,7 +125,6 @@ acquisition and release events alongside other diagnostic output.  This
 variable is intended for troubleshooting only.  It must not be set in
 production systemd service units, and the default behaviour (no debug output)
 is safe for production.
-
 
 #### Flock-based serialisation
 
@@ -138,7 +136,6 @@ creation.  The lock file is owned by `root:root` and resides in `/etc/repovec`,
 a root-owned directory with mode `0750` that is not world-writable.  This
 ensures that an unprivileged process cannot substitute the lock file to
 interfere with serialisation.
-
 
 #### Fail-closed secret-removal behaviour
 

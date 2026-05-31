@@ -1,0 +1,5 @@
+---
+source: crates/repovec-ci/src/main.rs
+expression: error.to_string()
+---
+repovecd.service is missing [Service]

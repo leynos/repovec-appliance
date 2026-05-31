@@ -190,7 +190,8 @@ mod tests {
     use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
 
     use super::{
-        Command, Input, USAGE, parse_args, print_usage, run_systemd_gate_with, write_plan,
+        Command, Input, USAGE, parse_args, print_usage, run_systemd_gate, run_systemd_gate_with,
+        write_plan,
     };
 
     fn buffer_to_string(buffer: Vec<u8>) -> String {
@@ -326,6 +327,16 @@ mod tests {
     }
 
     #[test]
+    fn systemd_gate_validates_real_checked_in_units() {
+        let mut buffer = Vec::new();
+
+        run_systemd_gate(&mut buffer)
+            .expect("checked-in systemd units must satisfy the appliance contract");
+
+        assert_snapshot!("systemd_gate_real_validation_success", buffer_to_string(buffer));
+    }
+
+    #[test]
     fn systemd_gate_writes_success_confirmation() {
         let mut buffer = Vec::new();
 
@@ -347,6 +358,10 @@ mod tests {
 
         assert!(result.is_err(), "validation failure must propagate as Err");
         assert!(buffer.is_empty(), "no output should be written on failure");
+        let Err(error) = result else {
+            panic!("validation failure must propagate as Err");
+        };
+        assert_snapshot!("systemd_gate_error_message", error.to_string());
     }
 
     #[test]

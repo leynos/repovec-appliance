@@ -264,18 +264,25 @@ checked-in repovec target and daemon service files:
   validates the embedded unit set.
 - `validate_systemd_units(target, repovecd, mcpd) -> Result<(), SystemdUnitError>`
   validates caller-provided unit contents against the same appliance contract.
+- `validate_and_trace_checked_in_units() -> Result<(), SystemdUnitError>`
+  validates the embedded unit set and emits a `tracing::trace!` event on
+  success. This is the entry point daemon binaries call during startup.
 - `SystemdUnitError` is the typed error enum for validation failures. See
   `crates/repovec-core/src/appliance/systemd_units/error.rs` for the full
   variant list.
+- `SystemdUnitError::unit() -> &str` returns the logical systemd unit name
+  (e.g. `"repovecd.service"`) associated with the validation failure. Use this
+  field when emitting structured log events so operators can identify which
+  unit violated the contract without parsing the display string.
 
 This module validates static unit-file policy only. It must not call
 `systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
 runtime installation work.
 
-Daemon binaries are expected to call `validate_checked_in_systemd_units()` near
-the start of `main()`, before starting an async runtime or other long-running
-work. Treat `SystemdUnitError` as fatal at that process boundary: log the error
-with structured diagnostics and exit non-zero so systemd reports a failed
+Daemon binaries call `validate_and_trace_checked_in_units()` near the start of
+`main()`, before starting an async runtime or other long-running work. Treat
+`SystemdUnitError` as fatal at that process boundary: log `error.unit()` and
+`error` as structured fields and exit non-zero so systemd reports a failed
 startup rather than running under a broken checked-in unit contract.
 
 ### 5.4 Extension pattern

@@ -4,7 +4,7 @@ This ExecPlan (execution plan) is a living document. The sections `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
 and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT - awaiting approval
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -22,7 +22,7 @@ must handle the important GitHub device-flow outcomes: `authorization_pending`,
 `slow_down`, `expired_token`, `access_denied`, malformed responses, and
 transport failures.
 
-No implementation may begin until this draft is explicitly approved.
+Implementation began after explicit approval in the 2026-06-02 user request.
 
 ## Constraints
 
@@ -158,8 +158,15 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
   GitHub device-flow behaviour, `octocrab`, the `oauth2` crate,
   `oauth2-test-server`, and `systemd-creds`.
 - [x] (2026-05-26T01:45:00+02:00) Drafted this pre-implementation ExecPlan.
-- [ ] Await explicit approval before starting implementation.
-- [ ] After approval, implement Milestone 1 and update this plan with evidence.
+- [x] (2026-06-02T00:00:00+02:00) Received explicit approval to proceed with
+  implementation from this ExecPlan.
+- [x] (2026-06-02T00:01:00+02:00) Confirmed the worktree is clean and on
+  branch `2-1-1-implement-device-flow-oauth-client`.
+- [x] (2026-06-02T00:15:00+02:00) Ran Milestone 0 baseline gates before code
+  changes. `make check-fmt`, `make typecheck`, `make lint`, and `make test`
+  all passed. `make test` reported 183 nextest tests and 29 doctests passing.
+  `make markdownlint` also passed for this plan update.
+- [ ] Implement Milestone 1 and update this plan with evidence.
 - [ ] After implementation and final validation, mark roadmap item `2.1.1`
   done.
 

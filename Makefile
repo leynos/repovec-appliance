@@ -1,45 +1,10 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie validate-systemd integration-test integration-command-test
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie validate-systemd integration-test integration-command-test _check-python _check-integration-prereqs _check-command-test-prereqs
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
 PYTHON ?= python3
 INTEGRATION_TESTS_DIR ?= integration-tests
 PYTEST_FLAGS ?=
-
-# Commas inside $(call ...) arguments separate arguments; this constant lets
-# us pass argument lists that contain literal commas (Python import strings,
-# human-readable package lists).
-COMMA := ,
-
-# Skip-or-fail prerequisite checks shared by the integration-test targets.
-# Each define ends with `; \` so that `$(call ...)` invocations chain into
-# the same shell command as the subsequent pytest invocation, keeping the
-# `exit 0` short-circuit working across the whole recipe.
-define check_python
-if ! command -v "$(PYTHON)" >/dev/null 2>&1; then \
-    echo "$(PYTHON) not found on PATH; skipping $(1)."; \
-    exit 0; \
-fi; \
-
-endef
-
-define check_python_modules
-if ! "$(PYTHON)" -c 'import $(1)' >/dev/null 2>&1; then \
-    echo "$(2) not installed; skipping $(3)."; \
-    echo "Install dependencies via: cd $(INTEGRATION_TESTS_DIR) && uv sync"; \
-    exit 0; \
-fi; \
-
-endef
-
-define check_docker
-if ! "$(PYTHON)" -c 'import docker; docker.from_env().ping()' >/dev/null 2>&1; then \
-    echo "No Docker-compatible runtime reachable; skipping integration-test."; \
-    echo "Start Podman: podman system service --time=0 & export DOCKER_HOST=unix://\$$XDG_RUNTIME_DIR/podman/podman.sock"; \
-    exit 0; \
-fi; \
-
-endef
 BUILD_JOBS ?=
 BASE_RUST_FLAGS ?= -D warnings
 BASE_RUSTDOC_FLAGS ?= -D warnings
@@ -130,15 +95,24 @@ validate-systemd: ensure-cargo ## Validate checked-in systemd unit contracts
 	$(CARGO) build --quiet -p repovec-ci
 	$(CARGO) run --quiet -p repovec-ci -- systemd-gate
 
-integration-test: ## Run testcontainers-based provisioning lifecycle tests
-	@$(call check_python,integration-test) \
-	$(call check_python_modules,pytest$(COMMA) testcontainers,pytest or testcontainers,integration-test) \
-	$(call check_docker) \
+_check-python: ## (internal) Print a skip message if $(PYTHON) is missing
+	@command -v "$(PYTHON)" >/dev/null 2>&1 \
+		|| { echo "$(PYTHON) not found on PATH; skipping integration test target."; exit 0; }
+
+_check-integration-prereqs: _check-python ## (internal) Check lifecycle prereqs
+	@"$(PYTHON)" -c 'import pytest, testcontainers' >/dev/null 2>&1 \
+		|| { echo "pytest or testcontainers not installed; skipping integration-test."; echo "Install dependencies via: cd $(INTEGRATION_TESTS_DIR) && uv sync"; exit 0; }
+	@"$(PYTHON)" -c 'import docker; docker.from_env().ping()' >/dev/null 2>&1 \
+		|| { echo "No Docker-compatible runtime reachable; skipping integration-test."; echo "Start Podman: podman system service --time=0 & export DOCKER_HOST=unix://\$$XDG_RUNTIME_DIR/podman/podman.sock"; exit 0; }
+
+_check-command-test-prereqs: _check-python ## (internal) Check cmd-mox prereqs
+	@"$(PYTHON)" -c 'import pytest, cmd_mox, cuprum' >/dev/null 2>&1 \
+		|| { echo "pytest, cmd-mox or cuprum not installed; skipping integration-command-test."; echo "Install dependencies via: cd $(INTEGRATION_TESTS_DIR) && uv sync"; exit 0; }
+
+integration-test: _check-integration-prereqs ## Run testcontainers-based provisioning lifecycle tests
 	cd $(INTEGRATION_TESTS_DIR) && "$(PYTHON)" -m pytest -m integration provisioning $(PYTEST_FLAGS)
 
-integration-command-test: ## Run cmd-mox-based command-contract tests
-	@$(call check_python,integration-command-test) \
-	$(call check_python_modules,pytest$(COMMA) cmd_mox$(COMMA) cuprum,pytest$(COMMA) cmd-mox or cuprum,integration-command-test) \
+integration-command-test: _check-command-test-prereqs ## Run cmd-mox-based command-contract tests
 	cd $(INTEGRATION_TESTS_DIR) && "$(PYTHON)" -m pytest -m cmd_mox provisioning $(PYTEST_FLAGS)
 
 help: ## Show available targets

@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from cmd_mox import CmdMox
 
 from lib.commands import HostCommandResult, run_host
 from lib.constants import (
@@ -40,7 +41,7 @@ def _invoke_helper(helper: Path, env: dict[str, str]) -> HostCommandResult:
 
 
 def test_invokes_useradd_when_repovec_user_is_absent(
-    cmd_mox,
+    cmd_mox: CmdMox,
     patched_helper: Path,
     helper_env: dict[str, str],
 ) -> None:
@@ -74,7 +75,7 @@ def test_invokes_useradd_when_repovec_user_is_absent(
 
 
 def test_skips_useradd_when_repovec_user_exists(
-    cmd_mox,
+    cmd_mox: CmdMox,
     patched_helper: Path,
     helper_env: dict[str, str],
 ) -> None:
@@ -94,7 +95,7 @@ def test_skips_useradd_when_repovec_user_exists(
 
 
 def test_generates_key_when_key_file_is_absent(
-    cmd_mox,
+    cmd_mox: CmdMox,
     patched_helper: Path,
     helper_env: dict[str, str],
     helper_key_file: Path,
@@ -139,7 +140,7 @@ def test_generates_key_when_key_file_is_absent(
 
 
 def test_creates_or_refreshes_podman_secret_from_key_file(
-    cmd_mox,
+    cmd_mox: CmdMox,
     patched_helper: Path,
     helper_env: dict[str, str],
     helper_key_file: Path,
@@ -179,7 +180,7 @@ def test_creates_or_refreshes_podman_secret_from_key_file(
 
 
 def test_does_not_regenerate_valid_existing_key(
-    cmd_mox,
+    cmd_mox: CmdMox,
     patched_helper: Path,
     helper_env: dict[str, str],
     helper_key_file: Path,

@@ -477,6 +477,15 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   `repovec-ci` doctests, and 20 `repovec-core` doctests.
 - [x] (2026-06-02T00:36:47+02:00) Re-ran CodeRabbit for Milestone 1 after
   fixes; it completed with zero findings.
+- [x] (2026-06-02T00:42:57+02:00) Milestone 2 complete: implemented
+  capability-oriented API-key file loading, preserving distinct missing-file,
+  unreadable-file, empty-key and invalid-key errors.
+- [x] (2026-06-02T00:42:57+02:00) Milestone 2 gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test`. The test
+  run executed 204 nextest tests, 13 `repovec-ci` doctests, and 21
+  `repovec-core` doctests.
+- [x] (2026-06-02T01:32:13+02:00) CodeRabbit completed Milestone 2 review
+  with zero findings after two recoverable rate-limit backoffs.
 
 ## Surprises & Discoveries
 
@@ -507,6 +516,14 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   printable-ASCII range. It also correctly identified that the printable-ASCII
   invariant deserves property coverage, so property tests are warranted for
   this small but security-relevant validation boundary.
+- `cap-std` was already present in the repository through `repovec-ci`, but not
+  centralised in `[workspace.dependencies]`. Milestone 2 moved that existing
+  dependency into the workspace table and reused it from `repovec-core` so
+  API-key file loading follows the repository's capability-oriented filesystem
+  convention.
+- CodeRabbit rate-limited the first two Milestone 2 review attempts. The
+  mandated random backoffs were 25 minutes and 16 minutes. The third attempt
+  completed normally with zero findings.
 
 ## Decision Log
 
@@ -543,6 +560,11 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   passing a raw `String` through the public liveness API. Rationale: the
   liveness adapter must eventually expose the secret to `qdrant-client`, but
   callers, debug output, and errors should not accidentally print it.
+
+- Decision: use `cap_std::fs_utf8::Dir` for the API-key file adapter rather
+  than `std::fs::read_to_string`. Rationale: `AGENTS.md` directs Rust code in
+  this repository toward capability-oriented filesystem APIs, and the
+  dependency was already in use by `repovec-ci`.
 
 ## Outcomes & Retrospective
 

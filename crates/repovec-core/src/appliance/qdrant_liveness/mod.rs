@@ -6,9 +6,10 @@
 //! key, connect to Qdrant's gRPC endpoint, and receive non-secret readiness
 //! evidence from the service.
 
-use std::{fmt, time::Duration};
+use std::{fmt, io, time::Duration};
 
 use camino::Utf8PathBuf;
+use cap_std::{ambient_authority, fs_utf8::Dir};
 
 /// Qdrant's appliance gRPC endpoint.
 pub const DEFAULT_QDRANT_GRPC_ENDPOINT: &str = "http://localhost:6334";
@@ -174,6 +175,50 @@ impl fmt::Debug for QdrantApiKey {
 
 const fn is_invalid_metadata_value_byte(byte: u8) -> bool { !matches!(byte, 0x20..=0x7e) }
 
+/// Loads and validates the Qdrant API key from the configured file path.
+///
+/// # Examples
+///
+/// ```no_run
+/// use repovec_core::appliance::qdrant_liveness::{
+///     QdrantLivenessConfig, load_qdrant_api_key,
+/// };
+///
+/// let key = load_qdrant_api_key(&QdrantLivenessConfig::default())?;
+///
+/// assert!(!key.as_secret().is_empty());
+/// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
+/// ```
+///
+/// # Errors
+///
+/// Returns [`QdrantLivenessError`] when the configured key file is missing,
+/// unreadable, empty, or unsuitable for gRPC metadata.
+pub fn load_qdrant_api_key(
+    config: &QdrantLivenessConfig,
+) -> Result<QdrantApiKey, QdrantLivenessError> {
+    let contents = read_api_key_file(config.api_key_path())?;
+    QdrantApiKey::parse(contents)
+}
+
+fn read_api_key_file(path: &camino::Utf8Path) -> Result<String, QdrantLivenessError> {
+    let root = Dir::open_ambient_dir("/", ambient_authority()).map_err(|source| {
+        QdrantLivenessError::UnreadableApiKeyFile { path: path.to_path_buf(), source }
+    })?;
+    let relative_path = path.strip_prefix("/").unwrap_or(path);
+
+    root.read_to_string(relative_path)
+        .map_err(|source| map_api_key_read_error(path.to_path_buf(), source))
+}
+
+fn map_api_key_read_error(path: Utf8PathBuf, source: io::Error) -> QdrantLivenessError {
+    if source.kind() == io::ErrorKind::NotFound {
+        QdrantLivenessError::MissingApiKeyFile { path }
+    } else {
+        QdrantLivenessError::UnreadableApiKeyFile { path, source }
+    }
+}
+
 /// Errors returned while proving Qdrant runtime liveness.
 #[derive(Debug, thiserror::Error)]
 pub enum QdrantLivenessError {
@@ -225,103 +270,4 @@ pub enum QdrantLivenessError {
 }
 
 #[cfg(test)]
-mod tests {
-    //! Unit tests for Qdrant liveness domain values.
-
-    use proptest::prelude::*;
-    use rstest::rstest;
-
-    use super::{QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport};
-
-    #[rstest]
-    #[case("0123456789abcdef")]
-    #[case("repovec-qdrant-api-key")]
-    #[case("abc DEF 123")]
-    fn api_key_accepts_grpc_metadata_values(#[case] value: &str) {
-        let key = QdrantApiKey::parse(value).expect("valid API key should parse");
-
-        assert_eq!(key.as_secret(), value);
-    }
-
-    #[rstest]
-    #[case("")]
-    fn api_key_rejects_empty_values(#[case] value: &str) {
-        assert!(matches!(QdrantApiKey::parse(value), Err(QdrantLivenessError::EmptyApiKey)));
-    }
-
-    #[rstest]
-    #[case("abc\n")]
-    #[case("abc\r")]
-    #[case("abc\t")]
-    #[case("abc\u{7f}")]
-    #[case("abc\u{80}")]
-    fn api_key_rejects_invalid_metadata_values(#[case] value: &str) {
-        assert!(matches!(QdrantApiKey::parse(value), Err(QdrantLivenessError::InvalidApiKey)));
-    }
-
-    #[test]
-    fn api_key_debug_is_redacted() {
-        let key = QdrantApiKey::parse("super-secret").expect("valid API key should parse");
-
-        assert_eq!(format!("{key:?}"), "QdrantApiKey(\"<redacted>\")");
-    }
-
-    #[test]
-    fn invalid_api_key_display_is_redacted() {
-        let error = QdrantApiKey::parse("super-secret\n")
-            .expect_err("newline-suffixed API key should fail");
-
-        assert!(!error.to_string().contains("super-secret"));
-    }
-
-    proptest! {
-        #[test]
-        fn api_key_accepts_non_empty_printable_ascii_values(value in "[\\x20-\\x7e]+") {
-            prop_assert!(QdrantApiKey::parse(value).is_ok());
-        }
-
-        #[test]
-        fn api_key_rejects_values_containing_non_printable_bytes(
-            prefix in "[\\x20-\\x7e]*",
-            invalid in prop_oneof![
-                Just('\u{0}'),
-                Just('\n'),
-                Just('\r'),
-                Just('\t'),
-                Just('\u{7f}'),
-                Just('é'),
-            ],
-            suffix in "[\\x20-\\x7e]*",
-        ) {
-            let value = format!("{prefix}{invalid}{suffix}");
-
-            prop_assert!(QdrantApiKey::parse(value).is_err());
-        }
-    }
-
-    #[test]
-    fn liveness_report_exposes_server_metadata_with_commit() {
-        let report = QdrantLivenessReport::new("qdrant", "1.15.0", Some("abc123"));
-
-        assert_eq!(report.title(), "qdrant");
-        assert_eq!(report.version(), "1.15.0");
-        assert_eq!(report.commit(), Some("abc123"));
-    }
-
-    #[test]
-    fn liveness_report_exposes_server_metadata_without_commit() {
-        let report = QdrantLivenessReport::new("qdrant", "1.15.0", None::<String>);
-
-        assert_eq!(report.title(), "qdrant");
-        assert_eq!(report.version(), "1.15.0");
-        assert_eq!(report.commit(), None);
-    }
-
-    #[test]
-    fn default_config_matches_appliance_contract() {
-        let config = QdrantLivenessConfig::default();
-
-        assert_eq!(config.endpoint(), "http://localhost:6334");
-        assert_eq!(config.api_key_path().as_str(), "/etc/repovec/qdrant-api-key");
-    }
-}
+mod tests;

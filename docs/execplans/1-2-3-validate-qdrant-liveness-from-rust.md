@@ -486,6 +486,16 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   `repovec-core` doctests.
 - [x] (2026-06-02T01:32:13+02:00) CodeRabbit completed Milestone 2 review
   with zero findings after two recoverable rate-limit backoffs.
+- [x] (2026-06-02T01:35:12+02:00) Milestone 3 complete: implemented the
+  async gRPC liveness check with `qdrant-client`, explicit timeout handling,
+  invalid endpoint mapping, authentication classification, and health-reply
+  conversion.
+- [x] (2026-06-02T01:35:12+02:00) Milestone 3 gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test`. The test
+  run executed 211 nextest tests, 13 `repovec-ci` doctests, and 22
+  `repovec-core` doctests.
+- [x] (2026-06-02T01:53:41+02:00) CodeRabbit completed Milestone 3 review
+  with zero findings after one recoverable rate-limit backoff.
 
 ## Surprises & Discoveries
 
@@ -524,6 +534,9 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
 - CodeRabbit rate-limited the first two Milestone 2 review attempts. The
   mandated random backoffs were 25 minutes and 16 minutes. The third attempt
   completed normally with zero findings.
+- CodeRabbit rate-limited the first Milestone 3 review attempt. The mandated
+  random backoff was 16 minutes. The second attempt completed normally with
+  zero findings.
 
 ## Decision Log
 
@@ -565,6 +578,12 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   than `std::fs::read_to_string`. Rationale: `AGENTS.md` directs Rust code in
   this repository toward capability-oriented filesystem APIs, and the
   dependency was already in use by `repovec-ci`.
+
+- Decision: keep gRPC error mapping dependent only on `qdrant-client`'s public
+  API. Rationale: `qdrant-client` exposes status information through
+  `QdrantError`; adding a direct `tonic` dependency solely for enum matching
+  would widen this milestone's dependency surface without improving the
+  runtime contract.
 
 ## Outcomes & Retrospective
 

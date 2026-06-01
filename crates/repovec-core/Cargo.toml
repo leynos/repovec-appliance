@@ -8,6 +8,9 @@ publish.workspace = true
 
 [dependencies]
 camino.workspace = true
+qdrant-client.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

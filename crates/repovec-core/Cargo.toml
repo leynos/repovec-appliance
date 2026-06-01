@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 camino.workspace = true
+cap-std.workspace = true
 qdrant-client.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

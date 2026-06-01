@@ -2008,6 +2008,7 @@ name = "repovec-core"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "cap-std",
  "insta",
  "proptest",
  "repovec-test-helpers",

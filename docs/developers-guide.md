@@ -279,6 +279,22 @@ caller observes a failure rather than silently proceeding with the existing
 secret, which might be stale or compromised.  The "in use" case exits zero
 because the existing secret remains valid and usable.
 
+##### Debug logging
+
+Setting `REPOVEC_DEBUG=1` causes the helper to emit debug-level log lines to
+stderr via the internal `debug_log()` function.  When enabled, the helper logs
+when it is waiting to acquire the lock, when it has acquired the lock, and when
+it has released the lock.  `REPOVEC_DEBUG` is intended for local
+troubleshooting only and must not be set in production service units.
+
+The `debug_log()` function is internal to the provisioning helper.  It writes a
+line to stderr when `REPOVEC_DEBUG=1` is set; under the systemd service, the
+journal timestamps that stderr line.  It is not a public API, and callers
+outside the provisioning helper must not rely on its output format.  Every lock
+lifecycle event (waiting to acquire, acquired, and released) is instrumented
+through this function, and its output is suppressed when `REPOVEC_DEBUG` is
+unset or set to any value other than `1`.
+
 ### 5.3 `systemd_units` validation surface
 
 The `systemd_units` module exposes the public validation surface for the

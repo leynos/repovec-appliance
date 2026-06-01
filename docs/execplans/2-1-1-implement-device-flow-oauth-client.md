@@ -28,8 +28,8 @@ Implementation began after explicit approval in the 2026-06-02 user request.
 
 - Keep this work scoped to roadmap item `2.1.1`. Do not implement repository
   listing from `2.2.1`, branch discovery from `2.2.2`, token refresh from
-  `2.1.2`, permission checking from `2.1.3`, or the terminal user interface
-  from `5.2`.
+  `2.1.2`, permission checking from `2.1.3`, or the terminal user interface from
+  `5.2`.
 - The GitHub device flow must use the documented endpoints:
   `POST https://github.com/login/device/code` and
   `POST https://github.com/login/oauth/access_token`.
@@ -163,10 +163,18 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
 - [x] (2026-06-02T00:01:00+02:00) Confirmed the worktree is clean and on
   branch `2-1-1-implement-device-flow-oauth-client`.
 - [x] (2026-06-02T00:15:00+02:00) Ran Milestone 0 baseline gates before code
-  changes. `make check-fmt`, `make typecheck`, `make lint`, and `make test`
-  all passed. `make test` reported 183 nextest tests and 29 doctests passing.
+  changes. `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  passed. `make test` reported 183 nextest tests and 29 doctests passing.
   `make markdownlint` also passed for this plan update.
-- [ ] Implement Milestone 1 and update this plan with evidence.
+- [x] (2026-06-02T00:40:00+02:00) Added the pure
+  `repovec_core::github_oauth` device-flow policy module with redacted secret
+  wrappers, OAuth error classification, polling decisions, rstest unit tests,
+  and proptest interval invariants. `make check-fmt`, `make typecheck`,
+  `make lint`, and `make test` passed. `make test` reported 196 nextest tests
+  and 40 doctests passing.
+- [x] (2026-06-02T01:14:00+02:00) Ran `coderabbit review --agent` after a
+  recoverable rate-limit backoff. CodeRabbit completed with 0 findings.
+- [ ] Add the repovecd OAuth protocol and token-storage adapters.
 - [ ] After implementation and final validation, mark roadmap item `2.1.1`
   done.
 
@@ -195,6 +203,19 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
   or both. Evidence: Firecrawl scrape of `https://systemd.io/CREDENTIALS/`.
   Impact: it is the preferred at-rest encryption mechanism to investigate
   before adding a bespoke Rust encryption dependency.
+
+- Observation: the implementation host has `/usr/bin/systemd-creds` from
+  systemd `257` with TPM2 support enabled. Evidence: `systemd-creds --version`
+  during Milestone 1. Impact: the preferred encrypted-token adapter remains
+  feasible for Milestone 3.
+
+- Observation: `octocrab` `0.51.0` hard-codes the device-code endpoint as
+  `/login/device/code` and the token endpoint as `/login/oauth/access_token`.
+  It can change the base URI, but not those paths. Evidence: local registry
+  source at `octocrab-0.51.0/src/auth.rs`. Impact: it is awkward to run against
+  `oauth2-test-server`, whose device endpoints are `/device/code` and
+  `/device/token`, and it would not give enough control over endpoint-level
+  error classification.
 
 ## Decision log
 
@@ -225,6 +246,12 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
   storage is security-critical. A design that stores a generated encryption key
   beside the ciphertext would not provide a meaningful at-rest boundary.
   Date/Author: 2026-05-26, Codex with Wyvern architecture brief.
+
+- Decision: use `oauth2` `5.0.0` rather than `octocrab` for the runtime device
+  authorization protocol adapter. Rationale: `octocrab` satisfies live GitHub's
+  endpoint paths but not the configurable mock endpoint requirement in this
+  plan, while `oauth2` exposes RFC 8628 device-code URLs directly and keeps
+  error handling testable. Date/Author: 2026-06-02, Codex.
 
 ## Outcomes & retrospective
 
@@ -301,7 +328,7 @@ Use these skills during implementation:
 Confirm the worktree is on `2-1-1-implement-device-flow-oauth-client`, the plan
 is approved, and there are no unexpected local changes. Re-read this ExecPlan,
 `AGENTS.md`, `docs/roadmap.md`, the device-flow section of the technical design,
- `Cargo.toml`, `crates/repovec-core/src/lib.rs`, and
+`Cargo.toml`, `crates/repovec-core/src/lib.rs`, and
 `crates/repovecd/src/main.rs`.
 
 Run baseline gates before code changes:

@@ -5,6 +5,7 @@ use std::fmt;
 use camino::{Utf8Path, Utf8PathBuf};
 
 pub mod appliance;
+pub mod github_oauth;
 
 /// Service types: daemons (`Repovecd`, `RepovecMcpd`), terminal UI (`RepovecTui`), and CLI (`Repovectl`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

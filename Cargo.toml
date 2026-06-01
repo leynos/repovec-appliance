@@ -3,6 +3,7 @@ members = [
     "crates/repovec-ci",
     "crates/repovec-core",
     "crates/repovec-mcpd",
+    "crates/repovec-test-helpers",
     "crates/repovec-tui",
     "crates/repovecd",
     "crates/repovectl",

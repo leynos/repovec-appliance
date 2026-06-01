@@ -970,6 +970,15 @@ name = "repovec-mcpd"
 version = "0.1.0"
 dependencies = [
  "repovec-core",
+ "repovec-test-helpers",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "repovec-test-helpers"
+version = "0.1.0"
+dependencies = [
+ "repovec-core",
  "tracing",
  "tracing-subscriber",
 ]
@@ -986,7 +995,7 @@ name = "repovecd"
 version = "0.1.0"
 dependencies = [
  "repovec-core",
- "tracing",
+ "repovec-test-helpers",
  "tracing-subscriber",
 ]
 

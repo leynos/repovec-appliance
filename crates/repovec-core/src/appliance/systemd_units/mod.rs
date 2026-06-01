@@ -56,7 +56,7 @@ mod tests;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub use error::SystemdUnitError;
-pub use startup::validate_and_trace_checked_in_units;
+pub use startup::{run_startup_validation, validate_and_trace_checked_in_units};
 
 const CHECKED_IN_REPOVEC_TARGET: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovec.target"));

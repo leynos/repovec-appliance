@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -27,9 +27,8 @@ approves this document.
 
 ## Constraints
 
-- Implementation must wait for explicit approval of this plan. Drafting,
-  validating, committing, pushing, and opening a draft pull request for this
-  plan are allowed; feature implementation is not.
+- Implementation was approved by the user on `2026-06-02T00:12:58+02:00`.
+  Continue milestone-by-milestone within the tolerances below.
 - Keep scope to roadmap item `1.2.3`. Do not implement repository discovery,
   indexing, full service status APIs, terminal session handling, resize event
   propagation, or exit-code reporting.
@@ -460,6 +459,24 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   `docs/contents.md` and this ExecPlan; it passed with zero errors.
 - [x] (2026-05-26T01:43:00+02:00) Ran `make markdownlint` and `make nixie`;
   both passed.
+- [x] (2026-06-02T00:12:58+02:00) Received explicit approval to implement the
+  planned functionality.
+- [x] (2026-06-02T00:15:34+02:00) Milestone 1 complete: added the
+  `repovec_core::appliance::qdrant_liveness` public API, dependency
+  declarations, and deterministic unit coverage for non-I/O domain values.
+- [x] (2026-06-02T00:15:34+02:00) Milestone 1 gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test`. The test
+  run executed 195 nextest tests, 13 `repovec-ci` doctests, and 20
+  `repovec-core` doctests.
+- [x] (2026-06-02T00:27:29+02:00) Resolved Milestone 1 CodeRabbit findings:
+  simplify duplicate API-key byte validation logic, add property tests for the
+  printable-ASCII API-key invariant, and add report accessor unit tests.
+- [x] (2026-06-02T00:27:29+02:00) Re-ran Milestone 1 gates after the
+  CodeRabbit fixes. `make check-fmt`, `make typecheck`, `make lint`, and
+  `make test` passed. The test run executed 199 nextest tests, 13
+  `repovec-ci` doctests, and 20 `repovec-core` doctests.
+- [x] (2026-06-02T00:36:47+02:00) Re-ran CodeRabbit for Milestone 1 after
+  fixes; it completed with zero findings.
 
 ## Surprises & Discoveries
 
@@ -482,6 +499,14 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   files outside this plan. The resulting unrelated formatter churn was
   reverted, and the deterministic validation gates plus `make markdownlint`
   passed afterwards.
+- `cargo info qdrant-client` on `2026-06-02` still reports `qdrant-client`
+  `1.18.0`, so the implementation can use the planned client version without
+  revising dependency constraints.
+- CodeRabbit's Milestone 1 review found that the API-key byte predicate
+  duplicated newline, carriage-return and tab checks already excluded by the
+  printable-ASCII range. It also correctly identified that the printable-ASCII
+  invariant deserves property coverage, so property tests are warranted for
+  this small but security-relevant validation boundary.
 
 ## Decision Log
 
@@ -513,6 +538,11 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   complete. Rationale: this branch initially carries only the
   pre-implementation plan. Marking the item done before code, tests, docs and
   review land would make the roadmap inaccurate.
+
+- Decision: model the API key as a redacted `QdrantApiKey` newtype rather than
+  passing a raw `String` through the public liveness API. Rationale: the
+  liveness adapter must eventually expose the secret to `qdrant-client`, but
+  callers, debug output, and errors should not accidentally print it.
 
 ## Outcomes & Retrospective
 

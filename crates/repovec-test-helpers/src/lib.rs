@@ -1,4 +1,26 @@
 //! Shared test utilities for repovec workspace crates.
+//!
+//! This crate provides a log-capture harness and assertion helpers for
+//! testing daemon startup validation paths that use
+//! [`repovec_core::appliance::systemd_units::run_startup_validation`].
+//! It is consumed as a `[dev-dependencies]` entry in `repovecd` and
+//! `repovec-mcpd`.
+//!
+//! ## Log capture
+//!
+//! [`startup_with_captured_logs`] installs a temporary `tracing` subscriber
+//! that records all formatted log output into an in-memory buffer, then
+//! invokes `run_startup_validation` with the supplied validator closure.
+//! The captured text is returned alongside the validation result for
+//! assertion.
+//!
+//! ## Assertion helpers
+//!
+//! The `assert_startup_*` functions are thin wrappers intended to be called
+//! directly from test bodies in daemon crates. Each helper encapsulates one
+//! observable startup behaviour (success, success logging, real-validator
+//! invocation, exit-code mapping, structured failure diagnostics) and
+//! returns `Result<(), String>` so the test body can use the `?` operator.
 
 use std::{
     io::{self, Write},
@@ -63,6 +85,36 @@ pub fn assert_startup_logs_successful_validation() -> Result<(), String> {
     )
 }
 
+/// Verifies daemon startup log output for a successful validation matches the
+/// committed snapshot.
+///
+/// # Errors
+///
+/// Returns an error when startup validation fails or the captured log output
+/// differs from the snapshot.
+#[cfg(feature = "snapshots")]
+pub fn assert_startup_success_log_snapshot() -> Result<(), String> {
+    let (result, logs) = startup_with_captured_logs(|| Ok(()))?;
+    ensure(result.is_ok(), "startup should return Ok when validation passes")?;
+    insta::assert_snapshot!("startup_success_log", logs);
+    Ok(())
+}
+
+/// Verifies daemon startup log output for a validation failure matches the
+/// committed snapshot.
+///
+/// # Errors
+///
+/// Returns an error when startup validation does not fail as expected or the
+/// captured log output differs from the snapshot.
+#[cfg(feature = "snapshots")]
+pub fn assert_startup_failure_log_snapshot(unit: &'static str) -> Result<(), String> {
+    let (result, logs) = startup_with_captured_logs(|| missing_section_error(unit))?;
+    ensure(result == Err(1), "startup should return Err(1) on validation failure")?;
+    insta::assert_snapshot!(format!("startup_failure_log_{}", unit.replace('.', "_")), logs);
+    Ok(())
+}
+
 /// Verifies daemon startup invokes the real checked-in unit validator.
 ///
 /// # Errors
@@ -79,9 +131,10 @@ pub fn assert_startup_runs_real_checked_in_validation() -> Result<(), String> {
         "systemd unit contract validated",
         "real validator should log successful validation",
     )?;
-    ensure_log_contains(
+    ensure_log_line_contains(
         &logs,
         "DEBUG",
+        "systemd unit contract validated at daemon startup",
         "startup should log successful validation at the daemon boundary",
     )
 }
@@ -108,15 +161,19 @@ pub fn assert_startup_logs_structured_validation_failure(unit: &'static str) -> 
     let (result, logs) = startup_with_captured_logs(|| missing_section_error(unit))?;
 
     ensure(result == Err(1), "startup should return Err(1) on validation failure")?;
-    ensure_log_contains(
+    let unit_needle = format!("unit={unit}");
+    ensure_log_line_contains(
         &logs,
-        &format!("unit={unit}"),
-        "startup should log the failing unit as a structured field",
+        "ERROR",
+        &unit_needle,
+        "startup should log the failing unit as a structured field on the ERROR line",
     )?;
-    ensure_log_contains(
+    let error_needle = format!("error={unit} is missing [Service]");
+    ensure_log_line_contains(
         &logs,
-        &format!("error={unit} is missing [Service]"),
-        "startup should log the validation error as a structured field",
+        "ERROR",
+        &error_needle,
+        "startup should log the validation error as a structured field on the ERROR line",
     )?;
     ensure_log_line_contains(
         &logs,
@@ -137,7 +194,7 @@ impl CapturedLogs {
             .buffer
             .lock()
             .map_err(|_| "captured log buffer should not be poisoned".to_owned())?;
-        String::from_utf8(buffer.clone()).map_err(|error| error.to_string())
+        std::str::from_utf8(&buffer).map(ToOwned::to_owned).map_err(|error| error.to_string())
     }
 }
 
@@ -170,10 +227,6 @@ const fn missing_section_error(unit: &'static str) -> Result<(), SystemdUnitErro
 
 fn ensure(condition: bool, message: &str) -> Result<(), String> {
     if condition { Ok(()) } else { Err(message.to_owned()) }
-}
-
-fn ensure_log_contains(logs: &str, needle: &str, message: &str) -> Result<(), String> {
-    ensure(logs.contains(needle), &format!("{message}: {logs}"))
 }
 
 fn ensure_log_line_contains(

@@ -26,6 +26,11 @@ mod tests {
     }
 
     #[test]
+    fn startup_success_log_matches_snapshot() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_success_log_snapshot()
+    }
+
+    #[test]
     fn startup_runs_real_checked_in_validation() -> Result<(), String> {
         repovec_test_helpers::assert_startup_runs_real_checked_in_validation()
     }
@@ -38,5 +43,10 @@ mod tests {
     #[test]
     fn startup_logs_structured_validation_failure() -> Result<(), String> {
         repovec_test_helpers::assert_startup_logs_structured_validation_failure(UNIT)
+    }
+
+    #[test]
+    fn startup_failure_log_matches_snapshot() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_failure_log_snapshot(UNIT)
     }
 }

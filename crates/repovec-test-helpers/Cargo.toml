@@ -7,9 +7,16 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+insta = { workspace = true, optional = true }
 repovec-core = { path = "../repovec-core" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[features]
+snapshots = ["dep:insta"]
+
+[dev-dependencies]
+insta.workspace = true
 
 [lints]
 workspace = true

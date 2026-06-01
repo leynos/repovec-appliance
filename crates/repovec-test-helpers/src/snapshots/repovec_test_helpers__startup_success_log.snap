@@ -1,0 +1,5 @@
+---
+source: crates/repovec-test-helpers/src/lib.rs
+expression: logs
+---
+DEBUG systemd unit contract validated at daemon startup

@@ -11,7 +11,7 @@ repovec-core = { path = "../repovec-core" }
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
-repovec-test-helpers = { path = "../repovec-test-helpers" }
+repovec-test-helpers = { path = "../repovec-test-helpers", features = ["snapshots"] }
 
 [lints]
 workspace = true

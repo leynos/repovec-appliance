@@ -1,4 +1,24 @@
 //! Daemon startup validation helpers for checked-in systemd units.
+//!
+//! This module is a private submodule of
+//! [`crate::appliance::systemd_units`]. Its public items are re-exported
+//! from the parent module, so callers should import them from
+//! [`crate::appliance::systemd_units`] rather than from this path directly.
+//!
+//! ## Entry points
+//!
+//! - [`validate_and_trace_checked_in_units`] — validates the three
+//!   embedded systemd unit assets and emits a `tracing::trace!` event on
+//!   success. Daemon binaries call this as the first substantive action in
+//!   `main()`.
+//! - [`run_startup_validation`] — runs an injected validator closure,
+//!   emits structured `tracing::error!` diagnostics on failure, and maps
+//!   any [`SystemdUnitError`] to `Err(1)` so the caller can exit with the
+//!   returned code.
+//!
+//! The private helper `validate_and_trace_systemd_units_with` is an
+//! injection seam used by tests and by `validate_and_trace_checked_in_units`
+//! itself.
 
 use super::{SystemdUnitError, validate_checked_in_systemd_units};
 

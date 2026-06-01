@@ -55,9 +55,9 @@ pub fn assert_startup_logs_successful_validation() -> Result<(), String> {
     let (result, logs) = startup_with_captured_logs(|| Ok(()))?;
 
     ensure(result.is_ok(), "startup should return Ok when validation passes")?;
-    ensure_log_contains(&logs, "DEBUG", "startup should log successful validation")?;
-    ensure_log_contains(
+    ensure_log_line_contains(
         &logs,
+        "DEBUG",
         "systemd unit contract validated at daemon startup",
         "startup should log validation success",
     )
@@ -73,9 +73,9 @@ pub fn assert_startup_runs_real_checked_in_validation() -> Result<(), String> {
     let (result, logs) = startup_with_captured_logs(validate_and_trace_checked_in_units)?;
 
     ensure(result.is_ok(), "checked-in units should pass daemon startup validation")?;
-    ensure_log_contains(&logs, "TRACE", "real validator should log its successful trace event")?;
-    ensure_log_contains(
+    ensure_log_line_contains(
         &logs,
+        "TRACE",
         "systemd unit contract validated",
         "real validator should log successful validation",
     )?;
@@ -108,7 +108,6 @@ pub fn assert_startup_logs_structured_validation_failure(unit: &'static str) -> 
     let (result, logs) = startup_with_captured_logs(|| missing_section_error(unit))?;
 
     ensure(result == Err(1), "startup should return Err(1) on validation failure")?;
-    ensure_log_contains(&logs, "ERROR", "startup should log validation failures")?;
     ensure_log_contains(
         &logs,
         &format!("unit={unit}"),
@@ -119,8 +118,9 @@ pub fn assert_startup_logs_structured_validation_failure(unit: &'static str) -> 
         &format!("error={unit} is missing [Service]"),
         "startup should log the validation error as a structured field",
     )?;
-    ensure_log_contains(
+    ensure_log_line_contains(
         &logs,
+        "ERROR",
         "systemd unit contract violation",
         "startup should log the fatal startup diagnostic",
     )
@@ -174,4 +174,14 @@ fn ensure(condition: bool, message: &str) -> Result<(), String> {
 
 fn ensure_log_contains(logs: &str, needle: &str, message: &str) -> Result<(), String> {
     ensure(logs.contains(needle), &format!("{message}: {logs}"))
+}
+
+fn ensure_log_line_contains(
+    logs: &str,
+    level: &str,
+    needle: &str,
+    message: &str,
+) -> Result<(), String> {
+    let found = logs.lines().any(|line| line.contains(level) && line.contains(needle));
+    ensure(found, &format!("{message}: {logs}"))
 }

@@ -8,11 +8,12 @@ use std::{
 use camino::Utf8PathBuf;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use proptest::prelude::*;
+use qdrant_client::qdrant::HealthCheckReply;
 use rstest::rstest;
 
 use super::{
     QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport,
-    load_qdrant_api_key,
+    build_qdrant_client, is_authentication_failure_code, load_qdrant_api_key,
 };
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -151,6 +152,60 @@ fn load_qdrant_api_key_maps_unreadable_paths() {
     let error = load_qdrant_api_key(&config).expect_err("directory path should be unreadable");
 
     assert!(matches!(error, QdrantLivenessError::UnreadableApiKeyFile { .. }));
+}
+
+#[test]
+fn build_qdrant_client_maps_invalid_endpoint() {
+    let key = QdrantApiKey::parse("0123456789abcdef").expect("valid API key should parse");
+    let config = QdrantLivenessConfig::new(
+        "not a uri",
+        Utf8PathBuf::from("/tmp/qdrant-api-key"),
+        Duration::from_secs(1),
+    );
+
+    let Err(error) = build_qdrant_client(&config, &key) else {
+        panic!("invalid endpoint should fail");
+    };
+
+    assert!(
+        matches!(error, QdrantLivenessError::InvalidEndpoint { endpoint } if endpoint == "not a uri")
+    );
+}
+
+#[rstest]
+#[case("Unauthenticated", true)]
+#[case("PermissionDenied", true)]
+#[case("Unavailable", false)]
+#[case("DeadlineExceeded", false)]
+fn authentication_failure_codes_are_distinct(#[case] code: &str, #[case] expected: bool) {
+    assert_eq!(is_authentication_failure_code(code), expected);
+}
+
+#[test]
+fn liveness_report_accepts_health_reply_with_version() {
+    let reply = HealthCheckReply {
+        title: String::from("qdrant"),
+        version: String::from("1.15.0"),
+        commit: Some(String::from("abc123")),
+    };
+
+    let report =
+        QdrantLivenessReport::try_from(reply).expect("versioned health reply should convert");
+
+    assert_eq!(report.title(), "qdrant");
+    assert_eq!(report.version(), "1.15.0");
+    assert_eq!(report.commit(), Some("abc123"));
+}
+
+#[test]
+fn liveness_report_rejects_health_reply_without_version() {
+    let reply =
+        HealthCheckReply { title: String::from("qdrant"), version: String::new(), commit: None };
+
+    let error = QdrantLivenessReport::try_from(reply)
+        .expect_err("health reply without version should fail");
+
+    assert!(matches!(error, QdrantLivenessError::MissingServerVersion));
 }
 
 proptest! {

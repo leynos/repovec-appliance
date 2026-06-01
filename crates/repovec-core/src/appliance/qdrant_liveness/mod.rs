@@ -10,6 +10,7 @@ use std::{fmt, io, time::Duration};
 
 use camino::Utf8PathBuf;
 use cap_std::{ambient_authority, fs_utf8::Dir};
+use qdrant_client::{Qdrant, QdrantError, qdrant::HealthCheckReply};
 
 /// Qdrant's appliance gRPC endpoint.
 pub const DEFAULT_QDRANT_GRPC_ENDPOINT: &str = "http://localhost:6334";
@@ -201,6 +202,43 @@ pub fn load_qdrant_api_key(
     QdrantApiKey::parse(contents)
 }
 
+/// Connects to Qdrant over gRPC and confirms that it reports healthy.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example()
+/// # -> Result<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError> {
+/// use repovec_core::appliance::qdrant_liveness::{
+///     QdrantLivenessConfig, check_qdrant_liveness,
+/// };
+///
+/// let report = check_qdrant_liveness(&QdrantLivenessConfig::default()).await?;
+///
+/// assert!(!report.version().is_empty());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns [`QdrantLivenessError`] when the API key cannot be loaded, the
+/// endpoint is invalid, Qdrant is unreachable, authentication fails, the probe
+/// times out, or the health reply does not contain readiness metadata.
+pub async fn check_qdrant_liveness(
+    config: &QdrantLivenessConfig,
+) -> Result<QdrantLivenessReport, QdrantLivenessError> {
+    let api_key = load_qdrant_api_key(config)?;
+    let client = build_qdrant_client(config, &api_key)?;
+
+    let reply = tokio::time::timeout(config.timeout(), client.health_check())
+        .await
+        .map_err(|_elapsed| QdrantLivenessError::Timeout { timeout: config.timeout() })?
+        .map_err(map_qdrant_error)?;
+
+    QdrantLivenessReport::try_from(reply)
+}
+
 fn read_api_key_file(path: &camino::Utf8Path) -> Result<String, QdrantLivenessError> {
     let root = Dir::open_ambient_dir("/", ambient_authority()).map_err(|source| {
         QdrantLivenessError::UnreadableApiKeyFile { path: path.to_path_buf(), source }
@@ -216,6 +254,65 @@ fn map_api_key_read_error(path: Utf8PathBuf, source: io::Error) -> QdrantLivenes
         QdrantLivenessError::MissingApiKeyFile { path }
     } else {
         QdrantLivenessError::UnreadableApiKeyFile { path, source }
+    }
+}
+
+fn build_qdrant_client(
+    config: &QdrantLivenessConfig,
+    api_key: &QdrantApiKey,
+) -> Result<Qdrant, QdrantLivenessError> {
+    Qdrant::from_url(config.endpoint())
+        .api_key(api_key.as_secret())
+        .skip_compatibility_check()
+        .build()
+        .map_err(|error| map_qdrant_build_error(config.endpoint(), error))
+}
+
+fn map_qdrant_build_error(endpoint: &str, error: QdrantError) -> QdrantLivenessError {
+    if matches!(error, QdrantError::InvalidUri(ref _source)) {
+        QdrantLivenessError::InvalidEndpoint { endpoint: endpoint.to_owned() }
+    } else {
+        map_qdrant_error(error)
+    }
+}
+
+fn map_qdrant_error(error: QdrantError) -> QdrantLivenessError {
+    match error {
+        QdrantError::ResponseError { status }
+        | QdrantError::ResourceExhaustedError { status, .. }
+            if is_authentication_failure_code(&status.code().to_string()) =>
+        {
+            QdrantLivenessError::AuthenticationFailed
+        }
+        QdrantError::ResponseError { status }
+        | QdrantError::ResourceExhaustedError { status, .. } => {
+            QdrantLivenessError::GrpcUnavailable {
+                message: format!("{}: {}", status.code(), status.message()),
+            }
+        }
+        QdrantError::InvalidUri(_source) => QdrantLivenessError::InvalidEndpoint {
+            endpoint: DEFAULT_QDRANT_GRPC_ENDPOINT.to_owned(),
+        },
+        QdrantError::Io(source) => {
+            QdrantLivenessError::GrpcUnavailable { message: source.kind().to_string() }
+        }
+        other => QdrantLivenessError::GrpcUnavailable { message: other.to_string() },
+    }
+}
+
+fn is_authentication_failure_code(code: &str) -> bool {
+    matches!(code, "Unauthenticated" | "PermissionDenied")
+}
+
+impl TryFrom<HealthCheckReply> for QdrantLivenessReport {
+    type Error = QdrantLivenessError;
+
+    fn try_from(reply: HealthCheckReply) -> Result<Self, Self::Error> {
+        if reply.version.is_empty() {
+            return Err(QdrantLivenessError::MissingServerVersion);
+        }
+
+        Ok(Self::new(reply.title, reply.version, reply.commit))
     }
 }
 

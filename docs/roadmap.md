@@ -128,7 +128,7 @@ worktrees that track remote state.
 Objective: the appliance can authenticate with GitHub using the OAuth device
 flow without requiring a browser on the VM.
 
-- [ ] 2.1.1. Implement device-flow OAuth client
+- [x] 2.1.1. Implement device-flow OAuth client
   - Implement the three-step device flow: request device/user codes, poll for
     token, and handle `slow_down`/`expired_token`/`access_denied` responses.
     See repovec-appliance-technical-design.md, "Authentication: device flow".

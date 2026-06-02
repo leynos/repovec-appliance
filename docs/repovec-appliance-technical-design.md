@@ -138,6 +138,23 @@ via SSH without a browser on-box:
 GitHub explicitly indicates the device flow does not require the OAuth app
 `client_secret` (device flow uses `client_id` + device code + grant type).
 
+The implementation uses the generic `oauth2` crate at the HTTP boundary rather
+than `octocrab` for the device-flow exchange. This keeps the adapter aligned
+with the RFC 8628 endpoints and makes behavioural tests possible against
+`oauth2-test-server`, whose endpoint paths differ from GitHub's production
+paths. `repovec_core::github_oauth` owns the device-flow policy: device-code
+error classification, poll-interval transitions, terminal errors, and redacted
+secret wrappers. `repovecd` owns the ports and adapters: HTTP polling,
+sleep/time, orchestration, and encrypted token persistence.
+
+Access tokens are persisted below `/etc/repovec/` as `github-oauth-token.cred`.
+The token-store adapter encrypts and decrypts the bearer token through
+`systemd-creds --name=repovec-github-oauth-token`, writes the encrypted
+credential atomically, syncs the file and containing directory, and keeps token
+material off the command line and out of display diagnostics. Reloaded tokens
+contain the bearer secret only; scope metadata is treated as server response
+metadata and is not persisted with the credential.
+
 ### Discovery and continuous monitoring
 
 repovecd maintains correctness via a reconcile-first model:

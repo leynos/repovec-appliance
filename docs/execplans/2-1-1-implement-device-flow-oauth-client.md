@@ -178,17 +178,19 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
   device-flow orchestration, encrypted token-store adapters, behavioural
   scenarios, and `device-flow-test` example binary. `make check-fmt`,
   `make typecheck`, `make lint`, and `make test` passed. `make test` reported
-  210 nextest tests and 43 doctests passing. `cargo run -p repovecd --example
-  device-flow-test` completed successfully against `oauth2-test-server` and
-  loaded a stored token back from the encrypted-token adapter boundary.
+  210 nextest tests and 43 doctests passing.
+  `cargo run -p repovecd --example device-flow-test` completed successfully
+  against `oauth2-test-server` and loaded a stored token back from the
+  encrypted-token adapter boundary.
 - [x] (2026-06-02T02:39:00+02:00) Ran `coderabbit review --agent` for the
-  adapter/test-binary milestone after a 28 minute rate-limit backoff. CodeRabbit
-  reported 9 findings. Valid findings were fixed by adding local expiry
-  enforcement, binding `systemd-creds decrypt` to the same credential name as
-  encrypt, creating token credential files with owner-only permissions, exact
-  example-binary token round-trip validation, endpoint validation at client
-  construction, a corrected token URL doc comment, command-argument assertions,
-  and documentation that reloaded tokens do not carry scope metadata.
+  adapter/test-binary milestone after a 28 minute rate-limit backoff.
+  CodeRabbit reported 9 findings. Valid findings were fixed by adding local
+  expiry enforcement, binding `systemd-creds decrypt` to the same credential
+  name as encrypt, creating token credential files with owner-only permissions,
+  exact example-binary token round-trip validation, endpoint validation at
+  client construction, a corrected token URL doc comment, command-argument
+  assertions, and documentation that reloaded tokens do not carry scope
+  metadata.
 - [x] (2026-06-02T02:46:00+02:00) Re-ran deterministic gates after CodeRabbit
   fixes. `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
   passed. `make test` reported 213 nextest tests and 43 doctests passing.
@@ -208,8 +210,8 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
   completed successfully.
 - [x] (2026-06-02T03:58:00+02:00) Re-ran CodeRabbit after a 23 minute
   rate-limit backoff. CodeRabbit reported 3 follow-up findings. Fixed them by
-  expanding the `repovecd` crate-level documentation, redacting all known GitHub
-  token prefixes in `systemd-creds` stderr display, adding parameterized
+  expanding the `repovecd` crate-level documentation, redacting all known
+  GitHub token prefixes in `systemd-creds` stderr display, adding parameterized
   redaction tests, and removing the intermediate allocation from scope joining.
 - [x] (2026-06-02T04:04:00+02:00) Re-ran deterministic gates after the latest
   follow-up fixes. `make check-fmt`, `make typecheck`, `make lint`, and
@@ -241,8 +243,22 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
 - [x] (2026-06-02T06:52:00+02:00) Re-ran CodeRabbit after the latest fixes.
   CodeRabbit completed with 0 findings, clearing the adapter/test-binary
   milestone for commit and documentation work.
-- [ ] After implementation and final validation, mark roadmap item `2.1.1`
-  done.
+- [x] (2026-06-02T06:55:00+02:00) Committed the adapter/test-binary milestone
+  as `0fdfa18`.
+- [x] (2026-06-02T07:05:00+02:00) Updated the technical design, users guide,
+  developers guide, and roadmap. The design now records the `oauth2` adapter
+  decision and encrypted-token persistence contract; the guides document
+  operator-visible login behaviour and internal boundary conventions; roadmap
+  item `2.1.1` is marked done.
+- [x] (2026-06-02T07:15:00+02:00) Ran documentation and code gates after the
+  documentation closeout. `make markdownlint`, `make nixie`,
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test` all passed.
+  `make test` reported 219 nextest tests and 43 doctests passing. `make fmt`
+  was attempted, but the repository-wide formatter target exits non-zero on
+  pre-existing unrelated Markdown lint issues; incidental formatter changes to
+  unrelated files were restored before continuing.
+- [x] (2026-06-02T07:26:00+02:00) Ran CodeRabbit for the documentation and
+  roadmap closeout. CodeRabbit completed with 0 findings.
 
 ## Surprises & discoveries
 
@@ -294,10 +310,10 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
 
 - Observation: `oauth2-test-server` owns a Tokio `JoinHandle`, and the blocking
   `oauth2` HTTP client must not be driven inside the async runtime context.
-  Evidence: the first example-binary run panicked with `Cannot drop a runtime in
-  a context where blocking is not allowed`. Impact: the example now starts and
-  controls the mock server with `Runtime::block_on`, but performs OAuth HTTP
-  polling and token-store work in synchronous code.
+  Evidence: the first example-binary run panicked with
+  `Cannot drop a runtime in a context where blocking is not allowed`. Impact:
+  the example now starts and controls the mock server with `Runtime::block_on`,
+  but performs OAuth HTTP polling and token-store work in synchronous code.
 
 - Observation: `tempfile::NamedTempFile` creates files with `0600` mode on Unix,
   but post-creation permission changes through `std::fs::File::set_permissions`

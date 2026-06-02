@@ -62,6 +62,37 @@ job can stay required even when it skips documentation-specific work. When the
 workflow takes the conservative Mermaid path because a file could not be read,
 it also publishes which files triggered that fallback.
 
+
+## GitHub device-flow authentication
+
+repovec-appliance authenticates to GitHub using OAuth device flow. This lets an
+operator authorize the appliance over SSH without opening a browser on the VM.
+The appliance requests a device code, shows the verification URL and user code,
+then polls GitHub until the user approves the request, denies it, or the code
+expires.
+
+During login, the operator-visible values are:
+
+- verification URL: `https://github.com/login/device`
+- user code: the short code to enter in GitHub's browser flow
+
+The token polling loop respects GitHub's polling interval and handles the
+standard device-flow terminal responses:
+
+- `slow_down`: wait longer before the next poll.
+- `access_denied`: stop the login attempt because the user denied access.
+- `expired_token`: stop the login attempt because the device code expired.
+
+The access token is encrypted at rest in
+`/etc/repovec/github-oauth-token.cred`. Operators should treat that file as
+secret material even though it is encrypted. The encrypted credential is bound
+to the appliance through `systemd-creds` using the credential name
+`repovec-github-oauth-token`.
+
+Roadmap item `2.1.1` provides the runtime client, encrypted token-store
+adapter, and mock-server test binary. The interactive TUI login screen is a
+later roadmap item and will call this authentication surface.
+
 ## Qdrant service
 
 repovec-appliance ships Qdrant as an appliance-internal Podman Quadlet.

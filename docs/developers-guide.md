@@ -459,6 +459,7 @@ Daemon binaries call
 `error` as structured fields and exit non-zero, so systemd reports a failed
 startup rather than running under a broken checked-in unit contract.
 
+
 ### 5.4 Extension pattern
 
 To add validation for a new appliance asset:
@@ -628,3 +629,38 @@ appliance itself. None of these symbols ship in any wheel.
 
 `integration-tests/README.md` is the operator-level entry point for running
 the suite; this section is the developer-level reference for extending it.
+
+
+## 7. GitHub OAuth device-flow implementation
+
+Device-flow authentication follows the repository's boundary rule:
+`repovec-core` owns protocol policy and `repovecd` owns runtime adapters.
+
+The pure policy module is `repovec_core::github_oauth`. Keep device-flow error
+classification, poll-interval decisions, terminal errors, and redacted secret
+wrappers in this module. This code must remain independent of HTTP, clocks,
+sleeping, `systemd-creds`, and the filesystem.
+
+The runtime modules live in `repovecd`:
+
+- `github_device_flow`: application orchestration and ports for the OAuth API,
+  token store, and sleeper.
+- `github_oauth_client`: blocking HTTP adapter for the device-code and token
+  endpoints.
+- `github_token_store`: encrypted credential persistence under
+  `/etc/repovec/`.
+
+Do not pass GitHub access tokens on command lines or include them in formatted
+diagnostics. The token-store adapter encrypts through `systemd-creds` with
+`--name=repovec-github-oauth-token`, writes `github-oauth-token.cred`
+atomically, and redacts known GitHub token prefixes in captured stderr. Persist
+only the bearer token secret; scopes returned by the OAuth server are response
+metadata and are not restored when a token is loaded from disk.
+
+Use dependency injection at every network, persistence, and time boundary.
+Unit tests should use `rstest` fixtures. Behavioural tests should use
+`rstest-bdd` for policy scenarios. The `repovecd` example binary
+`device-flow-test` is the externally observable success criterion: it starts
+`oauth2-test-server`, completes a local device-flow exchange, stores the token
+through the encrypted-store boundary, reloads it, and verifies the same token
+secret is recovered.

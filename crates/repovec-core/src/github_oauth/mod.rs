@@ -222,6 +222,17 @@ pub enum TerminalDeviceFlowError {
     ExpiredToken,
 }
 
+impl fmt::Display for TerminalDeviceFlowError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AccessDenied => f.write_str("access was denied"),
+            Self::ExpiredToken => f.write_str("the device code expired"),
+        }
+    }
+}
+
+impl std::error::Error for TerminalDeviceFlowError {}
+
 /// Applies one polling outcome to the active polling interval.
 ///
 /// # Examples

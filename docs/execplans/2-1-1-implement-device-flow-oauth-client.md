@@ -174,7 +174,73 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
   and 40 doctests passing.
 - [x] (2026-06-02T01:14:00+02:00) Ran `coderabbit review --agent` after a
   recoverable rate-limit backoff. CodeRabbit completed with 0 findings.
-- [ ] Add the repovecd OAuth protocol and token-storage adapters.
+- [x] (2026-06-02T01:55:00+02:00) Added the `repovecd` OAuth protocol,
+  device-flow orchestration, encrypted token-store adapters, behavioural
+  scenarios, and `device-flow-test` example binary. `make check-fmt`,
+  `make typecheck`, `make lint`, and `make test` passed. `make test` reported
+  210 nextest tests and 43 doctests passing. `cargo run -p repovecd --example
+  device-flow-test` completed successfully against `oauth2-test-server` and
+  loaded a stored token back from the encrypted-token adapter boundary.
+- [x] (2026-06-02T02:39:00+02:00) Ran `coderabbit review --agent` for the
+  adapter/test-binary milestone after a 28 minute rate-limit backoff. CodeRabbit
+  reported 9 findings. Valid findings were fixed by adding local expiry
+  enforcement, binding `systemd-creds decrypt` to the same credential name as
+  encrypt, creating token credential files with owner-only permissions, exact
+  example-binary token round-trip validation, endpoint validation at client
+  construction, a corrected token URL doc comment, command-argument assertions,
+  and documentation that reloaded tokens do not carry scope metadata.
+- [x] (2026-06-02T02:46:00+02:00) Re-ran deterministic gates after CodeRabbit
+  fixes. `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  passed. `make test` reported 213 nextest tests and 43 doctests passing.
+  `cargo run -p repovecd --example device-flow-test` completed successfully.
+- [x] (2026-06-02T03:25:00+02:00) Re-ran CodeRabbit after a 26 minute
+  rate-limit backoff. CodeRabbit reported 4 follow-up findings. Fixed the
+  still-valid findings by strengthening `systemd-creds` stderr redaction,
+  removing a redundant expiry check, and converting local test helpers to
+  `rstest` fixtures. The temporary input-file permission recommendation could
+  not be implemented with `std::fs::File::set_permissions` because
+  `whitaker-lint` forbids ambient `std::fs` operations; the implementation now
+  documents the reliance on `tempfile`'s Unix `0600` creation mode instead.
+- [x] (2026-06-02T03:32:00+02:00) Re-ran deterministic gates after the
+  follow-up fixes. `make check-fmt`, `make typecheck`, `make lint`, and
+  `make test` all passed. `make test` reported 213 nextest tests and 43
+  doctests passing. `cargo run -p repovecd --example device-flow-test`
+  completed successfully.
+- [x] (2026-06-02T03:58:00+02:00) Re-ran CodeRabbit after a 23 minute
+  rate-limit backoff. CodeRabbit reported 3 follow-up findings. Fixed them by
+  expanding the `repovecd` crate-level documentation, redacting all known GitHub
+  token prefixes in `systemd-creds` stderr display, adding parameterized
+  redaction tests, and removing the intermediate allocation from scope joining.
+- [x] (2026-06-02T04:04:00+02:00) Re-ran deterministic gates after the latest
+  follow-up fixes. `make check-fmt`, `make typecheck`, `make lint`, and
+  `make test` all passed. `make test` reported 218 nextest tests and 43
+  doctests passing. `cargo run -p repovecd --example device-flow-test`
+  completed successfully.
+- [x] (2026-06-02T05:05:00+02:00) Re-ran CodeRabbit after a 30 minute
+  rate-limit backoff. CodeRabbit reported 3 follow-up findings. Fixed the
+  still-valid findings by removing the redundant zero-duration expiry check and
+  adding the missing `ghu_` GitHub OAuth token prefix to stderr redaction and
+  tests. The suggested `rstest` fixture simplification is intentionally not
+  applied because the direct default-return form fails `make typecheck` with an
+  `unused_braces` diagnostic, and the mechanical workarounds fail Clippy.
+- [x] (2026-06-02T05:18:00+02:00) Re-ran deterministic gates after those
+  fixes. `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  passed. `make test` reported 219 nextest tests and 43 doctests passing.
+  `cargo run -p repovecd --example device-flow-test` completed successfully.
+- [x] (2026-06-02T06:21:00+02:00) Re-ran CodeRabbit after two requested
+  rate-limit backoffs. CodeRabbit reported 5 findings. Fixed the valid issues
+  by parsing token-poll response bodies before assuming success status,
+  validating both endpoint URLs with `Url::parse`, fsyncing the containing
+  directory by opening `.` after atomic rename, removing a now-unused
+  `systemd-creds` error variant, and letting the top-of-loop expiry guard own
+  the next-interval check.
+- [x] (2026-06-02T06:35:00+02:00) Re-ran deterministic gates after these
+  fixes. `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  passed. `make test` reported 219 nextest tests and 43 doctests passing.
+  `cargo run -p repovecd --example device-flow-test` completed successfully.
+- [x] (2026-06-02T06:52:00+02:00) Re-ran CodeRabbit after the latest fixes.
+  CodeRabbit completed with 0 findings, clearing the adapter/test-binary
+  milestone for commit and documentation work.
 - [ ] After implementation and final validation, mark roadmap item `2.1.1`
   done.
 
@@ -217,6 +283,31 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
   `/device/token`, and it would not give enough control over endpoint-level
   error classification.
 
+- Observation: `cargo check --all-targets --all-features` did not expose the
+  missing `cap-std` `fs_utf8` feature for the token-store module before the
+  example binary was run. Evidence: `make typecheck`, `make lint`, and
+  `make test` passed, but `cargo run -p repovecd --example device-flow-test`
+  first failed with `could not find fs_utf8 in cap_std`. Impact: keep the
+  explicit example-binary run as a required gate for this item, and retain the
+  workspace `cap-std` dependency feature so the adapter compiles in ordinary
+  binary builds.
+
+- Observation: `oauth2-test-server` owns a Tokio `JoinHandle`, and the blocking
+  `oauth2` HTTP client must not be driven inside the async runtime context.
+  Evidence: the first example-binary run panicked with `Cannot drop a runtime in
+  a context where blocking is not allowed`. Impact: the example now starts and
+  controls the mock server with `Runtime::block_on`, but performs OAuth HTTP
+  polling and token-store work in synchronous code.
+
+- Observation: `tempfile::NamedTempFile` creates files with `0600` mode on Unix,
+  but post-creation permission changes through `std::fs::File::set_permissions`
+  are rejected by the repository's `whitaker-lint` capability policy. Evidence:
+  CodeRabbit requested an explicit permission set for the `systemd-creds`
+  plaintext input, and `make lint` rejected the attempted `std::fs`
+  implementation. Impact: keep the input as a `NamedTempFile`, record the
+  owner-only creation-mode assumption in code, and avoid bypassing the
+  capability policy.
+
 ## Decision log
 
 - Decision: Keep this branch as a pre-implementation planning pull request.
@@ -252,6 +343,19 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
   endpoint paths but not the configurable mock endpoint requirement in this
   plan, while `oauth2` exposes RFC 8628 device-code URLs directly and keeps
   error handling testable. Date/Author: 2026-06-02, Codex.
+
+- Decision: store the GitHub token as an encrypted credential file named
+  `github-oauth-token.cred` under the configured `/etc/repovec` root, using a
+  small `CredentialEncryptor` port and a `systemd-creds` adapter. Rationale:
+  the port keeps token persistence testable without shelling out in unit tests,
+  while the runtime adapter avoids storing encryption key material beside the
+  ciphertext. Date/Author: 2026-06-02, Codex.
+
+- Decision: implement the roadmap "test binary" as
+  `crates/repovecd/examples/device-flow-test.rs`. Rationale: an example binary
+  is directly runnable with Cargo, does not alter shipped daemon entrypoints,
+  and still proves the three-step flow against `oauth2-test-server`.
+  Date/Author: 2026-06-02, Codex.
 
 ## Outcomes & retrospective
 

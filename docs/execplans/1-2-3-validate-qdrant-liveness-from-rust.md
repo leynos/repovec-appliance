@@ -598,6 +598,25 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   `repovec-qdrant-liveness-*` containers behind.
 - [x] (2026-06-02T06:18:00+02:00) CodeRabbit follow-up review completed
   with zero findings. Milestone 4 is ready to commit.
+- [x] (2026-06-02T06:20:00+02:00) Committed Milestone 4 as `b31930d`
+  (`Add Qdrant liveness integration test`).
+- [ ] (2026-06-02T06:27:00+02:00) Milestone 5 in progress: wired both
+  `repovecd` and `repovec-mcpd` to fail closed when the Qdrant liveness check
+  fails, because both checked-in systemd units directly require and order
+  after Qdrant. Startup tests use injected async health-check closures and do
+  not open network sockets.
+- [x] (2026-06-02T06:31:00+02:00) Early Milestone 5 typecheck passed after
+  removing unused single-purpose systemd wrapper functions:
+  `make typecheck`.
+- [x] (2026-06-02T06:36:00+02:00) Milestone 5 gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, `make test`,
+  `make markdownlint`, and the opt-in live Qdrant integration command. The
+  default test run executed 220 nextest tests with four live-Qdrant scenarios
+  skipped, 13 `repovec-ci` doctests, and 22 `repovec-core` doctests. The live
+  command ran four tests and left no `repovec-qdrant-liveness-*` containers
+  behind.
+- [x] (2026-06-02T06:44:00+02:00) CodeRabbit completed Milestone 5 review
+  with zero findings.
 
 ## Surprises & Discoveries
 
@@ -662,6 +681,10 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   loop after the deadline-sleep fix. Capturing the instant once per completed
   probe makes the comparison and remaining-duration calculation use the same
   observation of time.
+- Adding runtime liveness to the daemon binaries made the previous
+  no-argument systemd validation wrapper functions dead code. The combined
+  startup helper is now the canonical no-argument entry point, while the
+  individual systemd helper remains injectable for unit tests.
 
 ## Decision Log
 
@@ -730,6 +753,11 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   unwinding test safely, but hidden cleanup failures can leave confusing local
   state. The warning path redacts secrets and avoids Clippy-denied printing
   macros.
+
+- Decision: make both `repovecd` and `repovec-mcpd` validate Qdrant liveness
+  at startup. Rationale: the checked-in service units for both daemons directly
+  require Qdrant and start after it, so both process boundaries should fail
+  closed instead of relying on only one daemon to enforce the runtime contract.
 
 ## Outcomes & Retrospective
 

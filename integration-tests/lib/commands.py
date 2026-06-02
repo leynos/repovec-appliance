@@ -49,7 +49,17 @@ def _build_catalogue() -> tuple[Program, ...]:
 
 
 def host_catalogue() -> ProgramCatalogue:
-    """Return the cuprum :class:`ProgramCatalogue` shared by host-side helpers."""
+    """Build the host-side cuprum program catalogue.
+
+    Returns
+    -------
+    ProgramCatalogue
+        Curated catalogue shared by every host-side helper in the
+        harness. Programs not present in this catalogue raise
+        ``cuprum.UnknownProgramError`` when invoked through
+        :func:`run_host`; that exception is the safety rail that
+        keeps ad hoc shell-outs from sneaking into test code.
+    """
 
     from cuprum import ProgramCatalogue, ProjectSettings
 

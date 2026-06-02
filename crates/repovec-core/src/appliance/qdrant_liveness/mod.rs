@@ -236,6 +236,11 @@ pub async fn check_qdrant_liveness(
         .map_err(|_elapsed| QdrantLivenessError::Timeout { timeout: config.timeout() })?
         .map_err(map_qdrant_error)?;
 
+    tokio::time::timeout(config.timeout(), client.list_collections())
+        .await
+        .map_err(|_elapsed| QdrantLivenessError::Timeout { timeout: config.timeout() })?
+        .map_err(map_qdrant_error)?;
+
     QdrantLivenessReport::try_from(reply)
 }
 
@@ -280,7 +285,7 @@ fn map_qdrant_error(error: QdrantError) -> QdrantLivenessError {
     match error {
         QdrantError::ResponseError { status }
         | QdrantError::ResourceExhaustedError { status, .. }
-            if is_authentication_failure_code(&status.code().to_string()) =>
+            if is_authentication_failure_status(&status.code().to_string(), status.message()) =>
         {
             QdrantLivenessError::AuthenticationFailed
         }
@@ -302,6 +307,18 @@ fn map_qdrant_error(error: QdrantError) -> QdrantLivenessError {
 
 fn is_authentication_failure_code(code: &str) -> bool {
     matches!(code, "Unauthenticated" | "PermissionDenied")
+}
+
+fn is_authentication_failure_status(code: &str, message: &str) -> bool {
+    is_authentication_failure_code(code) || is_qdrant_authentication_failure_message(message)
+}
+
+fn is_qdrant_authentication_failure_message(message: &str) -> bool {
+    let normalized_message = message.to_ascii_lowercase();
+
+    normalized_message.contains("authentication credentials")
+        || normalized_message.contains("invalid api key")
+        || normalized_message.contains("invalid jwt")
 }
 
 impl TryFrom<HealthCheckReply> for QdrantLivenessReport {

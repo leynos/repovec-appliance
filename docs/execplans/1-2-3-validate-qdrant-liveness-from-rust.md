@@ -292,14 +292,14 @@ Acceptance for this milestone:
 ### Milestone 4: Add live Qdrant integration coverage
 
 Add an opt-in integration test under `crates/repovec-core/tests/`, for example
-`qdrant_liveness_integration.rs`. Use `rstest` fixtures for generated key
-material, container name, endpoint and cleanup state.
+`qdrant_liveness_integration.rs`. Keep helper setup fallible and scoped to the
+test body so default test discovery can skip the live cases cleanly.
 
 The test should start `docker.io/qdrant/qdrant:v1` with Podman, set
 `QDRANT__SERVICE__API_KEY` from a temporary key value, bind the container gRPC
 port to loopback, wait for bounded readiness, call the Rust liveness function,
-and then clean up the container. The default path should be skipped unless an
-explicit environment flag such as `REPOVEC_RUN_QDRANT_INTEGRATION=1` is set.
+and then clean up the container. The default path should skip these tests with
+`#[ignore]`; developers run them explicitly with `-- --ignored`.
 
 Prefer a dynamic host port if implementation discovers that fixed
 `127.0.0.1:6334` would make the test flaky on developer machines. If the test
@@ -400,8 +400,7 @@ implementation, but it should follow this shape:
 
 ```sh
 set -o pipefail
-REPOVEC_RUN_QDRANT_INTEGRATION=1 cargo test -p repovec-core \
-  --test qdrant_liveness_integration -- --ignored 2>&1 \
+cargo test -p repovec-core --test qdrant_liveness_integration -- --ignored 2>&1 \
   | tee /tmp/qdrant-integration-repovec-appliance-1-2-3-validate-qdrant-liveness-from-rust.out
 ```
 
@@ -496,6 +495,109 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   `repovec-core` doctests.
 - [x] (2026-06-02T01:53:41+02:00) CodeRabbit completed Milestone 3 review
   with zero findings after one recoverable rate-limit backoff.
+- [ ] (2026-06-02T02:11:08+02:00) Milestone 4 in progress: added an
+  ignored, opt-in live Qdrant integration test that starts a rootless Podman
+  container, uses a dynamic loopback gRPC port, validates success and failure
+  paths, and skips Podman startup in default `make test`.
+- [ ] (2026-06-02T02:25:36+02:00) Live integration testing found that
+  Qdrant's gRPC health endpoint does not reject a wrong API key. The liveness
+  check now performs `health_check()` for readiness and `list_collections()`
+  as a lightweight authenticated gRPC operation before reporting success.
+- [x] (2026-06-02T02:30:44+02:00) Milestone 4 live integration command passed:
+  `cargo test -p repovec-core --test qdrant_liveness_integration --
+  --ignored`. It ran four ignored scenarios: correct API key, wrong API key,
+  closed port, and bounded readiness timeout. No
+  `repovec-qdrant-liveness-*` containers remained afterwards.
+- [x] (2026-06-02T02:32:03+02:00) Milestone 4 gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test`. The test
+  run executed 214 nextest tests with four live-Qdrant scenarios skipped by
+  default, 13 `repovec-ci` doctests, and 22 `repovec-core` doctests.
+- [x] (2026-06-02T03:12:21+02:00) CodeRabbit completed the Milestone 4
+  review after one 21-minute rate-limit backoff and raised five findings. The
+  fixes made the readiness wait use `tokio::time::sleep`, changed temporary
+  API-key files to use `std::env::temp_dir()`, reported the actual readiness
+  wait timeout, and made container/test setup helpers return fallible results
+  to the test body.
+- [x] (2026-06-02T03:17:02+02:00) Re-ran Milestone 4 validation after the
+  CodeRabbit fixes. `make check-fmt`, `make typecheck`, `make lint`,
+  `make test`, the opt-in live Qdrant integration command, and
+  `make markdownlint` all passed. The default test run again executed 214
+  nextest tests with four live-Qdrant scenarios skipped, 13 `repovec-ci`
+  doctests, and 22 `repovec-core` doctests.
+- [x] (2026-06-02T03:35:18+02:00) CodeRabbit follow-up review raised four
+  remaining integration-test concerns. The accepted fixes removed the runtime
+  environment guard in favour of unconditional ignored tests, kept default
+  `make test` deterministic under the repository's `--all-features` test
+  policy, and parsed the first non-empty `podman port` binding for dual-stack
+  hosts.
+- [x] (2026-06-02T03:39:04+02:00) Re-ran Milestone 4 validation after the
+  follow-up fixes. `make check-fmt`, `make typecheck`, `make lint`,
+  `make test`, and `cargo test -p repovec-core --test
+  qdrant_liveness_integration -- --ignored` passed. The default test run
+  executed 214 nextest tests with four live-Qdrant scenarios skipped, 13
+  `repovec-ci` doctests, and 22 `repovec-core` doctests.
+- [x] (2026-06-02T04:29:08+02:00) CodeRabbit follow-up review was
+  rate-limited twice, with mandated random backoffs of 24 minutes and 17
+  minutes. The completed retry raised two valid findings: pin the Qdrant
+  integration image and avoid oversleeping past the readiness deadline.
+- [x] (2026-06-02T04:33:27+02:00) Re-ran Milestone 4 validation after pinning
+  the integration image to `docker.io/qdrant/qdrant:v1.18.1` and bounding each
+  poll sleep to the remaining deadline. `make check-fmt`, `make typecheck`,
+  `make lint`, `make test`, and `cargo test -p repovec-core --test
+  qdrant_liveness_integration -- --ignored` passed. The default test run
+  executed 214 nextest tests with four live-Qdrant scenarios skipped, 13
+  `repovec-ci` doctests, and 22 `repovec-core` doctests.
+- [x] (2026-06-02T04:45:00+02:00) CodeRabbit follow-up review raised three
+  integration-test concerns. The accepted fixes changed the polling match arm
+  to ignore retry errors explicitly, added visible best-effort cleanup
+  diagnostics for temporary files and containers, and imported `Future`
+  explicitly for the async helper bound.
+- [x] (2026-06-02T04:51:00+02:00) Re-ran Milestone 4 validation after the
+  cleanup-diagnostic fixes. `make check-fmt`, `make typecheck`, `make lint`,
+  `make test`, and `cargo test -p repovec-core --test
+  qdrant_liveness_integration -- --ignored` passed. The default test run
+  executed 214 nextest tests with four live-Qdrant scenarios skipped, 13
+  `repovec-ci` doctests, and 22 `repovec-core` doctests. The live command ran
+  four tests and left no `repovec-qdrant-liveness-*` containers behind.
+- [x] (2026-06-02T05:05:00+02:00) CodeRabbit follow-up review raised one
+  remaining trivial integration-test concern. The readiness retry loop now
+  captures the current instant once after each liveness probe and reuses it for
+  both deadline comparison and remaining-sleep calculation.
+- [x] (2026-06-02T05:10:00+02:00) Re-ran Milestone 4 validation after the
+  single-instant polling fix. `make check-fmt`, `make typecheck`,
+  `make lint`, `make test`, `cargo test -p repovec-core --test
+  qdrant_liveness_integration -- --ignored`, and `make markdownlint` passed.
+  The default test run executed 214 nextest tests with four live-Qdrant
+  scenarios skipped, 13 `repovec-ci` doctests, and 22 `repovec-core`
+  doctests. The live command ran four tests and left no
+  `repovec-qdrant-liveness-*` containers behind.
+- [x] (2026-06-02T05:25:00+02:00) CodeRabbit follow-up review raised one
+  final trivial simplification. The readiness retry loop now relies on the
+  explicit `now >= deadline` guard and sleeps for the bounded remaining
+  duration without a redundant zero-duration check.
+- [x] (2026-06-02T05:30:00+02:00) Re-ran Milestone 4 validation after the
+  redundant-guard removal. `make check-fmt`, `make typecheck`, `make lint`,
+  `make test`, `cargo test -p repovec-core --test
+  qdrant_liveness_integration -- --ignored`, and `make markdownlint` passed.
+  The default test run executed 214 nextest tests with four live-Qdrant
+  scenarios skipped, 13 `repovec-ci` doctests, and 22 `repovec-core`
+  doctests. The live command ran four tests and left no
+  `repovec-qdrant-liveness-*` containers behind.
+- [x] (2026-06-02T05:55:00+02:00) CodeRabbit follow-up review was
+  rate-limited once, with the mandated random backoff of 21 minutes. The
+  completed retry raised one trivial readability concern: import
+  `QdrantLivenessReport` in the integration test instead of using a fully
+  qualified return type.
+- [x] (2026-06-02T06:00:00+02:00) Re-ran Milestone 4 validation after the
+  `QdrantLivenessReport` import simplification. `make check-fmt`,
+  `make typecheck`, `make lint`, `make test`, `cargo test -p repovec-core
+  --test qdrant_liveness_integration -- --ignored`, and `make markdownlint`
+  passed. The default test run executed 214 nextest tests with four
+  live-Qdrant scenarios skipped, 13 `repovec-ci` doctests, and 22
+  `repovec-core` doctests. The live command ran four tests and left no
+  `repovec-qdrant-liveness-*` containers behind.
+- [x] (2026-06-02T06:18:00+02:00) CodeRabbit follow-up review completed
+  with zero findings. Milestone 4 is ready to commit.
 
 ## Surprises & Discoveries
 
@@ -537,6 +639,29 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
 - CodeRabbit rate-limited the first Milestone 3 review attempt. The mandated
   random backoff was 16 minutes. The second attempt completed normally with
   zero findings.
+- The live Qdrant test showed that `Qdrant::health_check().await` proves
+  process readiness but not API-key validity: a wrong key still receives a
+  health reply. `Qdrant::list_collections().await` is cheap, read-only and
+  authenticated, so the implementation uses it to close the authentication
+  gap.
+- CodeRabbit's Milestone 4 review caught two test-portability issues: the
+  temporary API-key helper was hard-coded to `/tmp`, and the readiness polling
+  loop used blocking `std::thread::sleep` inside an async function. Both were
+  valid findings and were fixed before proceeding.
+- The repository's `make test` target runs with `--all-features`, so a Cargo
+  feature cannot be used as the opt-in live-test gate. The live integration
+  scenarios are therefore unconditionally `#[ignore]`d and run only through
+  the documented `-- --ignored` command.
+- Pinning the live integration image matters even when the packaged Quadlet
+  tracks Qdrant's `v1` stream: the test is a behavioural contract for this
+  implementation branch, not the appliance update policy.
+- The repository denies direct stderr-printing macros in tests through Clippy.
+  Cleanup diagnostics therefore use a small `stderr().write_fmt(...)` helper
+  so Drop failures are visible without weakening lint policy.
+- CodeRabbit caught a tiny timing consistency issue in the readiness polling
+  loop after the deadline-sleep fix. Capturing the instant once per completed
+  probe makes the comparison and remaining-duration calculation use the same
+  observation of time.
 
 ## Decision Log
 
@@ -584,6 +709,27 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   `QdrantError`; adding a direct `tonic` dependency solely for enum matching
   would widen this milestone's dependency surface without improving the
   runtime contract.
+
+- Decision: use a dynamic loopback host port for the live integration test
+  rather than fixed `127.0.0.1:6334`. Rationale: the production default remains
+  `localhost:6334`, but tests should not fail merely because a developer has a
+  local Qdrant already bound to the appliance port.
+
+- Decision: define liveness as health-readiness plus a read-only authenticated
+  collection-list request. Rationale: Qdrant's gRPC health endpoint is not
+  sufficient to validate the stored API key, while `list_collections()` fails
+  for wrong credentials without mutating Qdrant state.
+
+- Decision: pin the live integration test image to
+  `docker.io/qdrant/qdrant:v1.18.1`. Rationale: the test should be
+  reproducible while the checked-in Quadlet can continue to express the
+  appliance's registry update policy separately.
+
+- Decision: emit best-effort cleanup warnings from live-test Drop handlers.
+  Rationale: temporary-file and container cleanup cannot fail the already
+  unwinding test safely, but hidden cleanup failures can leave confusing local
+  state. The warning path redacts secrets and avoids Clippy-denied printing
+  macros.
 
 ## Outcomes & Retrospective
 

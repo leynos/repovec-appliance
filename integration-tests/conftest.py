@@ -161,7 +161,7 @@ def integration_container(
             pass
 
 
-@pytest.fixture()
+@pytest.fixture
 def container_session(integration_container: DockerContainer) -> Iterator[ContainerSession]:
     """Per-test :class:`ContainerSession` with before/after cleanup.
 

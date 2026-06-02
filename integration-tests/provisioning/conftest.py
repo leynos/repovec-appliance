@@ -11,15 +11,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 HELPER_SOURCE = REPO_ROOT / "packaging" / "libexec" / "repovec-qdrant-api-key"
 
 
-@pytest.fixture()
+@pytest.fixture
 def patched_helper(tmp_path: Path) -> Path:
     """Return a tmp-rooted copy of the helper script.
 
     The helper hard-codes ``/etc/repovec`` paths. For cmd-mox tests we cannot
     write there (and would not want to), so we rewrite the two path constants
     (``CONFIG_DIR`` and ``KEY_FILE``) near the top of the script to point into
-    ``tmp_path``. The rest of the file – including the logic we are trying to
-    exercise – is left verbatim, so the contract under test is unchanged.
+    ``tmp_path``. The rest of the file - including the logic we are trying to
+    exercise - is left verbatim, so the contract under test is unchanged.
     ``/var/lib/repovec`` is intentionally left untouched so cmd-mox tests can
     assert that the canonical home directory propagates to ``useradd``.
 
@@ -68,7 +68,7 @@ def patched_helper(tmp_path: Path) -> Path:
     return dest
 
 
-@pytest.fixture()
+@pytest.fixture
 def helper_config_dir(patched_helper: Path) -> Path:
     """Return the ``CONFIG_DIR`` used by :func:`patched_helper`.
 
@@ -83,7 +83,7 @@ def helper_config_dir(patched_helper: Path) -> Path:
     return patched_helper.parent / "etc" / "repovec"
 
 
-@pytest.fixture()
+@pytest.fixture
 def helper_key_file(helper_config_dir: Path) -> Path:
     """Return the ``KEY_FILE`` path used by :func:`patched_helper`.
 
@@ -98,7 +98,7 @@ def helper_key_file(helper_config_dir: Path) -> Path:
     return helper_config_dir / "qdrant-api-key"
 
 
-@pytest.fixture()
+@pytest.fixture
 def helper_env(patched_helper: Path) -> dict[str, str]:
     """Build a minimal environment overlay for running the patched helper.
 

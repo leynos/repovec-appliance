@@ -959,6 +959,7 @@ dependencies = [
  "camino",
  "insta",
  "proptest",
+ "repovec-test-helpers",
  "rstest",
  "rstest-bdd",
  "rstest-bdd-macros",

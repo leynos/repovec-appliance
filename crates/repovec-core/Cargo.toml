@@ -13,6 +13,7 @@ tracing.workspace = true
 [dev-dependencies]
 insta.workspace = true
 proptest.workspace = true
+repovec-test-helpers = { path = "../repovec-test-helpers" }
 rstest.workspace = true
 rstest-bdd.workspace = true
 rstest-bdd-macros = { workspace = true, features = ["strict-compile-time-validation"] }

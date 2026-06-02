@@ -3,16 +3,17 @@
 //! This crate provides a log-capture harness and assertion helpers for
 //! testing daemon startup validation paths that use
 //! [`repovec_core::appliance::systemd_units::run_startup_validation`].
-//! It is consumed as a `[dev-dependencies]` entry in `repovecd` and
-//! `repovec-mcpd`.
+//! It is consumed as a `[dev-dependencies]` entry in `repovec-core`,
+//! `repovecd`, and `repovec-mcpd`.
 //!
 //! ## Log capture
 //!
-//! [`startup_with_captured_logs`] installs a temporary `tracing` subscriber
-//! that records all formatted log output into an in-memory buffer, then
-//! invokes `run_startup_validation` with the supplied validator closure.
-//! The captured text is returned alongside the validation result for
-//! assertion.
+//! [`capture_logs`] installs a temporary `tracing` subscriber that records
+//! all formatted log output into an in-memory buffer, runs the supplied
+//! closure with that subscriber active, and returns the closure's result
+//! alongside the captured text. The unit-test suite for the startup
+//! adapter inside `repovec-core` shares this helper, as do the
+//! `assert_startup_*` wrappers in this crate.
 //!
 //! ## Assertion helpers
 //!
@@ -21,6 +22,10 @@
 //! observable startup behaviour (success, success logging, real-validator
 //! invocation, exit-code mapping, structured failure diagnostics) and
 //! returns `Result<(), String>` so the test body can use the `?` operator.
+//!
+//! Low-level helpers [`ensure`] and [`ensure_log_line_contains`] are also
+//! exposed so that other crates' tests can compose their own log-driven
+//! assertions on top of [`capture_logs`].
 
 use std::{
     io::{self, Write},
@@ -32,17 +37,21 @@ use repovec_core::appliance::systemd_units::{
 };
 use tracing_subscriber::fmt::MakeWriter;
 
-/// Captures daemon startup validation logs for assertions.
+/// Captures all `tracing` output emitted while `action` runs.
 ///
-/// Runs [`run_startup_validation`] with a temporary tracing subscriber that
-/// records formatted logs into memory.
+/// Installs a temporary, plain-text `tracing` subscriber that writes every
+/// event into an in-memory buffer, executes `action`, and returns the
+/// closure's result paired with the formatted log output. The subscriber is
+/// scoped to this call only, so it does not interfere with any process-wide
+/// subscriber installed elsewhere.
 ///
 /// # Errors
 ///
-/// Returns an error string if the captured log buffer cannot be read as UTF-8.
-pub fn startup_with_captured_logs<F>(validator: F) -> Result<(Result<(), i32>, String), String>
+/// Returns an error string if the captured log buffer cannot be read as
+/// UTF-8, or if the buffer's mutex is poisoned.
+pub fn capture_logs<T, F>(action: F) -> Result<(T, String), String>
 where
-    F: FnOnce() -> Result<(), SystemdUnitError>,
+    F: FnOnce() -> T,
 {
     let logs = CapturedLogs::default();
     let subscriber = tracing_subscriber::fmt()
@@ -52,9 +61,47 @@ where
         .with_max_level(tracing::Level::TRACE)
         .with_writer(logs.clone())
         .finish();
-    let result =
-        tracing::subscriber::with_default(subscriber, || run_startup_validation(validator));
+    let result = tracing::subscriber::with_default(subscriber, action);
     Ok((result, logs.content()?))
+}
+
+/// Returns `Ok(())` when `condition` holds, otherwise an error with `message`.
+///
+/// Designed for test bodies that return `Result<(), String>` and use the `?`
+/// operator to bubble assertion failures up to the test runner.
+///
+/// # Errors
+///
+/// Returns `Err(message.to_owned())` when `condition` is `false`.
+pub fn ensure(condition: bool, message: &str) -> Result<(), String> {
+    if condition { Ok(()) } else { Err(message.to_owned()) }
+}
+
+/// Asserts that some log line contains both the given `level` token and
+/// `needle` substring.
+///
+/// On failure the returned error includes `message` and the full captured
+/// log buffer to make diagnosing missing or misformatted events easier.
+///
+/// # Errors
+///
+/// Returns an error string when no line in `logs` contains both `level` and
+/// `needle` as substrings.
+pub fn ensure_log_line_contains(
+    logs: &str,
+    level: &str,
+    needle: &str,
+    message: &str,
+) -> Result<(), String> {
+    let found = logs.lines().any(|line| line.contains(level) && line.contains(needle));
+    ensure(found, &format!("{message}: {logs}"))
+}
+
+fn startup_with_captured_logs<F>(validator: F) -> Result<(Result<(), i32>, String), String>
+where
+    F: FnOnce() -> Result<(), SystemdUnitError>,
+{
+    capture_logs(|| run_startup_validation(validator))
 }
 
 /// Verifies that startup validation succeeds for an injected passing validator.
@@ -151,7 +198,7 @@ pub fn assert_startup_entrypoint_runs_real_checked_in_validation<F>(
 where
     F: FnOnce() -> Result<(), i32>,
 {
-    let (result, logs) = capture_startup_logs(startup)?;
+    let (result, logs) = capture_logs(startup)?;
 
     ensure(result.is_ok(), "checked-in units should pass daemon startup validation")?;
     ensure_log_line_contains(
@@ -212,22 +259,6 @@ pub fn assert_startup_logs_structured_validation_failure(unit: &'static str) -> 
     )
 }
 
-fn capture_startup_logs<F>(startup: F) -> Result<(Result<(), i32>, String), String>
-where
-    F: FnOnce() -> Result<(), i32>,
-{
-    let logs = CapturedLogs::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_ansi(false)
-        .without_time()
-        .with_target(false)
-        .with_max_level(tracing::Level::TRACE)
-        .with_writer(logs.clone())
-        .finish();
-    let result = tracing::subscriber::with_default(subscriber, startup);
-    Ok((result, logs.content()?))
-}
-
 #[derive(Clone, Default)]
 struct CapturedLogs {
     buffer: Arc<Mutex<Vec<u8>>>,
@@ -268,18 +299,4 @@ impl<'writer> MakeWriter<'writer> for CapturedLogs {
 
 const fn missing_section_error(unit: &'static str) -> Result<(), SystemdUnitError> {
     Err(SystemdUnitError::MissingSection { unit, section: "Service" })
-}
-
-fn ensure(condition: bool, message: &str) -> Result<(), String> {
-    if condition { Ok(()) } else { Err(message.to_owned()) }
-}
-
-fn ensure_log_line_contains(
-    logs: &str,
-    level: &str,
-    needle: &str,
-    message: &str,
-) -> Result<(), String> {
-    let found = logs.lines().any(|line| line.contains(level) && line.contains(needle));
-    ensure(found, &format!("{message}: {logs}"))
 }

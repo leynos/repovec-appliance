@@ -314,6 +314,98 @@ The helper is host-facing packaging code. It owns filesystem, user, permission
 and Podman-secret operations; `repovec-core` only validates the static contract
 that those assets expose.
 
+
+### 5.3 `qdrant_liveness` runtime surface
+
+The `qdrant_liveness` module exposes the public runtime validation surface for
+the local Qdrant service:
+
+- `QdrantLivenessConfig` carries the gRPC endpoint, API-key file path, and
+  timeout. The appliance defaults are `http://127.0.0.1:6334`,
+  `/etc/repovec/qdrant-api-key`, and a short bounded probe timeout.
+- `load_qdrant_api_key(...) -> Result<QdrantApiKey, QdrantLivenessError>`
+  reads and validates raw key material without logging or returning the secret
+  value.
+- `check_qdrant_liveness(config).await -> Result<QdrantLivenessReport, QdrantLivenessError>`
+  connects to Qdrant over gRPC with the stored key and returns non-secret
+  server metadata when Qdrant is ready.
+- `QdrantLivenessError` is the typed error enum for missing key files,
+  unreadable key files, invalid key material, invalid endpoints, connection
+  failures, timeouts, authentication failures, and non-ready replies.
+
+Keep this module split from `qdrant_quadlet`. `qdrant_quadlet` validates static
+Quadlet text; `qdrant_liveness` performs runtime filesystem and network I/O.
+The liveness policy currently requires both `health_check()` and an
+authenticated read-only `list_collections()` request, because the health
+endpoint alone does not prove API-key validity.
+
+Daemon binaries call `check_qdrant_liveness()` at startup through injectable
+helpers. Unit tests for those binaries must inject async success and failure
+closures rather than opening sockets. This keeps daemon tests focused on
+startup orchestration, exit-code mapping, and structured logging while the
+live Qdrant integration test proves the real network and authentication
+contract in `repovec-core`. The live Qdrant integration test is
+ignored by default and can be run explicitly on a host with Podman:
+
+```sh
+cargo test -p repovec-core --test qdrant_liveness_integration -- --ignored
+```
+
+
+### 5.4 `systemd_units` validation surface
+
+The `systemd_units` module exposes the public validation surface for the
+checked-in repovec target, daemon service files, and grepai indexer template:
+
+- `checked_in_repovec_target() -> &'static str` returns the embedded
+  `packaging/systemd/repovec.target` source.
+- `checked_in_repovecd_service() -> &'static str` returns the embedded
+  `packaging/systemd/repovecd.service` source.
+- `checked_in_repovec_mcpd_service() -> &'static str` returns the embedded
+  `packaging/systemd/repovec-mcpd.service` source.
+- `checked_in_repovec_grepai_template() -> &'static str` returns the embedded
+  `packaging/systemd/repovec-grepai@.service` source.
+- `CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH` names the repository path for the
+  checked-in `packaging/systemd/repovec-grepai@.service` template.
+- `validate_checked_in_systemd_units() -> Result<(), SystemdUnitError>`
+  validates the embedded unit set.
+- `validate_systemd_units(target, repovecd, mcpd) -> Result<(), SystemdUnitError>`
+  validates caller-provided target and daemon unit contents against the
+  pre-indexer appliance contract.
+- `validate_systemd_units_with_grepai_template(target, repovecd, mcpd, grepai)`
+  validates caller-provided target, daemon, and grepai template contents
+  against the full service-layout contract.
+- `validate_and_trace_checked_in_units() -> Result<(), SystemdUnitError>`
+  verifies the embedded unit set and emits a `tracing::trace!` event on
+  success. It serves as the entry point daemon binaries call during startup.
+- `run_startup_validation(validator) -> Result<(), i32>` runs an injected
+  systemd-unit validator at a daemon startup boundary, emits structured
+  `tracing::error!` diagnostics with `unit` and `error` fields on failure,
+  emits a `tracing::debug!` confirmation on success, and maps validation
+  failures to process exit code `1`.
+- `SystemdUnitError` is the typed error enum for validation failures. See
+  `crates/repovec-core/src/appliance/systemd_units/error.rs` for the full
+  variant list.
+- `SystemdUnitError::unit() -> &str` returns the logical systemd unit name
+  associated with the validation failure. Use this field when emitting
+  structured log events, so operators can identify the failing unit without
+  parsing the display string.
+
+This module validates static unit-file policy only. It must not call
+`systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
+runtime installation work.
+
+Keep the three-argument `validate_systemd_units` API for callers that only need
+the base target and daemon contract. New callers that need the complete
+checked-in appliance layout should use
+`validate_systemd_units_with_grepai_template`.
+
+Daemon binaries call the systemd startup adapter near the start of `main()`,
+before Qdrant liveness validation or other long-running work. Treat
+`SystemdUnitError` as fatal at that process boundary: log `error.unit()` and
+`error` as structured fields and exit non-zero, so systemd reports a failed
+startup rather than running under a broken checked-in unit contract.
+
 #### Observability
 
 `repovec-core` uses `tracing 0.1` as its logging facade. Library crates depend
@@ -404,62 +496,30 @@ lifecycle event (waiting to acquire, acquired, and released) is instrumented
 through this function, and its output is suppressed when `REPOVEC_DEBUG` is
 unset or set to any value other than `1`.
 
-### 5.3 `systemd_units` validation surface
 
-The `systemd_units` module exposes the public validation surface for the
-checked-in repovec target, daemon service files, and grepai indexer template:
+### 5.5 Daemon startup test helpers
 
-- `checked_in_repovec_target() -> &'static str` returns the embedded
-  `packaging/systemd/repovec.target` source.
-- `checked_in_repovecd_service() -> &'static str` returns the embedded
-  `packaging/systemd/repovecd.service` source.
-- `checked_in_repovec_mcpd_service() -> &'static str` returns the embedded
-  `packaging/systemd/repovec-mcpd.service` source.
-- `checked_in_repovec_grepai_template() -> &'static str` returns the embedded
-  `packaging/systemd/repovec-grepai@.service` source.
-- `CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH` names the repository path for the
-  checked-in `packaging/systemd/repovec-grepai@.service` template.
-- `validate_checked_in_systemd_units() -> Result<(), SystemdUnitError>`
-  validates the embedded unit set.
-- `validate_systemd_units(target, repovecd, mcpd) -> Result<(), SystemdUnitError>`
-  validates caller-provided target and daemon unit contents against the
-  pre-indexer appliance contract.
-- `validate_systemd_units_with_grepai_template(target, repovecd, mcpd, grepai)`
-  validates caller-provided target, daemon, and grepai template contents
-  against the full service-layout contract.
-- `validate_and_trace_checked_in_units() -> Result<(), SystemdUnitError>`
-  verifies the embedded unit set and emits a `tracing::trace!` event on
-  success. It serves as the entry point daemon binaries call during startup.
-- `run_startup_validation(validator) -> Result<(), i32>` runs an injected
-  systemd-unit validator at a daemon startup boundary, emits structured
-  `tracing::error!` diagnostics with `unit` and `error` fields on failure,
-  emits a `tracing::debug!` confirmation on success, and maps validation
-  failures to process exit code `1`.
-- `SystemdUnitError` is the typed error enum for validation failures. See
-  `crates/repovec-core/src/appliance/systemd_units/error.rs` for the full
-  variant list.
-- `SystemdUnitError::unit() -> &str` returns the logical systemd unit name
-  (e.g. `"repovecd.service"`) associated with the validation failure. Use this
-  field when emitting structured log events, so operators can identify which
-  unit violated the contract without parsing the display string.
+The `repovec-test-helpers` crate owns the shared daemon startup test harness
+used by `repovec-core`, `repovecd`, and `repovec-mcpd`. It exposes a generic
+`capture_logs(action)` helper that captures formatted `tracing` output in
+memory for the duration of an injected closure, plus the `ensure` and
+`ensure_log_line_contains` assertion primitives. On top of these it provides
+the binary-facing `assert_startup_*` wrappers that the daemon crates call.
 
-This module validates static unit-file policy only. It must not call
-`systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
-runtime installation work.
+Use the `assert_startup_*` wrappers for binary-level daemon startup tests
+whenever the behaviour is the same across daemons and only the unit name
+differs. Keep unit tests for `run_startup_validation()` itself in
+`repovec-core`; those tests reuse `capture_logs` (via a dev-dependency on
+`repovec-test-helpers`) and should assert the core adapter emits the expected
+`TRACE`, `DEBUG`, and `ERROR` events so the logging contract cannot disappear
+while return-code tests still pass.
 
-Keep the three-argument `validate_systemd_units` API for callers that only need
-the base target and daemon contract. New callers that need the complete
-checked-in appliance layout should use
-`validate_systemd_units_with_grepai_template`.
+Snapshot helpers in `repovec-test-helpers` are behind its `snapshots` feature
+because `insta` is only needed by daemon test targets. Daemon crates enable
+that feature in `[dev-dependencies]` and commit the generated snapshots under
+`crates/repovec-test-helpers/src/snapshots/`.
 
-Daemon binaries call
-`run_startup_validation(validate_and_trace_checked_in_units)` near the start of
-`main()`, before starting an async runtime or other long-running work. Treat
-`SystemdUnitError` as fatal at that process boundary: log `error.unit()` and
-`error` as structured fields and exit non-zero, so systemd reports a failed
-startup rather than running under a broken checked-in unit contract.
-
-### 5.4 Extension pattern
+### 5.6 Extension pattern
 
 To add validation for a new appliance asset:
 
@@ -474,7 +534,7 @@ To add validation for a new appliance asset:
 5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
    scenarios under `crates/repovec-core/tests/features/`.
 
-### 5.5 Test patterns
+### 5.7 Test patterns
 
 The appliance validation modules use `rstest` for unit tests and `rstest-bdd`
 with `rstest-bdd-macros` for behavioural tests. Unit tests should exercise each
@@ -516,28 +576,6 @@ worked example.
 See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
 the project-local testing guidance.
-
-### 5.6 Daemon startup test helpers
-
-The `repovec-test-helpers` crate owns the shared daemon startup test harness
-used by `repovec-core`, `repovecd`, and `repovec-mcpd`. It exposes a generic
-`capture_logs(action)` helper that captures formatted `tracing` output in
-memory for the duration of an injected closure, plus the `ensure` and
-`ensure_log_line_contains` assertion primitives. On top of these it provides
-the binary-facing `assert_startup_*` wrappers that the daemon crates call.
-
-Use the `assert_startup_*` wrappers for binary-level daemon startup tests
-whenever the behaviour is the same across daemons and only the unit name
-differs. Keep unit tests for `run_startup_validation()` itself in
-`repovec-core`; those tests reuse `capture_logs` (via a dev-dependency on
-`repovec-test-helpers`) and should assert the core adapter emits the expected
-`TRACE`, `DEBUG`, and `ERROR` events so the logging contract cannot disappear
-while return-code tests still pass.
-
-Snapshot helpers in `repovec-test-helpers` are behind its `snapshots` feature
-because `insta` is only needed by daemon test targets. Daemon crates enable
-that feature in `[dev-dependencies]` and commit the generated snapshots under
-`crates/repovec-test-helpers/src/snapshots/`.
 
 ## 6. Provisioning integration tests
 

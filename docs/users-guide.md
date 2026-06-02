@@ -147,6 +147,33 @@ EOF'
 
 Requests to Qdrant without the `api-key` header are rejected.
 
+
+### Qdrant liveness at daemon startup
+
+`repovecd` and `repovec-mcpd` validate Qdrant before they continue startup.
+Each daemon reads `/etc/repovec/qdrant-api-key`, connects to Qdrant gRPC at
+`http://localhost:6334`, checks the gRPC health service, and performs a
+read-only authenticated collection-list request. This proves both process
+readiness and API-key validity.
+
+If the liveness check fails, the daemon exits immediately with status `1`.
+Inspect service state and journals without printing the key:
+
+```sh
+systemctl status qdrant.service repovecd.service repovec-mcpd.service
+journalctl -u qdrant.service --no-pager | tail -40
+journalctl -u repovecd.service --no-pager | tail -40
+journalctl -u repovec-mcpd.service --no-pager | tail -40
+stat -c '%U:%G %a %n' /etc/repovec/qdrant-api-key
+```
+
+Common failure classes are missing or unreadable API-key file, empty or invalid
+key material, Qdrant not listening on `localhost:6334`, Qdrant taking longer
+than the configured probe timeout, and authentication failure. Regenerate or
+repair the key file and Podman secret only when the journal points to an
+API-key problem; connection failures normally require inspecting
+`qdrant.service`.
+
 ### Qdrant API-key provisioning behaviour
 
 #### `REPOVEC_DEBUG` environment variable
@@ -278,9 +305,22 @@ sudo systemctl start repovec.target
 > daemon exits immediately with a non-zero exit code. Inspect the journal with
 > `journalctl -u repovecd.service --no-pager | tail -20` or
 > `journalctl -u repovec-mcpd.service --no-pager | tail -20`; the error message
-> identifies the unit and contract clause that was violated. This validation
-> does not prove that the host has `/usr/bin/grepai`, the `repovec` user,
-> concrete worktrees, Qdrant reachability, or a compatible systemd version.
+> identifies the violated unit contract or Qdrant liveness condition. This
+> validation does not prove that the host has `/usr/bin/grepai`, concrete
+> worktrees, or a compatible systemd version.
+
+Starting the target may fail until these prerequisites are present on the host:
+
+- The `repovec` system user exists and matches the checked-in unit contract.
+- `/etc/repovec/qdrant-api-key` has been provisioned with the Qdrant API key
+  and can be read by the daemon services.
+- The required daemon binaries, `repovecd` and `repovec-mcpd`, exist at the
+  paths referenced by the unit files.
+- `qdrant.service` can start and accept authenticated gRPC requests before the
+  bounded daemon readiness wait expires.
+
+If any prerequisite is missing, the target fails closed instead of starting
+partially configured services.
 
 ### Startup validation logging
 
@@ -314,10 +354,5 @@ events. The systemd unit validator emits `TRACE`, `DEBUG`, and `ERROR` events;
 use `RUST_LOG=repovec_core::systemd_units=trace` when startup ordering or
 unit-contract diagnostics require the lower-level trace.
 
-Starting the target may still fail until later roadmap items create the
-`repovec` system user, directory layout, Qdrant API-key configuration, and
-production daemon binaries. The checked-in unit contract already records the
-intended ordering: `repovecd.service` starts after and requires Qdrant, and
-`repovec-mcpd.service` starts after and requires both Qdrant and `repovecd`.
 Concrete grepai indexer instances also start after and require both Qdrant and
 `repovecd`.

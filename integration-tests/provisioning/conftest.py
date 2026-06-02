@@ -16,10 +16,17 @@ def patched_helper(tmp_path: Path) -> Path:
     """Return a tmp-rooted copy of the helper script.
 
     The helper hard-codes ``/etc/repovec`` paths. For cmd-mox tests we cannot
-    write there (and would not want to), so we rewrite the four path constants
-    near the top of the script to point into ``tmp_path``. The rest of the
-    file – including the logic we are trying to exercise – is left verbatim,
-    so the contract under test is unchanged.
+    write there (and would not want to), so we rewrite the two path constants
+    (``CONFIG_DIR`` and ``KEY_FILE``) near the top of the script to point into
+    ``tmp_path``. The rest of the file – including the logic we are trying to
+    exercise – is left verbatim, so the contract under test is unchanged.
+    ``/var/lib/repovec`` is intentionally left untouched so cmd-mox tests can
+    assert that the canonical home directory propagates to ``useradd``.
+
+    Returns
+    -------
+    Path
+        Path to the executable, patched helper script under ``tmp_path``.
     """
 
     config_dir = tmp_path / "etc" / "repovec"
@@ -63,14 +70,30 @@ def patched_helper(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def helper_config_dir(patched_helper: Path) -> Path:
-    """Return the ``CONFIG_DIR`` used by :func:`patched_helper`."""
+    """Return the ``CONFIG_DIR`` used by :func:`patched_helper`.
+
+    Returns
+    -------
+    Path
+        The tmp-rooted ``etc/repovec`` directory the patched helper
+        writes into. Tests use this to populate the simulated config
+        tree before invoking the helper.
+    """
 
     return patched_helper.parent / "etc" / "repovec"
 
 
 @pytest.fixture()
 def helper_key_file(helper_config_dir: Path) -> Path:
-    """Return the ``KEY_FILE`` path used by :func:`patched_helper`."""
+    """Return the ``KEY_FILE`` path used by :func:`patched_helper`.
+
+    Returns
+    -------
+    Path
+        The tmp-rooted ``qdrant-api-key`` path inside
+        :func:`helper_config_dir`. Tests read or pre-populate this to
+        exercise specific helper branches (absent key, valid key, …).
+    """
 
     return helper_config_dir / "qdrant-api-key"
 

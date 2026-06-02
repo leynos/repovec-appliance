@@ -2,4 +2,5 @@
 source: crates/repovec-test-helpers/src/lib.rs
 expression: logs
 ---
+TRACE systemd unit contract validated
 DEBUG systemd unit contract validated at daemon startup

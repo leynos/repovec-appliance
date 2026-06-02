@@ -94,7 +94,7 @@ pub fn assert_startup_logs_successful_validation() -> Result<(), String> {
 /// differs from the snapshot.
 #[cfg(feature = "snapshots")]
 pub fn assert_startup_success_log_snapshot() -> Result<(), String> {
-    let (result, logs) = startup_with_captured_logs(|| Ok(()))?;
+    let (result, logs) = startup_with_captured_logs(validate_and_trace_checked_in_units)?;
     ensure(result.is_ok(), "startup should return Ok when validation passes")?;
     insta::assert_snapshot!("startup_success_log", logs);
     Ok(())

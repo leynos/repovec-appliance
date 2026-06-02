@@ -178,8 +178,8 @@ ERROR systemd unit contract violation — aborting startup
 The `unit` field contains the logical systemd unit name (e.g.
 `repovecd.service`) and the `error` field contains the human-readable
 description of the contract violation. Pass `--log-level trace` (or set
-`RUST_LOG=trace`) to see the `TRACE` event; the `DEBUG` and `ERROR` events are
-visible at the default log level.
+`RUST_LOG=trace`) to see the `TRACE` and `DEBUG` events; only `ERROR` events
+are visible at the default log level.
 
 Starting the target may still fail until later roadmap items create the
 `repovec` system user, directory layout, Qdrant API-key configuration, and

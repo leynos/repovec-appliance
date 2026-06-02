@@ -267,6 +267,11 @@ checked-in repovec target and daemon service files:
 - `validate_and_trace_checked_in_units() -> Result<(), SystemdUnitError>`
   verifies the embedded unit set and emits a `tracing::trace!` event on
   success. It serves as the entry point daemon binaries call during startup.
+- `run_startup_validation(validator) -> Result<(), i32>` runs an injected
+  systemd-unit validator at a daemon startup boundary, emits structured
+  `tracing::error!` diagnostics with `unit` and `error` fields on failure,
+  emits a `tracing::debug!` confirmation on success, and maps validation
+  failures to process exit code `1`.
 - `SystemdUnitError` is the typed error enum for validation failures. See
   `crates/repovec-core/src/appliance/systemd_units/error.rs` for the full
   variant list.
@@ -279,13 +284,32 @@ This module validates static unit-file policy only. It must not call
 `systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
 runtime installation work.
 
-Daemon binaries call `validate_and_trace_checked_in_units()` near the start of
+Daemon binaries call
+`run_startup_validation(validate_and_trace_checked_in_units)` near the start of
 `main()`, before starting an async runtime or other long-running work. Treat
 `SystemdUnitError` as fatal at that process boundary: log `error.unit()` and
 `error` as structured fields and exit non-zero, so systemd reports a failed
 startup rather than running under a broken checked-in unit contract.
 
-### 5.4 Extension pattern
+### 5.4 Daemon startup test helpers
+
+The `repovec-test-helpers` crate owns the shared daemon startup test harness
+used by `repovecd` and `repovec-mcpd`. It captures formatted `tracing` output
+in memory, invokes `run_startup_validation()` with an injected validator, and
+exposes `assert_startup_*` helpers for the daemon crates.
+
+Use this crate for binary-level daemon startup tests whenever the behaviour is
+the same across daemons and only the unit name differs. Keep unit tests for
+`run_startup_validation()` itself in `repovec-core`; those tests should assert
+the core adapter emits the expected `TRACE`, `DEBUG`, and `ERROR` events so the
+logging contract cannot disappear while return-code tests still pass.
+
+Snapshot helpers in `repovec-test-helpers` are behind its `snapshots` feature
+because `insta` is only needed by daemon test targets. Daemon crates enable
+that feature in `[dev-dependencies]` and commit the generated snapshots under
+`crates/repovec-test-helpers/src/snapshots/`.
+
+### 5.5 Extension pattern
 
 To add validation for a new appliance asset:
 
@@ -300,7 +324,7 @@ To add validation for a new appliance asset:
 5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
    scenarios under `crates/repovec-core/tests/features/`.
 
-### 5.5 Test patterns
+### 5.6 Test patterns
 
 The appliance validation modules use `rstest` for unit tests and `rstest-bdd`
 with `rstest-bdd-macros` for behavioural tests. Unit tests should exercise each

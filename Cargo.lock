@@ -963,6 +963,7 @@ dependencies = [
  "rstest-bdd",
  "rstest-bdd-macros",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

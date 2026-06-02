@@ -16,6 +16,7 @@ proptest.workspace = true
 rstest.workspace = true
 rstest-bdd.workspace = true
 rstest-bdd-macros = { workspace = true, features = ["strict-compile-time-validation"] }
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

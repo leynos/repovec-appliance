@@ -95,6 +95,13 @@ where
 mod tests {
     //! Unit coverage for daemon startup systemd validation helpers.
 
+    use std::{
+        io::{self, Write},
+        sync::{Arc, Mutex},
+    };
+
+    use tracing_subscriber::fmt::MakeWriter;
+
     use super::{
         SystemdUnitError, run_startup_validation, validate_and_trace_checked_in_units,
         validate_and_trace_systemd_units_with,
@@ -119,11 +126,124 @@ mod tests {
     }
 
     #[test]
+    fn validate_and_trace_systemd_units_with_traces_success() -> Result<(), String> {
+        let (result, logs) = capture_logs(|| validate_and_trace_systemd_units_with(|| Ok(())))?;
+
+        ensure(result == Ok(()), "validation should succeed")?;
+        assert_log_line_contains(
+            &logs,
+            "TRACE",
+            "systemd unit contract validated",
+            "successful validation should emit the trace event",
+        )
+    }
+
+    #[test]
     fn run_startup_validation_returns_exit_code_1_when_validation_fails() {
         let result = run_startup_validation(|| {
             Err(SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" })
         });
 
         assert_eq!(result, Err(1));
+    }
+
+    #[test]
+    fn run_startup_validation_logs_structured_error_when_validation_fails() -> Result<(), String> {
+        let (result, logs) = capture_logs(|| {
+            run_startup_validation(|| {
+                Err(SystemdUnitError::MissingSection {
+                    unit: "repovecd.service",
+                    section: "Service",
+                })
+            })
+        })?;
+
+        ensure(result == Err(1), "startup validation should return exit code 1")?;
+        assert_log_line_contains(
+            &logs,
+            "ERROR",
+            "unit=repovecd.service",
+            "startup failure should log the failing unit",
+        )?;
+        assert_log_line_contains(
+            &logs,
+            "ERROR",
+            "error=repovecd.service is missing [Service]",
+            "startup failure should log the validation error",
+        )?;
+        assert_log_line_contains(
+            &logs,
+            "ERROR",
+            "systemd unit contract violation",
+            "startup failure should log the fatal diagnostic",
+        )
+    }
+
+    fn capture_logs<T, F>(action: F) -> Result<(T, String), String>
+    where
+        F: FnOnce() -> T,
+    {
+        let logs = CapturedLogs::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .without_time()
+            .with_target(false)
+            .with_max_level(tracing::Level::TRACE)
+            .with_writer(logs.clone())
+            .finish();
+        let result = tracing::subscriber::with_default(subscriber, action);
+        Ok((result, logs.content()?))
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedLogs {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl CapturedLogs {
+        fn content(&self) -> Result<String, String> {
+            let buffer = self
+                .buffer
+                .lock()
+                .map_err(|_| "captured log buffer should not be poisoned".to_owned())?;
+            std::str::from_utf8(&buffer).map(ToOwned::to_owned).map_err(|error| error.to_string())
+        }
+    }
+
+    struct CapturedLogWriter {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl Write for CapturedLogWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            let mut buffer =
+                self.buffer.lock().map_err(|_| io::Error::other("captured log buffer poisoned"))?;
+            buffer.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    }
+
+    impl<'writer> MakeWriter<'writer> for CapturedLogs {
+        type Writer = CapturedLogWriter;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            CapturedLogWriter { buffer: Arc::clone(&self.buffer) }
+        }
+    }
+
+    fn assert_log_line_contains(
+        logs: &str,
+        level: &str,
+        needle: &str,
+        message: &str,
+    ) -> Result<(), String> {
+        let found = logs.lines().any(|line| line.contains(level) && line.contains(needle));
+        if found { Ok(()) } else { Err(format!("{message}: {logs}")) }
+    }
+
+    fn ensure(condition: bool, message: &str) -> Result<(), String> {
+        if condition { Ok(()) } else { Err(message.to_owned()) }
     }
 }

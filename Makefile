@@ -97,17 +97,17 @@ validate-systemd: ensure-cargo ## Validate checked-in systemd unit contracts
 
 _check-python: ## (internal) Print a skip message if $(PYTHON) is missing
 	@command -v "$(PYTHON)" >/dev/null 2>&1 \
-		|| { echo "$(PYTHON) not found on PATH; skipping integration test target."; exit 0; }
+		|| { echo "$(PYTHON) not found on PATH; skipping integration test target."; exit 1; }
 
 _check-integration-prereqs: _check-python ## (internal) Check lifecycle prereqs
 	@"$(PYTHON)" -c 'import pytest, testcontainers' >/dev/null 2>&1 \
-		|| { echo "pytest or testcontainers not installed; skipping integration-test."; echo "Install dependencies via: cd $(INTEGRATION_TESTS_DIR) && uv sync"; exit 0; }
+		|| { echo "pytest or testcontainers not installed; skipping integration-test."; echo "Install dependencies via: cd $(INTEGRATION_TESTS_DIR) && uv sync"; exit 1; }
 	@"$(PYTHON)" -c 'import docker; docker.from_env().ping()' >/dev/null 2>&1 \
-		|| { echo "No Docker-compatible runtime reachable; skipping integration-test."; echo "Start Podman: podman system service --time=0 & export DOCKER_HOST=unix://\$$XDG_RUNTIME_DIR/podman/podman.sock"; exit 0; }
+		|| { echo "No Docker-compatible runtime reachable; skipping integration-test."; echo "Start Podman: podman system service --time=0 & export DOCKER_HOST=unix://\$$XDG_RUNTIME_DIR/podman/podman.sock"; exit 1; }
 
 _check-command-test-prereqs: _check-python ## (internal) Check cmd-mox prereqs
 	@"$(PYTHON)" -c 'import pytest, cmd_mox, cuprum' >/dev/null 2>&1 \
-		|| { echo "pytest, cmd-mox or cuprum not installed; skipping integration-command-test."; echo "Install dependencies via: cd $(INTEGRATION_TESTS_DIR) && uv sync"; exit 0; }
+		|| { echo "pytest, cmd-mox or cuprum not installed; skipping integration-command-test."; echo "Install dependencies via: cd $(INTEGRATION_TESTS_DIR) && uv sync"; exit 1; }
 
 integration-test: _check-integration-prereqs ## Run testcontainers-based provisioning lifecycle tests
 	cd $(INTEGRATION_TESTS_DIR) && "$(PYTHON)" -m pytest -m integration provisioning $(PYTEST_FLAGS)

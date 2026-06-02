@@ -89,9 +89,13 @@ class HostCommandResult:
 
     @property
     def ok(self) -> bool:
+        """Return ``True`` iff the command exited with status zero."""
+
         return self.exit_code == 0
 
     def render(self) -> str:
+        """Return a multi-line diagnostic suitable for assertion failures."""
+
         parts = [
             f"command: {' '.join(self.argv)}",
             f"cwd: {self.cwd}",

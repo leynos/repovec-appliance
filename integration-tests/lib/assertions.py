@@ -44,6 +44,8 @@ class PasswdEntry:
 
     @classmethod
     def parse(cls, raw: str) -> PasswdEntry:
+        """Parse a single ``getent passwd`` line into a :class:`PasswdEntry`."""
+
         fields = raw.rstrip("\n").split(":")
         if len(fields) != 7:
             msg = f"unexpected passwd format: {raw!r}"
@@ -64,6 +66,8 @@ class FileStat:
 
     @classmethod
     def parse(cls, raw: str) -> FileStat:
+        """Parse a tab-separated ``stat -c`` line into a :class:`FileStat`."""
+
         fields = raw.rstrip("\n").split("\t")
         if len(fields) != 5:
             msg = f"unexpected stat format: {raw!r}"

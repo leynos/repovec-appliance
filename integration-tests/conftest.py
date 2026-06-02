@@ -41,6 +41,8 @@ IMAGE_TAG = "repovec-integration-tests:latest"
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register the ``--no-skip-on-missing-runtime`` CLI flag."""
+
     parser.addoption(
         "--no-skip-on-missing-runtime",
         action="store_true",
@@ -53,6 +55,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def _skip_or_fail(request: pytest.FixtureRequest, reason: str) -> None:
+    """Skip the current test, or fail hard if the no-skip flag is set."""
+
     if request.config.getoption("--no-skip-on-missing-runtime"):
         pytest.fail(reason, pytrace=False)
     else:
@@ -60,6 +64,8 @@ def _skip_or_fail(request: pytest.FixtureRequest, reason: str) -> None:
 
 
 def _build_image(request: pytest.FixtureRequest) -> str:
+    """Build the integration-test image; skip on builder/import failure."""
+
     try:
         from testcontainers.core.image import DockerImage
     except ImportError as exc:  # pragma: no cover - import-time guard
@@ -84,6 +90,8 @@ def _build_image(request: pytest.FixtureRequest) -> str:
 
 
 def _start_container(request: pytest.FixtureRequest, image: str) -> DockerContainer:
+    """Start ``image`` privileged with a long-running default command."""
+
     from testcontainers.core.container import DockerContainer
 
     container = DockerContainer(image)
@@ -131,6 +139,16 @@ def _preflight(container: DockerContainer, request: pytest.FixtureRequest) -> No
 def integration_container(
     request: pytest.FixtureRequest,
 ) -> Iterator[DockerContainer]:
+    """Session-scoped privileged Fedora container for lifecycle tests.
+
+    Yields
+    ------
+    DockerContainer
+        The running, preflighted container. Tests interact with it
+        through :func:`container_session` rather than directly so the
+        per-test cleanup contract stays in one place.
+    """
+
     image = _build_image(request)
     container = _start_container(request, image)
     try:
@@ -145,6 +163,17 @@ def integration_container(
 
 @pytest.fixture()
 def container_session(integration_container: DockerContainer) -> Iterator[ContainerSession]:
+    """Per-test :class:`ContainerSession` with before/after cleanup.
+
+    Yields
+    ------
+    ContainerSession
+        Wrapper around the session-scoped container whose
+        ``cleanup_state`` runs both before and after every test, so
+        lifecycle tests start from a known clean slate and do not
+        leave artefacts for the next case.
+    """
+
     session = ContainerSession(integration_container)
     session.cleanup_state()
     try:

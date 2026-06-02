@@ -42,6 +42,8 @@ class CommandResult:
 
     @property
     def ok(self) -> bool:
+        """Return ``True`` iff the command exited with status zero."""
+
         return self.exit_code == 0
 
     def render(self) -> str:
@@ -63,6 +65,8 @@ class ContainerCommandError(AssertionError):
     """Raised when a ``must_*`` invocation fails inside the container."""
 
     def __init__(self, result: CommandResult) -> None:
+        """Store ``result`` and surface its rendered diagnostic as the message."""
+
         super().__init__(result.render())
         self.result = result
 
@@ -77,13 +81,19 @@ class ContainerSession:
     """
 
     def __init__(self, container: DockerContainer) -> None:
+        """Bind this session to an already-started ``DockerContainer``."""
+
         self._container = container
 
     @property
     def container(self) -> DockerContainer:
+        """Return the underlying ``DockerContainer`` for direct API access."""
+
         return self._container
 
     def run(self, *argv: str) -> CommandResult:
+        """Execute ``argv`` inside the container without raising on failure."""
+
         if not argv:
             msg = "ContainerSession.run requires at least one argv token"
             raise ValueError(msg)
@@ -114,12 +124,16 @@ class ContainerSession:
         return self.run("/bin/sh", "-lc", script)
 
     def must_run(self, *argv: str) -> CommandResult:
+        """Like :meth:`run`, but raise :class:`ContainerCommandError` on failure."""
+
         result = self.run(*argv)
         if not result.ok:
             raise ContainerCommandError(result)
         return result
 
     def must_run_shell(self, script: str) -> CommandResult:
+        """Like :meth:`run_shell`, but raise on non-zero exit."""
+
         result = self.run_shell(script)
         if not result.ok:
             raise ContainerCommandError(result)

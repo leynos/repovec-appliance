@@ -1,4 +1,16 @@
 //! Command-line entry point for CI policy helpers.
+//!
+//! This binary dispatches small repository policy gates used by local
+//! Makefile targets and GitHub Actions. With no subcommand, or with
+//! `docs-gate`, it evaluates changed paths through the `repovec-ci` library and
+//! prints GitHub Actions-compatible key/value output. With `systemd-gate`, it
+//! calls [`repovec_core::appliance::systemd_units`] to validate the checked-in
+//! appliance unit files outside the test runner.
+//!
+//! The dispatcher keeps CI wiring in one binary while preserving narrow
+//! command handlers: argument parsing selects a [`Command`], docs-gate planning
+//! stays in the `repovec-ci` library, and systemd contract validation remains
+//! owned by `repovec-core`.
 
 use std::io::{self, BufRead as _, BufWriter, Write as _};
 

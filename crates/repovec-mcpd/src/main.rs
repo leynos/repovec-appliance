@@ -1,12 +1,26 @@
 //! Process entry point for the repovec MCP bridge daemon.
+//!
+//! This binary initialises the process-wide `tracing` subscriber, runs the
+//! shared systemd unit startup validation adapter from
+//! [`repovec_core::appliance::systemd_units`], and treats any contract
+//! violation as a fatal startup error. The substantive startup path lives in
+//! [`startup`] so tests can verify the wiring without terminating the process.
+//!
+//! Unit tests delegate repeated daemon-startup assertions to
+//! `repovec-test-helpers`, including log capture and snapshot coverage for the
+//! tracing events emitted by the shared startup adapter.
 
 fn main() {
     tracing_subscriber::fmt::init();
-    if let Err(error) = repovec_core::appliance::systemd_units::run_startup_validation(
-        repovec_core::appliance::systemd_units::validate_and_trace_checked_in_units,
-    ) {
+    if let Err(error) = startup() {
         std::process::exit(error);
     }
+}
+
+fn startup() -> Result<(), i32> {
+    repovec_core::appliance::systemd_units::run_startup_validation(
+        repovec_core::appliance::systemd_units::validate_and_trace_checked_in_units,
+    )
 }
 
 #[cfg(test)]
@@ -33,6 +47,13 @@ mod tests {
     #[test]
     fn startup_runs_real_checked_in_validation() -> Result<(), String> {
         repovec_test_helpers::assert_startup_runs_real_checked_in_validation()
+    }
+
+    #[test]
+    fn startup_entrypoint_runs_real_checked_in_validation() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_entrypoint_runs_real_checked_in_validation(
+            super::startup,
+        )
     }
 
     #[test]

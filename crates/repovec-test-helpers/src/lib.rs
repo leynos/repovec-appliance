@@ -139,6 +139,35 @@ pub fn assert_startup_runs_real_checked_in_validation() -> Result<(), String> {
     )
 }
 
+/// Verifies a daemon startup entrypoint is wired to the real checked-in validator.
+///
+/// # Errors
+///
+/// Returns an error when the startup entrypoint fails or omits the expected
+/// real-validator trace and daemon-boundary debug events.
+pub fn assert_startup_entrypoint_runs_real_checked_in_validation<F>(
+    startup: F,
+) -> Result<(), String>
+where
+    F: FnOnce() -> Result<(), i32>,
+{
+    let (result, logs) = capture_startup_logs(startup)?;
+
+    ensure(result.is_ok(), "checked-in units should pass daemon startup validation")?;
+    ensure_log_line_contains(
+        &logs,
+        "TRACE",
+        "systemd unit contract validated",
+        "daemon startup entrypoint should call the real checked-in validator",
+    )?;
+    ensure_log_line_contains(
+        &logs,
+        "DEBUG",
+        "systemd unit contract validated at daemon startup",
+        "daemon startup entrypoint should use the shared startup adapter",
+    )
+}
+
 /// Verifies startup validation maps validation failures to exit code 1.
 ///
 /// # Errors
@@ -181,6 +210,22 @@ pub fn assert_startup_logs_structured_validation_failure(unit: &'static str) -> 
         "systemd unit contract violation",
         "startup should log the fatal startup diagnostic",
     )
+}
+
+fn capture_startup_logs<F>(startup: F) -> Result<(Result<(), i32>, String), String>
+where
+    F: FnOnce() -> Result<(), i32>,
+{
+    let logs = CapturedLogs::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .without_time()
+        .with_target(false)
+        .with_max_level(tracing::Level::TRACE)
+        .with_writer(logs.clone())
+        .finish();
+    let result = tracing::subscriber::with_default(subscriber, startup);
+    Ok((result, logs.content()?))
 }
 
 #[derive(Clone, Default)]

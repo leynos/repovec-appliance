@@ -13,7 +13,8 @@ use rstest::rstest;
 
 use super::{
     QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport,
-    build_qdrant_client, is_authentication_failure_code, load_qdrant_api_key,
+    build_qdrant_client, is_authentication_failure_code, is_authentication_failure_status,
+    load_qdrant_api_key,
 };
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -179,6 +180,17 @@ fn build_qdrant_client_maps_invalid_endpoint() {
 #[case("DeadlineExceeded", false)]
 fn authentication_failure_codes_are_distinct(#[case] code: &str, #[case] expected: bool) {
     assert_eq!(is_authentication_failure_code(code), expected);
+}
+
+#[rstest]
+#[case(
+    "Unknown",
+    "The request does not have valid authentication credentials: Invalid API key or JWT"
+)]
+#[case("Unknown", "Invalid API key or JWT")]
+#[case("Unknown", "Invalid JWT")]
+fn qdrant_authentication_messages_are_classified(#[case] code: &str, #[case] message: &str) {
+    assert!(is_authentication_failure_status(code, message));
 }
 
 #[test]

@@ -19,9 +19,13 @@ macro_rules! include_packaging_asset {
 /// `PROVISIONING_HELPER`, panicking if the needle is missing.
 fn helper_offset(needle: &str) -> usize {
     let Some(offset) = PROVISIONING_HELPER.find(needle) else {
-        panic!("helper should contain expected text");
+        panic!("helper should contain expected text: {needle:?}");
     };
     offset
+}
+
+fn helper_suffix_preview(suffix: &str) -> String {
+    if suffix.len() <= 120 { suffix.to_owned() } else { suffix.chars().take(120).collect() }
 }
 
 /// Returns the byte offset of the first occurrence of `needle` in
@@ -30,10 +34,17 @@ fn helper_offset(needle: &str) -> usize {
 /// occurrence exists after `offset`.
 fn helper_offset_after(needle: &str, offset: usize) -> usize {
     let Some(suffix) = PROVISIONING_HELPER.get(offset..) else {
-        panic!("helper offset should be a valid byte boundary");
+        panic!(
+            "helper offset should be a valid byte boundary: offset={offset}, helper_len={}",
+            PROVISIONING_HELPER.len()
+        );
     };
     let Some(relative_offset) = suffix.find(needle) else {
-        panic!("helper should contain expected text after offset");
+        let suffix_preview = helper_suffix_preview(suffix);
+        panic!(
+            "helper should contain expected text after offset: needle={needle:?}, \
+             offset={offset}, suffix_preview={suffix_preview:?}"
+        );
     };
     offset + relative_offset
 }
@@ -215,23 +226,17 @@ proptest! {
     }
 }
 
-proptest! {
-    /// Early `exit 1` paths appear before `flock 9`, while the key-generation
-    /// call site remains inside the locked critical section.
-    #[test]
-    fn early_exits_do_not_acquire_lock(
-        exit_pos in proptest::sample::select(all_helper_offsets("exit 1")),
-    ) {
-        let flock_pos = helper_offset("flock 9");
-        let missing_key_branch = helper_offset("if [ ! -e \"${KEY_FILE}\" ]; then");
-        let key_generation = helper_offset_after("generate_key_file", missing_key_branch);
-        prop_assume!(exit_pos < flock_pos);
+/// Key generation is invoked only from the locked main-flow critical section.
+#[test]
+fn key_generation_call_site_is_inside_locked_critical_section() {
+    let flock_pos = helper_offset("flock 9");
+    let missing_key_branch = helper_offset("if [ ! -e \"${KEY_FILE}\" ]; then");
+    let key_generation = helper_offset_after("generate_key_file", missing_key_branch);
 
-        prop_assert!(
-            flock_pos < key_generation,
-            "flock at {flock_pos} must precede key generation at {key_generation}",
-        );
-    }
+    assert!(
+        flock_pos < key_generation,
+        "flock at {flock_pos} must precede key generation at {key_generation}",
+    );
 }
 
 proptest! {

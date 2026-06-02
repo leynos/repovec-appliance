@@ -5,6 +5,7 @@
 //! `QDRANT_API_KEY_ENVIRONMENT_VARIABLE`, and the packaging assets under
 //! `packaging/`.
 
+use insta::assert_snapshot;
 use proptest::prelude::*;
 
 use super::{QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET, QDRANT_API_KEY_SERVICE};
@@ -47,6 +48,16 @@ fn helper_offset_after(needle: &str, offset: usize) -> usize {
         );
     };
     offset + relative_offset
+}
+
+fn helper_slice(start: usize, end: usize) -> &'static str {
+    let Some(slice) = PROVISIONING_HELPER.get(start..end) else {
+        panic!(
+            "helper slice should use valid byte boundaries: start={start}, end={end}, helper_len={}",
+            PROVISIONING_HELPER.len()
+        );
+    };
+    slice
 }
 
 const PROVISIONING_SERVICE: &str =
@@ -194,6 +205,35 @@ fn provisioning_helper_does_not_commit_or_echo_a_raw_key_literal() {
     assert!(PROVISIONING_HELPER.contains("/dev/urandom"));
 }
 
+#[test]
+fn provisioning_helper_defines_required_functions_with_correct_implementations() {
+    assert!(PROVISIONING_HELPER.contains("release_lock()"));
+    assert!(
+        PROVISIONING_HELPER.contains("flock -u 9"),
+        "release_lock must call flock -u 9 and must not be a no-op"
+    );
+    assert!(PROVISIONING_HELPER.contains("debug_log()"));
+    assert!(PROVISIONING_HELPER.contains("REPOVEC_DEBUG:-}\" = \"1\""));
+    assert!(PROVISIONING_HELPER.contains("generate_key_file()"));
+
+    let flock_pos = helper_offset("flock 9");
+    let trap_sites: Vec<usize> = PROVISIONING_HELPER
+        .match_indices("trap '")
+        .map(|(i, _)| i)
+        .filter(|&i| i > flock_pos)
+        .collect();
+    assert!(!trap_sites.is_empty(), "expected trap handlers after flock");
+    for pos in trap_sites {
+        let suffix = helper_slice(pos, PROVISIONING_HELPER.len());
+        let line_end = suffix.find('\n').map_or(PROVISIONING_HELPER.len(), |n| pos + n);
+        let trap_line = helper_slice(pos, line_end);
+        assert!(
+            trap_line.contains("release_lock"),
+            "trap handler must include release_lock: {trap_line:?}",
+        );
+    }
+}
+
 /// Collects all byte offsets of `needle` in `PROVISIONING_HELPER`.
 fn all_helper_offsets(needle: &str) -> Vec<usize> {
     PROVISIONING_HELPER.match_indices(needle).map(|(i, _)| i).collect()
@@ -239,26 +279,23 @@ fn key_generation_call_site_is_inside_locked_critical_section() {
     );
 }
 
-proptest! {
-    /// `flock 9` precedes every mutable operation in the helper, regardless of
-    /// which operation is selected.
-    #[test]
-    fn flock_precedes_every_mutable_operation(
-        op_pos in proptest::sample::select(vec![
-            helper_offset("podman secret inspect \"${SECRET_NAME}\""),
-            helper_offset("podman secret rm \"${SECRET_NAME}\""),
-            helper_offset("podman secret create \"${SECRET_NAME}\""),
+#[test]
+fn flock_precedes_every_mutable_operation() {
+    let flock_pos = helper_offset("flock 9");
+    let mutable_ops = [
+        ("podman secret inspect", helper_offset("podman secret inspect \"${SECRET_NAME}\"")),
+        ("podman secret rm", helper_offset("podman secret rm \"${SECRET_NAME}\"")),
+        ("podman secret create", helper_offset("podman secret create \"${SECRET_NAME}\"")),
+        (
+            "generate_key_file",
             helper_offset_after(
                 "generate_key_file",
-                helper_offset("if [ ! -e \"${KEY_FILE}\" ]; then")
+                helper_offset("if [ ! -e \"${KEY_FILE}\" ]; then"),
             ),
-        ]),
-    ) {
-        let flock_pos = helper_offset("flock 9");
-        prop_assert!(
-            flock_pos < op_pos,
-            "flock at {flock_pos} must precede mutable operation at {op_pos}",
-        );
+        ),
+    ];
+    for (name, op_pos) in mutable_ops {
+        assert!(flock_pos < op_pos, "flock at {flock_pos} must precede {name} at {op_pos}");
     }
 }
 
@@ -272,4 +309,33 @@ fn fail_closed_path_logs_error_and_exits_non_zero() {
 
     assert!(else_branch < failure_log, "fail-closed else branch must precede its error log");
     assert!(failure_log < failure_exit, "error log must precede exit 1 on the fail-closed path");
+}
+
+#[test]
+fn provisioning_helper_lock_critical_section_snapshot() {
+    // Capture the text from the `exec 9>` line through the first
+    // `release_lock` call so the snapshot encodes the lock-acquisition
+    // protocol and the bootstrap order.
+    let start = helper_offset("exec 9>\"${LOCK_FILE}\"");
+    let first_release = helper_offset_after("release_lock", helper_offset("flock 9"));
+    let end = first_release + "release_lock".len();
+    assert_snapshot!("lock_critical_section", helper_slice(start, end));
+}
+
+#[test]
+fn provisioning_helper_fail_closed_branch_snapshot() {
+    // Capture the unexpected-removal else-branch so the snapshot encodes
+    // fail-closed semantics.
+    let start = helper_offset("else\n            # Fail closed:");
+    let end = helper_offset_after("exit 1", start) + "exit 1".len();
+    assert_snapshot!("fail_closed_else_branch", helper_slice(start, end));
+}
+
+#[test]
+fn provisioning_helper_release_lock_implementation_snapshot() {
+    // Snapshot the release_lock() function body so a no-op replacement
+    // causes an immediate snapshot failure.
+    let start = helper_offset("release_lock()");
+    let end = helper_offset_after("\n}", start) + "\n}".len();
+    assert_snapshot!("release_lock_implementation", helper_slice(start, end));
 }

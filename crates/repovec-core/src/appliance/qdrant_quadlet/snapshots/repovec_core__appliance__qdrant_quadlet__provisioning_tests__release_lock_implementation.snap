@@ -1,0 +1,8 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/provisioning_tests.rs
+expression: "helper_slice(start, end)"
+---
+release_lock() {
+    flock -u 9
+    debug_log "released ${LOCK_FILE}"
+}

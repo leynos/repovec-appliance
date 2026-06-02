@@ -71,7 +71,9 @@ with API-key authentication, and survives host reboots.
   - Success criteria: unauthenticated requests to Qdrant are rejected.
   - Status: complete. The repository now ships a provisioning service, helper,
     sysusers declaration, authenticated Quadlet wiring and Rust validation for
-    the static API-key contract.
+    the static API-key contract. Concurrent-invocation hardening (flock-based
+    serialisation, fail-closed secret-removal, and lock-lifecycle tests) was
+    added in `#29`.
 - [ ] 1.2.3. Validate Qdrant liveness from Rust
   - Implement a health-check function in `repovec-core` that connects to
     Qdrant gRPC at `localhost:6334` with the stored API key and confirms the

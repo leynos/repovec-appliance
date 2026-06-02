@@ -392,6 +392,20 @@ To add validation for a new appliance asset:
 5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
    scenarios under `crates/repovec-core/tests/features/`.
 
+### 5.5 Extension pattern
+
+To add validation for a new appliance asset:
+
+1. Create a submodule directory under `appliance/` with `mod.rs`, `error.rs`,
+   `parser.rs` if a custom parser is needed, and `tests.rs` when tests would
+   otherwise make the module too large.
+2. Re-export the submodule from `appliance/mod.rs`.
+3. Embed the checked-in asset with `include_str!` and expose a
+   `checked_in_*()` function.
+4. Write `validate_*()` returning a typed error enum that implements
+   `std::error::Error` and `fmt::Display`.
+5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
+   scenarios under `crates/repovec-core/tests/features/`.
 
 ## 6. Provisioning integration tests
 
@@ -421,16 +435,18 @@ Podman to validate the full secret lifecycle.
 ### 6.2 Prerequisites
 
 - Python 3.13 (managed by [`uv`](https://github.com/astral-sh/uv)).
-- The harness dependencies, installed via
-  `cd integration-tests && uv venv --python 3.13 && uv pip install -e .`.
-  This brings in `pytest`, `testcontainers-python`, `cuprum`, `cmd-mox`,
-  and the `docker` SDK that `testcontainers` uses to talk to the runtime.
+- The harness dependencies, installed via `cd integration-tests && uv sync`.
+  This matches the contract the `integration-test` and
+  `integration-command-test` Makefile targets advertise in their
+  skip-message hint, so a `uv sync` here is sufficient to satisfy
+  their prerequisite checks. It brings in `pytest`,
+  `testcontainers-python`, `cuprum`, `cmd-mox`, and the `docker` SDK
+  that `testcontainers` uses to talk to the runtime.
 - For the `integration` suite only: a reachable Docker API socket and the
   ability to launch privileged containers. On Linux, the canonical
   configuration is rootless Podman exposing its socket via
   `podman system service`; see `integration-tests/README.md` for the exact
   environment variables (`DOCKER_HOST`, `TESTCONTAINERS_RYUK_DISABLED`).
-
 
 ### 6.3 Make targets
 

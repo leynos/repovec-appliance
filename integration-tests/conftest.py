@@ -23,6 +23,7 @@ against accidentally skipping the entire suite.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -172,6 +173,21 @@ def container_session(integration_container: DockerContainer) -> Iterator[Contai
         ``cleanup_state`` runs both before and after every test, so
         lifecycle tests start from a known clean slate and do not
         leave artefacts for the next case.
+
+    Notes
+    -----
+    The pre-test ``cleanup_state`` is allowed to raise: if a previous
+    run left state we cannot scrub, the next test must fail loudly
+    rather than silently inherit it. The post-test ``cleanup_state``
+    runs inside an exception guard and writes to ``sys.stderr`` on
+    failure instead of re-raising, so a teardown problem cannot mask
+    the actual test outcome. The next test's pre-cleanup will surface
+    the issue if it is genuinely persistent.
+
+    ``warnings.warn`` is deliberately *not* used here: this project
+    pins ``filterwarnings = ["error"]`` in ``pyproject.toml``, which
+    would promote a teardown warning back into an exception and
+    re-introduce the masking the guard is meant to prevent.
     """
 
     session = ContainerSession(integration_container)
@@ -179,4 +195,10 @@ def container_session(integration_container: DockerContainer) -> Iterator[Contai
     try:
         yield session
     finally:
-        session.cleanup_state()
+        try:
+            session.cleanup_state()
+        except Exception as exc:  # noqa: BLE001 - logged to stderr
+            print(
+                f"WARNING: container_session post-test cleanup failed: {exc}",
+                file=sys.stderr,
+            )

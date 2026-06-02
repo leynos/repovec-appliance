@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import stat
 from pathlib import Path
 
@@ -36,12 +37,17 @@ def patched_helper(tmp_path: Path) -> Path:
     # argument, which the cmd-mox suite stubs out. We deliberately leave the
     # path literal intact so tests can assert that the canonical home dir
     # propagates through to ``useradd``.
+    # Shell-quote the substituted paths so a custom pytest ``basetemp``
+    # containing spaces or shell metacharacters can't break the helper's
+    # ``set -eu`` parse (or, worse, smuggle commands into it).
     raw = HELPER_SOURCE.read_text(encoding="utf-8")
+    quoted_config_dir = shlex.quote(str(config_dir))
+    quoted_key_file = shlex.quote(str(config_dir / "qdrant-api-key"))
     patched = raw.replace(
-        "CONFIG_DIR=/etc/repovec", f"CONFIG_DIR={config_dir}"
+        "CONFIG_DIR=/etc/repovec", f"CONFIG_DIR={quoted_config_dir}"
     ).replace(
         "KEY_FILE=/etc/repovec/qdrant-api-key",
-        f"KEY_FILE={config_dir / 'qdrant-api-key'}",
+        f"KEY_FILE={quoted_key_file}",
     )
 
     # Fail loud if a future rename in the helper script makes the str.replace

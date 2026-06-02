@@ -30,9 +30,14 @@ contract assertion fits both, push it to the `integration` suite.
 
 ```bash
 cd integration-tests
-uv venv --python 3.13
-uv pip install -e .
+uv sync
 ```
+
+`uv sync` creates the project virtualenv (under `.venv/`), resolves
+dependencies from `pyproject.toml`, and writes the lockfile. The Makefile's
+`integration-test` and `integration-command-test` targets advertise the
+same command in their skip-message hint, so the developer instructions and
+the Make contract stay in lockstep.
 
 The harness is intentionally not a wheel; the `pyproject.toml` is a vehicle
 for `uv sync` and for pytest's rootdir/markers configuration.

@@ -136,9 +136,11 @@ podman run --rm --privileged repovec-integration-tests \
   the `DOCKER_HOST` socket is not reachable. Start `podman system service`
   and re-export `DOCKER_HOST` per the snippet above.
 - **"pytest, cmd-mox, or cuprum not installed; skipping ..."** — install the
-  harness's dependencies with `uv pip install -e .` from this directory, or
-  pass `PYTHON=$(pwd)/integration-tests/.venv/bin/python` to the `make`
-  invocation so the targets resolve the right interpreter.
+  harness's dependencies with `uv sync` from this directory (`uv sync` creates
+  the project virtualenv, resolves dependencies from `pyproject.toml`, and
+  writes the lockfile, matching the Makefile contract), or pass
+  `PYTHON=$(pwd)/integration-tests/.venv/bin/python` to the `make` invocation
+  so the targets resolve the right interpreter.
 - **`UnknownProgramError` from cuprum** — a host command was invoked that is
   not on the curated allowlist in `lib/commands.py`. Add it to the catalogue
   rather than bypassing the helper; the allowlist is the harness's safety

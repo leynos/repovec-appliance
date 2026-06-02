@@ -27,7 +27,7 @@ podman secret rm repovec-qdrant-api-key >/dev/null 2>&1 || true
 if getent passwd repovec >/dev/null; then
     userdel -r repovec >/dev/null 2>&1 || userdel repovec >/dev/null 2>&1 || true
 fi
-rm -rf /etc/repovec /var/lib/repovec || true
+rm -rf /etc/repovec /var/lib/repovec
 """
 
 
@@ -142,15 +142,18 @@ class ContainerSession:
     def cleanup_state(self) -> None:
         """Reset the helper's externally visible state between tests.
 
-        Every state-mutating step in the cleanup script (``podman secret rm``,
-        ``userdel``, ``rm -rf``) is suffixed with ``|| true`` so a missing
-        artefact never causes the cleanup to fail. The script itself is run
-        through :meth:`must_run_shell`, so structural failures (e.g. the shell
-        cannot be spawned at all) still surface as
-        :class:`ContainerCommandError`. Callers that want to keep running on
-        cleanup failure should wrap the call in their own ``try`` — see the
-        ``container_session`` pytest fixture's post-test branch for the
-        canonical pattern.
+        The ``podman secret rm`` and ``userdel`` steps are best-effort
+        (``|| true``) because a missing secret or user is the expected
+        starting point for a fresh test. ``rm -rf`` is *not* best-effort:
+        ``-rf`` already silences missing targets, so a non-zero exit there
+        means a genuine filesystem error (permission denied, busy file,
+        I/O error) that callers must see rather than swallow.
+
+        Any non-zero exit therefore surfaces as a
+        :class:`ContainerCommandError`. Callers that want to keep running
+        on cleanup failure should wrap the call in their own ``try`` —
+        see the ``container_session`` pytest fixture's post-test branch
+        for the canonical pattern.
         """
 
         self.must_run_shell(REPOVEC_CLEANUP_SCRIPT)

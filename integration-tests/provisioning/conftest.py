@@ -37,10 +37,33 @@ def patched_helper(tmp_path: Path) -> Path:
     # argument, which the cmd-mox suite stubs out. We deliberately leave the
     # path literal intact so tests can assert that the canonical home dir
     # propagates through to ``useradd``.
+    # Fail loud if a future rename in the helper script makes the rewrite
+    # below a no-op. Silently running the unpatched helper would try to
+    # write to the real /etc/repovec and (with sufficient privileges)
+    # mutate the host, so we assert each literal is present in ``raw``
+    # *before* substituting and verify it's gone from ``patched`` *after*.
+    # The pre-check catches a literal that has been renamed away (where
+    # ``replace`` is a no-op and the post-check would also pass
+    # incorrectly); the post-check catches the rare case where the
+    # substituted form itself still embeds the original literal.
+    raw = HELPER_SOURCE.read_text(encoding="utf-8")
+    expected_literals = (
+        "CONFIG_DIR=/etc/repovec",
+        "KEY_FILE=/etc/repovec/qdrant-api-key",
+    )
+    for literal in expected_literals:
+        if literal not in raw:
+            msg = (
+                f"patched_helper fixture failed: '{literal}' not found in "
+                "the helper script. The helper's path constants likely "
+                "changed; update the rewrite in "
+                "integration-tests/provisioning/conftest.py to match."
+            )
+            raise RuntimeError(msg)
+
     # Shell-quote the substituted paths so a custom pytest ``basetemp``
     # containing spaces or shell metacharacters can't break the helper's
     # ``set -eu`` parse (or, worse, smuggle commands into it).
-    raw = HELPER_SOURCE.read_text(encoding="utf-8")
     quoted_config_dir = shlex.quote(str(config_dir))
     quoted_key_file = shlex.quote(str(config_dir / "qdrant-api-key"))
     patched = raw.replace(
@@ -50,20 +73,12 @@ def patched_helper(tmp_path: Path) -> Path:
         f"KEY_FILE={quoted_key_file}",
     )
 
-    # Fail loud if a future rename in the helper script makes the str.replace
-    # calls a no-op: silently running the unpatched helper would try to write
-    # to the real /etc/repovec and (with sufficient privileges) mutate the
-    # host. Asserting the originals are gone catches the refactor at fixture
-    # setup, not deep in a confusing test failure.
-    for literal in (
-        "CONFIG_DIR=/etc/repovec",
-        "KEY_FILE=/etc/repovec/qdrant-api-key",
-    ):
+    for literal in expected_literals:
         if literal in patched:
             msg = (
-                f"patched_helper fixture failed: '{literal}' is still present "
-                "in the helper script after the rewrite. The helper's path "
-                "constants likely changed; update the rewrite in "
+                f"patched_helper fixture failed: '{literal}' is still "
+                "present after the rewrite. The substituted form likely "
+                "re-embeds the original literal; update the rewrite in "
                 "integration-tests/provisioning/conftest.py to match."
             )
             raise RuntimeError(msg)

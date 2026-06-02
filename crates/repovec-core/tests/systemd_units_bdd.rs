@@ -1,8 +1,9 @@
 //! Behavioural tests for the checked-in repovec systemd unit contract.
 
 use repovec_core::appliance::systemd_units::{
-    SystemdUnitError, checked_in_repovec_mcpd_service, checked_in_repovec_target,
-    checked_in_repovecd_service, validate_systemd_units,
+    SystemdUnitError, checked_in_repovec_grepai_template, checked_in_repovec_mcpd_service,
+    checked_in_repovec_target, checked_in_repovecd_service,
+    validate_systemd_units_with_grepai_template,
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
@@ -12,6 +13,7 @@ struct SystemdWorld {
     target: String,
     repovecd: String,
     mcpd: String,
+    grepai_template: String,
     validation_result: Option<Result<(), SystemdUnitError>>,
 }
 
@@ -22,6 +24,7 @@ fn systemd_world() -> SystemdWorld {
         target: String::new(),
         repovecd: String::new(),
         mcpd: String::new(),
+        grepai_template: String::new(),
         validation_result,
     }
 }
@@ -31,6 +34,7 @@ fn the_checked_in_repovec_systemd_units(systemd_world: &mut SystemdWorld) {
     checked_in_repovec_target().clone_into(&mut systemd_world.target);
     checked_in_repovecd_service().clone_into(&mut systemd_world.repovecd);
     checked_in_repovec_mcpd_service().clone_into(&mut systemd_world.mcpd);
+    checked_in_repovec_grepai_template().clone_into(&mut systemd_world.grepai_template);
 }
 
 #[given("cloudflared is removed from the target wants list")]
@@ -56,6 +60,10 @@ fn additional_service_environment_entries_are_added(systemd_world: &mut SystemdW
         "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
     );
     systemd_world.mcpd = systemd_world.mcpd.replace(
+        "Environment=HOME=/var/lib/repovec\n",
+        "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
+    );
+    systemd_world.grepai_template = systemd_world.grepai_template.replace(
         "Environment=HOME=/var/lib/repovec\n",
         "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
     );
@@ -89,12 +97,32 @@ fn the_repovec_mcpd_home_environment_is_removed(systemd_world: &mut SystemdWorld
     systemd_world.mcpd = systemd_world.mcpd.replace("Environment=HOME=/var/lib/repovec\n", "");
 }
 
+#[given("the grepai template Qdrant ordering is removed")]
+fn the_grepai_template_qdrant_ordering_is_removed(systemd_world: &mut SystemdWorld) {
+    systemd_world.grepai_template =
+        systemd_world.grepai_template.replace("After=qdrant.service repovecd.service\n", "");
+}
+
+#[given("the grepai template runs as root instead of repovec")]
+fn the_grepai_template_runs_as_root_instead_of_repovec(systemd_world: &mut SystemdWorld) {
+    systemd_world.grepai_template =
+        systemd_world.grepai_template.replace("User=repovec\n", "User=root\n");
+}
+
+#[given("the grepai template writes stdout to a log file")]
+fn the_grepai_template_writes_stdout_to_a_log_file(systemd_world: &mut SystemdWorld) {
+    systemd_world.grepai_template = systemd_world
+        .grepai_template
+        .replace("StandardOutput=journal\n", "StandardOutput=file:/var/log/repovec/grepai.log\n");
+}
+
 #[when("the systemd units are validated")]
 fn the_systemd_units_are_validated(systemd_world: &mut SystemdWorld) {
-    systemd_world.validation_result = Some(validate_systemd_units(
+    systemd_world.validation_result = Some(validate_systemd_units_with_grepai_template(
         &systemd_world.target,
         &systemd_world.repovecd,
         &systemd_world.mcpd,
+        &systemd_world.grepai_template,
     ));
 }
 
@@ -200,6 +228,51 @@ fn validation_fails_because_repovec_mcpd_has_no_appliance_home_environment(
     );
 }
 
+#[then("validation fails because the grepai template does not start after Qdrant")]
+fn validation_fails_because_the_grepai_template_does_not_start_after_qdrant(
+    systemd_world: &SystemdWorld,
+) {
+    assert_validation_result(
+        systemd_world,
+        SystemdUnitError::MissingDependency {
+            unit: "repovec-grepai@.service",
+            section: "Unit",
+            key: "After",
+            dependency: "qdrant.service",
+        },
+    );
+}
+
+#[then("validation fails because the grepai template has the wrong service user")]
+fn validation_fails_because_the_grepai_template_has_the_wrong_service_user(
+    systemd_world: &SystemdWorld,
+) {
+    assert_validation_result(
+        systemd_world,
+        SystemdUnitError::IncorrectServiceDirective {
+            unit: "repovec-grepai@.service",
+            key: "User",
+            expected: "repovec",
+            actual: String::from("root"),
+        },
+    );
+}
+
+#[then("validation fails because the grepai template does not use journald")]
+fn validation_fails_because_the_grepai_template_does_not_use_journald(
+    systemd_world: &SystemdWorld,
+) {
+    assert_validation_result(
+        systemd_world,
+        SystemdUnitError::IncorrectServiceDirective {
+            unit: "repovec-grepai@.service",
+            key: "StandardOutput",
+            expected: "journal",
+            actual: String::from("file:/var/log/repovec/grepai.log"),
+        },
+    );
+}
+
 #[scenario(
     path = "tests/features/systemd_units.feature",
     name = "The checked-in unit set satisfies the appliance contract"
@@ -268,6 +341,24 @@ fn repovecd_keeps_the_appliance_service_identity(systemd_world: SystemdWorld) {
     name = "repovec-mcpd keeps the appliance home environment"
 )]
 fn repovec_mcpd_keeps_the_appliance_home_environment(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
+
+#[scenario(path = "tests/features/systemd_units.feature", name = "grepai waits for Qdrant")]
+fn grepai_waits_for_qdrant(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
+
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "grepai keeps the appliance service identity"
+)]
+fn grepai_keeps_the_appliance_service_identity(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
+
+#[scenario(path = "tests/features/systemd_units.feature", name = "grepai output stays in journald")]
+fn grepai_output_stays_in_journald(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }
 

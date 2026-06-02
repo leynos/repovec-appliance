@@ -1,10 +1,10 @@
 # Define template unit for per-repo indexers
 
 This ExecPlan (execution plan) is a living document. The sections `Constraints`,
- `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
 and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -25,7 +25,8 @@ Implementation must not begin until the user explicitly approves this plan.
 
 ## Constraints
 
-- This branch is planning-only until this ExecPlan receives explicit approval.
+- This branch was planning-only until the user explicitly approved
+  implementation on 2026-06-02.
 - The template source of truth must live at
   `packaging/systemd/repovec-grepai@.service`.
 - The existing `packaging/systemd/repovec.target`, `repovecd.service`,
@@ -144,6 +145,72 @@ conflict in `Decision Log`, and ask for direction.
   a usable result, so this plan proceeds from local inspection and Firecrawl
   evidence.
 - [x] (2026-05-26T01:30:28+02:00) Drafted this pre-implementation ExecPlan.
+- [x] (2026-06-02T00:00:00+02:00) Received explicit user approval to proceed
+  with implementation from this ExecPlan and updated the status to
+  `IN PROGRESS`.
+- [x] (2026-06-02T01:12:07+02:00) Completed the first implementation pass:
+  added `packaging/systemd/repovec-grepai@.service`, split the static
+  systemd parser into `parsed.rs` to keep `mod.rs` under 400 lines, added an
+  additive four-unit validation entry point, and extended `rstest` and
+  `rstest-bdd` coverage for the grepai template.
+- [x] (2026-06-02T01:12:07+02:00) Focused validation passed:
+  `cargo test -p repovec-core systemd_units` logged to
+  `/tmp/systemd-units-repovec-appliance-1-3-2-template-unit-for-per-repo-indexers.out`
+  with 48 unit tests passing, and
+  `cargo test -p repovec-core --test systemd_units_bdd` logged to
+  `/tmp/systemd-units-bdd-repovec-appliance-1-3-2-template-unit-for-per-repo-indexers.out`
+  with 13 BDD scenarios passing.
+- [x] (2026-06-02T01:13:50+02:00) First full implementation gate passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  succeeded, with logs under `/tmp/*-repovec-appliance-1-3-2-template-unit-for-per-repo-indexers.out`.
+- [x] (2026-06-02T01:24:35+02:00) First CodeRabbit review completed with
+  three findings. The valid major concern added `repovecd.service` to the
+  grepai template's `Requires=` directive and validator coverage. The two
+  parser clean-up findings were applied by introducing `ParsedLine`,
+  `KeyValueLine`, `LineContext`, and a shallow `insert_key_value` helper.
+- [x] (2026-06-02T01:24:35+02:00) Post-CodeRabbit gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  succeeded after the review fixes. `make test` ran 203 nextest tests and
+  31 doctests successfully.
+- [x] (2026-06-02T02:42:52+02:00) Attempted to rerun CodeRabbit after the
+  review fixes. The review service repeatedly returned recoverable rate-limit
+  errors, so implementation retried according to the requested
+  `shuf -i 15-30 -n 1` minute backoff policy before moving to documentation.
+- [x] (2026-06-02T03:39:22+02:00) A later CodeRabbit retry completed with four
+  trivial findings. The implementation now uses lint-safe slice-pattern checks
+  for single-value service directives, converts the Qdrant Quadlet dependency
+  clone with `to_owned()`, and adds `RestartSec=5s` to the grepai template
+  contract and tests.
+- [x] (2026-06-02T03:39:22+02:00) Post-fix gates passed again:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  succeeded. `make test` ran 204 nextest tests and 31 doctests successfully.
+- [x] (2026-06-02T04:21:03+02:00) A follow-up CodeRabbit review completed
+  with one trivial finding. The checked-in template now includes conservative
+  service hardening directives (`NoNewPrivileges`, `PrivateTmp`,
+  `ProtectSystem`, `ProtectHome`, kernel protection, realtime restriction, and
+  network address-family limits) while keeping the semantic validator focused
+  on the item `1.3.2` service-layout contract.
+- [x] (2026-06-02T04:28:45+02:00) Post-hardening gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  succeeded. `make test` ran 204 nextest tests and 31 doctests successfully.
+- [x] (2026-06-02T04:58:12+02:00) CodeRabbit requested additional systemd
+  sandboxing directives. The service now also restricts devices, namespaces,
+  SUID/SGID transitions, personality changes, control groups, kernel logs,
+  host name changes, the clock, and process visibility where systemd supports
+  those controls.
+- [x] (2026-06-02T05:00:08+02:00) Post-sandboxing gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  succeeded. `make test` ran 204 nextest tests and 31 doctests successfully.
+- [x] (2026-06-02T05:13:41+02:00) CodeRabbit requested a small parser clean-up
+  to avoid converting a section name twice. The parser now binds the owned
+  section name once, uses it for the section map, and stores it as the current
+  section.
+- [x] (2026-06-02T05:17:09+02:00) Post-parser-clean-up gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  succeeded. `make test` ran 204 nextest tests and 31 doctests successfully.
+- [x] (2026-06-02T06:09:31+02:00) CodeRabbit completed a clean implementation
+  milestone review with zero findings after the parser clean-up. The branch is
+  ready for an atomic implementation commit before documentation work starts.
 
 ## Surprises & Discoveries
 
@@ -179,6 +246,29 @@ conflict in `Decision Log`, and ask for direction.
   claiming that workspace configuration or provider flags are complete in this
   item.
 
+- Observation: `crates/repovec-core/src/appliance/systemd_units/mod.rs` was
+  already at the local 400-line code-file limit before the template validator
+  was added. Impact: the implementation first extracted the systemd parser into
+  `crates/repovec-core/src/appliance/systemd_units/parsed.rs`, preserving the
+  existing policy boundary while making room for the template contract.
+
+- Observation: CodeRabbit identified an asymmetry where
+  `repovec-grepai@.service` was ordered after `repovecd.service` but did not
+  require it. Impact: the template now uses
+  `Requires=qdrant.service repovecd.service`, and the validator rejects a
+  missing `repovecd.service` requirement.
+
+- Observation: CodeRabbit recommended adding common systemd service-hardening
+  directives to the grepai template. Impact: the checked-in unit now carries
+  those hardening directives, but they are not part of the static validator's
+  semantic contract for item `1.3.2`.
+
+- Observation: CodeRabbit's follow-up hardening request included directives
+  that limit device access and process visibility. Impact: the template now
+  assumes `grepai watch` does not need direct device access, host namespace
+  creation, SUID transitions, kernel log access, or visibility into unrelated
+  host processes.
+
 ## Decision Log
 
 - Decision: keep this branch as a pre-implementation planning branch until the
@@ -208,6 +298,42 @@ conflict in `Decision Log`, and ask for direction.
   `grepai watch` service is non-interactive and should not allocate a terminal;
   resize propagation belongs to PTY/TUI work, not to this template.
   Date/Author: 2026-05-26T01:30:28+02:00 / Codex.
+
+- Decision: begin execution after explicit user approval on 2026-06-02.
+  Rationale: the approval gate in this ExecPlan has been satisfied by the
+  user's request to proceed with implementation. Date/Author:
+  2026-06-02T00:00:00+02:00 / Codex.
+
+- Decision: keep the existing three-argument `validate_systemd_units` public
+  API and add `validate_systemd_units_with_grepai_template` for callers that
+  need the full four-unit contract. Rationale: this avoids a public API
+  breakage while allowing checked-in startup validation to cover the new
+  template. Date/Author: 2026-06-02T01:12:07+02:00 / Codex.
+
+- Decision: require `repovecd.service` as well as ordering after it in the
+  grepai template. Rationale: systemd `After=` only controls ordering; pairing
+  it with `Requires=` makes the indexer fail closed when the control-plane
+  daemon is unavailable. Date/Author: 2026-06-02T01:24:35+02:00 / Codex.
+
+- Decision: add `RestartSec=5s` to the grepai template and validator.
+  Rationale: `Restart=on-failure` without a delay can create a tight restart
+  loop when `grepai watch` fails persistently; a short fixed delay keeps the
+  service responsive without hammering systemd. Date/Author:
+  2026-06-02T03:39:22+02:00 / Codex.
+
+- Decision: add conservative systemd hardening directives to the checked-in
+  grepai template without making them validator requirements. Rationale:
+  hardening improves the shipped packaging default, but the static validator
+  should continue to test the service-layout, identity, dependency, restart,
+  and journald contracts that define this roadmap item. Date/Author:
+  2026-06-02T04:21:03+02:00 / Codex.
+
+- Decision: accept the additional CodeRabbit sandboxing directives in the
+  packaging asset. Rationale: the indexer only needs repository files, local
+  network access to Qdrant, and ordinary process execution; the added systemd
+  restrictions align with that minimal runtime shape and remain outside the
+  semantic validator contract until runtime installation tests exist.
+  Date/Author: 2026-06-02T04:58:12+02:00 / Codex.
 
 ## Outcomes & Retrospective
 

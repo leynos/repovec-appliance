@@ -33,6 +33,26 @@ pub(super) fn expected_diagnostic(scenario: ValidationScenario) -> &'static str 
         | ValidationScenario::McpdMissingGroup
         | ValidationScenario::McpdWrongWorkingDirectory
         | ValidationScenario::McpdMissingEnvironment => expected_mcpd_diagnostic(scenario),
+        ValidationScenario::MissingGrepaiTemplateInstallSection
+        | ValidationScenario::MissingGrepaiTemplateRequiresQdrant
+        | ValidationScenario::MissingGrepaiTemplateRequiresRepovecd
+        | ValidationScenario::MissingGrepaiTemplateAfterQdrant
+        | ValidationScenario::MissingGrepaiTemplateAfterRepovecd
+        | ValidationScenario::GrepaiTemplateUsesQdrantContainer
+        | ValidationScenario::MissingGrepaiTemplatePartOfTarget
+        | ValidationScenario::MissingGrepaiTemplateWantedByTarget
+        | ValidationScenario::WrongGrepaiTemplateType
+        | ValidationScenario::WrongGrepaiTemplateExecStart
+        | ValidationScenario::GrepaiTemplateWrongUser
+        | ValidationScenario::GrepaiTemplateMissingGroup
+        | ValidationScenario::GrepaiTemplateWrongWorkingDirectory
+        | ValidationScenario::GrepaiTemplateMissingEnvironment
+        | ValidationScenario::GrepaiTemplateWrongRestartPolicy
+        | ValidationScenario::GrepaiTemplateWrongRestartDelay
+        | ValidationScenario::GrepaiTemplateLogsStdoutToFile
+        | ValidationScenario::GrepaiTemplateLogsStderrToFile => {
+            expected_grepai_template_diagnostic(scenario)
+        }
     }
 }
 
@@ -140,5 +160,71 @@ fn expected_mcpd_diagnostic(scenario: ValidationScenario) -> &'static str {
             "in [Service]: ",
         ),
         _ => panic!("repovec-mcpd diagnostic called for non-mcpd scenario"),
+    }
+}
+
+fn expected_grepai_template_diagnostic(scenario: ValidationScenario) -> &'static str {
+    match scenario {
+        ValidationScenario::MissingGrepaiTemplateInstallSection => {
+            "repovec-grepai@.service is missing [Install]"
+        }
+        ValidationScenario::MissingGrepaiTemplateRequiresQdrant => {
+            "repovec-grepai@.service is missing Requires=qdrant.service in [Unit]"
+        }
+        ValidationScenario::MissingGrepaiTemplateRequiresRepovecd => {
+            "repovec-grepai@.service is missing Requires=repovecd.service in [Unit]"
+        }
+        ValidationScenario::MissingGrepaiTemplateAfterQdrant => {
+            "repovec-grepai@.service is missing After=qdrant.service in [Unit]"
+        }
+        ValidationScenario::MissingGrepaiTemplateAfterRepovecd => {
+            "repovec-grepai@.service is missing After=repovecd.service in [Unit]"
+        }
+        ValidationScenario::GrepaiTemplateUsesQdrantContainer => concat!(
+            "repovec-grepai@.service must depend on qdrant.service, not ",
+            "qdrant.container, in [Unit] Requires",
+        ),
+        ValidationScenario::MissingGrepaiTemplatePartOfTarget => {
+            "repovec-grepai@.service is missing PartOf=repovec.target in [Unit]"
+        }
+        ValidationScenario::MissingGrepaiTemplateWantedByTarget => {
+            "repovec-grepai@.service is missing WantedBy=repovec.target in [Install]"
+        }
+        ValidationScenario::WrongGrepaiTemplateType => {
+            "repovec-grepai@.service must have Type=exec in [Service]: simple"
+        }
+        ValidationScenario::WrongGrepaiTemplateExecStart => concat!(
+            "repovec-grepai@.service must use ExecStart=/usr/bin/grepai watch: ",
+            "/usr/bin/grepai",
+        ),
+        ValidationScenario::GrepaiTemplateWrongUser => {
+            "repovec-grepai@.service must have User=repovec in [Service]: root"
+        }
+        ValidationScenario::GrepaiTemplateMissingGroup => {
+            "repovec-grepai@.service must have Group=repovec in [Service]: "
+        }
+        ValidationScenario::GrepaiTemplateWrongWorkingDirectory => concat!(
+            "repovec-grepai@.service must have WorkingDirectory=",
+            "/var/lib/repovec/worktrees/%I in [Service]: /var/lib/repovec",
+        ),
+        ValidationScenario::GrepaiTemplateMissingEnvironment => concat!(
+            "repovec-grepai@.service must have Environment=HOME=/var/lib/repovec ",
+            "in [Service]: ",
+        ),
+        ValidationScenario::GrepaiTemplateWrongRestartPolicy => {
+            "repovec-grepai@.service must have Restart=on-failure in [Service]: always"
+        }
+        ValidationScenario::GrepaiTemplateWrongRestartDelay => {
+            "repovec-grepai@.service must have RestartSec=5s in [Service]: 0"
+        }
+        ValidationScenario::GrepaiTemplateLogsStdoutToFile => concat!(
+            "repovec-grepai@.service must have StandardOutput=journal in [Service]: ",
+            "file:/var/log/repovec/grepai.log",
+        ),
+        ValidationScenario::GrepaiTemplateLogsStderrToFile => concat!(
+            "repovec-grepai@.service must have StandardError=journal in [Service]: ",
+            "file:/var/log/repovec/grepai.err",
+        ),
+        _ => panic!("grepai template diagnostic called for non-template scenario"),
     }
 }

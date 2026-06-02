@@ -48,15 +48,15 @@
 //! violation with `tracing::error!` and exits with code 1.
 
 mod error;
+mod parsed;
 mod startup;
 
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeMap, BTreeSet};
-
 pub use error::SystemdUnitError;
 pub use startup::{run_startup_validation, validate_and_trace_checked_in_units};
+use parsed::ParsedUnit;
 
 const CHECKED_IN_REPOVEC_TARGET: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovec.target"));
@@ -67,6 +67,10 @@ const CHECKED_IN_REPOVEC_MCPD_SERVICE: &str = include_str!(concat!(
     "/../../packaging/systemd/repovec-mcpd.service"
 ));
 
+const CHECKED_IN_REPOVEC_GREPAI_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packaging/systemd/repovec-grepai@.service"
+));
 /// The repository path of the checked-in `repovec.target` unit.
 pub const CHECKED_IN_REPOVEC_TARGET_PATH: &str = "packaging/systemd/repovec.target";
 /// The repository path of the checked-in `repovecd.service` unit.
@@ -74,9 +78,13 @@ pub const CHECKED_IN_REPOVECD_SERVICE_PATH: &str = "packaging/systemd/repovecd.s
 /// The repository path of the checked-in `repovec-mcpd.service` unit.
 pub const CHECKED_IN_REPOVEC_MCPD_SERVICE_PATH: &str = "packaging/systemd/repovec-mcpd.service";
 
+/// The repository path of the checked-in `repovec-grepai@.service` template.
+pub const CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH: &str =
+    "packaging/systemd/repovec-grepai@.service";
 const TARGET_UNIT: &str = "repovec.target";
 const REPOVECD_UNIT: &str = "repovecd.service";
 const REPOVEC_MCPD_UNIT: &str = "repovec-mcpd.service";
+const REPOVEC_GREPAI_TEMPLATE_UNIT: &str = "repovec-grepai@.service";
 const UNIT_SECTION: &str = "Unit";
 const SERVICE_SECTION: &str = "Service";
 const INSTALL_SECTION: &str = "Install";
@@ -86,6 +94,7 @@ const QDRANT_CONTAINER_SERVICE: &str = "qdrant.container.service";
 const SERVICE_USER: &str = "repovec";
 const SERVICE_GROUP: &str = "repovec";
 const SERVICE_WORKING_DIRECTORY: &str = "/var/lib/repovec";
+const GREPAI_WORKING_DIRECTORY: &str = "/var/lib/repovec/worktrees/%I";
 const SERVICE_HOME_ENVIRONMENT: &str = "HOME=/var/lib/repovec";
 
 /// Returns the repository's checked-in `repovec.target` source.
@@ -124,6 +133,9 @@ pub const fn checked_in_repovecd_service() -> &'static str { CHECKED_IN_REPOVECD
 #[must_use]
 pub const fn checked_in_repovec_mcpd_service() -> &'static str { CHECKED_IN_REPOVEC_MCPD_SERVICE }
 
+pub const fn checked_in_repovec_grepai_template() -> &'static str {
+    CHECKED_IN_REPOVEC_GREPAI_TEMPLATE
+}
 /// Validates the repository's checked-in repovec systemd unit definitions.
 ///
 /// # Errors
@@ -139,10 +151,11 @@ pub const fn checked_in_repovec_mcpd_service() -> &'static str { CHECKED_IN_REPO
 /// validate_checked_in_systemd_units().expect("the checked-in units remain valid");
 /// ```
 pub fn validate_checked_in_systemd_units() -> Result<(), SystemdUnitError> {
-    validate_systemd_units(
+    validate_systemd_units_with_grepai_template(
         checked_in_repovec_target(),
         checked_in_repovecd_service(),
         checked_in_repovec_mcpd_service(),
+        checked_in_repovec_grepai_template(),
     )
 }
 
@@ -205,6 +218,17 @@ pub fn validate_systemd_units(
     validate_mcpd(&mcpd)
 }
 
+pub fn validate_systemd_units_with_grepai_template(
+    repovec_target: &str,
+    repovecd_service: &str,
+    repovec_mcpd_service: &str,
+    repovec_grepai_template: &str,
+) -> Result<(), SystemdUnitError> {
+    validate_systemd_units(repovec_target, repovecd_service, repovec_mcpd_service)?;
+    let template = ParsedUnit::parse(REPOVEC_GREPAI_TEMPLATE_UNIT, repovec_grepai_template)?;
+
+    validate_grepai_template(&template)
+}
 fn validate_target(target: &ParsedUnit) -> Result<(), SystemdUnitError> {
     target.require_section(UNIT_SECTION)?;
     target.require_section(INSTALL_SECTION)?;
@@ -241,152 +265,24 @@ fn validate_mcpd(mcpd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     mcpd.require_service_environment(SERVICE_HOME_ENVIRONMENT)
 }
 
-#[derive(Debug)]
-struct ParsedUnit {
-    unit: &'static str,
-    sections: BTreeMap<String, BTreeMap<String, Vec<String>>>,
-}
-
-impl ParsedUnit {
-    fn parse(unit: &'static str, contents: &str) -> Result<Self, SystemdUnitError> {
-        let mut sections = BTreeMap::<String, BTreeMap<String, Vec<String>>>::new();
-        let mut current_section: Option<String> = None;
-
-        for (line_index, raw_line) in contents.lines().enumerate() {
-            let line_number = line_index + 1;
-            let line = raw_line.trim();
-            if is_ignored_line(line) {
-                continue;
-            }
-
-            if let Some(section) = parse_section_header(line) {
-                current_section = Some(section.to_owned());
-                sections.entry(section.to_owned()).or_default();
-                continue;
-            }
-
-            let Some((key, value)) = line.split_once('=') else {
-                return Err(SystemdUnitError::InvalidLine {
-                    unit,
-                    line_number,
-                    line: line.to_owned(),
-                });
-            };
-
-            let Some(section) = &current_section else {
-                return Err(SystemdUnitError::PropertyBeforeSection {
-                    unit,
-                    line_number,
-                    line: line.to_owned(),
-                });
-            };
-
-            sections
-                .entry(section.clone())
-                .or_default()
-                .entry(key.trim().to_owned())
-                .or_default()
-                .push(value.trim().to_owned());
-        }
-
-        Ok(Self { unit, sections })
-    }
-
-    fn require_section(&self, section: &'static str) -> Result<(), SystemdUnitError> {
-        if self.sections.contains_key(section) {
-            return Ok(());
-        }
-
-        Err(SystemdUnitError::MissingSection { unit: self.unit, section })
-    }
-
-    fn require_dependency(
-        &self,
-        section: &'static str,
-        key: &'static str,
-        dependency: &'static str,
-    ) -> Result<(), SystemdUnitError> {
-        let tokens = self.directive_tokens(section, key);
-        if let Some(quadlet_dependency) =
-            tokens.iter().find(|value| is_qdrant_quadlet_source(value))
-        {
-            return Err(SystemdUnitError::UsesQuadletSourceDependency {
-                unit: self.unit,
-                section,
-                key,
-                dependency: (*quadlet_dependency).clone(),
-            });
-        }
-
-        if tokens.contains(dependency) {
-            return Ok(());
-        }
-
-        Err(SystemdUnitError::MissingDependency { unit: self.unit, section, key, dependency })
-    }
-
-    fn require_exec_start(&self, expected: &'static str) -> Result<(), SystemdUnitError> {
-        let values = self.values(SERVICE_SECTION, "ExecStart");
-        if values.first().is_some_and(|actual| actual == expected) && values.len() == 1 {
-            return Ok(());
-        }
-
-        Err(SystemdUnitError::IncorrectExecStart {
-            unit: self.unit,
-            expected,
-            actual: values.join(","),
-        })
-    }
-
-    fn require_service_directive(
-        &self,
-        key: &'static str,
-        expected: &'static str,
-    ) -> Result<(), SystemdUnitError> {
-        let values = self.values(SERVICE_SECTION, key);
-        if values.first().is_some_and(|value| value == expected) && values.len() == 1 {
-            return Ok(());
-        }
-
-        Err(SystemdUnitError::IncorrectServiceDirective {
-            unit: self.unit,
-            key,
-            expected,
-            actual: values.join(","),
-        })
-    }
-
-    fn require_service_environment(&self, expected: &'static str) -> Result<(), SystemdUnitError> {
-        let values = self.values(SERVICE_SECTION, "Environment");
-        if values.iter().any(|value| value == expected) {
-            return Ok(());
-        }
-
-        Err(SystemdUnitError::IncorrectServiceDirective {
-            unit: self.unit,
-            key: "Environment",
-            expected,
-            actual: values.join(","),
-        })
-    }
-
-    fn directive_tokens(&self, section: &str, key: &str) -> BTreeSet<String> {
-        self.values(section, key)
-            .iter()
-            .flat_map(|value| value.split_whitespace())
-            .map(ToOwned::to_owned)
-            .collect()
-    }
-
-    fn values(&self, section: &str, key: &str) -> &[String] {
-        self.sections.get(section).and_then(|entries| entries.get(key)).map_or(&[], Vec::as_slice)
-    }
-}
-
-fn parse_section_header(line: &str) -> Option<&str> { line.strip_prefix('[')?.strip_suffix(']') }
-
-fn is_ignored_line(line: &str) -> bool { line.is_empty() || line.starts_with(['#', ';']) }
-
-fn is_qdrant_quadlet_source(value: &str) -> bool {
-    value == QDRANT_CONTAINER || value == QDRANT_CONTAINER_SERVICE
+fn validate_grepai_template(template: &ParsedUnit) -> Result<(), SystemdUnitError> {
+    template.require_section(UNIT_SECTION)?;
+    template.require_section(SERVICE_SECTION)?;
+    template.require_section(INSTALL_SECTION)?;
+    template.require_dependency(UNIT_SECTION, "Requires", QDRANT_SERVICE)?;
+    template.require_dependency(UNIT_SECTION, "Requires", REPOVECD_UNIT)?;
+    template.require_dependency(UNIT_SECTION, "After", QDRANT_SERVICE)?;
+    template.require_dependency(UNIT_SECTION, "After", REPOVECD_UNIT)?;
+    template.require_dependency(UNIT_SECTION, "PartOf", TARGET_UNIT)?;
+    template.require_dependency(INSTALL_SECTION, "WantedBy", TARGET_UNIT)?;
+    template.require_service_directive("Type", "exec")?;
+    template.require_service_directive("User", SERVICE_USER)?;
+    template.require_service_directive("Group", SERVICE_GROUP)?;
+    template.require_service_directive("WorkingDirectory", GREPAI_WORKING_DIRECTORY)?;
+    template.require_service_environment(SERVICE_HOME_ENVIRONMENT)?;
+    template.require_exec_start("/usr/bin/grepai watch")?;
+    template.require_service_directive("Restart", "on-failure")?;
+    template.require_service_directive("RestartSec", "5s")?;
+    template.require_service_directive("StandardOutput", "journal")?;
+    template.require_service_directive("StandardError", "journal")
 }

@@ -1,10 +1,15 @@
 //! Shared fixtures for mutating checked-in systemd units in validator tests.
 
+use crate::appliance::systemd_units::{
+    SystemdUnitError, validate_systemd_units_with_grepai_template,
+};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum UnitFile {
     Target,
     Repovecd,
     Mcpd,
+    GrepaiTemplate,
 }
 
 #[derive(Clone, Debug)]
@@ -12,6 +17,7 @@ pub(super) struct UnitSet {
     pub(super) target: String,
     pub(super) repovecd: String,
     pub(super) mcpd: String,
+    pub(super) grepai_template: String,
 }
 
 impl UnitSet {
@@ -55,11 +61,21 @@ impl UnitSet {
         *contents = lines;
     }
 
+    pub(super) fn validate(&self) -> Result<(), SystemdUnitError> {
+        validate_systemd_units_with_grepai_template(
+            &self.target,
+            &self.repovecd,
+            &self.mcpd,
+            &self.grepai_template,
+        )
+    }
+
     fn file_mut(&mut self, file: UnitFile) -> &mut String {
         match file {
             UnitFile::Target => &mut self.target,
             UnitFile::Repovecd => &mut self.repovecd,
             UnitFile::Mcpd => &mut self.mcpd,
+            UnitFile::GrepaiTemplate => &mut self.grepai_template,
         }
     }
 }

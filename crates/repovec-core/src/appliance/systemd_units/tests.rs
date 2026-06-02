@@ -17,8 +17,8 @@ use rstest::{fixture, rstest};
 use unit_set::{UnitFile, UnitSet};
 
 use super::{
-    checked_in_repovec_mcpd_service, checked_in_repovec_target, checked_in_repovecd_service,
-    validate_systemd_units,
+    checked_in_repovec_grepai_template, checked_in_repovec_mcpd_service, checked_in_repovec_target,
+    checked_in_repovecd_service,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,6 +52,24 @@ pub(super) enum ValidationScenario {
     McpdMissingGroup,
     McpdWrongWorkingDirectory,
     McpdMissingEnvironment,
+    MissingGrepaiTemplateInstallSection,
+    MissingGrepaiTemplateRequiresQdrant,
+    MissingGrepaiTemplateRequiresRepovecd,
+    MissingGrepaiTemplateAfterQdrant,
+    MissingGrepaiTemplateAfterRepovecd,
+    GrepaiTemplateUsesQdrantContainer,
+    MissingGrepaiTemplatePartOfTarget,
+    MissingGrepaiTemplateWantedByTarget,
+    WrongGrepaiTemplateType,
+    WrongGrepaiTemplateExecStart,
+    GrepaiTemplateWrongUser,
+    GrepaiTemplateMissingGroup,
+    GrepaiTemplateWrongWorkingDirectory,
+    GrepaiTemplateMissingEnvironment,
+    GrepaiTemplateWrongRestartPolicy,
+    GrepaiTemplateWrongRestartDelay,
+    GrepaiTemplateLogsStdoutToFile,
+    GrepaiTemplateLogsStderrToFile,
 }
 
 impl ValidationScenario {
@@ -86,6 +104,24 @@ impl ValidationScenario {
             | Self::McpdMissingGroup
             | Self::McpdWrongWorkingDirectory
             | Self::McpdMissingEnvironment => self.mutate_mcpd(&mut units),
+            Self::MissingGrepaiTemplateInstallSection
+            | Self::MissingGrepaiTemplateRequiresQdrant
+            | Self::MissingGrepaiTemplateRequiresRepovecd
+            | Self::MissingGrepaiTemplateAfterQdrant
+            | Self::MissingGrepaiTemplateAfterRepovecd
+            | Self::GrepaiTemplateUsesQdrantContainer
+            | Self::MissingGrepaiTemplatePartOfTarget
+            | Self::MissingGrepaiTemplateWantedByTarget
+            | Self::WrongGrepaiTemplateType
+            | Self::WrongGrepaiTemplateExecStart
+            | Self::GrepaiTemplateWrongUser
+            | Self::GrepaiTemplateMissingGroup
+            | Self::GrepaiTemplateWrongWorkingDirectory
+            | Self::GrepaiTemplateMissingEnvironment
+            | Self::GrepaiTemplateWrongRestartPolicy
+            | Self::GrepaiTemplateWrongRestartDelay
+            | Self::GrepaiTemplateLogsStdoutToFile
+            | Self::GrepaiTemplateLogsStderrToFile => self.mutate_grepai_template(&mut units),
         }
 
         units
@@ -200,6 +236,77 @@ impl ValidationScenario {
             _ => panic!("repovec-mcpd mutation called for non-mcpd scenario"),
         }
     }
+
+    fn mutate_grepai_template(self, units: &mut UnitSet) {
+        match self {
+            Self::MissingGrepaiTemplateInstallSection => {
+                units.remove_line(UnitFile::GrepaiTemplate, "[Install]\n");
+                units.remove_line(UnitFile::GrepaiTemplate, "WantedBy=repovec.target\n");
+            }
+            Self::MissingGrepaiTemplateRequiresQdrant => {
+                units.remove_token(UnitFile::GrepaiTemplate, "Requires=", "qdrant.service");
+            }
+            Self::MissingGrepaiTemplateRequiresRepovecd => {
+                units.remove_token(UnitFile::GrepaiTemplate, "Requires=", "repovecd.service");
+            }
+            Self::MissingGrepaiTemplateAfterQdrant => {
+                units.remove_token(UnitFile::GrepaiTemplate, "After=", "qdrant.service");
+            }
+            Self::MissingGrepaiTemplateAfterRepovecd => {
+                units.remove_token(UnitFile::GrepaiTemplate, "After=", "repovecd.service");
+            }
+            Self::GrepaiTemplateUsesQdrantContainer => {
+                units.replace_token(UnitFile::GrepaiTemplate, "qdrant.service", "qdrant.container");
+            }
+            Self::MissingGrepaiTemplatePartOfTarget => {
+                units.remove_line(UnitFile::GrepaiTemplate, "PartOf=repovec.target\n");
+            }
+            Self::MissingGrepaiTemplateWantedByTarget => {
+                units.remove_line(UnitFile::GrepaiTemplate, "WantedBy=repovec.target\n");
+            }
+            Self::WrongGrepaiTemplateType => {
+                units.replace_token(UnitFile::GrepaiTemplate, "Type=exec", "Type=simple");
+            }
+            Self::WrongGrepaiTemplateExecStart => units.replace_token(
+                UnitFile::GrepaiTemplate,
+                "/usr/bin/grepai watch",
+                "/usr/bin/grepai",
+            ),
+            Self::GrepaiTemplateWrongUser => {
+                units.replace_token(UnitFile::GrepaiTemplate, "User=repovec", "User=root");
+            }
+            Self::GrepaiTemplateMissingGroup => {
+                units.remove_line(UnitFile::GrepaiTemplate, "Group=repovec\n");
+            }
+            Self::GrepaiTemplateWrongWorkingDirectory => units.replace_token(
+                UnitFile::GrepaiTemplate,
+                "WorkingDirectory=/var/lib/repovec/worktrees/%I",
+                "WorkingDirectory=/var/lib/repovec",
+            ),
+            Self::GrepaiTemplateMissingEnvironment => {
+                units.remove_line(UnitFile::GrepaiTemplate, "Environment=HOME=/var/lib/repovec\n");
+            }
+            Self::GrepaiTemplateWrongRestartPolicy => units.replace_token(
+                UnitFile::GrepaiTemplate,
+                "Restart=on-failure",
+                "Restart=always",
+            ),
+            Self::GrepaiTemplateWrongRestartDelay => {
+                units.replace_token(UnitFile::GrepaiTemplate, "RestartSec=5s", "RestartSec=0");
+            }
+            Self::GrepaiTemplateLogsStdoutToFile => units.replace_token(
+                UnitFile::GrepaiTemplate,
+                "StandardOutput=journal",
+                "StandardOutput=file:/var/log/repovec/grepai.log",
+            ),
+            Self::GrepaiTemplateLogsStderrToFile => units.replace_token(
+                UnitFile::GrepaiTemplate,
+                "StandardError=journal",
+                "StandardError=file:/var/log/repovec/grepai.err",
+            ),
+            _ => panic!("grepai template mutation called for non-template scenario"),
+        }
+    }
 }
 
 #[fixture]
@@ -208,6 +315,7 @@ fn checked_in_unit_set() -> UnitSet {
         target: checked_in_repovec_target().to_owned(),
         repovecd: checked_in_repovecd_service().to_owned(),
         mcpd: checked_in_repovec_mcpd_service().to_owned(),
+        grepai_template: checked_in_repovec_grepai_template().to_owned(),
     }
 }
 
@@ -243,12 +351,46 @@ fn checked_in_unit_set() -> UnitSet {
 #[case::mcpd_missing_group(ValidationScenario::McpdMissingGroup)]
 #[case::mcpd_wrong_working_directory(ValidationScenario::McpdWrongWorkingDirectory)]
 #[case::mcpd_missing_environment(ValidationScenario::McpdMissingEnvironment)]
+#[case::missing_grepai_template_install_section(
+    ValidationScenario::MissingGrepaiTemplateInstallSection
+)]
+#[case::missing_grepai_template_requires_qdrant(
+    ValidationScenario::MissingGrepaiTemplateRequiresQdrant
+)]
+#[case::missing_grepai_template_requires_repovecd(
+    ValidationScenario::MissingGrepaiTemplateRequiresRepovecd
+)]
+#[case::missing_grepai_template_after_qdrant(ValidationScenario::MissingGrepaiTemplateAfterQdrant)]
+#[case::missing_grepai_template_after_repovecd(
+    ValidationScenario::MissingGrepaiTemplateAfterRepovecd
+)]
+#[case::grepai_template_uses_qdrant_container(
+    ValidationScenario::GrepaiTemplateUsesQdrantContainer
+)]
+#[case::missing_grepai_template_part_of_target(
+    ValidationScenario::MissingGrepaiTemplatePartOfTarget
+)]
+#[case::missing_grepai_template_wanted_by_target(
+    ValidationScenario::MissingGrepaiTemplateWantedByTarget
+)]
+#[case::wrong_grepai_template_type(ValidationScenario::WrongGrepaiTemplateType)]
+#[case::wrong_grepai_template_exec_start(ValidationScenario::WrongGrepaiTemplateExecStart)]
+#[case::grepai_template_wrong_user(ValidationScenario::GrepaiTemplateWrongUser)]
+#[case::grepai_template_missing_group(ValidationScenario::GrepaiTemplateMissingGroup)]
+#[case::grepai_template_wrong_working_directory(
+    ValidationScenario::GrepaiTemplateWrongWorkingDirectory
+)]
+#[case::grepai_template_missing_environment(ValidationScenario::GrepaiTemplateMissingEnvironment)]
+#[case::grepai_template_wrong_restart_policy(ValidationScenario::GrepaiTemplateWrongRestartPolicy)]
+#[case::grepai_template_wrong_restart_delay(ValidationScenario::GrepaiTemplateWrongRestartDelay)]
+#[case::grepai_template_logs_stdout_to_file(ValidationScenario::GrepaiTemplateLogsStdoutToFile)]
+#[case::grepai_template_logs_stderr_to_file(ValidationScenario::GrepaiTemplateLogsStderrToFile)]
 fn validated_systemd_unit_violations_match_expected_variant_and_diagnostic_snapshots(
     checked_in_unit_set: UnitSet,
     #[case] scenario: ValidationScenario,
 ) {
     let units = scenario.mutate(checked_in_unit_set);
-    let Err(err) = validate_systemd_units(&units.target, &units.repovecd, &units.mcpd) else {
+    let Err(err) = units.validate() else {
         panic!("expected {scenario:?} validation to fail");
     };
 

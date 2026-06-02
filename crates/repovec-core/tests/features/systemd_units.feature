@@ -59,3 +59,21 @@ Feature: repovec systemd unit contract
     And the repovec-mcpd home environment is removed
     When the systemd units are validated
     Then validation fails because repovec-mcpd has no appliance home environment
+
+  Scenario: grepai waits for Qdrant
+    Given the checked-in repovec systemd units
+    And the grepai template Qdrant ordering is removed
+    When the systemd units are validated
+    Then validation fails because the grepai template does not start after Qdrant
+
+  Scenario: grepai keeps the appliance service identity
+    Given the checked-in repovec systemd units
+    And the grepai template runs as root instead of repovec
+    When the systemd units are validated
+    Then validation fails because the grepai template has the wrong service user
+
+  Scenario: grepai output stays in journald
+    Given the checked-in repovec systemd units
+    And the grepai template writes stdout to a log file
+    When the systemd units are validated
+    Then validation fails because the grepai template does not use journald

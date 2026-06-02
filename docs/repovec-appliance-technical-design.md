@@ -324,14 +324,16 @@ Systemd manages the appliance lifecycle via a dedicated target:
 - `repovec.target`
   - wants: `qdrant.service` (Podman), `repovecd.service`,
     `repovec-mcpd.service`, `cloudflared.service`
-  - wants: per-repo indexers `repovec-grepai@<repo>.service`
+  - wants: concrete per-repository indexer instances when later
+    reconciliation work enables them
 
-Roadmap item `1.3.1` ships the static source files for the base target and
-daemon services under `packaging/systemd/`:
+Roadmap items `1.3.1` and `1.3.2` ship the static source files for the base
+target, daemon services, and grepai indexer template under `packaging/systemd/`:
 
 - `packaging/systemd/repovec.target`
 - `packaging/systemd/repovecd.service`
 - `packaging/systemd/repovec-mcpd.service`
+- `packaging/systemd/repovec-grepai@.service`
 
 On an appliance host, install these units to `/etc/systemd/system/`. The
 existing Qdrant Quadlet remains installed to
@@ -341,6 +343,28 @@ uses. `repovecd.service` declares both `Requires=qdrant.service` and
 `After=qdrant.service`. `repovec-mcpd.service` declares
 `Requires=qdrant.service repovecd.service` and
 `After=qdrant.service repovecd.service`.
+
+`repovec-grepai@.service` is a systemd template for future concrete indexer
+instances. Each instance runs `/usr/bin/grepai watch` as the `repovec` user and
+group, sets `HOME=/var/lib/repovec`, and uses
+`WorkingDirectory=/var/lib/repovec/worktrees/%I`. The `%I` value is the systemd
+instance identifier; roadmap item `3.2.1` owns the final mapping from
+repository and branch identity to a concrete, systemd-safe instance name. The
+template declares `Requires=qdrant.service repovecd.service`,
+`After=qdrant.service repovecd.service`, `PartOf=repovec.target`, and
+`WantedBy=repovec.target`, so manually enabled instances are bound to the
+appliance target and stop with it. The template keeps stdout and stderr in
+journald with `StandardOutput=journal` and `StandardError=journal`; it must not
+create bespoke log files.
+
+The template includes conservative systemd sandboxing directives such as
+`NoNewPrivileges=yes`, private temporary storage, read-only host filesystem
+protections, kernel and namespace restrictions, limited address families, and
+restricted process visibility. These hardening settings are packaging defaults
+for the appliance image. Static validation in `repovec-core` checks the
+service-layout contract, but it does not prove that the live host has
+`/usr/bin/grepai`, the `repovec` user, concrete worktrees, Qdrant reachability,
+or a compatible systemd version.
 
 `cloudflared.service` is package-owned and is not supplied by the appliance
 unit set. The target queues it with `Wants=cloudflared.service`; tighter tunnel

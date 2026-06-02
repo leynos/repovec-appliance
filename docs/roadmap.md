@@ -101,11 +101,14 @@ correct ordering and dependency declarations.
     See repovec-appliance-technical-design.md, "Service layout".
   - Write stub unit files for `repovecd.service` and `repovec-mcpd.service`
     with correct `After=` and `Requires=` relationships.
-- [ ] 1.3.2. Define template unit for per-repo indexers
+- [x] 1.3.2. Define template unit for per-repo indexers
   - Create `repovec-grepai@.service` template unit.
   - Configure the unit to run as the `repovec` user with `HOME` set to
     `/var/lib/repovec`.
   - Ensure journald captures all output (no bespoke log files).
+  - Done: ships the checked-in systemd template, static validator coverage,
+    `rstest` unit tests, and `rstest-bdd` behavioural scenarios. Concrete
+    indexer instance reconciliation remains in 3.2.1.
 - [ ] 1.3.3. Create `repovec` system user and directory layout
   - Create system user `repovec` with home `/var/lib/repovec`.
   - Create directories: `git-mirrors/`, `worktrees/`, and `.grepai/`.

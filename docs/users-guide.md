@@ -155,8 +155,8 @@ the public `QdrantQuadletError` type for checking the packaged Quadlet
 contract. The validator reports the first contract violation it finds. Display
 strings are stable operator diagnostics and use these formats:
 
-The validator is a static contract check. It does not emit tracing spans,
-logs, or metrics itself; callers should log or count the returned
+The validator is a static contract check. It does not emit tracing spans, logs,
+or metrics itself; callers should log or count the returned
 `QdrantQuadletError` when they need runtime observability.
 
 - `InvalidLine`: `invalid quadlet line {line_number}: {line}`.
@@ -181,19 +181,18 @@ logs, or metrics itself; callers should log or count the returned
 - `MissingAutoUpdate`: `missing AutoUpdate= entry in [Container]`.
 - `IncorrectAutoUpdate`: `AutoUpdate must remain registry: {auto_update}`.
 - `MissingApiKeyProvisioningDependency`:
-  `missing {directive}=repovec-qdrant-api-key.service dependency for Qdrant
-  API-key provisioning`.
+  `missing {directive}=repovec-qdrant-api-key.service dependency for Qdrant`
+  `API-key provisioning`.
 - `IncorrectApiKeyProvisioningDependency`:
-  `{directive} must include repovec-qdrant-api-key.service for Qdrant API-key
-  provisioning: {dependency}`.
+  `{directive} must include repovec-qdrant-api-key.service for Qdrant`
+  `API-key provisioning: {dependency}`.
 - `MissingApiKeySecret`:
   `missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY`.
 - `IncorrectApiKeySecret`:
-  `Qdrant API-key secret must be
-  repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}`.
+  `Qdrant API-key secret must be repovec-qdrant-api-key,type=env,`
+  `target=QDRANT__SERVICE__API_KEY: {secret}`.
 - `InlineApiKeyEnvironmentDisallowed`:
-  `Qdrant API keys must use a Podman secret, not inline Environment=:
-  <redacted>`.
+  `Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>`.
 
 ## Appliance systemd target
 
@@ -203,6 +202,7 @@ under `packaging/systemd/`:
 - `repovec.target`
 - `repovecd.service`
 - `repovec-mcpd.service`
+- `repovec-grepai@.service`
 
 Install these files to `/etc/systemd/system/`, then reload systemd:
 
@@ -210,6 +210,7 @@ Install these files to `/etc/systemd/system/`, then reload systemd:
 sudo install -m 0644 packaging/systemd/repovec.target /etc/systemd/system/repovec.target
 sudo install -m 0644 packaging/systemd/repovecd.service /etc/systemd/system/repovecd.service
 sudo install -m 0644 packaging/systemd/repovec-mcpd.service /etc/systemd/system/repovec-mcpd.service
+sudo install -m 0644 packaging/systemd/repovec-grepai@.service /etc/systemd/system/repovec-grepai@.service
 sudo systemctl daemon-reload
 ```
 
@@ -217,6 +218,13 @@ The target wants `qdrant.service`, `repovecd.service`, `repovec-mcpd.service`,
 and `cloudflared.service`. The Qdrant service name is the generated systemd
 unit from the installed `/etc/containers/systemd/qdrant.container` Quadlet;
 dependent services must use `qdrant.service`.
+
+`repovec-grepai@.service` is the template used for future per-repository
+indexer instances. It runs `grepai watch` as the `repovec` user, sets
+`HOME=/var/lib/repovec`, works in `/var/lib/repovec/worktrees/<instance>`, and
+writes stdout and stderr to journald. Later reconciliation work creates and
+manages concrete instances; operators should not expect installing the template
+alone to start indexers.
 
 Enable and start the appliance service group with:
 
@@ -266,3 +274,5 @@ Starting the target may still fail until later roadmap items create the
 production daemon binaries. The checked-in unit contract already records the
 intended ordering: `repovecd.service` starts after and requires Qdrant, and
 `repovec-mcpd.service` starts after and requires both Qdrant and `repovecd`.
+Concrete grepai indexer instances also start after and require both Qdrant and
+`repovecd`.

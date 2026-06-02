@@ -149,10 +149,10 @@ conflict in `Decision Log`, and ask for direction.
   with implementation from this ExecPlan and updated the status to
   `IN PROGRESS`.
 - [x] (2026-06-02T01:12:07+02:00) Completed the first implementation pass:
-  added `packaging/systemd/repovec-grepai@.service`, split the static
-  systemd parser into `parsed.rs` to keep `mod.rs` under 400 lines, added an
-  additive four-unit validation entry point, and extended `rstest` and
-  `rstest-bdd` coverage for the grepai template.
+  added `packaging/systemd/repovec-grepai@.service`, split the static systemd
+  parser into `parsed.rs` to keep `mod.rs` under 400 lines, added an additive
+  four-unit validation entry point, and extended `rstest` and `rstest-bdd`
+  coverage for the grepai template.
 - [x] (2026-06-02T01:12:07+02:00) Focused validation passed:
   `cargo test -p repovec-core systemd_units` logged to
   `/tmp/systemd-units-repovec-appliance-1-3-2-template-unit-for-per-repo-indexers.out`
@@ -162,7 +162,8 @@ conflict in `Decision Log`, and ask for direction.
   with 13 BDD scenarios passing.
 - [x] (2026-06-02T01:13:50+02:00) First full implementation gate passed:
   `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
-  succeeded, with logs under `/tmp/*-repovec-appliance-1-3-2-template-unit-for-per-repo-indexers.out`.
+  succeeded, with logs under
+  `/tmp/*-repovec-appliance-1-3-2-template-unit-for-per-repo-indexers.out`.
 - [x] (2026-06-02T01:24:35+02:00) First CodeRabbit review completed with
   three findings. The valid major concern added `repovecd.service` to the
   grepai template's `Requires=` directive and validator coverage. The two
@@ -170,8 +171,8 @@ conflict in `Decision Log`, and ask for direction.
   `KeyValueLine`, `LineContext`, and a shallow `insert_key_value` helper.
 - [x] (2026-06-02T01:24:35+02:00) Post-CodeRabbit gates passed:
   `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
-  succeeded after the review fixes. `make test` ran 203 nextest tests and
-  31 doctests successfully.
+  succeeded after the review fixes. `make test` ran 203 nextest tests and 31
+  doctests successfully.
 - [x] (2026-06-02T02:42:52+02:00) Attempted to rerun CodeRabbit after the
   review fixes. The review service repeatedly returned recoverable rate-limit
   errors, so implementation retried according to the requested
@@ -195,9 +196,9 @@ conflict in `Decision Log`, and ask for direction.
   succeeded. `make test` ran 204 nextest tests and 31 doctests successfully.
 - [x] (2026-06-02T04:58:12+02:00) CodeRabbit requested additional systemd
   sandboxing directives. The service now also restricts devices, namespaces,
-  SUID/SGID transitions, personality changes, control groups, kernel logs,
-  host name changes, the clock, and process visibility where systemd supports
-  those controls.
+  SUID/SGID transitions, personality changes, control groups, kernel logs, host
+  name changes, the clock, and process visibility where systemd supports those
+  controls.
 - [x] (2026-06-02T05:00:08+02:00) Post-sandboxing gates passed:
   `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
   succeeded. `make test` ran 204 nextest tests and 31 doctests successfully.
@@ -211,6 +212,26 @@ conflict in `Decision Log`, and ask for direction.
 - [x] (2026-06-02T06:09:31+02:00) CodeRabbit completed a clean implementation
   milestone review with zero findings after the parser clean-up. The branch is
   ready for an atomic implementation commit before documentation work starts.
+- [x] (2026-06-02T06:12:44+02:00) Committed the implementation milestone as
+  `8d791a1 Add grepai indexer service template`.
+- [x] (2026-06-02T06:31:18+02:00) Completed the documentation milestone:
+  updated the technical design, user guide, developer guide, and roadmap entry
+  for `1.3.2`; the roadmap item is now marked done and points concrete
+  instance reconciliation at item `3.2.1`.
+- [x] (2026-06-02T06:38:06+02:00) Documentation validation passed for the
+  changed files and for the full explicit documentation targets:
+  `make markdownlint` and `make nixie` succeeded, and the changed docs pass a
+  targeted `markdownlint-cli2` run.
+- [x] (2026-06-02T06:41:53+02:00) Full post-documentation Rust gates passed:
+  `make check-fmt`, `make typecheck`, `make lint`, and `make test` all
+  succeeded. `make test` ran 204 nextest tests and 31 doctests successfully.
+- [ ] (2026-06-02T06:41:53+02:00) `make fmt` remains blocked by the
+  `mdformat-all` helper invoking a stricter `markdownlint` command that reports
+  unrelated repository-wide long-line and reference issues in existing docs.
+  The changed docs are clean under the repository's explicit
+  `make markdownlint` target, and incidental formatter churn was not retained.
+- [x] (2026-06-02T06:49:02+02:00) CodeRabbit completed a clean documentation
+  milestone review with zero findings.
 
 ## Surprises & Discoveries
 
@@ -268,6 +289,13 @@ conflict in `Decision Log`, and ask for direction.
   assumes `grepai watch` does not need direct device access, host namespace
   creation, SUID transitions, kernel log access, or visibility into unrelated
   host processes.
+
+- Observation: `make fmt` and `make markdownlint` do not use the same
+  Markdown linter path. Impact: `make markdownlint` passes with
+  `markdownlint-cli2`, while `make fmt` fails after `mdformat-all` invokes a
+  stricter `markdownlint` command against unrelated existing documentation.
+  This branch keeps task-owned documentation clean and does not commit
+  unrelated formatter churn.
 
 ## Decision Log
 

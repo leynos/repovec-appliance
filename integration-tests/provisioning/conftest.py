@@ -17,12 +17,18 @@ def patched_helper(tmp_path: Path) -> Path:
     """Return a tmp-rooted copy of the helper script.
 
     The helper hard-codes ``/etc/repovec`` paths. For cmd-mox tests we cannot
-    write there (and would not want to), so we rewrite the two path constants
-    (``CONFIG_DIR`` and ``KEY_FILE``) near the top of the script to point into
-    ``tmp_path``. The rest of the file - including the logic we are trying to
-    exercise - is left verbatim, so the contract under test is unchanged.
-    ``/var/lib/repovec`` is intentionally left untouched so cmd-mox tests can
-    assert that the canonical home directory propagates to ``useradd``.
+    write there (and would not want to), so we rewrite the three path
+    constants (``CONFIG_DIR``, ``KEY_FILE``, and ``LOCK_FILE``) near the top
+    of the script to point into ``tmp_path``. The rest of the file -
+    including the logic we are trying to exercise - is left verbatim, so the
+    contract under test is unchanged. ``/var/lib/repovec`` is intentionally
+    left untouched so cmd-mox tests can assert that the canonical home
+    directory propagates to ``useradd``.
+
+    ``LOCK_FILE`` must be rewritten too because the helper opens it with
+    ``exec 9>"${LOCK_FILE}"`` before any external command is invoked, so a
+    real-``/etc/repovec`` path would fail to open in the cmd-mox sandbox
+    long before any shim could be observed.
 
     Returns
     -------
@@ -33,10 +39,6 @@ def patched_helper(tmp_path: Path) -> Path:
     config_dir = tmp_path / "etc" / "repovec"
     config_dir.mkdir(parents=True, exist_ok=True)
 
-    # ``/var/lib/repovec`` is only referenced as a ``useradd --home-dir``
-    # argument, which the cmd-mox suite stubs out. We deliberately leave the
-    # path literal intact so tests can assert that the canonical home dir
-    # propagates through to ``useradd``.
     # Fail loud if a future rename in the helper script makes the rewrite
     # below a no-op. Silently running the unpatched helper would try to
     # write to the real /etc/repovec and (with sufficient privileges)
@@ -50,6 +52,7 @@ def patched_helper(tmp_path: Path) -> Path:
     expected_literals = (
         "CONFIG_DIR=/etc/repovec",
         "KEY_FILE=/etc/repovec/qdrant-api-key",
+        "LOCK_FILE=/etc/repovec/repovec-qdrant-api-key.lock",
     )
     for literal in expected_literals:
         if literal not in raw:
@@ -66,11 +69,21 @@ def patched_helper(tmp_path: Path) -> Path:
     # ``set -eu`` parse (or, worse, smuggle commands into it).
     quoted_config_dir = shlex.quote(str(config_dir))
     quoted_key_file = shlex.quote(str(config_dir / "qdrant-api-key"))
-    patched = raw.replace(
-        "CONFIG_DIR=/etc/repovec", f"CONFIG_DIR={quoted_config_dir}"
-    ).replace(
-        "KEY_FILE=/etc/repovec/qdrant-api-key",
-        f"KEY_FILE={quoted_key_file}",
+    quoted_lock_file = shlex.quote(
+        str(config_dir / "repovec-qdrant-api-key.lock"),
+    )
+    patched = (
+        raw.replace(
+            "CONFIG_DIR=/etc/repovec", f"CONFIG_DIR={quoted_config_dir}"
+        )
+        .replace(
+            "KEY_FILE=/etc/repovec/qdrant-api-key",
+            f"KEY_FILE={quoted_key_file}",
+        )
+        .replace(
+            "LOCK_FILE=/etc/repovec/repovec-qdrant-api-key.lock",
+            f"LOCK_FILE={quoted_lock_file}",
+        )
     )
 
     for literal in expected_literals:

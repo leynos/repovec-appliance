@@ -376,128 +376,6 @@ Daemon binaries call
 `error` as structured fields and exit non-zero, so systemd reports a failed
 startup rather than running under a broken checked-in unit contract.
 
-
-### 5.5 Extension pattern
-
-To add validation for a new appliance asset:
-
-1. Create a submodule directory under `appliance/` with `mod.rs`, `error.rs`,
-   `parser.rs` if a custom parser is needed, and `tests.rs` when tests would
-   otherwise make the module too large.
-2. Re-export the submodule from `appliance/mod.rs`.
-3. Embed the checked-in asset with `include_str!` and expose a
-   `checked_in_*()` function.
-4. Write `validate_*()` returning a typed error enum that implements
-   `std::error::Error` and `fmt::Display`.
-5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
-   scenarios under `crates/repovec-core/tests/features/`.
-
-### 5.5 Extension pattern
-
-To add validation for a new appliance asset:
-
-1. Create a submodule directory under `appliance/` with `mod.rs`, `error.rs`,
-   `parser.rs` if a custom parser is needed, and `tests.rs` when tests would
-   otherwise make the module too large.
-2. Re-export the submodule from `appliance/mod.rs`.
-3. Embed the checked-in asset with `include_str!` and expose a
-   `checked_in_*()` function.
-4. Write `validate_*()` returning a typed error enum that implements
-   `std::error::Error` and `fmt::Display`.
-5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
-   scenarios under `crates/repovec-core/tests/features/`.
-
-## 6. Provisioning integration tests
-
-The Rust workspace's unit and behavioural tests cover the helper's contract on
-paper. End-to-end behaviour of the `repovec-qdrant-api-key` service — system
-user creation, key-file mode and ownership, rootful Podman secret lifecycle —
-is exercised by a Python-based integration harness rooted at
-`integration-tests/`. The harness is opt-in: it is **not** part of `make test`
-and does not run in default CI, because its lifecycle suite requires
-privileges that CI runners typically do not grant.
-
-
-### 6.1 Suite layout
-
-| Suite                                          | Marker          | Runtime requirement                                                       |
-| ---------------------------------------------- | --------------- | ------------------------------------------------------------------------- |
-| `provisioning/test_qdrant_api_key_cmd_mox.py`  | `cmd_mox`       | Python and the harness dependencies. No container runtime needed.         |
-| `provisioning/test_qdrant_api_key.py`          | `integration`   | A Docker-compatible runtime able to host privileged Podman-in-Podman.     |
-
-The `cmd_mox` suite exercises the helper's external command orchestration by
-running the real shell script through a `PATH` populated with `cmd-mox`
-shims. The `integration` suite runs the real helper inside a privileged
-Fedora container managed by `testcontainers-python`, and uses rootful nested
-Podman to validate the full secret lifecycle.
-
-
-### 6.2 Prerequisites
-
-- Python 3.13 (managed by [`uv`](https://github.com/astral-sh/uv)).
-- The harness dependencies, installed via `cd integration-tests && uv sync`.
-  This matches the contract the `integration-test` and
-  `integration-command-test` Makefile targets advertise in their
-  skip-message hint, so a `uv sync` here is sufficient to satisfy
-  their prerequisite checks. It brings in `pytest`,
-  `testcontainers-python`, `cuprum`, `cmd-mox`, and the `docker` SDK
-  that `testcontainers` uses to talk to the runtime.
-- For the `integration` suite only: a reachable Docker API socket and the
-  ability to launch privileged containers. On Linux, the canonical
-  configuration is rootless Podman exposing its socket via
-  `podman system service`; see `integration-tests/README.md` for the exact
-  environment variables (`DOCKER_HOST`, `TESTCONTAINERS_RYUK_DISABLED`).
-
-### 6.3 Make targets
-
-```sh
-set -o pipefail
-PYTHON=$(pwd)/integration-tests/.venv/bin/python \
-    make integration-command-test 2>&1 \
-    | tee /tmp/repovec-integration-command-test.log
-set -o pipefail
-PYTHON=$(pwd)/integration-tests/.venv/bin/python \
-    make integration-test 2>&1 \
-    | tee /tmp/repovec-integration-test.log
-```
-
-Set `PYTHON` to the path of an interpreter whose environment has the harness
-dependencies installed (typically the `uv`-managed `.venv`). Pass extra
-options to pytest via `PYTEST_FLAGS`, for example
-`PYTEST_FLAGS=--no-skip-on-missing-runtime` to convert any "no runtime"
-skips inside the harness into hard failures — useful for CI jobs that must
-guarantee the suite ran.
-
-
-### 6.4 Internal harness APIs
-
-The harness exposes a small surface intended for use by tests, not by the
-appliance itself. None of these symbols ship in any wheel.
-
-- `lib.container.ContainerSession` — argv-first wrapper around the running
-  `DockerContainer`. Tests prefer `session.must_run("getent", "passwd",
-  "repovec")` over hand-rolled `subprocess` calls, so failures surface
-  rendered stdout/stderr/exit-code rather than opaque traceback fragments.
-- `lib.commands.run_host` — `cuprum`-backed host-side command runner with a
-  curated allowlist (`python3`, `podman`, `git`, `gh`, `coderabbit`, `sh`).
-  Anything off the allowlist raises `UnknownProgramError`; that is the safety
-  rail against ad hoc shell-outs leaking into test code.
-- `lib.assertions` — domain-level assertion helpers (`assert_repovec_user`,
-  `assert_key_file_contract`, `assert_podman_secret_exists`) that hide raw
-  container shell-outs behind named predicates, so failures point at the
-  contract being violated rather than the shell incantation.
-- `integration_container` / `container_session` pytest fixtures — session-
-  scoped privileged container plus a per-test wrapper whose `cleanup_state`
-  runs both before and after every test, isolating lifecycle scenarios
-  without paying for a fresh container build per case.
-- `patched_helper` / `helper_env` pytest fixtures — `cmd-mox` analogue that
-  copies the real helper script into `tmp_path`, rewrites `CONFIG_DIR` and
-  `KEY_FILE` to point at the tmp tree, and supplies a minimal environment
-  overlay (`HOME` + `LANG` only; `PATH` is sourced live from
-  `os.environ` at invocation time so `cmd-mox` shims are always picked up).
-
-`integration-tests/README.md` is the operator-level entry point for running
-the suite; this section is the developer-level reference for extending it.
 ### 5.4 Daemon startup test helpers
 
 The `repovec-test-helpers` crate owns the shared daemon startup test harness
@@ -577,3 +455,93 @@ worked example.
 See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
 the project-local testing guidance.
+
+## 6. Provisioning integration tests
+
+The Rust workspace's unit and behavioural tests cover the helper's contract on
+paper. End-to-end behaviour of the `repovec-qdrant-api-key` service — system
+user creation, key-file mode and ownership, rootful Podman secret lifecycle —
+is exercised by a Python-based integration harness rooted at
+`integration-tests/`. The harness is opt-in: it is **not** part of `make test`
+and does not run in default CI, because its lifecycle suite requires
+privileges that CI runners typically do not grant.
+
+### 6.1 Suite layout
+
+| Suite                                          | Marker          | Runtime requirement                                                       |
+| ---------------------------------------------- | --------------- | ------------------------------------------------------------------------- |
+| `provisioning/test_qdrant_api_key_cmd_mox.py`  | `cmd_mox`       | Python and the harness dependencies. No container runtime needed.         |
+| `provisioning/test_qdrant_api_key.py`          | `integration`   | A Docker-compatible runtime able to host privileged Podman-in-Podman.     |
+
+The `cmd_mox` suite exercises the helper's external command orchestration by
+running the real shell script through a `PATH` populated with `cmd-mox`
+shims. The `integration` suite runs the real helper inside a privileged
+Fedora container managed by `testcontainers-python`, and uses rootful nested
+Podman to validate the full secret lifecycle.
+
+### 6.2 Prerequisites
+
+- Python 3.13 (managed by [`uv`](https://github.com/astral-sh/uv)).
+- The harness dependencies, installed via `cd integration-tests && uv sync`.
+  This matches the contract the `integration-test` and
+  `integration-command-test` Makefile targets advertise in their
+  skip-message hint, so a `uv sync` here is sufficient to satisfy
+  their prerequisite checks. It brings in `pytest`,
+  `testcontainers-python`, `cuprum`, `cmd-mox`, and the `docker` SDK
+  that `testcontainers` uses to talk to the runtime.
+- For the `integration` suite only: a reachable Docker API socket and the
+  ability to launch privileged containers. On Linux, the canonical
+  configuration is rootless Podman exposing its socket via
+  `podman system service`; see `integration-tests/README.md` for the exact
+  environment variables (`DOCKER_HOST`, `TESTCONTAINERS_RYUK_DISABLED`).
+
+### 6.3 Make targets
+
+```sh
+set -o pipefail
+PYTHON=$(pwd)/integration-tests/.venv/bin/python \
+    make integration-command-test 2>&1 \
+    | tee /tmp/repovec-integration-command-test.log
+set -o pipefail
+PYTHON=$(pwd)/integration-tests/.venv/bin/python \
+    make integration-test 2>&1 \
+    | tee /tmp/repovec-integration-test.log
+```
+
+Set `PYTHON` to the path of an interpreter whose environment has the harness
+dependencies installed (typically the `uv`-managed `.venv`). Pass extra
+options to pytest via `PYTEST_FLAGS`, for example
+`PYTEST_FLAGS=--no-skip-on-missing-runtime` to convert any "no runtime"
+skips inside the harness into hard failures — useful for CI jobs that must
+guarantee the suite ran.
+
+### 6.4 Internal harness APIs
+
+The harness exposes a small surface intended for use by tests, not by the
+appliance itself. None of these symbols ship in any wheel.
+
+- `lib.container.ContainerSession` — argv-first wrapper around the running
+  `DockerContainer`. Tests prefer `session.must_run("getent", "passwd",
+  "repovec")` over hand-rolled `subprocess` calls, so failures surface
+  rendered stdout/stderr/exit-code rather than opaque traceback fragments.
+- `lib.commands.run_host` — `cuprum`-backed host-side command runner with a
+  curated allowlist (`python3`, `podman`, `git`, `gh`, `coderabbit`, `sh`).
+  Anything off the allowlist raises `UnknownProgramError`; that is the safety
+  rail against ad hoc shell-outs leaking into test code.
+- `lib.assertions` — domain-level assertion helpers (`assert_repovec_user`,
+  `assert_key_file_contract`, `assert_podman_secret_exists`) that hide raw
+  container shell-outs behind named predicates, so failures point at the
+  contract being violated rather than the shell incantation.
+- `integration_container` / `container_session` pytest fixtures — session-
+  scoped privileged container plus a per-test wrapper whose `cleanup_state`
+  runs both before and after every test, isolating lifecycle scenarios
+  without paying for a fresh container build per case.
+- `patched_helper` / `helper_env` pytest fixtures — `cmd-mox` analogue that
+  copies the real helper script into `tmp_path`, rewrites `CONFIG_DIR`,
+  `KEY_FILE`, and `LOCK_FILE` to point at the tmp tree, and supplies a
+  minimal environment overlay (`HOME` + `LANG` only; `PATH` is sourced live
+  from `os.environ` at invocation time so `cmd-mox` shims are always
+  picked up).
+
+`integration-tests/README.md` is the operator-level entry point for running
+the suite; this section is the developer-level reference for extending it.

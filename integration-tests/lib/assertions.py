@@ -128,9 +128,17 @@ def assert_key_file_contract(session: ContainerSession) -> str:
     assert stat.group == REPOVEC_GROUP, stat
 
     contents = session.must_run("cat", KEY_FILE).stdout
-    assert HEX_KEY_RE.fullmatch(contents.strip("\n")), (
-        f"key file contents are not {KEY_HEX_LENGTH} hex chars: {contents!r}"
-    )
+    # The key file *is* the credential, so a malformed-key assertion
+    # message must not interpolate ``contents``. The length and a redacted
+    # marker are sufficient to debug, and the file's mode/owner are already
+    # captured above. Avoid pytest's assertion rewriter exposing the value
+    # by deferring the comparison through ``match``-returns-bool.
+    if HEX_KEY_RE.fullmatch(contents.strip("\n")) is None:
+        msg = (
+            f"key file contents are not {KEY_HEX_LENGTH} hex chars "
+            f"(length={len(contents.strip(chr(10)))}, contents redacted)"
+        )
+        raise AssertionError(msg)
     return contents
 
 

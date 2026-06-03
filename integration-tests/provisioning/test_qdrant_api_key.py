@@ -17,6 +17,7 @@ that only show up when real ``useradd`` and real Podman are involved.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from pathlib import PurePosixPath
 
@@ -35,6 +36,7 @@ from lib.constants import (
     ETC_DIR_MODE,
     HELPER_SCRIPT,
     KEY_FILE,
+    KEY_HEX_LENGTH,
     REPOVEC_ETC_DIR,
     REPOVEC_GROUP,
     REPOVEC_USER,
@@ -49,6 +51,19 @@ def _run_helper(session: ContainerSession) -> None:
     """Execute the provisioning helper inside the container."""
 
     session.must_run("/bin/sh", HELPER_SCRIPT)
+
+
+def _digest(secret: str) -> str:
+    """Return a short hash of the key material for assertion diagnostics.
+
+    Tests must not interpolate the real key into ``assert``/exception
+    messages, because pytest captures and prints those messages on
+    failure. Comparing digests instead of raw strings lets failures
+    distinguish ``"unchanged"`` from ``"different"`` without exposing
+    either value.
+    """
+
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:16]
 
 
 def test_creates_repovec_system_user_when_absent(
@@ -81,8 +96,18 @@ def test_creates_key_file_with_mode_0400_and_ownership_repovec(
 
     _run_helper(container_session)
 
+    # ``assert_key_file_contract`` already validates the hex regex; the
+    # extra check exists here purely as a localised re-statement of the
+    # contract. Use an ``if``-raised ``AssertionError`` (not a bare
+    # ``assert <expr>, <expr>`` form) so neither pytest's rewriter nor
+    # the failure message ever interpolates the captured key.
     contents = assert_key_file_contract(container_session)
-    assert HEX_KEY_RE.fullmatch(contents.strip("\n")), contents
+    if HEX_KEY_RE.fullmatch(contents.strip("\n")) is None:
+        msg = (
+            f"key file is not a valid {KEY_HEX_LENGTH}-char hex string "
+            "(contents redacted)"
+        )
+        raise AssertionError(msg)
 
 
 def test_creates_podman_secret_repovec_qdrant_api_key(
@@ -127,9 +152,13 @@ def test_preserves_existing_key_file_on_rerun(
     second_stat = stat_file(container_session, KEY_FILE)
     second_contents = container_session.must_run("cat", KEY_FILE).stdout
 
-    assert second_contents == first_contents, (
-        "key file contents changed across runs (helper is not idempotent)"
-    )
+    # Digest the captured key so pytest's assertion rewriter cannot
+    # interpolate the credential into the failure output.
+    if _digest(second_contents) != _digest(first_contents):
+        raise AssertionError(
+            "key file contents changed across runs "
+            "(helper is not idempotent; contents redacted)"
+        )
     assert second_stat.mode == first_stat.mode, (
         f"key file mode changed across runs: "
         f"{first_stat.mode!r} -> {second_stat.mode!r}"
@@ -170,10 +199,18 @@ def test_regenerates_key_file_when_absent_and_refreshes_secret(
     _run_helper(container_session)
 
     new_contents = assert_key_file_contract(container_session)
-    assert new_contents != original_contents, "helper did not regenerate the key"
-    assert HEX_KEY_RE.fullmatch(new_contents.strip("\n")), (
-        f"regenerated key is not a valid 64-hex string: {new_contents!r}"
-    )
+    # Compare digests rather than the raw key strings so that pytest's
+    # assertion rewriter does not interpolate the captured key material
+    # into the failure output if these checks ever start firing.
+    new_digest = _digest(new_contents)
+    if new_digest == _digest(original_contents):
+        raise AssertionError("helper did not regenerate the key")
+    if HEX_KEY_RE.fullmatch(new_contents.strip("\n")) is None:
+        msg = (
+            f"regenerated key is not a valid {KEY_HEX_LENGTH}-char hex "
+            "string (contents redacted)"
+        )
+        raise AssertionError(msg)
 
     new_secret_id = assert_podman_secret_exists(container_session)
     assert new_secret_id != original_secret_id, (

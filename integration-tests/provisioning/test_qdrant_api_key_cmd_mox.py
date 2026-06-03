@@ -14,6 +14,7 @@ yourself replicating a lifecycle assertion here, push it back there instead.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from pathlib import Path
 
@@ -40,6 +41,18 @@ def _invoke_helper(helper: Path, env: dict[str, str]) -> CommandResult:
     """Run the patched helper through cuprum and return the structured result."""
 
     return run_host("sh", str(helper), env=env)
+
+
+def _digest(value: str) -> str:
+    """Return a short hash of key material for assertion diagnostics.
+
+    Tests must not interpolate key material into assert/exception
+    messages because pytest captures and prints those on failure.
+    Comparing digests lets failures distinguish "unchanged" from
+    "different" without exposing either value.
+    """
+
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
 
 
 def test_invokes_useradd_when_repovec_user_is_absent(
@@ -197,7 +210,10 @@ def test_does_not_regenerate_valid_existing_key(
     """
 
     original = secrets.token_hex(KEY_HEX_LENGTH // 2)
-    assert len(original) == KEY_HEX_LENGTH, original
+    if len(original) != KEY_HEX_LENGTH:
+        raise AssertionError(
+            f"fixture key has wrong length: {len(original)} != {KEY_HEX_LENGTH}"
+        )
     helper_key_file.write_text(original, encoding="utf-8")
     original_mtime = helper_key_file.stat().st_mtime_ns
 
@@ -215,9 +231,13 @@ def test_does_not_regenerate_valid_existing_key(
     # the helper did not regenerate the key.
     assert mv_spy.call_count == 0, list(mv_spy.invocations)
 
-    assert helper_key_file.read_text(encoding="utf-8") == original, (
-        "key content changed unexpectedly on idempotent rerun"
-    )
+    # Use a digest-comparison so a failure does not interpolate either
+    # the original or the captured key into pytest's failure output.
+    if _digest(helper_key_file.read_text(encoding="utf-8")) != _digest(original):
+        raise AssertionError(
+            "key content changed unexpectedly on idempotent rerun "
+            "(contents redacted)"
+        )
     assert helper_key_file.stat().st_mtime_ns == original_mtime, (
         f"key mtime changed unexpectedly: "
         f"{helper_key_file.stat().st_mtime_ns} != {original_mtime}"

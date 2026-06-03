@@ -73,20 +73,36 @@ def _build_image(request: pytest.FixtureRequest) -> str:
         _skip_or_fail(request, f"testcontainers-python is not installed: {exc}")
         raise
 
+    # Distinguish a missing/unreachable runtime (skip) from a broken
+    # Dockerfile or build context (fail). The first failure mode is a host
+    # environmental issue; the second is a real defect that must surface.
+    # A separate ``docker.from_env().ping()`` keeps the discrimination
+    # simple — any exception from ``image.build()`` then propagates.
     try:
-        image = DockerImage(
-            path=str(REPO_ROOT),
-            dockerfile_path=str(CONTAINERFILE.relative_to(REPO_ROOT)),
-            tag=IMAGE_TAG,
-        )
-        image.build()
-    except Exception as exc:  # noqa: BLE001 - intentionally broad to skip
+        import docker
+        from docker.errors import DockerException
+    except ImportError as exc:  # pragma: no cover - import-time guard
+        _skip_or_fail(request, f"docker SDK is not installed: {exc}")
+        raise
+
+    try:
+        docker.from_env().ping()
+    except DockerException as exc:
         _skip_or_fail(
             request,
-            f"unable to build integration-test image via testcontainers: {exc}",
+            (
+                "no Docker-compatible runtime reachable for the integration "
+                f"image build: {exc}"
+            ),
         )
         raise
 
+    image = DockerImage(
+        path=str(REPO_ROOT),
+        dockerfile_path=str(CONTAINERFILE.relative_to(REPO_ROOT)),
+        tag=IMAGE_TAG,
+    )
+    image.build()
     return str(image)
 
 

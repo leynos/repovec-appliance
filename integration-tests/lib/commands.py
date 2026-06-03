@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import shlex
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -97,7 +98,7 @@ class HostCommandResult:
         """Return a multi-line diagnostic suitable for assertion failures."""
 
         parts = [
-            f"command: {' '.join(self.argv)}",
+            f"command: {shlex.join(self.argv)}",
             f"cwd: {self.cwd}",
             f"exit_code: {self.exit_code}",
         ]

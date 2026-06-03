@@ -25,7 +25,7 @@ REPOVEC_CLEANUP_SCRIPT = """\
 set -eu
 podman secret rm repovec-qdrant-api-key >/dev/null 2>&1 || true
 if getent passwd repovec >/dev/null; then
-    userdel -r repovec >/dev/null 2>&1 || userdel repovec >/dev/null 2>&1 || true
+    userdel -r repovec >/dev/null 2>&1 || userdel repovec >/dev/null 2>&1
 fi
 rm -rf /etc/repovec /var/lib/repovec
 """
@@ -142,12 +142,18 @@ class ContainerSession:
     def cleanup_state(self) -> None:
         """Reset the helper's externally visible state between tests.
 
-        The ``podman secret rm`` and ``userdel`` steps are best-effort
-        (``|| true``) because a missing secret or user is the expected
-        starting point for a fresh test. ``rm -rf`` is *not* best-effort:
-        ``-rf`` already silences missing targets, so a non-zero exit there
-        means a genuine filesystem error (permission denied, busy file,
-        I/O error) that callers must see rather than swallow.
+        ``podman secret rm`` is the only step that is unconditionally
+        best-effort, because a missing secret is the expected starting point
+        for a fresh test. ``userdel`` is guarded by a ``getent passwd``
+        existence check, so by the time it runs the user is known to be
+        present; the fallback from ``userdel -r`` to plain ``userdel``
+        gracefully tolerates a busy home directory, but a non-zero exit
+        from *both* attempts indicates a real problem (running processes,
+        I/O error) and must surface. ``rm -rf`` is similarly not
+        best-effort: ``-rf`` already silences missing targets, so a
+        non-zero exit there means a genuine filesystem error
+        (permission denied, busy file, I/O error) that callers must see
+        rather than swallow.
 
         Any non-zero exit therefore surfaces as a
         :class:`ContainerCommandError`. Callers that want to keep running

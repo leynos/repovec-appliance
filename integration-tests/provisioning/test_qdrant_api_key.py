@@ -92,9 +92,11 @@ def test_creates_podman_secret_repovec_qdrant_api_key(
 
     # Best-effort removal of any pre-existing secret; the cleanup fixture
     # already runs this, so a fresh container should be a no-op here.
-    container_session.run_shell(
-        f"podman secret rm {SECRET_NAME} >/dev/null 2>&1 || true",
-    )
+    # ``run`` (not ``must_run``) means a non-zero exit on a missing secret
+    # is ignored, which removes the need for a shell ``|| true`` — and
+    # avoids the f-string interpolation of ``SECRET_NAME`` that the
+    # earlier shell form required.
+    container_session.run("podman", "secret", "rm", SECRET_NAME)
 
     _run_helper(container_session)
 

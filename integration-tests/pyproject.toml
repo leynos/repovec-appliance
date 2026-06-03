@@ -27,7 +27,11 @@ packages = []
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["provisioning"]
+# ``lib/tests`` carries the pure-Python unit tests for the harness's
+# value objects and parsing helpers; they run by default because they
+# need neither a marker nor a container runtime. ``provisioning`` owns
+# the marker-gated behavioural suites.
+testpaths = ["lib/tests", "provisioning"]
 # The lifecycle suite shares a session-scoped privileged container per
 # worker. pytest-xdist would multiply the container build and create
 # unnecessary contention on the host runtime; disable it explicitly so

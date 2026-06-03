@@ -4,8 +4,9 @@ expression: error.to_string()
 ---
 unsupported argument: --unknown
 
-Usage: repovec-ci [--changed-file <path> [--changed-file <path>]...] [--help]
-       repovec-ci --stdin
+Usage: repovec-ci [docs-gate] [--changed-file <path> [--changed-file <path>]...] [--help]
+       repovec-ci [docs-gate] --stdin
+       repovec-ci systemd-gate
 
 Reads a changed-file list and prints documentation-gate decisions in
-GitHub Actions output format.
+GitHub Actions output format, or validates checked-in systemd units.

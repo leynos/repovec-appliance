@@ -42,13 +42,14 @@ not duplicate or partially reimplement them in workflow YAML.
 
 ## 2. GitHub Actions gate set
 
-The repository CI workflow exposes five stable, required job names:
+The repository CI workflow exposes six stable, required job names:
 
 - `build`
 - `check-fmt`
 - `lint`
 - `test`
 - `docs-gate`
+- `systemd-gate`
 
 The first four jobs run on pull request updates, pushes to `main`, and manual
 workflow dispatch.
@@ -74,6 +75,15 @@ when one of the changed Markdown files contains a Mermaid diagram, or when a
 documentation-tooling configuration change or missing changed-file input
 requires the conservative path. The user-visible flow is documented in
 [users-guide.md](users-guide.md).
+
+`systemd-gate` always reports a result so it can be configured as a required
+check. It runs `make validate-systemd`, which builds the `repovec-ci` helper
+and calls `repovec-ci systemd-gate` to verify that the checked-in systemd unit
+files still satisfy the appliance service-layout contract. A non-zero exit from
+the gate is a fatal CI failure.
+
+Run `make validate-systemd` locally before proposing a change to any file under
+`packaging/systemd/` or `crates/repovec-core/src/appliance/systemd_units/`.
 
 ## 3. CI policy helper
 
@@ -131,18 +141,22 @@ straightforward to test with a stub closure.
 
 ```text
 USAGE:
-    repovec-ci [--changed-file <path> [--changed-file <path>]...] [--help]
-    repovec-ci --stdin
+    repovec-ci [docs-gate] [--changed-file <path> [--changed-file <path>]...] [--help]
+    repovec-ci [docs-gate] --stdin
+    repovec-ci systemd-gate
 ```
 
-| Flag                    | Description                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------- |
-| `--changed-file <path>` | Treat `<path>` as a changed file (repeatable; mutually exclusive with `--stdin`)                |
-| `--stdin`               | Read newline-delimited changed-file paths from stdin (mutually exclusive with `--changed-file`) |
-| `-h`, `--help`          | Print usage text and exit                                                                       |
+| Subcommand / Flag       | Description                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| *(no subcommand)*       | Equivalent to `docs-gate`; retained for backwards compatibility.                                                    |
+| `docs-gate`             | Evaluate the documentation-gate policy and print `key=value` lines for `$GITHUB_OUTPUT`.                            |
+| `systemd-gate`          | Validate the checked-in systemd unit files against the appliance contract; exit non-zero on any contract violation. |
+| `--changed-file <path>` | (docs-gate only) Treat `<path>` as a changed file; repeatable; mutually exclusive with `--stdin`.                   |
+| `--stdin`               | (docs-gate only) Read newline-delimited changed-file paths from stdin; mutually exclusive with `--changed-file`.    |
+| `-h`, `--help`          | Print usage text and exit.                                                                                          |
 
-The binary writes `key=value` lines to stdout for use with `$GITHUB_OUTPUT` and
-is invoked by the `docs-gate` CI job. The output keys are:
+In `docs-gate` mode the binary writes `key=value` lines to stdout for use with
+`$GITHUB_OUTPUT` and is invoked by the `docs-gate` CI job. The output keys are:
 
 - `should_run`
 - `docs_gate_required`
@@ -153,11 +167,19 @@ is invoked by the `docs-gate` CI job. The output keys are:
 - `conservative_fallback_files_count`
 - `conservative_fallback_files`
 
+`systemd-gate` writes a single confirmation line to stdout on success:
+
+```text
+checked-in systemd units satisfy the appliance contract
+```
+
+On failure it writes a human-readable error to stderr and exits with status 1.
+
 ## 4. Required-check enforcement
 
 The desired repository ruleset is versioned in
 [`/.github/rulesets/main-ci-gating.json`](../.github/rulesets/main-ci-gating.json).
- Apply that payload only after the workflow changes that produce the required
+Apply that payload only after the workflow changes that produce the required
 checks are available on the default branch.
 
 Example application command:
@@ -262,21 +284,56 @@ checked-in repovec target and daemon service files:
   validates the embedded unit set.
 - `validate_systemd_units(target, repovecd, mcpd) -> Result<(), SystemdUnitError>`
   validates caller-provided unit contents against the same appliance contract.
+- `validate_and_trace_checked_in_units() -> Result<(), SystemdUnitError>`
+  verifies the embedded unit set and emits a `tracing::trace!` event on
+  success. It serves as the entry point daemon binaries call during startup.
+- `run_startup_validation(validator) -> Result<(), i32>` runs an injected
+  systemd-unit validator at a daemon startup boundary, emits structured
+  `tracing::error!` diagnostics with `unit` and `error` fields on failure,
+  emits a `tracing::debug!` confirmation on success, and maps validation
+  failures to process exit code `1`.
 - `SystemdUnitError` is the typed error enum for validation failures. See
   `crates/repovec-core/src/appliance/systemd_units/error.rs` for the full
   variant list.
+- `SystemdUnitError::unit() -> &str` returns the logical systemd unit name
+  (e.g. `"repovecd.service"`) associated with the validation failure. Use this
+  field when emitting structured log events, so operators can identify which
+  unit violated the contract without parsing the display string.
 
 This module validates static unit-file policy only. It must not call
 `systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
 runtime installation work.
 
-Daemon binaries are expected to call `validate_checked_in_systemd_units()` near
-the start of `main()`, before starting an async runtime or other long-running
-work. Treat `SystemdUnitError` as fatal at that process boundary: log the error
-with structured diagnostics and exit non-zero so systemd reports a failed
+Daemon binaries call
+`run_startup_validation(validate_and_trace_checked_in_units)` near the start of
+`main()`, before starting an async runtime or other long-running work. Treat
+`SystemdUnitError` as fatal at that process boundary: log `error.unit()` and
+`error` as structured fields and exit non-zero, so systemd reports a failed
 startup rather than running under a broken checked-in unit contract.
 
-### 5.4 Extension pattern
+### 5.4 Daemon startup test helpers
+
+The `repovec-test-helpers` crate owns the shared daemon startup test harness
+used by `repovec-core`, `repovecd`, and `repovec-mcpd`. It exposes a generic
+`capture_logs(action)` helper that captures formatted `tracing` output in
+memory for the duration of an injected closure, plus the `ensure` and
+`ensure_log_line_contains` assertion primitives. On top of these it provides
+the binary-facing `assert_startup_*` wrappers that the daemon crates call.
+
+Use the `assert_startup_*` wrappers for binary-level daemon startup tests
+whenever the behaviour is the same across daemons and only the unit name
+differs. Keep unit tests for `run_startup_validation()` itself in
+`repovec-core`; those tests reuse `capture_logs` (via a dev-dependency on
+`repovec-test-helpers`) and should assert the core adapter emits the expected
+`TRACE`, `DEBUG`, and `ERROR` events so the logging contract cannot disappear
+while return-code tests still pass.
+
+Snapshot helpers in `repovec-test-helpers` are behind its `snapshots` feature
+because `insta` is only needed by daemon test targets. Daemon crates enable
+that feature in `[dev-dependencies]` and commit the generated snapshots under
+`crates/repovec-test-helpers/src/snapshots/`.
+
+### 5.5 Extension pattern
 
 To add validation for a new appliance asset:
 
@@ -291,7 +348,7 @@ To add validation for a new appliance asset:
 5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
    scenarios under `crates/repovec-core/tests/features/`.
 
-### 5.5 Test patterns
+### 5.6 Test patterns
 
 The appliance validation modules use `rstest` for unit tests and `rstest-bdd`
 with `rstest-bdd-macros` for behavioural tests. Unit tests should exercise each
@@ -302,13 +359,13 @@ contract in feature files and keep the executable scenarios thin.
 strings for typed appliance errors (for example every [`QdrantQuadletError`][])
 should be derived from **`validate_*` failures**, not from errors constructed
 solely in tests. Mutate an embed or copy of the checked-in asset (or compose a
-deliberate invalid parse input), invoke the real validator, assert the
-canonical `PartialEq/Eq` typed error variant, then compare `error.to_string()`
-against a committed YAML snapshot from the [`insta`][] crate (workspace-pinned
-under `[workspace.dependencies]` and pulled in via `[dev-dependencies]`).
-Direct literal assertions for `error.to_string()` are acceptable when
-committing one snapshot file per diagnostic would exceed the active ExecPlan's
-file-count tolerance. Prefer one `#[rstest]` harness with cases that enumerate
+deliberate invalid parse input), invoke the real validator, assert the canonical
+`PartialEq/Eq` typed error variant, then compare `error.to_string()` against a
+committed YAML snapshot from the [`insta`][] crate (workspace-pinned under
+`[workspace.dependencies]` and pulled in via `[dev-dependencies]`). Direct
+literal assertions for `error.to_string()` are acceptable when committing one
+snapshot file per diagnostic would exceed the active ExecPlan's file-count
+tolerance. Prefer one `#[rstest]` harness with cases that enumerate
 scenario-specific mutations alongside their stable snapshot labels, colocated
 under the module `snapshots/` directory (see
 `crates/repovec-core/src/appliance/qdrant_quadlet/`). Duplicate labels across
@@ -327,8 +384,8 @@ complement to example-based `rstest` unit tests.  When writing property tests,
 under test must handle — filters are reserved for excluding inputs that are
 structurally invalid for the strategy, not for narrowing the test's coverage of
 the invariant.  See
-`crates/repovec-core/src/appliance/qdrant_quadlet/tests_proptest.rs` for a worked
-example.
+`crates/repovec-core/src/appliance/qdrant_quadlet/tests_proptest.rs` for a
+worked example.
 
 See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for

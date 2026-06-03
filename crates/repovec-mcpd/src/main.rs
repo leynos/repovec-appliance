@@ -1,103 +1,73 @@
 //! Process entry point for the repovec MCP bridge daemon.
+//!
+//! This binary initialises the process-wide `tracing` subscriber, runs the
+//! shared systemd unit startup validation adapter from
+//! [`repovec_core::appliance::systemd_units`], and treats any contract
+//! violation as a fatal startup error. The substantive startup path lives in
+//! [`startup`] so tests can verify the wiring without terminating the process.
+//!
+//! Unit tests delegate repeated daemon-startup assertions to
+//! `repovec-test-helpers`, including log capture and snapshot coverage for the
+//! tracing events emitted by the shared startup adapter.
 
 fn main() {
     tracing_subscriber::fmt::init();
-    if let Err(error) = validate_systemd_unit_contract() {
-        tracing::error!(error = %error, "systemd unit contract violation — aborting startup");
-        std::process::exit(1);
+    if let Err(error) = startup() {
+        std::process::exit(error);
     }
-
-    let _arguments = std::env::args_os();
 }
 
-fn validate_systemd_unit_contract()
--> Result<(), repovec_core::appliance::systemd_units::SystemdUnitError> {
-    validate_systemd_unit_contract_with(
-        repovec_core::appliance::systemd_units::validate_checked_in_systemd_units,
+fn startup() -> Result<(), i32> {
+    repovec_core::appliance::systemd_units::run_startup_validation(
+        repovec_core::appliance::systemd_units::validate_and_trace_checked_in_units,
     )
-}
-
-fn validate_systemd_unit_contract_with<F>(
-    validator: F,
-) -> Result<(), repovec_core::appliance::systemd_units::SystemdUnitError>
-where
-    F: FnOnce() -> Result<(), repovec_core::appliance::systemd_units::SystemdUnitError>,
-{
-    let result = validator();
-    if result.is_ok() {
-        tracing::debug!("systemd unit contract validated");
-    }
-    result
 }
 
 #[cfg(test)]
 mod tests {
-    //! Tests for repovec-mcpd systemd unit contract validation.
+    //! Unit coverage for repovec-mcpd startup checks.
 
-    use repovec_core::appliance::systemd_units::{SystemdUnitError, validate_systemd_units};
-
-    use super::validate_systemd_unit_contract_with;
+    const UNIT: &str = "repovec-mcpd.service";
 
     #[test]
-    fn validate_systemd_unit_contract_succeeds_for_checked_in_units() {
-        // The helper is wired to validate_checked_in_systemd_units(); exercise
-        // the public entry point directly to prove the wiring.
-        validate_systemd_unit_contract_with(
-            repovec_core::appliance::systemd_units::validate_checked_in_systemd_units,
+    fn startup_succeeds_when_validation_passes() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_succeeds_when_validation_passes()
+    }
+
+    #[test]
+    fn startup_logs_successful_validation() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_logs_successful_validation()
+    }
+
+    #[test]
+    fn startup_success_log_matches_snapshot() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_success_log_snapshot()
+    }
+
+    #[test]
+    fn startup_runs_real_checked_in_validation() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_runs_real_checked_in_validation()
+    }
+
+    #[test]
+    fn startup_entrypoint_runs_real_checked_in_validation() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_entrypoint_runs_real_checked_in_validation(
+            super::startup,
         )
-        .expect("checked-in units must satisfy the contract at compile time");
     }
 
     #[test]
-    fn validate_systemd_unit_contract_with_returns_injected_error() {
-        let injected_error =
-            SystemdUnitError::MissingSection { unit: "repovec-mcpd.service", section: "Service" };
-
-        let result = validate_systemd_unit_contract_with(|| Err(injected_error.clone()));
-
-        assert_eq!(result, Err(injected_error));
+    fn startup_returns_exit_code_1_when_validation_fails() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_returns_exit_code_1_when_validation_fails(UNIT)
     }
 
     #[test]
-    fn validate_systemd_unit_contract_returns_err_on_invalid_units() {
-        // Supply a minimal but deliberately broken repovec-mcpd unit (wrong
-        // ExecStart) and assert that validation returns Err rather than
-        // panicking or exiting.
-        let target = "\
-[Unit]
-Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service
+    fn startup_logs_structured_validation_failure() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_logs_structured_validation_failure(UNIT)
+    }
 
-[Install]
-WantedBy=multi-user.target
-";
-        let repovecd = "\
-[Unit]
-Requires=qdrant.service
-After=qdrant.service
-
-[Service]
-User=repovec
-Group=repovec
-WorkingDirectory=/var/lib/repovec
-Environment=HOME=/var/lib/repovec
-ExecStart=/usr/bin/repovecd
-";
-        let broken_mcpd = "\
-[Unit]
-Requires=qdrant.service repovecd.service
-After=qdrant.service repovecd.service
-
-[Service]
-User=repovec
-Group=repovec
-WorkingDirectory=/var/lib/repovec
-Environment=HOME=/var/lib/repovec
-ExecStart=/usr/bin/wrong-binary
-";
-        let result = validate_systemd_units(target, repovecd, broken_mcpd);
-        assert!(
-            matches!(result, Err(SystemdUnitError::IncorrectExecStart { .. })),
-            "expected IncorrectExecStart, got {result:?}",
-        );
+    #[test]
+    fn startup_failure_log_matches_snapshot() -> Result<(), String> {
+        repovec_test_helpers::assert_startup_failure_log_snapshot(UNIT)
     }
 }

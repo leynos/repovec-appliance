@@ -32,6 +32,9 @@
           },
           {
             "context": "docs-gate"
+          },
+          {
+            "context": "systemd-gate"
           }
         ]
       }

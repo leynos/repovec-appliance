@@ -73,9 +73,9 @@ The implementation is complete when all of the following are true:
 ### Make targets are the source of truth
 
 The repository instructions require Make targets to define commit gates, so the
-workflow should invoke `make build`, `make check-fmt`, `make lint`,
-`make test`, `make markdownlint`, and `make nixie` rather than duplicating
-their underlying commands in YAML.
+workflow should invoke `make build`, `make check-fmt`, `make lint`, `make test`,
+`make markdownlint`, and `make nixie` rather than duplicating their underlying
+commands in YAML.
 
 ### Branch protection is an external dependency
 
@@ -468,7 +468,7 @@ Mark roadmap item `1.1.3` as done only when:
 - the workflow is merged
 - the required checks from
   [`.github/rulesets/main-ci-gating.json`](../../.github/rulesets/main-ci-gating.json)
-   are configured and verified in GitHub
+  are configured and verified in GitHub
 - the local Make gates pass
 - the relevant documentation updates are merged
 - the final pull request shows the required checks blocking merge as intended

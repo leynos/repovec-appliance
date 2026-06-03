@@ -1,0 +1,5 @@
+---
+source: crates/repovec-test-helpers/src/lib.rs
+expression: logs
+---
+ERROR systemd unit contract violation — aborting startup unit=repovecd.service error=repovecd.service is missing [Service]

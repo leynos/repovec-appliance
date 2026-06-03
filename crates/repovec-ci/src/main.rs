@@ -1,4 +1,16 @@
 //! Command-line entry point for CI policy helpers.
+//!
+//! This binary dispatches small repository policy gates used by local
+//! Makefile targets and GitHub Actions. With no subcommand, or with
+//! `docs-gate`, it evaluates changed paths through the `repovec-ci` library and
+//! prints GitHub Actions-compatible key/value output. With `systemd-gate`, it
+//! calls [`repovec_core::appliance::systemd_units`] to validate the checked-in
+//! appliance unit files outside the test runner.
+//!
+//! The dispatcher keeps CI wiring in one binary while preserving narrow
+//! command handlers: argument parsing selects a [`Command`], docs-gate planning
+//! stays in the `repovec-ci` library, and systemd contract validation remains
+//! owned by `repovec-core`.
 
 use std::io::{self, BufRead as _, BufWriter, Write as _};
 
@@ -6,10 +18,11 @@ use cap_std::{ambient_authority, fs_utf8::Dir};
 use repovec_ci::{DocsGatePlan, evaluate_docs_gate_in};
 
 const USAGE: &str = concat!(
-    "Usage: repovec-ci [--changed-file <path> [--changed-file <path>]...] [--help]\n",
-    "       repovec-ci --stdin\n\n",
+    "Usage: repovec-ci [docs-gate] [--changed-file <path> [--changed-file <path>]...] [--help]\n",
+    "       repovec-ci [docs-gate] --stdin\n",
+    "       repovec-ci systemd-gate\n\n",
     "Reads a changed-file list and prints documentation-gate decisions in\n",
-    "GitHub Actions output format.\n"
+    "GitHub Actions output format, or validates checked-in systemd units.\n"
 );
 
 fn main() {
@@ -23,12 +36,18 @@ fn main() {
 
 fn run() -> io::Result<()> {
     let mut stdout = BufWriter::new(io::stdout().lock());
-    let input = parse_args(std::env::args().skip(1))?;
-    match input {
-        Input::Help => print_usage(&mut stdout),
-        Input::ChangedFiles(paths) => write_plan(&mut stdout, &evaluate_from_paths(paths)?),
-        Input::Stdin => write_plan(&mut stdout, &evaluate_from_stdin()?),
+    let command = parse_args(std::env::args().skip(1))?;
+    match command {
+        Command::Help => print_usage(&mut stdout),
+        Command::DocsGate(input) => run_docs_gate(&mut stdout, input),
+        Command::SystemdGate => run_systemd_gate(&mut stdout),
     }
+}
+
+enum Command {
+    Help,
+    DocsGate(Input),
+    SystemdGate,
 }
 
 enum Input {
@@ -52,6 +71,30 @@ fn evaluate_from_stdin() -> io::Result<DocsGatePlan> {
     Ok(evaluate_docs_gate_in(&root, read_paths_from_stdin()?))
 }
 
+fn run_docs_gate(out: &mut impl io::Write, input: Input) -> io::Result<()> {
+    match input {
+        Input::Help => print_usage(out),
+        Input::ChangedFiles(paths) => write_plan(out, &evaluate_from_paths(paths)?),
+        Input::Stdin => write_plan(out, &evaluate_from_stdin()?),
+    }
+}
+
+fn run_systemd_gate(out: &mut impl io::Write) -> io::Result<()> {
+    run_systemd_gate_with(
+        out,
+        repovec_core::appliance::systemd_units::validate_checked_in_systemd_units,
+    )
+}
+
+fn run_systemd_gate_with<F>(out: &mut impl io::Write, validator: F) -> io::Result<()>
+where
+    F: FnOnce() -> Result<(), repovec_core::appliance::systemd_units::SystemdUnitError>,
+{
+    validator().map_err(io::Error::other)?;
+    writeln!(out, "checked-in systemd units satisfy the appliance contract")?;
+    out.flush()
+}
+
 fn write_plan(out: &mut impl io::Write, plan: &DocsGatePlan) -> io::Result<()> {
     writeln!(out, "should_run={}", plan.should_run())?;
     writeln!(out, "docs_gate_required={}", plan.docs_gate_required())?;
@@ -68,7 +111,40 @@ fn write_plan(out: &mut impl io::Write, plan: &DocsGatePlan) -> io::Result<()> {
     out.flush()
 }
 
-fn parse_args<I>(arguments: I) -> io::Result<Input>
+fn parse_args<I>(arguments: I) -> io::Result<Command>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut iter = arguments.into_iter();
+    match iter.next() {
+        Some(argument) if argument == "docs-gate" => {
+            parse_docs_gate_args(iter).map(Command::DocsGate)
+        }
+        Some(argument) if argument == "systemd-gate" => parse_systemd_gate_args(iter),
+        Some(argument) if argument == "--help" || argument == "-h" => Ok(Command::Help),
+        Some(argument) => {
+            parse_docs_gate_args(std::iter::once(argument).chain(iter)).map(Command::DocsGate)
+        }
+        None => Ok(Command::DocsGate(Input::ChangedFiles(Vec::new()))),
+    }
+}
+
+fn parse_systemd_gate_args<I>(arguments: I) -> io::Result<Command>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut iter = arguments.into_iter();
+    match iter.next() {
+        None => Ok(Command::SystemdGate),
+        Some(argument) if argument == "--help" || argument == "-h" => Ok(Command::Help),
+        Some(argument) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unsupported argument for systemd-gate: {argument}\n\n{USAGE}"),
+        )),
+    }
+}
+
+fn parse_docs_gate_args<I>(arguments: I) -> io::Result<Input>
 where
     I: IntoIterator<Item = String>,
 {
@@ -125,7 +201,10 @@ mod tests {
     use insta::assert_snapshot;
     use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
 
-    use super::{Input, USAGE, parse_args, print_usage, write_plan};
+    use super::{
+        Command, Input, USAGE, parse_args, print_usage, run_systemd_gate, run_systemd_gate_with,
+        write_plan,
+    };
 
     fn buffer_to_string(buffer: Vec<u8>) -> String {
         match String::from_utf8(buffer) {
@@ -178,31 +257,56 @@ mod tests {
 
     #[test]
     fn no_arguments_default_to_changed_files_input() {
-        let input = parse_args(std::iter::empty::<String>()).expect("empty args should parse");
+        let command = parse_args(std::iter::empty::<String>()).expect("empty args should parse");
 
-        match input {
-            Input::ChangedFiles(paths) => assert!(paths.is_empty()),
-            Input::Help | Input::Stdin => panic!("empty args should default to ChangedFiles"),
+        match command {
+            Command::DocsGate(Input::ChangedFiles(paths)) => assert!(paths.is_empty()),
+            Command::Help | Command::DocsGate(_) | Command::SystemdGate => {
+                panic!("empty args should default to ChangedFiles");
+            }
         }
     }
 
     #[test]
     fn help_flag_returns_help_input() {
-        let input = parse_args(["--help".to_owned()]).expect("help flag should parse");
+        let command = parse_args(["--help".to_owned()]).expect("help flag should parse");
 
-        assert!(matches!(input, Input::Help));
+        assert!(matches!(command, Command::Help));
+    }
+
+    #[test]
+    fn docs_gate_subcommand_accepts_help_flag() {
+        let command =
+            parse_args(["docs-gate".to_owned(), "--help".to_owned()]).expect("help should parse");
+
+        assert!(matches!(command, Command::DocsGate(Input::Help)));
     }
 
     #[test]
     fn stdin_flag_returns_stdin_input() {
-        let input = parse_args(["--stdin".to_owned()]).expect("stdin flag should parse");
+        let command = parse_args(["--stdin".to_owned()]).expect("stdin flag should parse");
 
-        assert!(matches!(input, Input::Stdin));
+        assert!(matches!(command, Command::DocsGate(Input::Stdin)));
+    }
+
+    #[test]
+    fn docs_gate_subcommand_accepts_stdin_flag() {
+        let command =
+            parse_args(["docs-gate".to_owned(), "--stdin".to_owned()]).expect("stdin should parse");
+
+        assert!(matches!(command, Command::DocsGate(Input::Stdin)));
+    }
+
+    #[test]
+    fn systemd_gate_subcommand_returns_systemd_command() {
+        let command = parse_args(["systemd-gate".to_owned()]).expect("systemd gate should parse");
+
+        assert!(matches!(command, Command::SystemdGate));
     }
 
     #[test]
     fn changed_file_flags_collect_all_paths() {
-        let input = parse_args([
+        let command = parse_args([
             "--changed-file".to_owned(),
             "docs/users-guide.md".to_owned(),
             "--changed-file".to_owned(),
@@ -210,12 +314,66 @@ mod tests {
         ])
         .expect("changed-file flags should parse");
 
-        match input {
-            Input::ChangedFiles(paths) => {
+        match command {
+            Command::DocsGate(Input::ChangedFiles(paths)) => {
                 assert_eq!(paths, vec!["docs/users-guide.md", ".markdownlint-cli2.jsonc"]);
             }
-            Input::Help | Input::Stdin => panic!("changed-file flags should yield ChangedFiles"),
+            Command::Help | Command::DocsGate(_) | Command::SystemdGate => {
+                panic!("changed-file flags should yield ChangedFiles");
+            }
         }
+    }
+
+    #[test]
+    fn systemd_gate_rejects_changed_file_flags() {
+        let Err(error) = parse_args([
+            "systemd-gate".to_owned(),
+            "--changed-file".to_owned(),
+            "docs/users-guide.md".to_owned(),
+        ]) else {
+            panic!("systemd-gate should reject docs-gate flags");
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(error.to_string().contains("unsupported argument for systemd-gate"));
+    }
+
+    #[test]
+    fn systemd_gate_validates_real_checked_in_units() {
+        let mut buffer = Vec::new();
+
+        run_systemd_gate(&mut buffer)
+            .expect("checked-in systemd units must satisfy the appliance contract");
+
+        assert_snapshot!("systemd_gate_real_validation_success", buffer_to_string(buffer));
+    }
+
+    #[test]
+    fn systemd_gate_writes_success_confirmation() {
+        let mut buffer = Vec::new();
+
+        run_systemd_gate_with(&mut buffer, || Ok(()))
+            .expect("successful validation should write a confirmation line");
+
+        assert_snapshot!("systemd_gate_success_confirmation", buffer_to_string(buffer));
+    }
+
+    #[test]
+    fn systemd_gate_propagates_validation_error() {
+        use repovec_core::appliance::systemd_units::SystemdUnitError;
+
+        let injected =
+            SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" };
+        let mut buffer = Vec::new();
+
+        let result = run_systemd_gate_with(&mut buffer, || Err(injected));
+
+        assert!(result.is_err(), "validation failure must propagate as Err");
+        assert!(buffer.is_empty(), "no output should be written on failure");
+        let Err(error) = result else {
+            panic!("validation failure must propagate as Err");
+        };
+        assert_snapshot!("systemd_gate_error_message", error.to_string());
     }
 
     #[test]

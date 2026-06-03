@@ -1,5 +1,5 @@
 [package]
-name = "repovec-mcpd"
+name = "repovec-test-helpers"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,11 +7,16 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+insta = { workspace = true, optional = true }
 repovec-core = { path = "../repovec-core" }
+tracing.workspace = true
 tracing-subscriber.workspace = true
 
+[features]
+snapshots = ["dep:insta"]
+
 [dev-dependencies]
-repovec-test-helpers = { path = "../repovec-test-helpers", features = ["snapshots"] }
+insta.workspace = true
 
 [lints]
 workspace = true

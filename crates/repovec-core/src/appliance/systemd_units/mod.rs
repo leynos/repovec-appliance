@@ -5,27 +5,18 @@
 //! static validation surface for the service-layout contract used by the
 //! appliance packaging and daemon startup paths.
 //!
-//! ## Public Accessors
-//!
-//! - [`checked_in_repovec_target`] returns the embedded `repovec.target` text.
-//! - [`checked_in_repovecd_service`] returns the embedded `repovecd.service`
-//!   text.
-//! - [`checked_in_repovec_mcpd_service`] returns the embedded
-//!   `repovec-mcpd.service` text.
-//!
 //! ## Validation Entry Points
 //!
 //! - [`validate_checked_in_systemd_units`] validates the three embedded unit
-//!   assets shipped in the repository. Use it when the checked-in appliance
-//!   contract must be proved before a daemon starts.
+//!   assets shipped in the repository.
+//! - [`validate_and_trace_checked_in_units`] validates the checked-in unit set
+//!   and emits the daemon startup success trace.
 //! - [`validate_systemd_units`] validates caller-supplied unit text. Use it in
 //!   tests or tooling that needs to analyse unit contents sourced outside the
 //!   checked-in files.
 //!
-//! Both entry points return `Ok(())` when the unit set satisfies the contract,
-//! or [`SystemdUnitError`] describing the first violation found. The
-//! [`SystemdUnitError`] type is defined in this module's private `error`
-//! submodule and re-exported here for callers.
+//! The validators return `Ok(())`, or [`SystemdUnitError`] for the first
+//! violation found.
 //!
 //! ## Contract Scope
 //!
@@ -52,11 +43,12 @@
 //! ## Daemon Startup Contract
 //!
 //! The daemon binaries (`repovecd` and `repovec-mcpd`) call
-//! [`validate_checked_in_systemd_units`] as the first substantive action in
+//! [`validate_and_trace_checked_in_units`] as the first substantive action in
 //! `main()`. Any [`SystemdUnitError`] is fatal at startup: the daemon logs the
 //! violation with `tracing::error!` and exits with code 1.
 
 mod error;
+mod startup;
 
 #[cfg(test)]
 mod tests;
@@ -64,6 +56,7 @@ mod tests;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub use error::SystemdUnitError;
+pub use startup::{run_startup_validation, validate_and_trace_checked_in_units};
 
 const CHECKED_IN_REPOVEC_TARGET: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovec.target"));
@@ -198,7 +191,6 @@ pub fn validate_checked_in_systemd_units() -> Result<(), SystemdUnitError> {
 ///
 /// validate_systemd_units(target, repovecd, mcpd).expect("inline units satisfy the contract");
 /// ```
-#[tracing::instrument(skip_all)]
 pub fn validate_systemd_units(
     repovec_target: &str,
     repovecd_service: &str,

@@ -199,6 +199,35 @@ sudo systemctl start repovec.target
 > `journalctl -u repovec-mcpd.service --no-pager | tail -20`; the error message
 > identifies the unit and contract clause that was violated.
 
+### Startup validation logging
+
+Both `repovecd` and `repovec-mcpd` validate their checked-in systemd unit
+contracts at startup before starting any async work. The outcome is observable
+in the systemd journal:
+
+**Success** — a `TRACE`-level event followed by a `DEBUG`-level confirmation:
+
+```text
+TRACE systemd unit contract validated
+DEBUG systemd unit contract validated at daemon startup
+```
+
+**Failure** — an `ERROR`-level event with structured fields identifying the
+violating unit and the nature of the failure, followed by a non-zero process
+exit:
+
+```text
+ERROR systemd unit contract violation — aborting startup
+  unit=repovecd.service
+  error=repovecd.service is missing [Service]
+```
+
+The `unit` field contains the logical systemd unit name (e.g.
+`repovecd.service`) and the `error` field contains the human-readable
+description of the contract violation. Pass `--log-level trace` (or set
+`RUST_LOG=trace`) to see the `TRACE` and `DEBUG` events; only `ERROR` events
+are visible at the default log level.
+
 Starting the target may still fail until later roadmap items create the
 `repovec` system user, directory layout, Qdrant API-key configuration, and
 production daemon binaries. The checked-in unit contract already records the

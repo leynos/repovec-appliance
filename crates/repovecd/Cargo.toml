@@ -8,8 +8,10 @@ publish.workspace = true
 
 [dependencies]
 repovec-core = { path = "../repovec-core" }
-tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+repovec-test-helpers = { path = "../repovec-test-helpers", features = ["snapshots"] }
 
 [lints]
 workspace = true

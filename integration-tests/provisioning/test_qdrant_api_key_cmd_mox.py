@@ -14,6 +14,7 @@ yourself replicating a lifecycle assertion here, push it back there instead.
 
 from __future__ import annotations
 
+import secrets
 from pathlib import Path
 
 import pytest
@@ -186,9 +187,17 @@ def test_does_not_regenerate_valid_existing_key(
     helper_env: dict[str, str],
     helper_key_file: Path,
 ) -> None:
-    """A valid 64-hex key must survive a rerun untouched."""
+    """A valid hex key of the contract-mandated length must survive a rerun.
 
-    original = "0123456789abcdef" * 4
+    The key is derived from :data:`KEY_HEX_LENGTH` rather than hard-coded so
+    that a future contract change to the key length is picked up
+    automatically. ``secrets.token_hex`` makes the test self-describing
+    (the value is plainly a key) and avoids accidentally landing on a
+    fixed string a future helper might special-case.
+    """
+
+    original = secrets.token_hex(KEY_HEX_LENGTH // 2)
+    assert len(original) == KEY_HEX_LENGTH, original
     helper_key_file.write_text(original, encoding="utf-8")
     original_mtime = helper_key_file.stat().st_mtime_ns
 

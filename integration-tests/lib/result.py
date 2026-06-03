@@ -53,6 +53,13 @@ class CommandResult:
         ``argv`` is joined with :func:`shlex.join` so tokens with spaces or
         shell metacharacters round-trip cleanly. ``cwd`` is omitted when
         absent, so container-side diagnostics stay tight.
+
+        Returns
+        -------
+        str
+            Multi-line diagnostic containing ``command:``, an optional
+            ``cwd:`` line, ``exit_code:``, and trimmed ``stdout:`` /
+            ``stderr:`` blocks when present.
         """
 
         parts = [f"command: {shlex.join(self.argv)}"]

@@ -89,9 +89,14 @@ def _build_image(request: pytest.FixtureRequest) -> str:
     # unclosed-socket ``ResourceWarning`` at session teardown, which the
     # project's ``filterwarnings = ["error"]`` promotes to a hard error.
     # ``DockerClient`` does not implement the context manager protocol,
-    # so wrap the ping in try/finally and call ``close()`` by hand.
-    client = docker.from_env()
+    # so wrap construction + ping in try/finally and ``close()`` by hand.
+    # ``docker.from_env()`` itself raises ``DockerException`` when the
+    # daemon is reachable but advertises an incompatible API version, so
+    # build the client *inside* the try block to keep both failure modes
+    # on the skip path.
+    client = None
     try:
+        client = docker.from_env()
         client.ping()
     except DockerException as exc:
         _skip_or_fail(
@@ -103,7 +108,8 @@ def _build_image(request: pytest.FixtureRequest) -> str:
         )
         raise
     finally:
-        client.close()
+        if client is not None:
+            client.close()
 
     image = DockerImage(
         path=str(REPO_ROOT),

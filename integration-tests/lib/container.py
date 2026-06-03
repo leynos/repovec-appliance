@@ -57,7 +57,31 @@ class ContainerSession:
         return self._container
 
     def run(self, *argv: str) -> CommandResult:
-        """Execute ``argv`` inside the container without raising on failure."""
+        """Execute ``argv`` inside the container without raising on failure.
+
+        Parameters
+        ----------
+        *argv : str
+            Command line as a sequence of tokens. The first token is the
+            program; the rest are its arguments. At least one token is
+            required.
+
+        Returns
+        -------
+        CommandResult
+            The unified :class:`lib.result.CommandResult` populated with
+            ``argv``, the captured exit code, and UTF-8-decoded
+            ``stdout``/``stderr`` (with ``replace`` errors). ``cwd`` is
+            left ``None`` because the container runtime, not the harness,
+            picks the working directory.
+
+        Raises
+        ------
+        ValueError
+            If ``argv`` is empty. The container's exec API requires at
+            least one token and would otherwise produce a confusing
+            error far from the call site.
+        """
 
         if not argv:
             msg = "ContainerSession.run requires at least one argv token"
@@ -105,7 +129,22 @@ class ContainerSession:
         return result
 
     def copy_text(self, path: str, content: str, *, mode: int = 0o755) -> None:
-        """Copy a UTF-8 text payload to ``path`` inside the container."""
+        """Copy a UTF-8 text payload into the container.
+
+        Parameters
+        ----------
+        path : str
+            Absolute path inside the container where the file should
+            land. Only the basename is used for the in-tar entry; the
+            directory portion is the destination given to docker-py's
+            ``put_archive`` and must already exist.
+        content : str
+            UTF-8 text content of the file. Encoded with the standard
+            ``str.encode("utf-8")`` (no error replacement).
+        mode : int, optional
+            POSIX mode bits applied to the in-tar entry, defaulting to
+            ``0o755``. The container's tar extraction honours this.
+        """
 
         archive = io.BytesIO()
         with tarfile.open(fileobj=archive, mode="w") as tar:

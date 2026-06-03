@@ -115,6 +115,39 @@ EOF'
 
 Requests to Qdrant without the `api-key` header are rejected.
 
+### Qdrant API-key provisioning behaviour
+
+#### `REPOVEC_DEBUG` environment variable
+
+Setting `REPOVEC_DEBUG=1` enables debug-level log lines emitted to stderr by
+the `repovec-qdrant-api-key` helper.  When enabled, the helper logs lock
+acquisition and release events alongside other diagnostic output.  This
+variable is intended for troubleshooting only.  It must not be set in
+production systemd service units, and the default behaviour (no debug output)
+is safe for production.
+
+#### Flock-based serialization
+
+The `repovec-qdrant-api-key` helper serializes all mutable operations behind an
+exclusive `flock` on `/etc/repovec/repovec-qdrant-api-key.lock`.  Concurrent
+invocations block until the lock is available, preventing races between user
+creation, directory creation, secret inspection, key generation, and secret
+creation.  The lock file is owned by `root:root` and resides in `/etc/repovec`,
+a root-owned directory with mode `0750` that is not world-writable.  This
+ensures that an unprivileged process cannot substitute the lock file to
+interfere with serialization.
+
+#### Fail-closed secret-removal behaviour
+
+If `podman secret rm` fails for any reason other than the secret being in use,
+the helper exits non-zero.  The caller (systemd) sees a unit failure rather
+than silently continuing with stale credentials.  When the removal fails
+because the secret is in use (`podman secret rm` reports "in use"), the helper
+exits zero because the existing secret remains valid and does not need to be
+replaced.  This fail-closed invariant ensures that an unexpected removal error
+never results in the Qdrant Quadlet running with an outdated or missing API
+key.
+
 ### Qdrant Quadlet validation diagnostics
 
 `repovec_core::appliance::qdrant_quadlet` exposes `validate_qdrant_quadlet` and

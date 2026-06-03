@@ -5,12 +5,59 @@
 //! `QDRANT_API_KEY_ENVIRONMENT_VARIABLE`, and the packaging assets under
 //! `packaging/`.
 
+use insta::assert_snapshot;
+use proptest::prelude::*;
+
 use super::{QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET, QDRANT_API_KEY_SERVICE};
 
 macro_rules! include_packaging_asset {
     ($path:literal) => {
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/", $path))
     };
+}
+
+/// Returns the byte offset of the first occurrence of `needle` in
+/// `PROVISIONING_HELPER`, panicking if the needle is missing.
+fn helper_offset(needle: &str) -> usize {
+    let Some(offset) = PROVISIONING_HELPER.find(needle) else {
+        panic!("helper should contain expected text: {needle:?}");
+    };
+    offset
+}
+
+fn helper_suffix_preview(suffix: &str) -> String {
+    if suffix.len() <= 120 { suffix.to_owned() } else { suffix.chars().take(120).collect() }
+}
+
+/// Returns the byte offset of the first occurrence of `needle` in
+/// `PROVISIONING_HELPER` after `offset`, useful for ordering assertions.
+/// Panics if `offset` is not a valid UTF-8 boundary or if no matching
+/// occurrence exists after `offset`.
+fn helper_offset_after(needle: &str, offset: usize) -> usize {
+    let Some(suffix) = PROVISIONING_HELPER.get(offset..) else {
+        panic!(
+            "helper offset should be a valid byte boundary: offset={offset}, helper_len={}",
+            PROVISIONING_HELPER.len()
+        );
+    };
+    let Some(relative_offset) = suffix.find(needle) else {
+        let suffix_preview = helper_suffix_preview(suffix);
+        panic!(
+            "helper should contain expected text after offset: needle={needle:?}, \
+             offset={offset}, suffix_preview={suffix_preview:?}"
+        );
+    };
+    offset + relative_offset
+}
+
+fn helper_slice(start: usize, end: usize) -> &'static str {
+    let Some(slice) = PROVISIONING_HELPER.get(start..end) else {
+        panic!(
+            "helper slice should use valid byte boundaries: start={start}, end={end}, helper_len={}",
+            PROVISIONING_HELPER.len()
+        );
+    };
+    slice
 }
 
 const PROVISIONING_SERVICE: &str =
@@ -48,10 +95,18 @@ fn provisioning_helper_uses_the_canonical_secret_contract() {
 
 #[test]
 fn provisioning_helper_fails_closed_on_unexpected_secret_removal_errors() {
-    assert!(PROVISIONING_HELPER.contains("podman secret rm \"${SECRET_NAME}\""));
-    assert!(PROVISIONING_HELPER.contains("grep -qi 'in use' \"${rm_error}\""));
-    assert!(PROVISIONING_HELPER.contains("log \"podman secret removal failed: $(cat"));
-    assert!(PROVISIONING_HELPER.contains("exit 1"));
+    let removal = helper_offset("podman secret rm \"${SECRET_NAME}\"");
+    let in_use_check = helper_offset("grep -qi 'in use' \"${rm_error}\"");
+    let in_use_exit = helper_offset("log \"podman secret is in use; leaving existing secret");
+    let unexpected_branch = helper_offset("else\n            # Fail closed:");
+    let unexpected_log = helper_offset("log \"podman secret removal failed: $(cat");
+    let unexpected_exit = helper_offset_after("exit 1", unexpected_log);
+
+    assert!(removal < in_use_check);
+    assert!(in_use_check < in_use_exit);
+    assert!(in_use_exit < unexpected_branch);
+    assert!(unexpected_branch < unexpected_log);
+    assert!(unexpected_log < unexpected_exit);
 }
 
 #[test]
@@ -64,6 +119,37 @@ fn provisioning_helper_removes_stale_secret_before_generating_key_file() {
         .expect("helper should generate a missing key file");
 
     assert!(secret_removal < key_generation);
+}
+
+#[test]
+fn provisioning_helper_uses_a_root_controlled_lock_path() {
+    let lock_file = helper_offset("/etc/repovec/repovec-qdrant-api-key.lock");
+    let flock = helper_offset("flock 9");
+    let debug_waiting = helper_offset("debug_log \"waiting for ${LOCK_FILE}\"");
+    let debug_acquired = helper_offset("debug_log \"acquired ${LOCK_FILE}\"");
+
+    assert!(PROVISIONING_HELPER.contains("debug_log \"acquired ${LOCK_FILE}\""));
+    assert!(PROVISIONING_HELPER.contains("debug_log \"released ${LOCK_FILE}\""));
+    assert!(!PROVISIONING_HELPER.contains("LOCK_FILE=/var/lock/"));
+    assert!(debug_waiting < flock);
+    assert!(flock < debug_acquired);
+    assert!(lock_file < flock);
+}
+
+#[test]
+fn provisioning_helper_serializes_secret_and_key_operations() {
+    let flock = helper_offset("flock 9");
+    let secret_inspection = helper_offset("podman secret inspect \"${SECRET_NAME}\"");
+    let secret_removal = helper_offset("podman secret rm \"${SECRET_NAME}\"");
+    let missing_key_branch = helper_offset("if [ ! -e \"${KEY_FILE}\" ]; then");
+    let key_generation = helper_offset_after("generate_key_file", missing_key_branch);
+    let secret_creation = helper_offset("podman secret create \"${SECRET_NAME}\"");
+
+    assert!(PROVISIONING_HELPER.contains("od -An -N32 -tx1"));
+    assert!(flock < secret_inspection);
+    assert!(flock < secret_removal);
+    assert!(flock < key_generation);
+    assert!(flock < secret_creation);
 }
 
 #[test]
@@ -89,9 +175,167 @@ fn provisioning_helper_preserves_existing_keys_and_locks_permissions() {
 }
 
 #[test]
+fn provisioning_helper_releases_lock_before_every_error_exit() {
+    let release_lock_a = helper_offset("release_lock");
+    let exit_a = helper_offset_after("exit 1", release_lock_a);
+    assert!(release_lock_a < exit_a);
+
+    let release_lock_b = helper_offset_after("release_lock", exit_a);
+    let exit_b = helper_offset_after("exit 0", release_lock_b);
+    assert!(release_lock_b < exit_b);
+
+    let release_lock_c = helper_offset_after("release_lock", exit_b);
+    let exit_c = helper_offset_after("exit 1", release_lock_c);
+    assert!(release_lock_c < exit_c);
+
+    let release_lock_d = helper_offset_after("release_lock", exit_c);
+    let exit_d = helper_offset_after("exit 1", release_lock_d);
+    assert!(release_lock_d < exit_d);
+
+    let created_log = helper_offset("created qdrant API-key podman secret");
+    let release_lock_e = helper_offset_after("release_lock", created_log);
+    assert!(created_log < release_lock_e);
+}
+
+#[test]
 fn provisioning_helper_does_not_commit_or_echo_a_raw_key_literal() {
     assert!(!PROVISIONING_HELPER.contains("QDRANT__SERVICE__API_KEY="));
     assert!(!PROVISIONING_HELPER.contains("echo \"${KEY_FILE}\""));
     assert!(!PROVISIONING_HELPER.contains("echo \"${tmp_file}\""));
     assert!(PROVISIONING_HELPER.contains("/dev/urandom"));
+}
+
+#[test]
+fn provisioning_helper_defines_required_functions_with_correct_implementations() {
+    assert!(PROVISIONING_HELPER.contains("release_lock()"));
+    assert!(
+        PROVISIONING_HELPER.contains("flock -u 9"),
+        "release_lock must call flock -u 9 and must not be a no-op"
+    );
+    assert!(PROVISIONING_HELPER.contains("debug_log()"));
+    assert!(PROVISIONING_HELPER.contains("REPOVEC_DEBUG:-}\" = \"1\""));
+    assert!(PROVISIONING_HELPER.contains("generate_key_file()"));
+
+    let flock_pos = helper_offset("flock 9");
+    let trap_sites: Vec<usize> = PROVISIONING_HELPER
+        .match_indices("trap '")
+        .map(|(i, _)| i)
+        .filter(|&i| i > flock_pos)
+        .collect();
+    assert!(!trap_sites.is_empty(), "expected trap handlers after flock");
+    for pos in trap_sites {
+        let suffix = helper_slice(pos, PROVISIONING_HELPER.len());
+        let line_end = suffix.find('\n').map_or(PROVISIONING_HELPER.len(), |n| pos + n);
+        let trap_line = helper_slice(pos, line_end);
+        assert!(
+            trap_line.contains("release_lock"),
+            "trap handler must include release_lock: {trap_line:?}",
+        );
+    }
+}
+
+/// Collects all byte offsets of `needle` in `PROVISIONING_HELPER`.
+fn all_helper_offsets(needle: &str) -> Vec<usize> {
+    PROVISIONING_HELPER.match_indices(needle).map(|(i, _)| i).collect()
+}
+
+proptest! {
+    /// Every critical-section `exit 1` is preceded by a `release_lock` call
+    /// that follows the `flock 9` acquisition.
+    #[test]
+    fn critical_section_exits_release_lock_before_exit_1(
+        exit_pos in proptest::sample::select(all_helper_offsets("exit 1")),
+    ) {
+        let flock_pos = helper_offset("flock 9");
+        prop_assume!(exit_pos > flock_pos);
+
+        let prefix = PROVISIONING_HELPER
+            .get(..exit_pos)
+            .expect("exit_pos must be a valid byte boundary");
+        let release_pos = prefix
+            .rfind("release_lock")
+            .expect("every exit 1 must be preceded by release_lock");
+        prop_assert!(
+            flock_pos < release_pos,
+            "release_lock at {release_pos} must follow flock at {flock_pos}",
+        );
+        prop_assert!(
+            release_pos < exit_pos,
+            "release_lock at {release_pos} must precede exit 1 at {exit_pos}",
+        );
+    }
+}
+
+/// Key generation is invoked only from the locked main-flow critical section.
+#[test]
+fn key_generation_call_site_is_inside_locked_critical_section() {
+    let flock_pos = helper_offset("flock 9");
+    let missing_key_branch = helper_offset("if [ ! -e \"${KEY_FILE}\" ]; then");
+    let key_generation = helper_offset_after("generate_key_file", missing_key_branch);
+
+    assert!(
+        flock_pos < key_generation,
+        "flock at {flock_pos} must precede key generation at {key_generation}",
+    );
+}
+
+#[test]
+fn flock_precedes_every_mutable_operation() {
+    let flock_pos = helper_offset("flock 9");
+    let mutable_ops = [
+        ("podman secret inspect", helper_offset("podman secret inspect \"${SECRET_NAME}\"")),
+        ("podman secret rm", helper_offset("podman secret rm \"${SECRET_NAME}\"")),
+        ("podman secret create", helper_offset("podman secret create \"${SECRET_NAME}\"")),
+        (
+            "generate_key_file",
+            helper_offset_after(
+                "generate_key_file",
+                helper_offset("if [ ! -e \"${KEY_FILE}\" ]; then"),
+            ),
+        ),
+    ];
+    for (name, op_pos) in mutable_ops {
+        assert!(flock_pos < op_pos, "flock at {flock_pos} must precede {name} at {op_pos}");
+    }
+}
+
+/// The unexpected-removal else-branch logs an error and exits non-zero instead
+/// of falling through silently.
+#[test]
+fn fail_closed_path_logs_error_and_exits_non_zero() {
+    let else_branch = helper_offset("else\n            # Fail closed:");
+    let failure_log = helper_offset_after("log \"podman secret removal failed:", else_branch);
+    let failure_exit = helper_offset_after("exit 1", failure_log);
+
+    assert!(else_branch < failure_log, "fail-closed else branch must precede its error log");
+    assert!(failure_log < failure_exit, "error log must precede exit 1 on the fail-closed path");
+}
+
+#[test]
+fn provisioning_helper_lock_critical_section_snapshot() {
+    // Capture the text from the `exec 9>` line through the first
+    // `release_lock` call so the snapshot encodes the lock-acquisition
+    // protocol and the bootstrap order.
+    let start = helper_offset("exec 9>\"${LOCK_FILE}\"");
+    let first_release = helper_offset_after("release_lock", helper_offset("flock 9"));
+    let end = first_release + "release_lock".len();
+    assert_snapshot!("lock_critical_section", helper_slice(start, end));
+}
+
+#[test]
+fn provisioning_helper_fail_closed_branch_snapshot() {
+    // Capture the unexpected-removal else-branch so the snapshot encodes
+    // fail-closed semantics.
+    let start = helper_offset("else\n            # Fail closed:");
+    let end = helper_offset_after("exit 1", start) + "exit 1".len();
+    assert_snapshot!("fail_closed_else_branch", helper_slice(start, end));
+}
+
+#[test]
+fn provisioning_helper_release_lock_implementation_snapshot() {
+    // Snapshot the release_lock() function body so a no-op replacement
+    // causes an immediate snapshot failure.
+    let start = helper_offset("release_lock()");
+    let end = helper_offset_after("\n}", start) + "\n}".len();
+    assert_snapshot!("release_lock_implementation", helper_slice(start, end));
 }

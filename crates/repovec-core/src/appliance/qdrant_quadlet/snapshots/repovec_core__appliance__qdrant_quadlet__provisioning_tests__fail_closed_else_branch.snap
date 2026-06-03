@@ -1,0 +1,10 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/provisioning_tests.rs
+expression: "helper_slice(start, end)"
+---
+else
+            # Fail closed: unexpected removal failures may leave stale
+            # credentials active, so the caller must see a non-zero status.
+            log "podman secret removal failed: $(cat "${rm_error}")"
+            release_lock
+            exit 1

@@ -2,11 +2,14 @@
 name = "repovec-appliance-integration-tests"
 version = "0.0.0"
 description = "Integration tests for the repovec-appliance packaging helpers."
-# Pinned to the lowest Python that satisfies all harness dependencies:
-# cuprum requires >=3.12, cmd-mox requires >=3.11, testcontainers and
-# pytest require >=3.10. The harness itself does not rely on any 3.13-
-# only features, so the floor follows cuprum.
-requires-python = ">=3.12"
+# Pinned to 3.13 to match the documented developer workflow
+# (``uv venv --python 3.13``) and the version called out by
+# ``docs/developers-guide.md`` §6.2 and ``integration-tests/README.md``.
+# Nothing here uses a 3.13-only feature, so technically the harness
+# would resolve on cuprum's >=3.12 floor — but tightening the floor
+# eliminates the drift between pyproject and the docs and pins the
+# CI/dev environment to a single supported interpreter.
+requires-python = ">=3.13"
 dependencies = [
     "pytest>=8.3,<10",
     "testcontainers>=4.9,<5",

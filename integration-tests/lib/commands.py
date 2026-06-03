@@ -117,14 +117,46 @@ def run_host(
 ) -> HostCommandResult:
     """Execute a curated host command via cuprum and normalise its result.
 
-    ``program`` must be present in :func:`host_catalogue`; cuprum raises
-    ``UnknownProgramError`` for anything else, which is the intended safety
-    rail. Callers wanting a different program should add it to the catalogue
-    instead of bypassing this helper.
+    Parameters
+    ----------
+    program : str
+        Name of the program to run. Must be present in
+        :func:`host_catalogue`; anything else raises
+        :class:`cuprum.UnknownProgramError`.
+    *args : str
+        Positional arguments passed to ``program``. Each value is
+        coerced via :class:`str` before reaching cuprum.
+    env : Mapping[str, str] or None, optional
+        Environment overlay applied on top of the live ``os.environ``
+        at invocation time (cuprum semantics). ``None`` runs the
+        command with the unmodified ``os.environ``.
+    cwd : str or os.PathLike[str] or None, optional
+        Working directory for the child process. Defaults to the
+        current Python working directory.
 
-    Note that cuprum's :class:`ExecutionContext` does not currently expose a
-    wall-clock timeout; long-running host commands are the caller's
-    responsibility to bound (typically via pytest's own timeout plugin).
+    Returns
+    -------
+    HostCommandResult
+        Structured result with ``argv``, ``exit_code``, ``stdout``,
+        ``stderr``, and ``cwd``. Diagnostic rendering goes through
+        :meth:`HostCommandResult.render`, matching the
+        :class:`~lib.container.CommandResult` API used inside the
+        container so failures look the same in both environments.
+
+    Raises
+    ------
+    cuprum.UnknownProgramError
+        If ``program`` is not in :func:`host_catalogue`. This is the
+        intended safety rail against ad hoc shell-outs leaking into
+        test code; callers wanting a different program should extend
+        the catalogue rather than bypassing this helper.
+
+    Notes
+    -----
+    Cuprum's :class:`cuprum.ExecutionContext` does not currently
+    expose a wall-clock timeout, so long-running host commands are
+    the caller's responsibility to bound (typically via pytest's own
+    timeout plugin).
     """
 
     from cuprum import ExecutionContext, Program, sh

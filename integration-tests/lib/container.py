@@ -5,60 +5,25 @@ its sibling packaging assets, then starts a privileged container so rootful
 Podman-in-Podman can create and inspect secrets. A small :class:`ContainerSession`
 wrapper hides the docker-py exec API behind argv-first methods so test code
 reads as command intent rather than transport plumbing.
+
+This module is deliberately domain-agnostic: anything specific to the
+``repovec-qdrant-api-key`` lifecycle (cleanup scripts, fixture wiring) lives
+in :mod:`provisioning.conftest` so a future second suite can reuse this
+container API without inheriting provisioning's vocabulary.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import io
-import shlex
 import tarfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .result import CommandResult
+
 if TYPE_CHECKING:
     from testcontainers.core.container import DockerContainer
-
-
-REPOVEC_CLEANUP_SCRIPT = """\
-set -eu
-podman secret rm repovec-qdrant-api-key >/dev/null 2>&1 || true
-if getent passwd repovec >/dev/null; then
-    userdel -r repovec >/dev/null 2>&1 || userdel repovec >/dev/null 2>&1
-fi
-rm -rf /etc/repovec /var/lib/repovec
-"""
-
-
-@dataclasses.dataclass(frozen=True)
-class CommandResult:
-    """Outcome of a single command executed inside the container."""
-
-    argv: tuple[str, ...]
-    exit_code: int
-    stdout: str
-    stderr: str
-
-    @property
-    def ok(self) -> bool:
-        """Return ``True`` iff the command exited with status zero."""
-
-        return self.exit_code == 0
-
-    def render(self) -> str:
-        """Return a multi-line diagnostic suitable for assertion failures."""
-
-        rendered_argv = " ".join(shlex.quote(part) for part in self.argv)
-        parts = [
-            f"command: {rendered_argv}",
-            f"exit_code: {self.exit_code}",
-        ]
-        if self.stdout:
-            parts.append(f"stdout:\n{self.stdout.rstrip()}")
-        if self.stderr:
-            parts.append(f"stderr:\n{self.stderr.rstrip()}")
-        return "\n".join(parts)
 
 
 class ContainerCommandError(AssertionError):
@@ -138,31 +103,6 @@ class ContainerSession:
         if not result.ok:
             raise ContainerCommandError(result)
         return result
-
-    def cleanup_state(self) -> None:
-        """Reset the helper's externally visible state between tests.
-
-        ``podman secret rm`` is the only step that is unconditionally
-        best-effort, because a missing secret is the expected starting point
-        for a fresh test. ``userdel`` is guarded by a ``getent passwd``
-        existence check, so by the time it runs the user is known to be
-        present; the fallback from ``userdel -r`` to plain ``userdel``
-        gracefully tolerates a busy home directory, but a non-zero exit
-        from *both* attempts indicates a real problem (running processes,
-        I/O error) and must surface. ``rm -rf`` is similarly not
-        best-effort: ``-rf`` already silences missing targets, so a
-        non-zero exit there means a genuine filesystem error
-        (permission denied, busy file, I/O error) that callers must see
-        rather than swallow.
-
-        Any non-zero exit therefore surfaces as a
-        :class:`ContainerCommandError`. Callers that want to keep running
-        on cleanup failure should wrap the call in their own ``try`` —
-        see the ``container_session`` pytest fixture's post-test branch
-        for the canonical pattern.
-        """
-
-        self.must_run_shell(REPOVEC_CLEANUP_SCRIPT)
 
     def copy_text(self, path: str, content: str, *, mode: int = 0o755) -> None:
         """Copy a UTF-8 text payload to ``path`` inside the container."""

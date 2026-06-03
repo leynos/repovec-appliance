@@ -4,12 +4,37 @@ from __future__ import annotations
 
 import shlex
 import stat
+import sys
+from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
+from lib.container import ContainerSession
+
+if TYPE_CHECKING:
+    from testcontainers.core.container import DockerContainer
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HELPER_SOURCE = REPO_ROOT / "packaging" / "libexec" / "repovec-qdrant-api-key"
+
+# Shell snippet that resets the provisioning helper's externally visible
+# state. ``podman secret rm`` is best-effort (a missing secret is the
+# expected starting point). ``userdel`` is guarded by ``getent passwd`` so
+# the user is known to exist when removal runs; the ``-r`` → plain fallback
+# tolerates a briefly busy home directory, but a non-zero exit from *both*
+# attempts means a real problem (running processes, I/O error) and must
+# surface. ``rm -rf`` already silences missing targets, so any failure
+# there is a genuine filesystem error.
+REPOVEC_CLEANUP_SCRIPT = """\
+set -eu
+podman secret rm repovec-qdrant-api-key >/dev/null 2>&1 || true
+if getent passwd repovec >/dev/null; then
+    userdel -r repovec >/dev/null 2>&1 || userdel repovec >/dev/null 2>&1
+fi
+rm -rf /etc/repovec /var/lib/repovec
+"""
 
 
 @pytest.fixture
@@ -164,3 +189,53 @@ def helper_env(patched_helper: Path) -> dict[str, str]:
         "HOME": str(patched_helper.parent),
         "LANG": "C.UTF-8",
     }
+
+
+def _run_cleanup(session: ContainerSession) -> None:
+    """Apply the provisioning cleanup script to ``session``."""
+
+    session.must_run_shell(REPOVEC_CLEANUP_SCRIPT)
+
+
+@pytest.fixture
+def container_session(
+    integration_container: DockerContainer,
+) -> Iterator[ContainerSession]:
+    """Per-test :class:`ContainerSession` with before/after cleanup.
+
+    Yields
+    ------
+    ContainerSession
+        Wrapper around the session-scoped container whose cleanup
+        script runs both before and after every test, so lifecycle
+        tests start from a known clean slate and do not leave
+        artefacts for the next case.
+
+    Notes
+    -----
+    The pre-test cleanup is allowed to raise: if a previous run left
+    state we cannot scrub, the next test must fail loudly rather
+    than silently inherit it. The post-test cleanup runs inside an
+    exception guard and writes to ``sys.stderr`` on failure instead
+    of re-raising, so a teardown problem cannot mask the actual test
+    outcome. The next test's pre-cleanup will surface the issue if
+    it is genuinely persistent.
+
+    ``warnings.warn`` is deliberately *not* used here: this project
+    pins ``filterwarnings = ["error"]`` in ``pyproject.toml``, which
+    would promote a teardown warning back into an exception and
+    re-introduce the masking the guard is meant to prevent.
+    """
+
+    session = ContainerSession(integration_container)
+    _run_cleanup(session)
+    try:
+        yield session
+    finally:
+        try:
+            _run_cleanup(session)
+        except Exception as exc:  # noqa: BLE001 - logged to stderr
+            print(
+                f"WARNING: container_session post-test cleanup failed: {exc}",
+                file=sys.stderr,
+            )

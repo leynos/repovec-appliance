@@ -19,7 +19,8 @@ from pathlib import Path
 import pytest
 from cmd_mox import CmdMox
 
-from lib.commands import HostCommandResult, run_host
+from lib.commands import run_host
+from lib.result import CommandResult
 from lib.constants import (
     KEY_HEX_LENGTH,
     REPOVEC_GROUP,
@@ -34,7 +35,7 @@ pytest_plugins = ("cmd_mox.pytest_plugin",)
 pytestmark = pytest.mark.cmd_mox
 
 
-def _invoke_helper(helper: Path, env: dict[str, str]) -> HostCommandResult:
+def _invoke_helper(helper: Path, env: dict[str, str]) -> CommandResult:
     """Run the patched helper through cuprum and return the structured result."""
 
     return run_host("sh", str(helper), env=env)

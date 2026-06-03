@@ -23,7 +23,6 @@ against accidentally skipping the entire suite.
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -85,8 +84,15 @@ def _build_image(request: pytest.FixtureRequest) -> str:
         _skip_or_fail(request, f"docker SDK is not installed: {exc}")
         raise
 
+    # ``docker.from_env()`` opens a persistent HTTP/Unix socket session
+    # that we must close explicitly; otherwise Python's GC reports an
+    # unclosed-socket ``ResourceWarning`` at session teardown, which the
+    # project's ``filterwarnings = ["error"]`` promotes to a hard error.
+    # ``DockerClient`` does not implement the context manager protocol,
+    # so wrap the ping in try/finally and call ``close()`` by hand.
+    client = docker.from_env()
     try:
-        docker.from_env().ping()
+        client.ping()
     except DockerException as exc:
         _skip_or_fail(
             request,
@@ -96,6 +102,8 @@ def _build_image(request: pytest.FixtureRequest) -> str:
             ),
         )
         raise
+    finally:
+        client.close()
 
     image = DockerImage(
         path=str(REPO_ROOT),
@@ -161,9 +169,9 @@ def integration_container(
     Yields
     ------
     DockerContainer
-        The running, preflighted container. Tests interact with it
-        through :func:`container_session` rather than directly so the
-        per-test cleanup contract stays in one place.
+        The running, preflighted container. Per-test wrappers (with
+        their domain-specific cleanup) live in suite-local conftests
+        — see ``provisioning/conftest.py`` for the canonical pattern.
     """
 
     image = _build_image(request)
@@ -176,45 +184,3 @@ def integration_container(
             container.stop()
         except Exception:  # noqa: BLE001 - best-effort teardown
             pass
-
-
-@pytest.fixture
-def container_session(integration_container: DockerContainer) -> Iterator[ContainerSession]:
-    """Per-test :class:`ContainerSession` with before/after cleanup.
-
-    Yields
-    ------
-    ContainerSession
-        Wrapper around the session-scoped container whose
-        ``cleanup_state`` runs both before and after every test, so
-        lifecycle tests start from a known clean slate and do not
-        leave artefacts for the next case.
-
-    Notes
-    -----
-    The pre-test ``cleanup_state`` is allowed to raise: if a previous
-    run left state we cannot scrub, the next test must fail loudly
-    rather than silently inherit it. The post-test ``cleanup_state``
-    runs inside an exception guard and writes to ``sys.stderr`` on
-    failure instead of re-raising, so a teardown problem cannot mask
-    the actual test outcome. The next test's pre-cleanup will surface
-    the issue if it is genuinely persistent.
-
-    ``warnings.warn`` is deliberately *not* used here: this project
-    pins ``filterwarnings = ["error"]`` in ``pyproject.toml``, which
-    would promote a teardown warning back into an exception and
-    re-introduce the masking the guard is meant to prevent.
-    """
-
-    session = ContainerSession(integration_container)
-    session.cleanup_state()
-    try:
-        yield session
-    finally:
-        try:
-            session.cleanup_state()
-        except Exception as exc:  # noqa: BLE001 - logged to stderr
-            print(
-                f"WARNING: container_session post-test cleanup failed: {exc}",
-                file=sys.stderr,
-            )

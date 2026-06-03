@@ -24,6 +24,12 @@ packages = []
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["provisioning"]
+# The lifecycle suite shares a session-scoped privileged container per
+# worker. pytest-xdist would multiply the container build and create
+# unnecessary contention on the host runtime; disable it explicitly so
+# ``-n auto`` cannot silently inflate resource use. ``-p no:xdist`` is a
+# no-op when xdist is not installed.
+addopts = "-p no:xdist"
 markers = [
     "integration: requires a Docker-compatible container runtime and privileged nested Podman",
     "cmd_mox: command-contract tests using cmd-mox shims",

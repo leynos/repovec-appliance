@@ -17,15 +17,16 @@ CLI would only add latency and obscure the transport.
 
 from __future__ import annotations
 
-import dataclasses
 import os
-import shlex
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .result import CommandResult
+
 if TYPE_CHECKING:
-    from cuprum import CommandResult, Program, ProgramCatalogue
+    from cuprum import CommandResult as CuprumCommandResult
+    from cuprum import Program, ProgramCatalogue
 
 
 def _build_catalogue() -> tuple[Program, ...]:
@@ -73,48 +74,12 @@ def host_catalogue() -> ProgramCatalogue:
     return ProgramCatalogue(projects=(project,))
 
 
-@dataclasses.dataclass(frozen=True)
-class HostCommandResult:
-    """Result wrapper that mirrors :class:`ContainerSession` semantics.
-
-    Tests and helpers consume this rather than the raw cuprum result so
-    diagnostics render the same way whether a failure happened on the host
-    or inside the container.
-    """
-
-    argv: tuple[str, ...]
-    exit_code: int
-    stdout: str
-    stderr: str
-    cwd: str
-
-    @property
-    def ok(self) -> bool:
-        """Return ``True`` iff the command exited with status zero."""
-
-        return self.exit_code == 0
-
-    def render(self) -> str:
-        """Return a multi-line diagnostic suitable for assertion failures."""
-
-        parts = [
-            f"command: {shlex.join(self.argv)}",
-            f"cwd: {self.cwd}",
-            f"exit_code: {self.exit_code}",
-        ]
-        if self.stdout:
-            parts.append(f"stdout:\n{self.stdout.rstrip()}")
-        if self.stderr:
-            parts.append(f"stderr:\n{self.stderr.rstrip()}")
-        return "\n".join(parts)
-
-
 def run_host(
     program: str,
     *args: str,
     env: Mapping[str, str] | None = None,
     cwd: str | os.PathLike[str] | None = None,
-) -> HostCommandResult:
+) -> CommandResult:
     """Execute a curated host command via cuprum and normalise its result.
 
     Parameters
@@ -136,12 +101,13 @@ def run_host(
 
     Returns
     -------
-    HostCommandResult
-        Structured result with ``argv``, ``exit_code``, ``stdout``,
-        ``stderr``, and ``cwd``. Diagnostic rendering goes through
-        :meth:`HostCommandResult.render`, matching the
-        :class:`~lib.container.CommandResult` API used inside the
-        container so failures look the same in both environments.
+    CommandResult
+        The unified :class:`lib.result.CommandResult`, with ``cwd``
+        populated so host-side diagnostics include the working
+        directory the command ran in. The same type is returned by
+        :class:`lib.container.ContainerSession` (with ``cwd=None``),
+        so failures look identical regardless of which side of the
+        boundary the command lived on.
 
     Raises
     ------
@@ -171,11 +137,14 @@ def run_host(
         cwd=resolved_cwd,
     )
 
-    result: CommandResult = cmd.run_sync(context=context, capture=True)
-    return HostCommandResult(
+    cuprum_result: CuprumCommandResult = cmd.run_sync(
+        context=context,
+        capture=True,
+    )
+    return CommandResult(
         argv=(program, *[str(a) for a in args]),
-        exit_code=int(result.exit_code),
-        stdout=result.stdout or "",
-        stderr=result.stderr or "",
+        exit_code=int(cuprum_result.exit_code),
+        stdout=cuprum_result.stdout or "",
+        stderr=cuprum_result.stderr or "",
         cwd=resolved_cwd,
     )

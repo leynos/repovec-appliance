@@ -133,10 +133,15 @@ def assert_key_file_contract(session: ContainerSession) -> str:
     # marker are sufficient to debug, and the file's mode/owner are already
     # captured above. Avoid pytest's assertion rewriter exposing the value
     # by deferring the comparison through ``match``-returns-bool.
-    if HEX_KEY_RE.fullmatch(contents.strip("\n")) is None:
+    #
+    # The helper writes the key via ``printf '%s'`` (no trailing newline),
+    # so match the raw bytes exactly rather than stripping whitespace — a
+    # stray newline indicates a real contract violation, not something the
+    # test should paper over.
+    if HEX_KEY_RE.fullmatch(contents) is None:
         msg = (
             f"key file contents are not {KEY_HEX_LENGTH} hex chars "
-            f"(length={len(contents.strip(chr(10)))}, contents redacted)"
+            f"(length={len(contents)}, contents redacted)"
         )
         raise AssertionError(msg)
     return contents

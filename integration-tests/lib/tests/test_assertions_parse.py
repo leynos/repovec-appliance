@@ -23,12 +23,14 @@ def test_passwd_parse_returns_all_seven_columns() -> None:
 
     entry = PasswdEntry.parse(raw)
 
-    assert entry.name == "repovec"
-    assert entry.uid == "996"
-    assert entry.gid == "993"
-    assert entry.gecos == ""
-    assert entry.home == "/var/lib/repovec"
-    assert entry.shell == "/usr/sbin/nologin"
+    assert entry.name == "repovec", "passwd name column should round-trip"
+    assert entry.uid == "996", "passwd uid column should round-trip"
+    assert entry.gid == "993", "passwd gid column should round-trip"
+    assert entry.gecos == "", "passwd gecos column should round-trip (empty here)"
+    assert entry.home == "/var/lib/repovec", "passwd home column should round-trip"
+    assert entry.shell == "/usr/sbin/nologin", (
+        "passwd shell column should round-trip"
+    )
 
 
 def test_passwd_parse_strips_trailing_newline() -> None:
@@ -36,8 +38,10 @@ def test_passwd_parse_strips_trailing_newline() -> None:
 
     entry = PasswdEntry.parse(raw)
 
-    assert entry.name == "root"
-    assert entry.shell == "/bin/bash"  # no trailing newline
+    assert entry.name == "root", "passwd name should not absorb the newline"
+    assert entry.shell == "/bin/bash", (
+        "passwd shell should be stripped of the trailing newline"
+    )
 
 
 @pytest.mark.parametrize(
@@ -62,11 +66,11 @@ def test_filestat_parse_returns_expected_columns() -> None:
 
     stat = FileStat.parse(raw)
 
-    assert stat.mode == "0400"
-    assert stat.user == "repovec"
-    assert stat.group == "repovec"
-    assert stat.size == 64
-    assert stat.mtime == "1700000000"
+    assert stat.mode == "0400", "stat mode column should round-trip"
+    assert stat.user == "repovec", "stat user column should round-trip"
+    assert stat.group == "repovec", "stat group column should round-trip"
+    assert stat.size == 64, "stat size column should round-trip as int"
+    assert stat.mtime == "1700000000", "stat mtime column should round-trip"
 
 
 def test_filestat_parse_strips_trailing_newline() -> None:
@@ -74,7 +78,7 @@ def test_filestat_parse_strips_trailing_newline() -> None:
 
     stat = FileStat.parse(raw)
 
-    assert stat.size == 4096
+    assert stat.size == 4096, "trailing newline must not break int(size) parsing"
 
 
 @pytest.mark.parametrize(
@@ -108,5 +112,7 @@ def test_filestat_parse_passes_through_blank_user_field() -> None:
 
     stat = FileStat.parse(raw)
 
-    assert stat.user == ""
-    assert stat.group == "repovec"
+    assert stat.user == "", "empty user column must be preserved verbatim"
+    assert stat.group == "repovec", (
+        "subsequent columns must still parse when an earlier column is empty"
+    )

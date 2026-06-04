@@ -102,7 +102,7 @@ def test_creates_key_file_with_mode_0400_and_ownership_repovec(
     # ``assert <expr>, <expr>`` form) so neither pytest's rewriter nor
     # the failure message ever interpolates the captured key.
     contents = assert_key_file_contract(container_session)
-    if HEX_KEY_RE.fullmatch(contents.strip("\n")) is None:
+    if HEX_KEY_RE.fullmatch(contents) is None:
         msg = (
             f"key file is not a valid {KEY_HEX_LENGTH}-char hex string "
             "(contents redacted)"
@@ -205,7 +205,7 @@ def test_regenerates_key_file_when_absent_and_refreshes_secret(
     new_digest = _digest(new_contents)
     if new_digest == _digest(original_contents):
         raise AssertionError("helper did not regenerate the key")
-    if HEX_KEY_RE.fullmatch(new_contents.strip("\n")) is None:
+    if HEX_KEY_RE.fullmatch(new_contents) is None:
         msg = (
             f"regenerated key is not a valid {KEY_HEX_LENGTH}-char hex "
             "string (contents redacted)"

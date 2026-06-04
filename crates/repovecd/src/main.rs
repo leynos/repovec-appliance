@@ -120,9 +120,29 @@ mod tests {
     }
 
     #[test]
-    fn startup_entrypoint_runs_real_checked_in_validation() -> Result<(), String> {
-        repovec_test_helpers::assert_startup_entrypoint_runs_real_checked_in_validation(
-            super::startup,
+    fn validate_startup_contracts_runs_real_systemd_validation_and_qdrant() -> Result<(), String> {
+        let (result, logs) = repovec_test_helpers::capture_logs(|| {
+            validate_startup_contracts_with(
+                repovec_core::appliance::systemd_units::validate_and_trace_checked_in_units,
+                || async { Ok(()) },
+            )
+        })?;
+
+        repovec_test_helpers::ensure(
+            result.is_ok(),
+            "checked-in units and injected Qdrant liveness should pass startup validation",
+        )?;
+        repovec_test_helpers::ensure_log_line_contains(
+            &logs,
+            "TRACE",
+            "systemd unit contract validated",
+            "startup contract validation should call the real systemd validator",
+        )?;
+        repovec_test_helpers::ensure_log_line_contains(
+            &logs,
+            "DEBUG",
+            "Qdrant liveness validated",
+            "startup contract validation should call the injected Qdrant check",
         )
     }
 

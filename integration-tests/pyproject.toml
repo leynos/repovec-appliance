@@ -46,6 +46,7 @@ markers = [
     "cmd_mox: command-contract tests using cmd-mox shims",
 ]
 filterwarnings = [
-    "error",
     "ignore::DeprecationWarning:testcontainers.*",
+    # All other warnings are escalated to errors.
+    "error",
 ]

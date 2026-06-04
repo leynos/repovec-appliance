@@ -147,7 +147,6 @@ EOF'
 
 Requests to Qdrant without the `api-key` header are rejected.
 
-
 ### Qdrant liveness at daemon startup
 
 `repovecd` and `repovec-mcpd` validate Qdrant before they continue startup.

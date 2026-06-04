@@ -55,8 +55,8 @@ mod startup;
 mod tests;
 
 pub use error::SystemdUnitError;
-pub use startup::{run_startup_validation, validate_and_trace_checked_in_units};
 use parsed::ParsedUnit;
+pub use startup::{run_startup_validation, validate_and_trace_checked_in_units};
 
 const CHECKED_IN_REPOVEC_TARGET: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovec.target"));
@@ -133,9 +133,20 @@ pub const fn checked_in_repovecd_service() -> &'static str { CHECKED_IN_REPOVECD
 #[must_use]
 pub const fn checked_in_repovec_mcpd_service() -> &'static str { CHECKED_IN_REPOVEC_MCPD_SERVICE }
 
+/// Returns the repository's checked-in `repovec-grepai@.service` template.
+///
+/// # Examples
+///
+/// ```
+/// use repovec_core::appliance::systemd_units::checked_in_repovec_grepai_template;
+///
+/// assert!(checked_in_repovec_grepai_template().contains("ExecStart=/usr/bin/grepai watch"));
+/// ```
+#[must_use]
 pub const fn checked_in_repovec_grepai_template() -> &'static str {
     CHECKED_IN_REPOVEC_GREPAI_TEMPLATE
 }
+
 /// Validates the repository's checked-in repovec systemd unit definitions.
 ///
 /// # Errors
@@ -204,6 +215,7 @@ pub fn validate_checked_in_systemd_units() -> Result<(), SystemdUnitError> {
 ///
 /// validate_systemd_units(target, repovecd, mcpd).expect("inline units satisfy the contract");
 /// ```
+#[tracing::instrument(skip_all)]
 pub fn validate_systemd_units(
     repovec_target: &str,
     repovecd_service: &str,
@@ -218,6 +230,60 @@ pub fn validate_systemd_units(
     validate_mcpd(&mcpd)
 }
 
+/// Validates arbitrary repovec systemd units, including the grepai template.
+///
+/// # Errors
+///
+/// Returns [`SystemdUnitError`] describing the first contract violation.
+///
+/// # Examples
+///
+/// ```
+/// use repovec_core::appliance::systemd_units::{
+///     checked_in_repovec_grepai_template, validate_systemd_units_with_grepai_template,
+/// };
+///
+/// let target = "\
+/// [Unit]
+/// Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service
+///
+/// [Install]
+/// WantedBy=multi-user.target
+/// ";
+/// let repovecd = "\
+/// [Unit]
+/// Requires=qdrant.service
+/// After=qdrant.service
+///
+/// [Service]
+/// User=repovec
+/// Group=repovec
+/// WorkingDirectory=/var/lib/repovec
+/// Environment=HOME=/var/lib/repovec
+/// ExecStart=/usr/bin/repovecd
+/// ";
+/// let mcpd = "\
+/// [Unit]
+/// Requires=qdrant.service repovecd.service
+/// After=qdrant.service repovecd.service
+///
+/// [Service]
+/// User=repovec
+/// Group=repovec
+/// WorkingDirectory=/var/lib/repovec
+/// Environment=HOME=/var/lib/repovec
+/// ExecStart=/usr/bin/repovec-mcpd
+/// ";
+///
+/// validate_systemd_units_with_grepai_template(
+///     target,
+///     repovecd,
+///     mcpd,
+///     checked_in_repovec_grepai_template(),
+/// )
+/// .expect("inline units and the checked-in template satisfy the contract");
+/// ```
+#[tracing::instrument(skip_all)]
 pub fn validate_systemd_units_with_grepai_template(
     repovec_target: &str,
     repovecd_service: &str,

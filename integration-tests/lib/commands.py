@@ -17,6 +17,7 @@ CLI would only add latency and obscure the transport.
 
 from __future__ import annotations
 
+import functools
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -50,6 +51,7 @@ def _build_catalogue() -> tuple[Program, ...]:
     )
 
 
+@functools.lru_cache(maxsize=None)
 def host_catalogue() -> ProgramCatalogue:
     """Build the host-side cuprum program catalogue.
 
@@ -61,6 +63,12 @@ def host_catalogue() -> ProgramCatalogue:
         ``cuprum.UnknownProgramError`` when invoked through
         :func:`run_host`; that exception is the safety rail that
         keeps ad hoc shell-outs from sneaking into test code.
+
+    Notes
+    -----
+    The result is cached for the lifetime of the process so the
+    ``ProjectSettings`` and ``ProgramCatalogue`` are constructed once
+    rather than on every :func:`run_host` call.
     """
 
     from cuprum import ProgramCatalogue, ProjectSettings

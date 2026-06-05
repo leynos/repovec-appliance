@@ -357,6 +357,48 @@ Use the smoke commands in this ExecPlan on a disposable appliance-style host to
 verify the live Qdrant behaviour: unauthenticated `curl` should return `401` or
 `403`, and authenticated `curl` with the stored key should return `200`.
 
+### Integration-test harness (`#30`)
+
+A Python-based opt-in integration-test harness, addressing `#30`, was added
+under `integration-tests/`. The harness is deliberately kept out of `make test`
+and default CI because its lifecycle suite needs privileges those environments
+do not grant; it is invoked through the new `make integration-test` and
+`make integration-command-test` targets and is documented in
+`docs/developers-guide.md` §6.
+
+The harness ships two suites with different runtime requirements:
+
+- A `cmd-mox` command-contract suite
+  (`integration-tests/provisioning/test_qdrant_api_key_cmd_mox.py`,
+  marker `cmd_mox`) runs the real helper script through a `PATH`
+  populated with `cmd-mox` shims and asserts that the expected
+  external commands (`useradd`, `chown`, `chmod`, `mv`,
+  `podman secret rm`/`create`, …) are dispatched with the expected
+  arguments. No container runtime is required.
+- A `testcontainers`-driven lifecycle suite
+  (`integration-tests/provisioning/test_qdrant_api_key.py`,
+  marker `integration`) builds a Fedora image carrying the
+  packaging assets, runs it privileged so rootful nested Podman is
+  available, and exercises the helper end-to-end. It verifies the
+  six lifecycle scenarios: system-user creation, key-file mode and
+  ownership, rootful Podman secret creation, idempotence on rerun,
+  regeneration on key-file absence with secret refresh, and
+  `/etc/repovec` directory mode and ownership.
+
+The lifecycle suite is gated by phony prereq targets
+(`_check-python`, `_check-integration-prereqs`,
+`_check-command-test-prereqs`) that exit non-zero with an
+actionable message when prereqs are missing, so a developer
+running on an under-provisioned host sees the skip reason rather
+than a confusing `pytest` failure.
+
+Validation evidence (run on a developer host with rootless Podman):
+
+- `make integration-command-test` passed: 5 cmd-mox tests in ~6s.
+- `make integration-test` passed: 6 lifecycle tests in ~30s.
+- The harness's own `make check-fmt`, `make lint`, and `make test`
+  gates remained green throughout.
+
 ## Context and orientation
 
 The repository is a Rust workspace for a VM appliance. `repovec-core` contains

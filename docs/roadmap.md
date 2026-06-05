@@ -73,7 +73,12 @@ with API-key authentication, and survives host reboots.
     sysusers declaration, authenticated Quadlet wiring and Rust validation for
     the static API-key contract. Concurrent-invocation hardening (flock-based
     serialization, fail-closed secret-removal, and lock-lifecycle tests) was
-    added in `#29`.
+    added in `#29`. End-to-end behaviour of the helper — system user creation,
+    key-file mode and ownership, and the rootful Podman secret lifecycle —
+    is exercised by the opt-in pytest harness under `integration-tests/`,
+    addressing `#30`. The harness pairs a fast `cmd-mox` command-contract
+    suite with a `testcontainers`-driven privileged Fedora container that
+    hosts rootful nested Podman.
 - [ ] 1.2.3. Validate Qdrant liveness from Rust
   - Implement a health-check function in `repovec-core` that connects to
     Qdrant gRPC at `localhost:6334` with the stored API key and confirms the

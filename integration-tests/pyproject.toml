@@ -1,0 +1,52 @@
+[project]
+name = "repovec-appliance-integration-tests"
+version = "0.0.0"
+description = "Integration tests for the repovec-appliance packaging helpers."
+# Pinned to 3.13 to match the documented developer workflow
+# (``uv venv --python 3.13``) and the version called out by
+# ``docs/developers-guide.md`` §6.2 and ``integration-tests/README.md``.
+# Nothing here uses a 3.13-only feature, so technically the harness
+# would resolve on cuprum's >=3.12 floor — but tightening the floor
+# eliminates the drift between pyproject and the docs and pins the
+# CI/dev environment to a single supported interpreter.
+requires-python = ">=3.13"
+dependencies = [
+    "pytest>=8.3,<10",
+    "testcontainers>=4.9,<5",
+    "cuprum>=0.1,<1",
+    "cmd-mox>=0.2,<1",
+]
+
+# The harness is intentionally not an installable wheel; it exists only as
+# a vehicle for pytest discovery and ``uv sync``. Telling setuptools there
+# are no packages keeps ``uv pip install -e .`` (and the wider ``uv sync``
+# workflow) usable without a custom build backend.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+# ``lib/tests`` carries the pure-Python unit tests for the harness's
+# value objects and parsing helpers; they run by default because they
+# need neither a marker nor a container runtime. ``provisioning`` owns
+# the marker-gated behavioural suites.
+testpaths = ["lib/tests", "provisioning"]
+# The lifecycle suite shares a session-scoped privileged container per
+# worker. pytest-xdist would multiply the container build and create
+# unnecessary contention on the host runtime; disable it explicitly so
+# ``-n auto`` cannot silently inflate resource use. ``-p no:xdist`` is a
+# no-op when xdist is not installed.
+addopts = "-p no:xdist"
+markers = [
+    "integration: requires a Docker-compatible container runtime and privileged nested Podman",
+    "cmd_mox: command-contract tests using cmd-mox shims",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:testcontainers.*",
+    # All other warnings are escalated to errors.
+    "error",
+]

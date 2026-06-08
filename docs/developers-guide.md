@@ -496,7 +496,6 @@ lifecycle event (waiting to acquire, acquired, and released) is instrumented
 through this function, and its output is suppressed when `REPOVEC_DEBUG` is
 unset or set to any value other than `1`.
 
-
 ### 5.5 Daemon startup test helpers
 
 The `repovec-test-helpers` crate owns the shared daemon startup test harness

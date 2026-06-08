@@ -11,6 +11,7 @@ camino.workspace = true
 cap-std.workspace = true
 oauth2 = { workspace = true, features = ["reqwest-blocking", "rustls-tls"] }
 repovec-core = { path = "../repovec-core" }
+reqwest = { version = "0.12", features = ["blocking", "json"] }
 serde.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true

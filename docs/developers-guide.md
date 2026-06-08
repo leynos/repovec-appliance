@@ -545,7 +545,6 @@ lifecycle event (waiting to acquire, acquired, and released) is instrumented
 through this function, and its output is suppressed when `REPOVEC_DEBUG` is
 unset or set to any value other than `1`.
 
-
 ### 5.5 Daemon startup test helpers
 
 The `repovec-test-helpers` crate owns the shared daemon startup test harness
@@ -568,7 +567,6 @@ because `insta` is only needed by daemon test targets. Daemon crates enable
 that feature in `[dev-dependencies]` and commit the generated snapshots under
 `crates/repovec-test-helpers/src/snapshots/`.
 
-
 ### 5.6 Extension pattern
 
 To add validation for a new appliance asset:
@@ -583,7 +581,6 @@ To add validation for a new appliance asset:
    `std::error::Error` and `fmt::Display`.
 5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
    scenarios under `crates/repovec-core/tests/features/`.
-
 
 ### 5.7 Test patterns
 

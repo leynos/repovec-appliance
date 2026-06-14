@@ -19,8 +19,7 @@ malformed.
 
 ```mermaid
 flowchart TD
-    Start[Start
-Receive_changed_file_list] --> Validate[Validate_input_list]
+    Start["Start<br/>Receive_changed_file_list"] --> Validate[Validate_input_list]
 
     Validate --> IsEmpty{List_empty_or_malformed?}
     IsEmpty -->|Yes| Fallback[Apply_safe_default_policy]
@@ -38,15 +37,13 @@ Receive_changed_file_list] --> Validate[Validate_input_list]
     CheckNixie -->|Yes| RequireNixie[Set nixie_required = true]
     CheckNixie -->|No| SkipNixie[Set nixie_required = false]
 
-    Fallback --> Output[Emit_policy_output
-with_safe_defaults]
+    Fallback --> Output["Emit_policy_output<br/>with_safe_defaults"]
     SkipDocs --> SkipNixie
 
     RequireNixie --> Output
     SkipNixie --> Output
 
-    Output --> End[End
-Workflow_consumes_flags]
+    Output --> End["End<br/>Workflow_consumes_flags"]
 ```
 
 In practice, the current policy behaves as follows:

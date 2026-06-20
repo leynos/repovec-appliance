@@ -97,6 +97,12 @@ pub const fn checked_in_qdrant_quadlet() -> &'static str { CHECKED_IN_QDRANT_QUA
 /// Returns [`QdrantQuadletError`] when the checked-in asset no longer satisfies
 /// the appliance contract.
 ///
+/// # Parameters
+///
+/// - `observer`: Receives validation lifecycle and contract-violation events.
+///   Pass [`TracingQdrantQuadletObserver`] to emit structured `tracing` events,
+///   or `&()` when validation should use the no-op observer sink.
+///
 /// # Examples
 ///
 /// ```
@@ -119,6 +125,13 @@ pub fn validate_checked_in_qdrant_quadlet(
 /// # Errors
 ///
 /// Returns [`QdrantQuadletError`] describing the first contract violation.
+///
+/// # Parameters
+///
+/// - `contents`: The Quadlet source to parse and validate.
+/// - `observer`: Receives validation lifecycle and contract-violation events.
+///   Pass [`TracingQdrantQuadletObserver`] to emit structured `tracing` events,
+///   or `&()` when validation should use the no-op observer sink.
 ///
 /// # Examples
 ///

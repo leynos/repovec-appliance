@@ -273,7 +273,7 @@ Keep the Qdrant contract split along the same boundary as the module Rustdoc:
 
 - domain invariants belong in `qdrant_quadlet/mod.rs`;
 - API-key contract checks belong in `qdrant_quadlet/api_key.rs`;
-- appliance host bindings belong in `qdrant_quadlet/platform_bindings.rs`.
+- appliance host bindings belong in `qdrant_quadlet/platform_bindings/`.
 
 The domain invariants describe what Qdrant itself requires: the supported image
 reference, the in-container storage target, and the REST and gRPC container
@@ -324,6 +324,8 @@ Qdrant Quadlet validation reports telemetry through `QdrantQuadletObserver`.
 The validation pipeline receives the observer explicitly, making logging
 side effects visible at call sites. `TracingQdrantQuadletObserver` is the
 production adapter that maps observer callbacks to `tracing` events.
+The unit type `()` implements `QdrantQuadletObserver` as a no-op sink for test
+and silent paths that should validate without telemetry overhead.
 
 Qdrant Quadlet observer adapters follow these instrumentation conventions:
 
@@ -496,6 +498,86 @@ To add validation for a new appliance asset:
 5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
    scenarios under `crates/repovec-core/tests/features/`.
 
+
+### 5.5 Test patterns
+
+The appliance validation modules use `rstest` for unit tests and `rstest-bdd`
+with `rstest-bdd-macros` for behavioural tests. Unit tests should exercise each
+typed error variant directly. Behavioural tests should describe the appliance
+contract in feature files and keep the executable scenarios thin.
+
+**Display and message snapshots (`insta`).** Operator-visible `fmt::Display`
+strings for typed appliance errors (for example every [`QdrantQuadletError`][])
+should be derived from **`validate_*` failures**, not from errors constructed
+solely in tests. Mutate an embed or copy of the checked-in asset (or compose a
+deliberate invalid parse input), invoke the real validator, assert the canonical
+`PartialEq/Eq` typed error variant, then compare `error.to_string()` against a
+committed YAML snapshot from the [`insta`][] crate (workspace-pinned under
+`[workspace.dependencies]` and pulled in via `[dev-dependencies]`). Direct
+literal assertions for `error.to_string()` are acceptable when committing one
+snapshot file per diagnostic would exceed the active ExecPlan's file-count
+tolerance. Prefer one `#[rstest]` harness with cases that enumerate
+scenario-specific mutations alongside their stable snapshot labels, colocated
+under the module `snapshots/` directory (see
+`crates/repovec-core/src/appliance/qdrant_quadlet/`). Duplicate labels across
+distinct cases remain valid whenever the reachable diagnostic matches the same
+operator-facing wording (for instance two malformed `PublishPort=` inputs that
+both surface `MissingGrpcPort`). Update snapshots deliberately via
+`cargo insta` (or `INSTA_UPDATE=…`) when message wording changes.
+
+[`QdrantQuadletError`]: ../crates/repovec-core/src/appliance/qdrant_quadlet/error.rs
+[`insta`]: https://docs.rs/insta
+
+Property-based tests use `proptest` (workspace dev-dependency). `proptest` is
+appropriate for invariants that must hold across arbitrary inputs, as a
+complement to example-based `rstest` unit tests.  When writing property tests,
+`prop_assume!` filters must not be used to exclude cases that the domain code
+under test must handle — filters are reserved for excluding inputs that are
+structurally invalid for the strategy, not for narrowing the test's coverage of
+the invariant.  See
+`crates/repovec-core/src/appliance/qdrant_quadlet/tests_proptest.rs` for a
+worked example.
+
+See [rstest BDD users guide](rstest-bdd-users-guide.md) and
+[Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
+the project-local testing guidance.
+
+### 5.6 Daemon startup test helpers
+
+The `repovec-test-helpers` crate owns the shared daemon startup test harness
+used by `repovec-core`, `repovecd`, and `repovec-mcpd`. It exposes a generic
+`capture_logs(action)` helper that captures formatted `tracing` output in
+memory for the duration of an injected closure, plus the `ensure` and
+`ensure_log_line_contains` assertion primitives. On top of these it provides
+the binary-facing `assert_startup_*` wrappers that the daemon crates call.
+
+Use the `assert_startup_*` wrappers for binary-level daemon startup tests
+whenever the behaviour is the same across daemons and only the unit name
+differs. Keep unit tests for `run_startup_validation()` itself in
+`repovec-core`; those tests reuse `capture_logs` (via a dev-dependency on
+`repovec-test-helpers`) and should assert the core adapter emits the expected
+`TRACE`, `DEBUG`, and `ERROR` events so the logging contract cannot disappear
+while return-code tests still pass.
+
+Snapshot helpers in `repovec-test-helpers` are behind its `snapshots` feature
+because `insta` is only needed by daemon test targets. Daemon crates enable
+that feature in `[dev-dependencies]` and commit the generated snapshots under
+`crates/repovec-test-helpers/src/snapshots/`.
+
+### 5.4 Extension pattern
+
+To add validation for a new appliance asset:
+
+1. Create a submodule directory under `appliance/` with `mod.rs`, `error.rs`,
+   `parser.rs` if a custom parser is needed, and `tests.rs` when tests would
+   otherwise make the module too large.
+2. Re-export the submodule from `appliance/mod.rs`.
+3. Embed the checked-in asset with `include_str!` and expose a
+   `checked_in_*()` function.
+4. Write `validate_*()` returning a typed error enum that implements
+   `std::error::Error` and `fmt::Display`.
+5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
+   scenarios under `crates/repovec-core/tests/features/`.
 
 ### 5.5 Test patterns
 

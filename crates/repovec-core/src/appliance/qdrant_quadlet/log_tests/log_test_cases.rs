@@ -14,6 +14,7 @@ use super::{ExpectedEvent, LogScenario, canonical};
 
 pub(super) fn invalid_line() -> LogScenario {
     LogScenario {
+        snapshot_name: "invalid_line",
         contents: String::from("[Container]\nBearer very-secret-token\n"),
         expected: event(
             Level::ERROR,
@@ -25,6 +26,7 @@ pub(super) fn invalid_line() -> LogScenario {
 
 pub(super) fn property_before_section() -> LogScenario {
     LogScenario {
+        snapshot_name: "property_before_section",
         contents: String::from("Environment=QDRANT__SERVICE__API_KEY=secret\n[Container]\n"),
         expected: event(
             Level::ERROR,
@@ -36,6 +38,7 @@ pub(super) fn property_before_section() -> LogScenario {
 
 pub(super) fn bearer_assignment_before_section() -> LogScenario {
     LogScenario {
+        snapshot_name: "bearer_assignment_before_section",
         contents: String::from("auth=Bearer very-secret-token\n[Container]\n"),
         expected: event(
             Level::ERROR,
@@ -47,6 +50,7 @@ pub(super) fn bearer_assignment_before_section() -> LogScenario {
 
 pub(super) fn missing_image() -> LogScenario {
     LogScenario {
+        snapshot_name: "missing_image",
         contents: canonical().replace("Image=docker.io/qdrant/qdrant:v1\n", ""),
         expected: event(
             Level::WARN,
@@ -58,6 +62,7 @@ pub(super) fn missing_image() -> LogScenario {
 
 pub(super) fn image_not_pinned() -> LogScenario {
     LogScenario {
+        snapshot_name: "image_not_pinned",
         contents: canonical().replace("docker.io/qdrant/qdrant:v1", "qdrant/qdrant:latest"),
         expected: event(
             Level::WARN,
@@ -69,6 +74,7 @@ pub(super) fn image_not_pinned() -> LogScenario {
 
 pub(super) fn unexpected_image() -> LogScenario {
     LogScenario {
+        snapshot_name: "unexpected_image",
         contents: canonical().replace("docker.io/qdrant/qdrant:v1", "docker.io/other/image:v2"),
         expected: event(
             Level::WARN,
@@ -83,6 +89,7 @@ pub(super) fn unexpected_image() -> LogScenario {
 
 pub(super) fn duplicate_image() -> LogScenario {
     LogScenario {
+        snapshot_name: "duplicate_image",
         contents: canonical().replace(
             "Image=docker.io/qdrant/qdrant:v1\n",
             "Image=docker.io/qdrant/qdrant:v1\nImage=docker.io/qdrant/qdrant:v2\n",
@@ -96,15 +103,20 @@ pub(super) fn duplicate_image() -> LogScenario {
 }
 
 pub(super) fn missing_rest_publish() -> LogScenario {
-    missing_publish("127.0.0.1:6333:6333", "6333")
+    missing_publish("missing_rest_publish", "127.0.0.1:6333:6333", "6333")
 }
 
 pub(super) fn missing_grpc_publish() -> LogScenario {
-    missing_publish("127.0.0.1:6334:6334", "6334")
+    missing_publish("missing_grpc_publish", "127.0.0.1:6334:6334", "6334")
 }
 
-fn missing_publish(port_mapping: &'static str, port: &'static str) -> LogScenario {
+fn missing_publish(
+    snapshot_name: &'static str,
+    port_mapping: &'static str,
+    port: &'static str,
+) -> LogScenario {
     LogScenario {
+        snapshot_name,
         contents: canonical().replace(&format!("PublishPort={port_mapping}\n"), ""),
         expected: event(
             Level::WARN,
@@ -115,19 +127,21 @@ fn missing_publish(port_mapping: &'static str, port: &'static str) -> LogScenari
 }
 
 pub(super) fn rest_port_not_loopback() -> LogScenario {
-    port_not_loopback("127.0.0.1:6333:6333", "0.0.0.0:6333:6333", "6333")
+    port_not_loopback("rest_port_not_loopback", "127.0.0.1:6333:6333", "0.0.0.0:6333:6333", "6333")
 }
 
 pub(super) fn grpc_port_not_loopback() -> LogScenario {
-    port_not_loopback("127.0.0.1:6334:6334", "0.0.0.0:6334:6334", "6334")
+    port_not_loopback("grpc_port_not_loopback", "127.0.0.1:6334:6334", "0.0.0.0:6334:6334", "6334")
 }
 
 fn port_not_loopback(
+    snapshot_name: &'static str,
     from: &'static str,
     publish_port: &'static str,
     port: &'static str,
 ) -> LogScenario {
     LogScenario {
+        snapshot_name,
         contents: canonical().replace(from, publish_port),
         expected: event(
             Level::WARN,
@@ -139,6 +153,7 @@ fn port_not_loopback(
 
 pub(super) fn missing_storage_mount() -> LogScenario {
     LogScenario {
+        snapshot_name: "missing_storage_mount",
         contents: canonical()
             .replace("Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n", ""),
         expected: event(
@@ -154,6 +169,7 @@ pub(super) fn missing_storage_mount() -> LogScenario {
 
 pub(super) fn malformed_storage_mount() -> LogScenario {
     LogScenario {
+        snapshot_name: "malformed_storage_mount",
         contents: canonical().replace(
             "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z",
             "Volume=/var/lib/repovec/qdrant-storage",
@@ -172,6 +188,7 @@ pub(super) fn malformed_storage_mount() -> LogScenario {
 
 pub(super) fn incorrect_storage_source() -> LogScenario {
     LogScenario {
+        snapshot_name: "incorrect_storage_source",
         contents: canonical()
             .replace("/var/lib/repovec/qdrant-storage", "/var/lib/other/qdrant-storage"),
         expected: event(
@@ -187,6 +204,7 @@ pub(super) fn incorrect_storage_source() -> LogScenario {
 
 pub(super) fn incorrect_storage_target() -> LogScenario {
     LogScenario {
+        snapshot_name: "incorrect_storage_target",
         contents: canonical().replace("/qdrant/storage:Z", "/srv/qdrant:Z"),
         expected: event(
             Level::WARN,
@@ -198,6 +216,7 @@ pub(super) fn incorrect_storage_target() -> LogScenario {
 
 pub(super) fn missing_selinux_relabel() -> LogScenario {
     LogScenario {
+        snapshot_name: "missing_selinux_relabel",
         contents: canonical().replace(":/qdrant/storage:Z", ":/qdrant/storage"),
         expected: event(
             Level::WARN,
@@ -209,6 +228,7 @@ pub(super) fn missing_selinux_relabel() -> LogScenario {
 
 pub(super) fn missing_auto_update() -> LogScenario {
     LogScenario {
+        snapshot_name: "missing_auto_update",
         contents: canonical().replace("AutoUpdate=registry\n", ""),
         expected: event(
             Level::WARN,
@@ -220,6 +240,7 @@ pub(super) fn missing_auto_update() -> LogScenario {
 
 pub(super) fn incorrect_auto_update() -> LogScenario {
     LogScenario {
+        snapshot_name: "incorrect_auto_update",
         contents: canonical().replace("AutoUpdate=registry\n", "AutoUpdate=local\n"),
         expected: event(
             Level::WARN,
@@ -230,15 +251,28 @@ pub(super) fn incorrect_auto_update() -> LogScenario {
 }
 
 pub(super) fn missing_requires_dependency() -> LogScenario {
-    missing_dependency("Requires=repovec-qdrant-api-key.service\n", "Requires")
+    missing_dependency(
+        "missing_requires_dependency",
+        "Requires=repovec-qdrant-api-key.service\n",
+        "Requires",
+    )
 }
 
 pub(super) fn missing_after_dependency() -> LogScenario {
-    missing_dependency("After=repovec-qdrant-api-key.service\n", "After")
+    missing_dependency(
+        "missing_after_dependency",
+        "After=repovec-qdrant-api-key.service\n",
+        "After",
+    )
 }
 
-fn missing_dependency(line: &str, directive: &'static str) -> LogScenario {
+fn missing_dependency(
+    snapshot_name: &'static str,
+    line: &str,
+    directive: &'static str,
+) -> LogScenario {
     LogScenario {
+        snapshot_name,
         contents: canonical().replace(line, ""),
         expected: event(
             Level::WARN,
@@ -250,6 +284,7 @@ fn missing_dependency(line: &str, directive: &'static str) -> LogScenario {
 
 pub(super) fn incorrect_requires_dependency() -> LogScenario {
     incorrect_dependency(
+        "incorrect_requires_dependency",
         "Requires=repovec-qdrant-api-key.service",
         "Requires=network-online.target",
         "Requires",
@@ -258,14 +293,21 @@ pub(super) fn incorrect_requires_dependency() -> LogScenario {
 
 pub(super) fn incorrect_after_dependency() -> LogScenario {
     incorrect_dependency(
+        "incorrect_after_dependency",
         "After=repovec-qdrant-api-key.service",
         "After=network-online.target",
         "After",
     )
 }
 
-fn incorrect_dependency(from: &str, to: &str, directive: &'static str) -> LogScenario {
+fn incorrect_dependency(
+    snapshot_name: &'static str,
+    from: &str,
+    to: &str,
+    directive: &'static str,
+) -> LogScenario {
     LogScenario {
+        snapshot_name,
         contents: canonical().replace(from, to),
         expected: event(
             Level::WARN,
@@ -281,6 +323,7 @@ fn incorrect_dependency(from: &str, to: &str, directive: &'static str) -> LogSce
 
 pub(super) fn missing_api_key_secret() -> LogScenario {
     LogScenario {
+        snapshot_name: "missing_api_key_secret",
         contents: canonical().replace(
             "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
             "",
@@ -298,6 +341,7 @@ pub(super) fn missing_api_key_secret() -> LogScenario {
 
 pub(super) fn incorrect_api_key_secret() -> LogScenario {
     LogScenario {
+        snapshot_name: "incorrect_api_key_secret",
         contents: canonical().replace("repovec-qdrant-api-key,type=env", "other-secret,type=env"),
         expected: event(
             Level::WARN,
@@ -313,6 +357,7 @@ pub(super) fn incorrect_api_key_secret() -> LogScenario {
 
 pub(super) fn inline_api_key_environment() -> LogScenario {
     LogScenario {
+        snapshot_name: "inline_api_key_environment",
         contents: canonical().replace(
             "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
             "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\nEnvironment=QDRANT__SERVICE__API_KEY=secret\n",

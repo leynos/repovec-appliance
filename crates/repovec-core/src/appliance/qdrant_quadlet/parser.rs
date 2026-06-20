@@ -84,16 +84,49 @@ fn parse_section_header(line: &str) -> Option<&str> { line.strip_prefix('[')?.st
 
 fn redact_line(line: &str) -> String {
     let mut redacted = Vec::new();
-    let mut tokens = line.split_ascii_whitespace();
+    let mut tokens = line_tokens(line).into_iter();
     while let Some(token) = tokens.next() {
         if token.eq_ignore_ascii_case("bearer") || token.to_ascii_lowercase().ends_with("=bearer") {
             redacted.push(String::from("Bearer <redacted>"));
             let _ignored_token = tokens.next();
         } else {
-            redacted.push(redact_token(token));
+            redacted.push(redact_token(token.as_str()));
         }
     }
     redacted.join(" ")
+}
+
+fn line_tokens(line: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let mut active_quote = None;
+
+    for character in line.chars() {
+        match (character, active_quote) {
+            (quote @ ('\'' | '"'), None) => {
+                active_quote = Some(quote);
+                token.push(character);
+            }
+            (quote, Some(active)) if quote == active => {
+                active_quote = None;
+                token.push(character);
+            }
+            (whitespace, None) if whitespace.is_ascii_whitespace() => {
+                if !token.is_empty() {
+                    tokens.push(std::mem::take(&mut token));
+                }
+            }
+            _ => {
+                token.push(character);
+            }
+        }
+    }
+
+    if !token.is_empty() {
+        tokens.push(token);
+    }
+
+    tokens
 }
 
 fn redact_token(token: &str) -> String {
@@ -153,4 +186,32 @@ fn looks_like_secret_value(value: &str) -> bool {
         .strip_prefix("Bearer ")
         .or_else(|| value.strip_prefix("bearer "))
         .is_some_and(|token| !token.trim().is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    //! Redaction regression tests for malformed-line telemetry.
+
+    use super::redact_line;
+
+    #[test]
+    fn redact_line_redacts_quoted_sensitive_assignment_with_spaces() {
+        let line = r#"Environment=PASSWORD="correct horse battery""#;
+
+        assert_eq!(redact_line(line), "Environment=<redacted>");
+    }
+
+    #[test]
+    fn redact_line_redacts_quoted_nested_sensitive_assignment_with_spaces() {
+        let line = r#"Environment="QDRANT__SERVICE__API_KEY=correct horse battery""#;
+
+        assert_eq!(redact_line(line), "Environment=<redacted>");
+    }
+
+    #[test]
+    fn redact_line_redacts_quoted_bearer_token_with_spaces() {
+        let line = r#"Authorization=Bearer "correct horse battery""#;
+
+        assert_eq!(redact_line(line), "Bearer <redacted>");
+    }
 }

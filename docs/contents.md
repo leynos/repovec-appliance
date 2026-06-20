@@ -9,8 +9,6 @@
   user-visible continuous integration (CI) and documentation-gate behaviour.
 - [Developers guide](developers-guide.md): maintainer workflow, quality gates,
   and repository automation policy.
-- [Migration notes for 0.2.0](migrations/0-2-0.md): compatibility guidance for
-  callers updating to the Qdrant Quadlet observer trait-object API.
 
 ## Design and architecture
 
@@ -31,6 +29,8 @@
 - [Execution plan: Repovec target and static unit files (1.3.1)][execplan-1-3-1]:
   operator and maintainer plan for the appliance systemd
   target and static service units.
+- [Migration notes for 0.2.0](migrations/0-2-0.md): compatibility guidance for
+  callers updating to the Qdrant Quadlet observer trait-object API.
 
 ## Reference and style
 

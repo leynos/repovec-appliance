@@ -1,0 +1,27 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/log_tests/mod.rs
+expression: events
+---
+[
+    CapturedEvent {
+        level: Level(
+            Info,
+        ),
+        target: "repovec_core::qdrant_quadlet",
+        fields: {
+            "message": "validating qdrant quadlet contract",
+        },
+    },
+    CapturedEvent {
+        level: Level(
+            Warn,
+        ),
+        target: "repovec_core::qdrant_quadlet",
+        fields: {
+            "environment": "QDRANT__SERVICE__API_KEY=<redacted>",
+            "expected_secret": "repovec-qdrant-api-key",
+            "expected_target": "QDRANT__SERVICE__API_KEY",
+            "message": "qdrant quadlet validation failed: inline api key environment is disallowed",
+        },
+    },
+]

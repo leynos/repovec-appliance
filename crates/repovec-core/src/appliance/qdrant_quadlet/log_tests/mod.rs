@@ -110,6 +110,7 @@ struct ExpectedEvent {
 }
 
 struct LogScenario {
+    snapshot_name: &'static str,
     contents: String,
     expected: ExpectedEvent,
 }
@@ -181,7 +182,7 @@ fn parser_redacts_nested_environment_assignment_event_shape() {
     });
 
     assert_event(&events, scenario.expected);
-    assert_debug_snapshot!(events);
+    assert_debug_snapshot!("parser_redacts_nested_environment_assignment_event_shape", events);
 }
 
 #[rstest]
@@ -217,6 +218,7 @@ fn qdrant_quadlet_validation_emits_contract_violation_events(#[case] scenario: L
     });
 
     assert_event(&events, scenario.expected);
+    assert_debug_snapshot!(scenario.snapshot_name, events);
 }
 
 fn assert_event(events: &[CapturedEvent], expected: ExpectedEvent) {

@@ -363,6 +363,8 @@ checked-in repovec target, daemon service files, and grepai indexer template:
   `packaging/systemd/repovec-mcpd.service` source.
 - `checked_in_repovec_grepai_template() -> &'static str` returns the embedded
   `packaging/systemd/repovec-grepai@.service` source.
+- `CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH` names the repository path for the
+  checked-in `packaging/systemd/repovec-grepai@.service` template.
 - `validate_checked_in_systemd_units() -> Result<(), SystemdUnitError>`
   validates the embedded unit set.
 - `validate_systemd_units(target, repovecd, mcpd) -> Result<(), SystemdUnitError>`

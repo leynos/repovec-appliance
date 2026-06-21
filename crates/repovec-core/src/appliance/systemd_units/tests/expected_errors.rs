@@ -38,7 +38,9 @@ impl ValidationScenario {
             | Self::McpdMissingGroup
             | Self::McpdWrongWorkingDirectory
             | Self::McpdMissingEnvironment => self.expected_mcpd_error(),
-            Self::MissingGrepaiTemplateInstallSection
+            Self::MissingGrepaiTemplateUnitSection
+            | Self::MissingGrepaiTemplateServiceSection
+            | Self::MissingGrepaiTemplateInstallSection
             | Self::MissingGrepaiTemplateRequiresQdrant
             | Self::MissingGrepaiTemplateRequiresRepovecd
             | Self::MissingGrepaiTemplateAfterQdrant
@@ -176,6 +178,14 @@ impl ValidationScenario {
 
     fn expected_grepai_template_error(self) -> SystemdUnitError {
         match self {
+            Self::MissingGrepaiTemplateUnitSection => SystemdUnitError::MissingSection {
+                unit: "repovec-grepai@.service",
+                section: "Unit",
+            },
+            Self::MissingGrepaiTemplateServiceSection => SystemdUnitError::MissingSection {
+                unit: "repovec-grepai@.service",
+                section: "Service",
+            },
             Self::MissingGrepaiTemplateInstallSection => SystemdUnitError::MissingSection {
                 unit: "repovec-grepai@.service",
                 section: "Install",

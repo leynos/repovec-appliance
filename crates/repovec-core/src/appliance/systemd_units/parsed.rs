@@ -1,4 +1,16 @@
 //! Parsed representation for the static systemd unit validator.
+//!
+//! This module owns the small section-aware parser used by the parent
+//! [`super`] module. [`ParsedUnit`] records a systemd unit file as ordered
+//! sections with their key/value directives so the validator can ask semantic
+//! questions such as whether a required section exists, whether a dependency
+//! appears in the expected directive, or whether a service directive has the
+//! exact shipped value.
+//!
+//! The parser intentionally covers only the syntax needed for checked-in
+//! appliance units: section headers, `key=value` directives, comments, and
+//! blank lines. It keeps live systemd interaction out of the validation path;
+//! the parent module decides which directives belong to each unit contract.
 
 use std::collections::{BTreeMap, BTreeSet};
 

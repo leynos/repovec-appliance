@@ -7,19 +7,16 @@ mod diagnostics;
 mod error_builders;
 #[path = "tests/expected_errors.rs"]
 mod expected_errors;
+#[path = "tests/grepai_template_mutations.rs"]
+mod grepai_template_mutations;
 #[path = "tests/passing.rs"]
 mod passing;
 #[path = "tests/unit_set.rs"]
 mod unit_set;
 
 use diagnostics::expected_diagnostic;
-use rstest::{fixture, rstest};
-use unit_set::{UnitFile, UnitSet};
-
-use super::{
-    checked_in_repovec_grepai_template, checked_in_repovec_mcpd_service, checked_in_repovec_target,
-    checked_in_repovecd_service,
-};
+use rstest::rstest;
+use unit_set::{UnitFile, UnitSet, checked_in_unit_set};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ValidationScenario {
@@ -52,6 +49,8 @@ pub(super) enum ValidationScenario {
     McpdMissingGroup,
     McpdWrongWorkingDirectory,
     McpdMissingEnvironment,
+    MissingGrepaiTemplateUnitSection,
+    MissingGrepaiTemplateServiceSection,
     MissingGrepaiTemplateInstallSection,
     MissingGrepaiTemplateRequiresQdrant,
     MissingGrepaiTemplateRequiresRepovecd,
@@ -104,7 +103,9 @@ impl ValidationScenario {
             | Self::McpdMissingGroup
             | Self::McpdWrongWorkingDirectory
             | Self::McpdMissingEnvironment => self.mutate_mcpd(&mut units),
-            Self::MissingGrepaiTemplateInstallSection
+            Self::MissingGrepaiTemplateUnitSection
+            | Self::MissingGrepaiTemplateServiceSection
+            | Self::MissingGrepaiTemplateInstallSection
             | Self::MissingGrepaiTemplateRequiresQdrant
             | Self::MissingGrepaiTemplateRequiresRepovecd
             | Self::MissingGrepaiTemplateAfterQdrant
@@ -239,30 +240,24 @@ impl ValidationScenario {
 
     fn mutate_grepai_template(self, units: &mut UnitSet) {
         match self {
+            Self::MissingGrepaiTemplateUnitSection => {
+                self.mutate_grepai_template_unit_section(units);
+            }
+            Self::MissingGrepaiTemplateServiceSection => {
+                units.remove_line(UnitFile::GrepaiTemplate, "[Service]\n");
+            }
             Self::MissingGrepaiTemplateInstallSection => {
                 units.remove_line(UnitFile::GrepaiTemplate, "[Install]\n");
                 units.remove_line(UnitFile::GrepaiTemplate, "WantedBy=repovec.target\n");
             }
-            Self::MissingGrepaiTemplateRequiresQdrant => {
-                units.remove_token(UnitFile::GrepaiTemplate, "Requires=", "qdrant.service");
-            }
-            Self::MissingGrepaiTemplateRequiresRepovecd => {
-                units.remove_token(UnitFile::GrepaiTemplate, "Requires=", "repovecd.service");
-            }
-            Self::MissingGrepaiTemplateAfterQdrant => {
-                units.remove_token(UnitFile::GrepaiTemplate, "After=", "qdrant.service");
-            }
-            Self::MissingGrepaiTemplateAfterRepovecd => {
-                units.remove_token(UnitFile::GrepaiTemplate, "After=", "repovecd.service");
-            }
-            Self::GrepaiTemplateUsesQdrantContainer => {
-                units.replace_token(UnitFile::GrepaiTemplate, "qdrant.service", "qdrant.container");
-            }
-            Self::MissingGrepaiTemplatePartOfTarget => {
-                units.remove_line(UnitFile::GrepaiTemplate, "PartOf=repovec.target\n");
-            }
-            Self::MissingGrepaiTemplateWantedByTarget => {
-                units.remove_line(UnitFile::GrepaiTemplate, "WantedBy=repovec.target\n");
+            Self::MissingGrepaiTemplateRequiresQdrant
+            | Self::MissingGrepaiTemplateRequiresRepovecd
+            | Self::MissingGrepaiTemplateAfterQdrant
+            | Self::MissingGrepaiTemplateAfterRepovecd
+            | Self::GrepaiTemplateUsesQdrantContainer
+            | Self::MissingGrepaiTemplatePartOfTarget
+            | Self::MissingGrepaiTemplateWantedByTarget => {
+                self.mutate_grepai_template_dependencies(units);
             }
             Self::WrongGrepaiTemplateType => {
                 units.replace_token(UnitFile::GrepaiTemplate, "Type=exec", "Type=simple");
@@ -309,16 +304,6 @@ impl ValidationScenario {
     }
 }
 
-#[fixture]
-fn checked_in_unit_set() -> UnitSet {
-    UnitSet {
-        target: checked_in_repovec_target().to_owned(),
-        repovecd: checked_in_repovecd_service().to_owned(),
-        mcpd: checked_in_repovec_mcpd_service().to_owned(),
-        grepai_template: checked_in_repovec_grepai_template().to_owned(),
-    }
-}
-
 #[rstest]
 #[case::invalid_line(ValidationScenario::InvalidLine)]
 #[case::property_before_section(ValidationScenario::PropertyBeforeSection)]
@@ -351,6 +336,10 @@ fn checked_in_unit_set() -> UnitSet {
 #[case::mcpd_missing_group(ValidationScenario::McpdMissingGroup)]
 #[case::mcpd_wrong_working_directory(ValidationScenario::McpdWrongWorkingDirectory)]
 #[case::mcpd_missing_environment(ValidationScenario::McpdMissingEnvironment)]
+#[case::missing_grepai_template_unit_section(ValidationScenario::MissingGrepaiTemplateUnitSection)]
+#[case::missing_grepai_template_service_section(
+    ValidationScenario::MissingGrepaiTemplateServiceSection
+)]
 #[case::missing_grepai_template_install_section(
     ValidationScenario::MissingGrepaiTemplateInstallSection
 )]

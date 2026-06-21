@@ -33,7 +33,9 @@ pub(super) fn expected_diagnostic(scenario: ValidationScenario) -> &'static str 
         | ValidationScenario::McpdMissingGroup
         | ValidationScenario::McpdWrongWorkingDirectory
         | ValidationScenario::McpdMissingEnvironment => expected_mcpd_diagnostic(scenario),
-        ValidationScenario::MissingGrepaiTemplateInstallSection
+        ValidationScenario::MissingGrepaiTemplateUnitSection
+        | ValidationScenario::MissingGrepaiTemplateServiceSection
+        | ValidationScenario::MissingGrepaiTemplateInstallSection
         | ValidationScenario::MissingGrepaiTemplateRequiresQdrant
         | ValidationScenario::MissingGrepaiTemplateRequiresRepovecd
         | ValidationScenario::MissingGrepaiTemplateAfterQdrant
@@ -165,6 +167,12 @@ fn expected_mcpd_diagnostic(scenario: ValidationScenario) -> &'static str {
 
 fn expected_grepai_template_diagnostic(scenario: ValidationScenario) -> &'static str {
     match scenario {
+        ValidationScenario::MissingGrepaiTemplateUnitSection => {
+            "repovec-grepai@.service is missing [Unit]"
+        }
+        ValidationScenario::MissingGrepaiTemplateServiceSection => {
+            "repovec-grepai@.service is missing [Service]"
+        }
         ValidationScenario::MissingGrepaiTemplateInstallSection => {
             "repovec-grepai@.service is missing [Install]"
         }

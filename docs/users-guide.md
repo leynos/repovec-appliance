@@ -218,7 +218,7 @@ dependent services must use `qdrant.service`.
 
 `repovec-grepai@.service` is the template used for future per-repository
 indexer instances. It runs `grepai watch` as the `repovec` user, sets
-`HOME=/var/lib/repovec`, works in `/var/lib/repovec/worktrees/<instance>`, and
+`HOME=/var/lib/repovec`, works in `/var/lib/repovec/worktrees/%I`, and
 writes stdout and stderr to journald. Later reconciliation work creates and
 manages concrete instances; operators should not expect installing the template
 alone to start indexers.
@@ -235,7 +235,9 @@ sudo systemctl start repovec.target
 > daemon exits immediately with a non-zero exit code. Inspect the journal with
 > `journalctl -u repovecd.service --no-pager | tail -20` or
 > `journalctl -u repovec-mcpd.service --no-pager | tail -20`; the error message
-> identifies the unit and contract clause that was violated.
+> identifies the unit and contract clause that was violated. This validation
+> does not prove that the host has `/usr/bin/grepai`, the `repovec` user,
+> concrete worktrees, Qdrant reachability, or a compatible systemd version.
 
 ### Startup validation logging
 

@@ -7,13 +7,16 @@
 //!
 //! ## Validation Entry Points
 //!
-//! - [`validate_checked_in_systemd_units`] validates the three embedded unit
+//! - [`validate_checked_in_systemd_units`] validates the four embedded unit
 //!   assets shipped in the repository.
 //! - [`validate_and_trace_checked_in_units`] validates the checked-in unit set
 //!   and emits the daemon startup success trace.
 //! - [`validate_systemd_units`] validates caller-supplied unit text. Use it in
 //!   tests or tooling that needs to analyse unit contents sourced outside the
 //!   checked-in files.
+//! - [`validate_systemd_units_with_grepai_template`] validates caller-supplied
+//!   target, daemon, and grepai template text against the full appliance
+//!   service-layout contract.
 //!
 //! The validators return `Ok(())`, or [`SystemdUnitError`] for the first
 //! violation found.
@@ -33,9 +36,13 @@
 //!   `WantedBy=`.
 //! - Rejection of Quadlet-derived Qdrant dependency names such as
 //!   `qdrant.container` and `qdrant.container.service`.
-//! - `ExecStart=` executable paths for `repovecd` and `repovec-mcpd`.
+//! - `ExecStart=` executable paths for `repovecd`, `repovec-mcpd`, and
+//!   `grepai watch`.
 //! - `[Service]` identity and runtime-directory directives: `User=`, `Group=`,
 //!   `WorkingDirectory=`, and `Environment=HOME=`.
+//! - Grepai template directives that bind future instances to
+//!   `repovec.target`, use `WorkingDirectory=/var/lib/repovec/worktrees/%I`,
+//!   and keep stdout and stderr in journald.
 //!
 //! The validators do not verify that referenced binaries, users, groups,
 //! directories, or services exist on the host.
@@ -149,6 +156,9 @@ pub const fn checked_in_repovec_grepai_template() -> &'static str {
 
 /// Validates the repository's checked-in repovec systemd unit definitions.
 ///
+/// This checks the embedded appliance target, daemon services, and grepai
+/// indexer template against the full static service-layout contract.
+///
 /// # Errors
 ///
 /// Returns [`SystemdUnitError`] when a checked-in unit no longer satisfies the
@@ -231,6 +241,10 @@ pub fn validate_systemd_units(
 }
 
 /// Validates arbitrary repovec systemd units, including the grepai template.
+///
+/// Use this entry point when tests or tooling need to validate the complete
+/// target, daemon, and per-repository indexer template contract from supplied
+/// unit text rather than the checked-in embedded assets.
 ///
 /// # Errors
 ///

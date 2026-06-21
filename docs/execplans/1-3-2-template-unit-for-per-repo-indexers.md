@@ -54,8 +54,9 @@ Implementation must not begin until the user explicitly approves this plan.
   80 columns, and follow `docs/documentation-style-guide.md`.
 - Before each implementation commit and before any CodeRabbit review, run the
   applicable gates sequentially with `tee` logs under `/tmp`: at minimum
-  `make check-fmt`, `make typecheck`, `make lint`, and `make test`. Run
-  `make fmt`, `make markdownlint`, and `make nixie` after documentation changes.
+  `make build`, `make check-fmt`, `make typecheck`, `make lint`, and
+  `make test`. Run `make fmt`, `make markdownlint`, and `make nixie` after
+  documentation changes.
 - Do not mark roadmap item `1.3.2` as done until implementation, validation,
   documentation, CodeRabbit review, and final commit are complete.
 
@@ -365,12 +366,29 @@ conflict in `Decision Log`, and ask for direction.
 
 ## Outcomes & Retrospective
 
-No implementation has happened yet. This draft identifies the work, validation
-strategy, risks, and approval gate for roadmap item `1.3.2`.
+The implementation shipped the checked-in
+`packaging/systemd/repovec-grepai@.service` template and committed it with the
+static validation changes for roadmap item `1.3.2`. The template runs
+`/usr/bin/grepai watch` as `repovec:repovec`, sets `HOME=/var/lib/repovec`,
+uses `WorkingDirectory=/var/lib/repovec/worktrees/%I`, stays tied to
+`repovec.target`, depends on Qdrant and `repovecd.service`, and leaves stdout
+and stderr in journald.
 
-After implementation, update this section with the committed unit template,
-validator changes, test results, CodeRabbit outcome, documentation updates, and
-any deviations from the plan.
+The validator now embeds the grepai template alongside the target, daemon
+service, and MCP daemon service assets. It rejects missing or incorrect
+template sections, Qdrant and `repovecd.service` dependencies, target binding
+directives, identity directives, worktree directory, environment, restart
+policy, grepai command, and bespoke file logging. Unit and behavioural coverage
+was extended with `rstest` and `rstest-bdd` cases for the shipped template
+contract.
+
+The documentation updates described the installation boundary, the future
+instance reconciliation boundary for roadmap item `3.2.1`, the journald logging
+contract, and the static validator's limits. The implementation gates passed:
+`make check-fmt`, `make typecheck`, `make lint`, `make test`,
+`make markdownlint`, `make nixie`, and targeted `markdownlint-cli2` checks for
+the changed Markdown. CodeRabbit review passed with no findings before the
+review feedback addressed here.
 
 ## Context and orientation
 
@@ -433,11 +451,9 @@ Relevant external references checked during planning are:
 
 ## Proposed implementation details
 
-The implementation should start by writing failing tests that describe the
-template contract, then add the template and validator changes to make those
-tests pass.
-
-The intended template shape is:
+The implementation started from tests that described the template contract,
+then added the shipped template and validator changes that made those tests
+pass. The checked-in template shape is:
 
 ```systemd
 [Unit]
@@ -461,16 +477,17 @@ StandardError=journal
 WantedBy=repovec.target
 ```
 
-This is a proposal, not an approved implementation. If local systemd syntax or
-grepai command checks show that `%I` is unsafe for the worktree layout, stop
-and revise the plan before implementation continues.
+The implementation retained `%I` as the systemd instance token for the worktree
+layout. The later reconciliation task `3.2.1` owns mapping repository and
+branch identity to concrete, systemd-safe instance names.
 
-The validator should check the template for:
+The validator checks the template for:
 
 - `[Unit]`, `[Service]`, and `[Install]` sections
 - `Requires=qdrant.service`
+- `Requires=repovecd.service`
 - `After=qdrant.service`
-- an ordering relationship after `repovecd.service`
+- `After=repovecd.service`
 - `PartOf=repovec.target`
 - `WantedBy=repovec.target`
 - `User=repovec`
@@ -607,10 +624,12 @@ the summary must link this ExecPlan. Include the lody session link in a final
   `HOME=/var/lib/repovec`.
 - The checked-in template starts `grepai watch` without shell wrappers,
   pipelines, or redirection.
-- The checked-in template is ordered after Qdrant and tied to
-  `repovec.target`.
+- The checked-in template is ordered after Qdrant, requires and orders after
+  `repovecd.service`, and is tied to `repovec.target`.
 - The static validator rejects missing or incorrect template identity,
-  dependency, command, environment, journald, and install directives.
+  dependency, command, environment, journald, and install directives. It
+  enforces the `repovecd.service` dependency with both `Requires=` and `After=`
+  directives, alongside the Qdrant and `repovec.target` checks.
 - `rstest` unit tests cover happy and unhappy paths for the template.
 - `rstest-bdd` behavioural tests describe the user-facing systemd template
   contract.

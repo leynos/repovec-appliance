@@ -1,7 +1,11 @@
 //! Shared fixtures for mutating checked-in systemd units in validator tests.
 
+use rstest::fixture;
+
 use crate::appliance::systemd_units::{
-    SystemdUnitError, validate_systemd_units_with_grepai_template,
+    SystemdUnitError, checked_in_repovec_grepai_template, checked_in_repovec_mcpd_service,
+    checked_in_repovec_target, checked_in_repovecd_service,
+    validate_systemd_units_with_grepai_template,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,4 +95,14 @@ fn remove_token_from_line(line: &str, key: &str, token: &str) -> String {
     let retained = value.split_whitespace().filter(|candidate| *candidate != token);
 
     format!("{key}{}", retained.collect::<Vec<_>>().join(" "))
+}
+
+#[fixture]
+pub(super) fn checked_in_unit_set() -> UnitSet {
+    UnitSet {
+        target: checked_in_repovec_target().to_owned(),
+        repovecd: checked_in_repovecd_service().to_owned(),
+        mcpd: checked_in_repovec_mcpd_service().to_owned(),
+        grepai_template: checked_in_repovec_grepai_template().to_owned(),
+    }
 }

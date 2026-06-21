@@ -352,8 +352,10 @@ instance identifier; roadmap item `3.2.1` owns the final mapping from
 repository and branch identity to a concrete, systemd-safe instance name. The
 template declares `Requires=qdrant.service repovecd.service`,
 `After=qdrant.service repovecd.service`, `PartOf=repovec.target`, and
-`WantedBy=repovec.target`, so manually enabled instances are bound to the
-appliance target and stop with it. The template keeps stdout and stderr in
+`WantedBy=repovec.target`. `WantedBy=repovec.target` wires manually enabled
+instances into the appliance target at enable time, while
+`PartOf=repovec.target` propagates target stop and restart operations to those
+instances. The template keeps stdout and stderr in
 journald with `StandardOutput=journal` and `StandardError=journal`; it must not
 create bespoke log files.
 

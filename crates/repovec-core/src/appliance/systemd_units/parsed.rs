@@ -42,7 +42,7 @@ struct LineContext<'line> {
 impl ParsedUnit {
     pub(super) fn parse(unit: &'static str, contents: &str) -> Result<Self, SystemdUnitError> {
         let mut sections = BTreeMap::<String, BTreeMap<String, Vec<String>>>::new();
-        let mut current_section: Option<String> = None;
+        let mut current_section: Option<&str> = None;
 
         for (line_index, raw_line) in contents.lines().enumerate() {
             let line_number = line_index + 1;
@@ -55,18 +55,12 @@ impl ParsedUnit {
             })? {
                 ParsedLine::Ignored => {}
                 ParsedLine::Section(section) => {
-                    let section_name = section.to_owned();
-                    sections.entry(section_name.clone()).or_default();
-                    current_section = Some(section_name);
+                    sections.entry(section.to_owned()).or_default();
+                    current_section = Some(section);
                 }
                 ParsedLine::KeyValue(key_value) => {
                     let context = LineContext { unit, line_number, line };
-                    insert_key_value(
-                        &context,
-                        current_section.as_ref(),
-                        &mut sections,
-                        &key_value,
-                    )?;
+                    insert_key_value(&context, current_section, &mut sections, &key_value)?;
                 }
             }
         }
@@ -193,7 +187,7 @@ fn parse_line(line: &str) -> Result<ParsedLine<'_>, ()> {
 
 fn insert_key_value(
     context: &LineContext<'_>,
-    current_section: Option<&String>,
+    current_section: Option<&str>,
     sections: &mut BTreeMap<String, BTreeMap<String, Vec<String>>>,
     key_value: &KeyValueLine<'_>,
 ) -> Result<(), SystemdUnitError> {
@@ -206,7 +200,7 @@ fn insert_key_value(
     };
 
     sections
-        .entry(section.clone())
+        .entry(section.to_owned())
         .or_default()
         .entry(key_value.key.trim().to_owned())
         .or_default()

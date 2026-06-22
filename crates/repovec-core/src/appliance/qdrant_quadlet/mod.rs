@@ -105,7 +105,7 @@ pub const fn checked_in_qdrant_quadlet() -> &'static str { CHECKED_IN_QDRANT_QUA
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,no_run
 /// use repovec_core::appliance::qdrant_quadlet::{
 ///     TracingQdrantQuadletObserver, validate_checked_in_qdrant_quadlet,
 /// };
@@ -135,24 +135,24 @@ pub fn validate_checked_in_qdrant_quadlet(
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,no_run
 /// use repovec_core::appliance::qdrant_quadlet::{
 ///     TracingQdrantQuadletObserver, validate_qdrant_quadlet,
 /// };
 ///
-/// let contents = "\
-/// [Unit]
-/// Requires=repovec-qdrant-api-key.service
-/// After=repovec-qdrant-api-key.service
-///
-/// [Container]
-/// Image=docker.io/qdrant/qdrant:v1
-/// AutoUpdate=registry
-/// Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY
-/// PublishPort=127.0.0.1:6333:6333
-/// PublishPort=127.0.0.1:6334:6334
-/// Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z
-/// ";
+/// let contents = concat!(
+///     "[Unit]\n",
+///     "Requires=repovec-qdrant-api-key.service\n",
+///     "After=repovec-qdrant-api-key.service\n",
+///     "\n",
+///     "[Container]\n",
+///     "Image=docker.io/qdrant/qdrant:v1\n",
+///     "AutoUpdate=registry\n",
+///     "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+///     "PublishPort=127.0.0.1:6333:6333\n",
+///     "PublishPort=127.0.0.1:6334:6334\n",
+///     "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
+/// );
 ///
 /// validate_qdrant_quadlet(contents, &TracingQdrantQuadletObserver)
 ///     .expect("the inline quadlet should satisfy the contract");

@@ -180,7 +180,7 @@ fn has_required_selinux_relabel_option(options: &[&str]) -> bool {
         .iter()
         .flat_map(|group| group.split(','))
         .map(str::trim)
-        .any(|option| option.eq_ignore_ascii_case(REQUIRED_SELINUX_OPTION))
+        .any(|option| option == REQUIRED_SELINUX_OPTION)
 }
 
 fn storage_mount_candidate(volume: &str) -> Option<(&str, Vec<&str>)> {

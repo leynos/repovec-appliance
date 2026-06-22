@@ -131,8 +131,12 @@ fn is_required_api_key_secret(secret: &str) -> bool {
         let Some((key, value)) = part.split_once('=') else {
             continue;
         };
-        has_env_type |= key == "type" && value == "env";
-        has_target |= key == "target" && value == QDRANT_API_KEY_ENVIRONMENT_VARIABLE;
+        match key {
+            "type" if value == "env" => has_env_type = true,
+            "target" if value == QDRANT_API_KEY_ENVIRONMENT_VARIABLE => has_target = true,
+            "type" | "target" => return false,
+            _ => {}
+        }
     }
 
     has_env_type && has_target
@@ -196,17 +200,29 @@ fn split_environment_assignments(environment: &str) -> Vec<String> {
     let mut assignments = Vec::new();
     let mut assignment = String::new();
     let mut quote = None;
+    let mut is_escaped = false;
 
     // split_environment_assignments uses a quote-aware linear scan because
     // Quadlet Environment= values may contain spaces inside quoted KEY=VALUE
     // pairs. The quote state records when whitespace belongs to the current
     // assignment rather than separating assignments.
     //
-    // This deliberately does not handle escaped quotes inside quoted strings;
-    // unmatched quotes are treated as part of the current assignment until the
-    // scan ends. Empty assignments created by repeated whitespace are skipped.
+    // Escaped characters inside quoted strings are kept in the current
+    // assignment. Unmatched quotes are treated as part of the current assignment
+    // until the scan ends. Empty assignments created by repeated whitespace are
+    // skipped.
     for character in environment.chars() {
+        if is_escaped {
+            assignment.push(character);
+            is_escaped = false;
+            continue;
+        }
+
         match (quote, character) {
+            (Some(_), '\\') => {
+                assignment.push(character);
+                is_escaped = true;
+            }
             (Some(active_quote), current) if active_quote == current => quote = None,
             (None, '"' | '\'') => quote = Some(character),
             (None, current) if current.is_ascii_whitespace() => {
@@ -230,4 +246,67 @@ fn is_api_key_environment_assignment(assignment: &str) -> bool {
         || assignment
             .split_once('=')
             .is_some_and(|(key, _value)| key == QDRANT_API_KEY_ENVIRONMENT_VARIABLE)
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for API-key environment assignment tokenization.
+
+    use super::{
+        QDRANT_API_KEY_ENVIRONMENT_VARIABLE, is_api_key_environment_assignment,
+        redact_api_key_environment_assignment, split_environment_assignments,
+    };
+
+    #[test]
+    fn split_environment_assignments_keeps_double_quoted_values_with_spaces() {
+        assert_eq!(
+            split_environment_assignments(r#"FOO="hello world" BAR=baz"#),
+            vec!["FOO=hello world", "BAR=baz"],
+        );
+    }
+
+    #[test]
+    fn split_environment_assignments_keeps_single_quoted_values_with_spaces() {
+        assert_eq!(
+            split_environment_assignments("FOO='hello world' BAR=baz"),
+            vec!["FOO=hello world", "BAR=baz"],
+        );
+    }
+
+    #[test]
+    fn split_environment_assignments_skips_repeated_whitespace() {
+        assert_eq!(
+            split_environment_assignments("  FOO=bar \t  BAR=baz  "),
+            vec!["FOO=bar", "BAR=baz"],
+        );
+    }
+
+    #[test]
+    fn split_environment_assignments_keeps_unmatched_quote_in_current_assignment() {
+        assert_eq!(
+            split_environment_assignments(r#"FOO="unterminated value BAR=baz"#),
+            vec!["FOO=unterminated value BAR=baz"],
+        );
+    }
+
+    #[test]
+    fn split_environment_assignments_keeps_escaped_quotes_inside_quoted_value() {
+        assert_eq!(
+            split_environment_assignments(r#"FOO="hello \"quoted\" world" BAR=baz"#),
+            vec![r#"FOO=hello \"quoted\" world"#, "BAR=baz"],
+        );
+    }
+
+    #[test]
+    fn is_api_key_environment_assignment_detects_bare_variable() {
+        assert!(is_api_key_environment_assignment(QDRANT_API_KEY_ENVIRONMENT_VARIABLE));
+    }
+
+    #[test]
+    fn redact_api_key_environment_assignment_formats_key_value_pair() {
+        assert_eq!(
+            redact_api_key_environment_assignment("QDRANT__SERVICE__API_KEY=secret"),
+            "QDRANT__SERVICE__API_KEY=<redacted>",
+        );
+    }
 }

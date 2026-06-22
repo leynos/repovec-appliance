@@ -123,81 +123,60 @@ The message `validating checked-in qdrant quadlet` confirms that the embedded
 `packaging/systemd/qdrant.container` asset is being checked. The message
 `qdrant quadlet contract validation succeeded` confirms that the current
 Quadlet satisfies the appliance contract.
+Most contract failures use the message prefix
+`qdrant quadlet validation failed:`. Use the suffix and structured fields to
+find the broken contract clause:
 
-- If validation fails with `qdrant quadlet validation failed: missing image`,
-  inspect the `expected_image` field. Ensure `Image=` is present and set exactly
-  to `docker.io/qdrant/qdrant:v1`.
-- If validation fails with
-  `qdrant quadlet validation failed: image is not fully qualified and pinned`,
-  inspect the `image` and `expected_image` fields. Ensure `Image=` uses the
-  fully qualified pinned image.
-- If validation fails with `qdrant quadlet validation failed: unexpected image`,
-  inspect the `image` and `expected_image` fields. Ensure `Image=` is set
+- `missing image`: inspect `expected_image`. Ensure `Image=` is present and set
   exactly to `docker.io/qdrant/qdrant:v1`.
-- If validation fails with
-  `qdrant quadlet validation failed: missing publish port`, inspect the `port`
-  and `expected_publish_port` fields. Ensure the Quadlet publishes
-  `127.0.0.1:6333:6333` for REST and `127.0.0.1:6334:6334` for gRPC.
-- If validation fails with
-  `qdrant quadlet validation failed: publish port is not bound to loopback`,
-  inspect the `port`, `publish_port`, and `expected_publish_port` fields. Ensure
-  the published port uses the loopback address.
-- If validation fails with
-  `qdrant quadlet validation failed: missing storage mount`, inspect the
-  `expected_source` and `expected_target` fields. If a partial mount was parsed,
-  the event may also include `volume`. Ensure the Quadlet mounts
-  `/var/lib/repovec/qdrant-storage:/qdrant/storage:Z`.
-- If validation fails with
-  `qdrant quadlet validation failed: incorrect storage source`, inspect the
-  `source` and `expected_source` fields. Ensure the mount source is
-  `/var/lib/repovec/qdrant-storage`.
-- If validation fails with
-  `qdrant quadlet validation failed: incorrect storage target`, inspect the
-  `storage_target` and `expected_target` fields. Ensure the mount target is
-  `/qdrant/storage`.
-- If validation fails with
-  `qdrant quadlet validation failed: missing selinux relabel`, inspect the
-  `volume` and `expected_selinux_relabel` fields. Ensure the storage mount ends
-  with the explicit `:Z` relabel option so Podman can write to the directory on
-  enforcing SELinux hosts.
-- If validation fails with
-  `qdrant quadlet validation failed: missing auto-update policy`, inspect the
-  `expected_auto_update` field. Ensure `AutoUpdate=registry` is present in the
-  `[Container]` section.
-- If validation fails with
-  `qdrant quadlet validation failed: incorrect auto-update policy`, inspect the
-  `auto_update` and `expected_auto_update` fields. Ensure `AutoUpdate=registry`
-  is present exactly once in the `[Container]` section.
-- If validation fails with
-  `qdrant quadlet validation failed: missing api key provisioning dependency`,
-  inspect the `directive` and `expected_dependency` fields. Ensure the `[Unit]`
-  section includes both `Requires=repovec-qdrant-api-key.service` and
+- `image is not fully qualified and pinned`: inspect `image` and
+  `expected_image`. Ensure `Image=` uses the fully qualified pinned image.
+- `unexpected image`: inspect `image` and `expected_image`. Ensure `Image=` is
+  set exactly to `docker.io/qdrant/qdrant:v1`.
+- `missing publish port`: inspect `port` and `expected_publish_port`. Ensure the
+  Quadlet publishes `127.0.0.1:6333:6333` for REST and
+  `127.0.0.1:6334:6334` for gRPC.
+- `publish port is not bound to loopback`: inspect `port`, `publish_port`, and
+  `expected_publish_port`. Ensure the published port uses the loopback address.
+- `missing storage mount`: inspect `expected_source` and `expected_target`. If a
+  partial mount was parsed, the event may also include `volume`. Ensure the
+  Quadlet mounts `/var/lib/repovec/qdrant-storage:/qdrant/storage:Z`.
+- `incorrect storage source`: inspect `source` and `expected_source`. Ensure the
+  mount source is `/var/lib/repovec/qdrant-storage`.
+- `incorrect storage target`: inspect `storage_target` and `expected_target`.
+  Ensure the mount target is `/qdrant/storage`.
+- `missing selinux relabel`: inspect `volume` and
+  `expected_selinux_relabel`. Ensure the storage mount ends with the explicit
+  `:Z` relabel option so Podman can write to the directory on enforcing SELinux
+  hosts.
+- `missing auto-update policy`: inspect `expected_auto_update`. Ensure
+  `AutoUpdate=registry` is present in the `[Container]` section.
+- `incorrect auto-update policy`: inspect `auto_update` and
+  `expected_auto_update`. Ensure `AutoUpdate=registry` is present exactly once
+  in the `[Container]` section.
+- `missing api key provisioning dependency`: inspect `directive` and
+  `expected_dependency`. Ensure the `[Unit]` section includes both
+  `Requires=repovec-qdrant-api-key.service` and
   `After=repovec-qdrant-api-key.service`.
-- If validation fails with
-  `qdrant quadlet validation failed: incorrect api key provisioning dependency`,
-  inspect the `directive`, `dependency`, and `expected_dependency` fields. Ensure
-  the dependency references `repovec-qdrant-api-key.service`.
-- If validation fails with
-  `qdrant quadlet validation failed: missing api key secret`, inspect the
-  `expected_secret` and `expected_target` fields. Ensure the `[Container]`
-  section includes
+- `incorrect api key provisioning dependency`: inspect `directive`,
+  `dependency`, and `expected_dependency`. Ensure the dependency references
+  `repovec-qdrant-api-key.service`.
+- `missing api key secret`: inspect `expected_secret` and `expected_target`.
+  Ensure the `[Container]` section includes
   `Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY`.
-- If validation fails with
-  `qdrant quadlet validation failed: incorrect api key secret`, inspect the
-  `secret`, `expected_secret`, and `expected_target` fields. Ensure the
-  `Secret=` entry uses the expected secret name, type, and target.
+- `incorrect api key secret`: inspect `secret`, `expected_secret`, and
+  `expected_target`. Ensure the `Secret=` entry uses the expected secret name,
+  type, and target.
+- `inline api key environment is disallowed`: inspect the redacted
+  `environment`, `expected_secret`, and `expected_target` fields. Remove any
+  inline `Environment=QDRANT__SERVICE__API_KEY=...` assignment and inject the
+  API key through the Podman secret instead.
 
-If validation fails with
-`qdrant quadlet validation failed: inline api key environment is disallowed`,
-inspect the redacted `environment`, `expected_secret`, and `expected_target`
-fields. Remove any inline `Environment=QDRANT__SERVICE__API_KEY=...` assignment
-and inject the API key through the Podman secret instead.
-
-If validation fails with `qdrant quadlet validation rejected invalid line` or
-`qdrant quadlet validation rejected property before section`, inspect the
-`line_number` and `redacted_line` fields. Ensure every non-comment line is
-either a section header or a `Key=Value` property, and that properties appear
-after a section header.
+Parser failures use the messages `qdrant quadlet validation rejected invalid
+line` and `qdrant quadlet validation rejected property before section`. Inspect
+`line_number` and `redacted_line`; every non-comment line must be either a
+section header or a `Key=Value` property, and properties must appear after a
+section header.
 
 ### Qdrant API-key provisioning behaviour
 
@@ -305,9 +284,10 @@ ERROR systemd unit contract violation — aborting startup
 
 The `unit` field contains the logical systemd unit name (e.g.
 `repovecd.service`) and the `error` field contains the human-readable
-description of the contract violation. Pass `--log-level trace` (or set
-`RUST_LOG=trace`) to see the `TRACE` and `DEBUG` events; only `ERROR` events
-are visible at the default log level.
+description of the contract violation. Set a target-scoped filter such as
+`RUST_LOG=repovec_core::qdrant_quadlet=trace,repovec_core::systemd_units=trace`
+to see validation `TRACE` and `DEBUG` events for those components; only `ERROR`
+events are visible at the default log level.
 
 Starting the target may still fail until later roadmap items create the
 `repovec` system user, directory layout, Qdrant API-key configuration, and

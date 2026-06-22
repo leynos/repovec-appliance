@@ -100,9 +100,20 @@ fn line_tokens(line: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut token = String::new();
     let mut active_quote = None;
+    let mut is_escaped = false;
 
     for character in line.chars() {
+        if is_escaped {
+            token.push(character);
+            is_escaped = false;
+            continue;
+        }
+
         match (character, active_quote) {
+            ('\\', _) => {
+                token.push(character);
+                is_escaped = true;
+            }
             (quote @ ('\'' | '"'), None) => {
                 active_quote = Some(quote);
                 token.push(character);
@@ -145,10 +156,11 @@ fn is_sensitive_assignment(key: &str, value: &str) -> bool {
     }
 
     let unquoted_value = trim_surrounding_quotes(value);
-    let Some((nested_key, nested_value)) = unquoted_value.split_once('=') else {
-        return false;
-    };
-    is_sensitive_key(nested_key) || looks_like_secret_value(nested_value)
+    line_tokens(unquoted_value).into_iter().any(|token| {
+        token.split_once('=').is_some_and(|(nested_key, nested_value)| {
+            is_sensitive_key(nested_key) || looks_like_secret_value(nested_value)
+        })
+    })
 }
 
 fn trim_surrounding_quotes(value: &str) -> &str {
@@ -213,5 +225,19 @@ mod tests {
         let line = r#"Authorization=Bearer "correct horse battery""#;
 
         assert_eq!(redact_line(line), "Bearer <redacted>");
+    }
+
+    #[test]
+    fn redact_line_keeps_escaped_quotes_inside_sensitive_assignment() {
+        let line = r#"Environment="DISPLAY_NAME=\"not a boundary\" PASSWORD=secret phrase""#;
+
+        assert_eq!(redact_line(line), "Environment=<redacted>");
+    }
+
+    #[test]
+    fn redact_line_redacts_later_nested_sensitive_assignment() {
+        let line = r#"Environment="DISPLAY_NAME=public QDRANT__SERVICE__API_KEY=secret phrase""#;
+
+        assert_eq!(redact_line(line), "Environment=<redacted>");
     }
 }

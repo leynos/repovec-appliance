@@ -53,6 +53,13 @@ fn api_key_secret_type_is_wrong() -> String {
     )
 }
 
+fn api_key_secret_type_is_contradictory() -> String {
+    qdrant_quadlet_contents().replace(
+        "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+        "Secret=repovec-qdrant-api-key,type=env,type=mount,target=QDRANT__SERVICE__API_KEY\n",
+    )
+}
+
 fn api_key_requires_dependency_missing() -> String {
     qdrant_quadlet_contents().replace("Requires=repovec-qdrant-api-key.service\n", "")
 }
@@ -160,6 +167,22 @@ fn qdrant_quadlet_requires_api_key_secret_env_type() {
         QdrantQuadletError::IncorrectApiKeySecret {
             secret: String::from(
                 "repovec-qdrant-api-key,type=mount,target=QDRANT__SERVICE__API_KEY",
+            ),
+        }
+    );
+}
+
+#[test]
+fn qdrant_quadlet_rejects_contradictory_api_key_secret_type() {
+    let contents = api_key_secret_type_is_contradictory();
+    let error = validate_qdrant_quadlet(&contents, &())
+        .expect_err("contradictory API-key secret types should be rejected");
+
+    assert_eq!(
+        error,
+        QdrantQuadletError::IncorrectApiKeySecret {
+            secret: String::from(
+                "repovec-qdrant-api-key,type=env,type=mount,target=QDRANT__SERVICE__API_KEY",
             ),
         }
     );

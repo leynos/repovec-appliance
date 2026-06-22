@@ -811,7 +811,7 @@ pub fn validate_qdrant_quadlet(
 ) -> Result<(), QdrantQuadletError>;
 ```
 
-If implementation adds a separate provisioning-asset validator, keep the same
+If the implementation adds a separate provisioning-asset validator, keep the same
 style: functions that accept string contents and explicit observer dependencies,
 then return semantic error enums. Do not expose opaque `eyre::Report` from
 library APIs.

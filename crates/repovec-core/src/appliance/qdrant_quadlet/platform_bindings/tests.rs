@@ -67,17 +67,17 @@ Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:rw,Z
 }
 
 #[test]
-fn has_required_selinux_relabel_option_matches_split_trimmed_case_insensitive_tokens() {
+fn has_required_selinux_relabel_option_matches_split_trimmed_case_sensitive_tokens() {
     let cases: &[(&[&str], bool)] = &[
         (&[], false),
         (&["rw"], false),
         (&["Y"], false),
         (&["Z"], true),
-        (&["z"], true),
+        (&["z"], false),
         (&["rw", "Z"], true),
         (&["rw,Z"], true),
-        (&["rw, z"], true),
-        (&["rw, z,ro"], true),
+        (&["rw, z"], false),
+        (&["rw, z,ro"], false),
     ];
 
     for (options, expected) in cases {
@@ -158,25 +158,35 @@ proptest! {
     }
 
     #[test]
-    fn has_required_selinux_relabel_option_matches_case_and_whitespace_variants(
+    fn has_required_selinux_relabel_option_matches_exact_case_and_whitespace_variants(
         before in "[ \\t]{0,8}",
         after in "[ \\t]{0,8}",
-        uppercase in any::<bool>(),
         prefix in prop::collection::vec("[A-Ya-y0-9]{0,8}", 0..4),
         suffix in prop::collection::vec("[A-Ya-y0-9]{0,8}", 0..4),
     ) {
-        let relabel_token = if uppercase {
-            REQUIRED_SELINUX_OPTION.to_owned()
-        } else {
-            REQUIRED_SELINUX_OPTION.to_ascii_lowercase()
-        };
-        let relabel = format!("{before}{relabel_token}{after}");
+        let relabel = format!("{before}{REQUIRED_SELINUX_OPTION}{after}");
         let mut tokens = prefix;
         tokens.push(relabel);
         tokens.extend(suffix);
         let group = tokens.join(",");
 
         prop_assert!(has_required_selinux_relabel_option(&[group.as_str()]));
+    }
+
+    #[test]
+    fn has_required_selinux_relabel_option_rejects_lowercase_relabel_token(
+        before in "[ \\t]{0,8}",
+        after in "[ \\t]{0,8}",
+        prefix in prop::collection::vec("[A-Ya-y0-9]{0,8}", 0..4),
+        suffix in prop::collection::vec("[A-Ya-y0-9]{0,8}", 0..4),
+    ) {
+        let relabel = format!("{before}{}{after}", REQUIRED_SELINUX_OPTION.to_ascii_lowercase());
+        let mut tokens = prefix;
+        tokens.push(relabel);
+        tokens.extend(suffix);
+        let group = tokens.join(",");
+
+        prop_assert!(!has_required_selinux_relabel_option(&[group.as_str()]));
     }
 
     #[test]

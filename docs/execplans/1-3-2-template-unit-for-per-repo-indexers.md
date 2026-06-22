@@ -548,6 +548,7 @@ failure clearly. Prefer reusing `MissingDependency`, `IncorrectExecStart`, and
 Make the focused unit and BDD tests pass, then run:
 
 ```sh
+make build 2>&1 | tee /tmp/build-$(git branch --show-current).out
 make check-fmt 2>&1 | tee /tmp/check-fmt-$(git branch --show-current).out
 make typecheck 2>&1 | tee /tmp/typecheck-$(git branch --show-current).out
 make lint 2>&1 | tee /tmp/lint-$(git branch --show-current).out
@@ -635,8 +636,8 @@ the summary must link this ExecPlan. Include the lody session link in a final
   contract.
 - Documentation explains how the template is installed, how future instances
   relate to it, where output goes, and what validation does not prove.
-- `make check-fmt`, `make typecheck`, `make lint`, and `make test` pass after
-  the final implementation milestone.
+- `make build`, `make check-fmt`, `make typecheck`, `make lint`, and
+  `make test` pass after the final implementation milestone.
 - `coderabbit review --agent` has no unresolved applicable concerns.
 - `docs/roadmap.md` marks item `1.3.2` done only after the implementation is
   complete.

@@ -9,6 +9,8 @@ mod error_builders;
 mod expected_errors;
 #[path = "tests/grepai_template_mutations.rs"]
 mod grepai_template_mutations;
+#[path = "tests/hardening.rs"]
+mod hardening;
 #[path = "tests/passing.rs"]
 mod passing;
 #[path = "tests/unit_set.rs"]

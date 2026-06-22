@@ -103,6 +103,26 @@ const SERVICE_GROUP: &str = "repovec";
 const SERVICE_WORKING_DIRECTORY: &str = "/var/lib/repovec";
 const GREPAI_WORKING_DIRECTORY: &str = "/var/lib/repovec/worktrees/%I";
 const SERVICE_HOME_ENVIRONMENT: &str = "HOME=/var/lib/repovec";
+const GREPAI_HARDENING_DIRECTIVES: [(&str, &str); 15] = [
+    ("NoNewPrivileges", "yes"),
+    ("PrivateTmp", "yes"),
+    ("ProtectSystem", "full"),
+    ("ProtectHome", "read-only"),
+    ("PrivateDevices", "yes"),
+    ("DevicePolicy", "closed"),
+    ("LockPersonality", "yes"),
+    ("ProtectClock", "yes"),
+    ("ProtectControlGroups", "yes"),
+    ("ProtectHostname", "yes"),
+    ("ProtectKernelLogs", "yes"),
+    ("ProtectKernelModules", "yes"),
+    ("ProtectKernelTunables", "yes"),
+    ("ProtectProc", "invisible"),
+    ("ProcSubset", "pid"),
+];
+const GREPAI_BOOLEAN_HARDENING_DIRECTIVES: [(&str, &str); 3] =
+    [("RestrictNamespaces", "yes"), ("RestrictRealtime", "yes"), ("RestrictSUIDSGID", "yes")];
+const GREPAI_RESTRICT_ADDRESS_FAMILIES: &str = "AF_UNIX AF_INET AF_INET6";
 
 /// Returns the repository's checked-in `repovec.target` source.
 ///
@@ -225,7 +245,6 @@ pub fn validate_checked_in_systemd_units() -> Result<(), SystemdUnitError> {
 ///
 /// validate_systemd_units(target, repovecd, mcpd).expect("inline units satisfy the contract");
 /// ```
-#[tracing::instrument(skip_all)]
 pub fn validate_systemd_units(
     repovec_target: &str,
     repovecd_service: &str,
@@ -297,7 +316,6 @@ pub fn validate_systemd_units(
 /// )
 /// .expect("inline units and the checked-in template satisfy the contract");
 /// ```
-#[tracing::instrument(skip_all)]
 pub fn validate_systemd_units_with_grepai_template(
     repovec_target: &str,
     repovecd_service: &str,
@@ -363,6 +381,17 @@ fn validate_grepai_template(template: &ParsedUnit) -> Result<(), SystemdUnitErro
     template.require_exec_start("/usr/bin/grepai watch")?;
     template.require_service_directive("Restart", "on-failure")?;
     template.require_service_directive("RestartSec", "5s")?;
+    validate_grepai_template_hardening(template)?;
     template.require_service_directive("StandardOutput", "journal")?;
     template.require_service_directive("StandardError", "journal")
+}
+
+fn validate_grepai_template_hardening(template: &ParsedUnit) -> Result<(), SystemdUnitError> {
+    for (key, expected) in GREPAI_HARDENING_DIRECTIVES {
+        template.require_service_directive(key, expected)?;
+    }
+    for (key, expected) in GREPAI_BOOLEAN_HARDENING_DIRECTIVES {
+        template.require_service_directive(key, expected)?;
+    }
+    template.require_service_directive("RestrictAddressFamilies", GREPAI_RESTRICT_ADDRESS_FAMILIES)
 }

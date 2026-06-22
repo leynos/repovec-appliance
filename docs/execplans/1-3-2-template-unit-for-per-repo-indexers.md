@@ -4,24 +4,23 @@ This ExecPlan (execution plan) is a living document. The sections `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
 and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETED
 
 ## Purpose / big picture
 
-Roadmap item `1.3.2` adds the systemd template used to run one grepai indexer
-per active repository branch. After this feature is implemented and approved,
-the repository will ship `packaging/systemd/repovec-grepai@.service`; the
-static systemd validator in `repovec-core` will prove that the checked-in
-template runs as the unprivileged `repovec` user, uses `HOME=/var/lib/repovec`,
-depends on local Qdrant, and sends stdout and stderr to journald rather than
-bespoke log files.
+Roadmap item `1.3.2` added the systemd template used to run one grepai indexer
+per active repository branch. The repository ships
+`packaging/systemd/repovec-grepai@.service`; the static systemd validator in
+`repovec-core` proves that the checked-in template runs as the unprivileged
+`repovec` user, uses `HOME=/var/lib/repovec`, depends on local Qdrant and
+`repovecd.service`, keeps its sandboxing directives, and sends stdout and
+stderr to journald rather than bespoke log files.
 
-The observable behaviour is still mostly static in this roadmap item. A human
-can inspect the checked-in template, run the Rust validator, and see unit and
-behavioural tests reject broken variants of the template. Later roadmap item
-`3.2.1` will instantiate the template for active branches during reconciliation.
-
-Implementation must not begin until the user explicitly approves this plan.
+The observable behaviour remains mostly static in this roadmap item. A human
+can inspect the checked-in template, run the Rust validator, and see the
+implemented unit and behavioural tests reject broken variants of the template.
+Later roadmap item `3.2.1` will instantiate the template for active branches
+during reconciliation.
 
 ## Constraints
 
@@ -459,6 +458,7 @@ pass. The checked-in template shape is:
 [Unit]
 Description=repovec grepai indexer for %I
 Requires=qdrant.service
+Requires=repovecd.service
 After=qdrant.service repovecd.service
 PartOf=repovec.target
 

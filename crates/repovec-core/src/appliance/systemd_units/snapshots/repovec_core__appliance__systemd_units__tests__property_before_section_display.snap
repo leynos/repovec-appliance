@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/systemd_units/tests.rs
+expression: err.to_string()
+---
+systemd property before section in repovecd.service on line 1: Requires=qdrant.service

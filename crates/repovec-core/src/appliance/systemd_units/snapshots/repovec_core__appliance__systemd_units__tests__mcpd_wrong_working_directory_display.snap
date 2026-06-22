@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/systemd_units/tests.rs
+expression: err.to_string()
+---
+repovec-mcpd.service must have WorkingDirectory=/var/lib/repovec in [Service]: /tmp

@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/systemd_units/tests.rs
+expression: err.to_string()
+---
+repovec.target must depend on qdrant.service, not qdrant.container, in [Unit] Wants

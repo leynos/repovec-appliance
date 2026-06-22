@@ -1,8 +1,6 @@
 //! Contract tests for `validate_systemd_units`: deterministic mutations of the
-//! shipped systemd units plus literal diagnostic assertions.
+//! shipped systemd units plus committed `insta` diagnostic snapshots.
 
-#[path = "tests/diagnostics.rs"]
-mod diagnostics;
 #[path = "tests/error_builders.rs"]
 mod error_builders;
 #[path = "tests/expected_errors.rs"]
@@ -13,10 +11,12 @@ mod grepai_template_mutations;
 mod hardening;
 #[path = "tests/passing.rs"]
 mod passing;
+#[path = "tests/snapshot_labels.rs"]
+mod snapshot_labels;
 #[path = "tests/unit_set.rs"]
 mod unit_set;
 
-use diagnostics::expected_diagnostic;
+use insta::assert_snapshot;
 use rstest::rstest;
 use unit_set::{UnitFile, UnitSet, checked_in_unit_set};
 
@@ -386,5 +386,5 @@ fn validated_systemd_unit_violations_match_expected_variant_and_diagnostic_snaps
     };
 
     assert_eq!(err, scenario.expected_error());
-    assert_eq!(err.to_string(), expected_diagnostic(scenario));
+    assert_snapshot!(scenario.snapshot_label(), err.to_string());
 }

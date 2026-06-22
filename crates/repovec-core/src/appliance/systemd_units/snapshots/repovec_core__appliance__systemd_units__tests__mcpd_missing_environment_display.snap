@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/systemd_units/tests.rs
+expression: err.to_string()
+---
+repovec-mcpd.service must have Environment=HOME=/var/lib/repovec in [Service]:

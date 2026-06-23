@@ -5,11 +5,12 @@
 //! legitimate variation is accepted. It complements the failure-case mutation
 //! tests by checking the `crate::appliance::systemd_units::validate_*`
 //! functions against the checked-in unit accessors and the
-//! `validate_systemd_units` / `validate_checked_in_systemd_units` helpers.
+//! four-unit and checked-in validation helpers.
 
 use super::super::{
-    checked_in_repovec_mcpd_service, checked_in_repovec_target, checked_in_repovecd_service,
-    validate_checked_in_systemd_units, validate_systemd_units,
+    checked_in_repovec_grepai_template, checked_in_repovec_mcpd_service, checked_in_repovec_target,
+    checked_in_repovecd_service, validate_checked_in_systemd_units,
+    validate_systemd_units_with_grepai_template,
 };
 
 fn assert_mutated_service(original: &str, service_name: &str) -> String {
@@ -43,10 +44,11 @@ fn semicolon_comments_are_ignored() {
         original_target.replace("[Unit]\n", "[Unit]\n; systemd accepts semicolon comments\n");
     assert_ne!(target, original_target, "replacement should mutate the target");
 
-    validate_systemd_units(
+    validate_systemd_units_with_grepai_template(
         &target,
         checked_in_repovecd_service(),
         checked_in_repovec_mcpd_service(),
+        checked_in_repovec_grepai_template(),
     )
     .expect("semicolon comments should be ignored");
 }
@@ -55,7 +57,14 @@ fn semicolon_comments_are_ignored() {
 fn additional_service_environment_lines_are_accepted() {
     let repovecd = assert_mutated_service(checked_in_repovecd_service(), "repovecd");
     let mcpd = assert_mutated_service(checked_in_repovec_mcpd_service(), "repovec-mcpd");
+    let grepai_template =
+        assert_mutated_service(checked_in_repovec_grepai_template(), "repovec-grepai");
 
-    validate_systemd_units(checked_in_repovec_target(), &repovecd, &mcpd)
-        .expect("additional service environment lines should be accepted");
+    validate_systemd_units_with_grepai_template(
+        checked_in_repovec_target(),
+        &repovecd,
+        &mcpd,
+        &grepai_template,
+    )
+    .expect("additional service environment lines should be accepted");
 }

@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/systemd_units/tests.rs
+expression: err.to_string()
+---
+repovecd.service must use ExecStart=/usr/bin/repovecd: /usr/bin/otherd

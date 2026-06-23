@@ -108,7 +108,11 @@ Run `make validate-systemd` locally before proposing a change to any file under
 
 ```rust
 /// Reason the documentation gate should or should not run.
-pub enum DocsGateReason { DocumentationChanged, MissingChangedFiles, NoDocumentationChanges }
+pub enum DocsGateReason {
+    DocumentationChanged,
+    MissingChangedFiles,
+    NoDocumentationChanges,
+}
 impl DocsGateReason { pub const fn as_str(self) -> &'static str }
 
 /// Computed plan for the documentation gate.
@@ -126,13 +130,22 @@ impl DocsGatePlan {
 pub enum MermaidDetection { Present, Absent, Unknown }
 
 /// Evaluates the docs-gate policy using the real file system.
-pub fn evaluate_docs_gate_in<I, S>(root: &cap_std::fs_utf8::Dir, changed_files: I) -> DocsGatePlan
+pub fn evaluate_docs_gate_in<I, S>(
+    root: &cap_std::fs_utf8::Dir,
+    changed_files: I,
+) -> DocsGatePlan
 where I: IntoIterator<Item = S>, S: AsRef<str>;
 
 /// Evaluates the docs-gate policy with an injected Mermaid detector.
 /// Use this in tests to avoid real file I/O.
-pub fn evaluate_docs_gate_with<I, S, F>(changed_files: I, path_contains_mermaid: F) -> DocsGatePlan
-where I: IntoIterator<Item = S>, S: AsRef<str>, F: FnMut(&str) -> MermaidDetection;
+pub fn evaluate_docs_gate_with<I, S, F>(
+    changed_files: I,
+    path_contains_mermaid: F,
+) -> DocsGatePlan
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+    F: FnMut(&str) -> MermaidDetection;
 ```
 
 `DocsGateReason` records why the documentation gate should run or be skipped.
@@ -211,7 +224,10 @@ gh api \
 If a ruleset named `main-ci-gating` already exists, update it instead:
 
 ```sh
-RULESET_ID="$(gh api repos/leynos/repovec-appliance/rulesets --jq '.[] | select(.name == "main-ci-gating") | .id')"
+RULESET_ID="$(
+  gh api repos/leynos/repovec-appliance/rulesets \
+    --jq '.[] | select(.name == "main-ci-gating") | .id'
+)"
 gh api \
   --method PUT \
   "repos/leynos/repovec-appliance/rulesets/${RULESET_ID}" \
@@ -337,7 +353,7 @@ unset or set to any value other than `1`.
 ### 5.3 `systemd_units` validation surface
 
 The `systemd_units` module exposes the public validation surface for the
-checked-in repovec target and daemon service files:
+checked-in repovec target, daemon service files, and grepai indexer template:
 
 - `checked_in_repovec_target() -> &'static str` returns the embedded
   `packaging/systemd/repovec.target` source.
@@ -345,10 +361,18 @@ checked-in repovec target and daemon service files:
   `packaging/systemd/repovecd.service` source.
 - `checked_in_repovec_mcpd_service() -> &'static str` returns the embedded
   `packaging/systemd/repovec-mcpd.service` source.
+- `checked_in_repovec_grepai_template() -> &'static str` returns the embedded
+  `packaging/systemd/repovec-grepai@.service` source.
+- `CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH` names the repository path for the
+  checked-in `packaging/systemd/repovec-grepai@.service` template.
 - `validate_checked_in_systemd_units() -> Result<(), SystemdUnitError>`
   validates the embedded unit set.
 - `validate_systemd_units(target, repovecd, mcpd) -> Result<(), SystemdUnitError>`
-  validates caller-provided unit contents against the same appliance contract.
+  validates caller-provided target and daemon unit contents against the
+  pre-indexer appliance contract.
+- `validate_systemd_units_with_grepai_template(target, repovecd, mcpd, grepai)`
+  validates caller-provided target, daemon, and grepai template contents
+  against the full service-layout contract.
 - `validate_and_trace_checked_in_units() -> Result<(), SystemdUnitError>`
   verifies the embedded unit set and emits a `tracing::trace!` event on
   success. It serves as the entry point daemon binaries call during startup.
@@ -369,6 +393,11 @@ This module validates static unit-file policy only. It must not call
 `systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
 runtime installation work.
 
+Keep the three-argument `validate_systemd_units` API for callers that only need
+the base target and daemon contract. New callers that need the complete
+checked-in appliance layout should use
+`validate_systemd_units_with_grepai_template`.
+
 Daemon binaries call
 `run_startup_validation(validate_and_trace_checked_in_units)` near the start of
 `main()`, before starting an async runtime or other long-running work. Treat
@@ -376,29 +405,7 @@ Daemon binaries call
 `error` as structured fields and exit non-zero, so systemd reports a failed
 startup rather than running under a broken checked-in unit contract.
 
-### 5.4 Daemon startup test helpers
-
-The `repovec-test-helpers` crate owns the shared daemon startup test harness
-used by `repovec-core`, `repovecd`, and `repovec-mcpd`. It exposes a generic
-`capture_logs(action)` helper that captures formatted `tracing` output in
-memory for the duration of an injected closure, plus the `ensure` and
-`ensure_log_line_contains` assertion primitives. On top of these it provides
-the binary-facing `assert_startup_*` wrappers that the daemon crates call.
-
-Use the `assert_startup_*` wrappers for binary-level daemon startup tests
-whenever the behaviour is the same across daemons and only the unit name
-differs. Keep unit tests for `run_startup_validation()` itself in
-`repovec-core`; those tests reuse `capture_logs` (via a dev-dependency on
-`repovec-test-helpers`) and should assert the core adapter emits the expected
-`TRACE`, `DEBUG`, and `ERROR` events so the logging contract cannot disappear
-while return-code tests still pass.
-
-Snapshot helpers in `repovec-test-helpers` are behind its `snapshots` feature
-because `insta` is only needed by daemon test targets. Daemon crates enable
-that feature in `[dev-dependencies]` and commit the generated snapshots under
-`crates/repovec-test-helpers/src/snapshots/`.
-
-### 5.5 Extension pattern
+### 5.4 Extension pattern
 
 To add validation for a new appliance asset:
 
@@ -413,7 +420,7 @@ To add validation for a new appliance asset:
 5. Cover all error variants in `tests.rs` using `rstest` fixtures and add BDD
    scenarios under `crates/repovec-core/tests/features/`.
 
-### 5.6 Test patterns
+### 5.5 Test patterns
 
 The appliance validation modules use `rstest` for unit tests and `rstest-bdd`
 with `rstest-bdd-macros` for behavioural tests. Unit tests should exercise each
@@ -455,6 +462,28 @@ worked example.
 See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
 the project-local testing guidance.
+
+### 5.6 Daemon startup test helpers
+
+The `repovec-test-helpers` crate owns the shared daemon startup test harness
+used by `repovec-core`, `repovecd`, and `repovec-mcpd`. It exposes a generic
+`capture_logs(action)` helper that captures formatted `tracing` output in
+memory for the duration of an injected closure, plus the `ensure` and
+`ensure_log_line_contains` assertion primitives. On top of these it provides
+the binary-facing `assert_startup_*` wrappers that the daemon crates call.
+
+Use the `assert_startup_*` wrappers for binary-level daemon startup tests
+whenever the behaviour is the same across daemons and only the unit name
+differs. Keep unit tests for `run_startup_validation()` itself in
+`repovec-core`; those tests reuse `capture_logs` (via a dev-dependency on
+`repovec-test-helpers`) and should assert the core adapter emits the expected
+`TRACE`, `DEBUG`, and `ERROR` events so the logging contract cannot disappear
+while return-code tests still pass.
+
+Snapshot helpers in `repovec-test-helpers` are behind its `snapshots` feature
+because `insta` is only needed by daemon test targets. Daemon crates enable
+that feature in `[dev-dependencies]` and commit the generated snapshots under
+`crates/repovec-test-helpers/src/snapshots/`.
 
 ## 6. Provisioning integration tests
 

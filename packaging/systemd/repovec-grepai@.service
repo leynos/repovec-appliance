@@ -1,0 +1,39 @@
+[Unit]
+Description=repovec grepai indexer for %I
+Requires=qdrant.service repovecd.service
+After=qdrant.service repovecd.service
+PartOf=repovec.target
+
+[Service]
+Type=exec
+User=repovec
+Group=repovec
+WorkingDirectory=/var/lib/repovec/worktrees/%I
+Environment=HOME=/var/lib/repovec
+ExecStart=/usr/bin/grepai watch
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+PrivateDevices=yes
+DevicePolicy=closed
+LockPersonality=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=repovec.target

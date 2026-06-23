@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/systemd_units/tests.rs
+expression: err.to_string()
+---
+repovec-grepai@.service must use ExecStart=/usr/bin/grepai watch: /usr/bin/grepai

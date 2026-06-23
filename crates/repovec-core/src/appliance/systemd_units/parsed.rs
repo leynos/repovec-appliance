@@ -16,6 +16,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{QDRANT_CONTAINER, QDRANT_CONTAINER_SERVICE, SERVICE_SECTION, SystemdUnitError};
 
+#[cfg(test)]
+#[path = "parsed_tests_proptest.rs"]
+mod tests_proptest;
+
 #[derive(Debug)]
 pub(super) struct ParsedUnit {
     unit: &'static str,

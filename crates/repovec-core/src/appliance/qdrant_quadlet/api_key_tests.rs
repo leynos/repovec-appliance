@@ -102,6 +102,10 @@ fn inline_api_key_environment() -> String {
     api_key_secret_type_is_wrong(),
     "incorrect_api_key_secret_type_display"
 )]
+#[case::contradictory_api_key_secret_type(
+    api_key_secret_type_is_contradictory(),
+    "contradictory_api_key_secret_type_display"
+)]
 #[case::inline_api_key_environment(
     inline_api_key_environment(),
     "inline_api_key_environment_display"

@@ -110,8 +110,10 @@ pub const fn checked_in_qdrant_quadlet() -> &'static str { CHECKED_IN_QDRANT_QUA
 ///     TracingQdrantQuadletObserver, validate_checked_in_qdrant_quadlet,
 /// };
 ///
-/// validate_checked_in_qdrant_quadlet(&TracingQdrantQuadletObserver)
-///     .expect("the checked-in qdrant quadlet remains valid");
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// validate_checked_in_qdrant_quadlet(&TracingQdrantQuadletObserver)?;
+/// # Ok(())
+/// # }
 /// ```
 pub fn validate_checked_in_qdrant_quadlet(
     observer: &dyn QdrantQuadletObserver,
@@ -140,6 +142,7 @@ pub fn validate_checked_in_qdrant_quadlet(
 ///     TracingQdrantQuadletObserver, validate_qdrant_quadlet,
 /// };
 ///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let contents = concat!(
 ///     "[Unit]\n",
 ///     "Requires=repovec-qdrant-api-key.service\n",
@@ -154,8 +157,9 @@ pub fn validate_checked_in_qdrant_quadlet(
 ///     "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
 /// );
 ///
-/// validate_qdrant_quadlet(contents, &TracingQdrantQuadletObserver)
-///     .expect("the inline quadlet should satisfy the contract");
+/// validate_qdrant_quadlet(contents, &TracingQdrantQuadletObserver)?;
+/// # Ok(())
+/// # }
 /// ```
 pub fn validate_qdrant_quadlet(
     contents: &str,

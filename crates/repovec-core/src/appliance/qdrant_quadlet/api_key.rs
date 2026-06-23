@@ -250,51 +250,41 @@ fn is_api_key_environment_assignment(assignment: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    //! Unit tests for API-key environment assignment tokenization.
+    //! Unit tests for API-key environment assignment tokenisation.
+
+    use rstest::rstest;
 
     use super::{
         QDRANT_API_KEY_ENVIRONMENT_VARIABLE, is_api_key_environment_assignment,
         redact_api_key_environment_assignment, split_environment_assignments,
     };
 
-    #[test]
-    fn split_environment_assignments_keeps_double_quoted_values_with_spaces() {
-        assert_eq!(
-            split_environment_assignments(r#"FOO="hello world" BAR=baz"#),
-            vec!["FOO=hello world", "BAR=baz"],
-        );
-    }
-
-    #[test]
-    fn split_environment_assignments_keeps_single_quoted_values_with_spaces() {
-        assert_eq!(
-            split_environment_assignments("FOO='hello world' BAR=baz"),
-            vec!["FOO=hello world", "BAR=baz"],
-        );
-    }
-
-    #[test]
-    fn split_environment_assignments_skips_repeated_whitespace() {
-        assert_eq!(
-            split_environment_assignments("  FOO=bar \t  BAR=baz  "),
-            vec!["FOO=bar", "BAR=baz"],
-        );
-    }
-
-    #[test]
-    fn split_environment_assignments_keeps_unmatched_quote_in_current_assignment() {
-        assert_eq!(
-            split_environment_assignments(r#"FOO="unterminated value BAR=baz"#),
-            vec!["FOO=unterminated value BAR=baz"],
-        );
-    }
-
-    #[test]
-    fn split_environment_assignments_keeps_escaped_quotes_inside_quoted_value() {
-        assert_eq!(
-            split_environment_assignments(r#"FOO="hello \"quoted\" world" BAR=baz"#),
-            vec![r#"FOO=hello \"quoted\" world"#, "BAR=baz"],
-        );
+    #[rstest]
+    #[case::double_quoted_values_with_spaces(
+        r#"FOO="hello world" BAR=baz"#,
+        vec!["FOO=hello world", "BAR=baz"],
+    )]
+    #[case::single_quoted_values_with_spaces(
+        "FOO='hello world' BAR=baz",
+        vec!["FOO=hello world", "BAR=baz"],
+    )]
+    #[case::repeated_whitespace(
+        "  FOO=bar \t  BAR=baz  ",
+        vec!["FOO=bar", "BAR=baz"],
+    )]
+    #[case::unmatched_quote(
+        r#"FOO="unterminated value BAR=baz"#,
+        vec!["FOO=unterminated value BAR=baz"],
+    )]
+    #[case::escaped_quotes_inside_quoted_value(
+        r#"FOO="hello \"quoted\" world" BAR=baz"#,
+        vec![r#"FOO=hello \"quoted\" world"#, "BAR=baz"],
+    )]
+    fn split_environment_assignments_preserves_quote_aware_assignments(
+        #[case] environment: &str,
+        #[case] expected: Vec<&str>,
+    ) {
+        assert_eq!(split_environment_assignments(environment), expected);
     }
 
     #[test]

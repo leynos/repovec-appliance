@@ -284,10 +284,12 @@ ERROR systemd unit contract violation — aborting startup
 
 The `unit` field contains the logical systemd unit name (e.g.
 `repovecd.service`) and the `error` field contains the human-readable
-description of the contract violation. Set a target-scoped filter such as
-`RUST_LOG=repovec_core::qdrant_quadlet=trace,repovec_core::systemd_units=trace`
-to see validation `TRACE` and `DEBUG` events for those components; only `ERROR`
-events are visible at the default log level.
+description of the contract violation. The Qdrant Quadlet validator emits
+`INFO`, `WARN`, and `ERROR` events; use a target-scoped filter such as
+`RUST_LOG=repovec_core::qdrant_quadlet=info` to inspect those validation
+events. The systemd unit validator emits `TRACE`, `DEBUG`, and `ERROR` events;
+use `RUST_LOG=repovec_core::systemd_units=trace` when startup ordering or
+unit-contract diagnostics require the lower-level trace.
 
 Starting the target may still fail until later roadmap items create the
 `repovec` system user, directory layout, Qdrant API-key configuration, and

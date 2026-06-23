@@ -141,13 +141,15 @@ fn line_tokens(line: &str) -> Vec<String> {
 }
 
 fn redact_token(token: &str) -> String {
-    if token.contains("://") && token.contains('@') {
-        return redact_url_authority(token);
+    if let Some((key, value)) = token.split_once('=') {
+        return if is_sensitive_assignment(key, value) {
+            format!("{key}=<redacted>")
+        } else {
+            redact_url_authority(token)
+        };
     }
 
-    let Some((key, value)) = token.split_once('=') else { return token.to_owned() };
-
-    if is_sensitive_assignment(key, value) { format!("{key}=<redacted>") } else { token.to_owned() }
+    redact_url_authority(token)
 }
 
 fn is_sensitive_assignment(key: &str, value: &str) -> bool {
@@ -156,9 +158,17 @@ fn is_sensitive_assignment(key: &str, value: &str) -> bool {
     }
 
     let unquoted_value = trim_surrounding_quotes(value);
-    line_tokens(unquoted_value).into_iter().any(|token| {
+    if looks_like_secret_value(unquoted_value) {
+        return true;
+    }
+
+    let tokens = line_tokens(unquoted_value);
+    tokens.iter().enumerate().any(|(index, token)| {
         token.split_once('=').is_some_and(|(nested_key, nested_value)| {
-            is_sensitive_key(nested_key) || looks_like_secret_value(nested_value)
+            is_sensitive_key(nested_key)
+                || looks_like_secret_value(nested_value)
+                || (nested_value.eq_ignore_ascii_case("bearer")
+                    && tokens.get(index + 1).is_some_and(|next| !next.trim().is_empty()))
         })
     })
 }
@@ -194,10 +204,13 @@ fn is_sensitive_key(key: &str) -> bool {
 }
 
 fn looks_like_secret_value(value: &str) -> bool {
-    value
-        .strip_prefix("Bearer ")
-        .or_else(|| value.strip_prefix("bearer "))
-        .is_some_and(|token| !token.trim().is_empty())
+    let unquoted_value = trim_surrounding_quotes(value).trim();
+    let mut parts = unquoted_value.splitn(2, char::is_whitespace);
+    let Some(scheme) = parts.next() else {
+        return false;
+    };
+    scheme.eq_ignore_ascii_case("bearer")
+        && parts.next().is_some_and(|token| !token.trim().is_empty())
 }
 
 #[cfg(test)]
@@ -239,6 +252,27 @@ mod tests {
         let line = r#"Environment="DISPLAY_NAME=public QDRANT__SERVICE__API_KEY=secret phrase""#;
 
         assert_eq!(redact_line(line), "Environment=<redacted>");
+    }
+
+    #[test]
+    fn redact_line_redacts_quoted_bearer_assignment_value() {
+        let line = r#"Environment=AUTHORIZATION="Bearer secret phrase""#;
+
+        assert_eq!(redact_line(line), "Environment=<redacted>");
+    }
+
+    #[test]
+    fn redact_line_redacts_nested_bearer_assignment_value() {
+        let line = r#"Environment="DISPLAY_NAME=public AUTHORIZATION=Bearer secret phrase""#;
+
+        assert_eq!(redact_line(line), "Environment=<redacted>");
+    }
+
+    #[test]
+    fn redact_line_prefers_sensitive_key_over_url_authority_redaction() {
+        let line = "QDRANT__SERVICE__API_KEY=https://user:pass@example.invalid/path";
+
+        assert_eq!(redact_line(line), "QDRANT__SERVICE__API_KEY=<redacted>");
     }
 }
 

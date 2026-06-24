@@ -255,9 +255,9 @@ pub fn apply_poll_outcome(outcome: TokenPollOutcome, active_interval: Duration) 
         TokenPollOutcome::AuthorizationPending => {
             PollDecision::Continue { next_interval: active_interval }
         }
-        TokenPollOutcome::SlowDown => {
-            PollDecision::Continue { next_interval: active_interval + SLOW_DOWN_EXTRA_DELAY }
-        }
+        TokenPollOutcome::SlowDown => PollDecision::Continue {
+            next_interval: active_interval.saturating_add(SLOW_DOWN_EXTRA_DELAY),
+        },
         TokenPollOutcome::AccessDenied => {
             PollDecision::Failed(TerminalDeviceFlowError::AccessDenied)
         }

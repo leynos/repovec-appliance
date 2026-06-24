@@ -1,6 +1,13 @@
 //! Tests for encrypted GitHub token storage.
 
-use std::{cell::RefCell, convert::Infallible, ffi::OsStr, rc::Rc};
+use std::{
+    cell::RefCell,
+    convert::Infallible,
+    ffi::OsStr,
+    rc::Rc,
+    sync::{Arc, Barrier},
+    thread,
+};
 
 #[cfg(unix)]
 use cap_std::fs_utf8::PermissionsExt;
@@ -34,18 +41,28 @@ impl CredentialEncryptor for PrefixEncryptor {
 #[derive(Clone, Debug)]
 struct RecordingRunner {
     calls: Rc<RefCell<Vec<Vec<String>>>>,
+    stdins: Rc<RefCell<Vec<Vec<u8>>>>,
 }
 
 impl RecordingRunner {
-    fn new() -> Self { Self { calls: Rc::new(RefCell::new(Vec::new())) } }
+    fn new() -> Self {
+        Self { calls: Rc::new(RefCell::new(Vec::new())), stdins: Rc::new(RefCell::new(Vec::new())) }
+    }
 
     fn calls(&self) -> Vec<Vec<String>> { self.calls.borrow().clone() }
+
+    fn stdins(&self) -> Vec<Vec<u8>> { self.stdins.borrow().clone() }
 }
 
 impl CommandRunner for RecordingRunner {
     type Error = Infallible;
 
-    fn run<I, S>(&self, _command: &camino::Utf8Path, args: I) -> Result<CommandOutput, Self::Error>
+    fn run<I, S>(
+        &self,
+        _command: &camino::Utf8Path,
+        args: I,
+        stdin: &[u8],
+    ) -> Result<CommandOutput, Self::Error>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -55,6 +72,7 @@ impl CommandRunner for RecordingRunner {
             .map(|arg| arg.as_ref().to_string_lossy().into_owned())
             .collect::<Vec<_>>();
         self.calls.borrow_mut().push(collected.clone());
+        self.stdins.borrow_mut().push(stdin.to_vec());
         if collected.last().is_none_or(|output_path| output_path != "-") {
             return Ok(CommandOutput {
                 status_code: Some(2),
@@ -124,6 +142,25 @@ fn systemd_creds_encryptor_does_not_pass_token_as_an_argument() {
 
     assert_eq!(encrypted, b"ciphertext");
     assert!(runner.calls().iter().flatten().all(|arg| !arg.contains("gho_secret")));
+    assert_eq!(runner.stdins(), [b"gho_secret".to_vec()]);
+}
+
+#[test]
+fn systemd_creds_encryptor_reads_input_from_stdin() {
+    let runner = RecordingRunner::new();
+    let encryptor = SystemdCredsEncryptor::new(runner.clone());
+
+    encryptor.encrypt(b"gho_secret").expect("token should encrypt");
+
+    assert_eq!(
+        runner.calls(),
+        [vec![
+            "encrypt".to_owned(),
+            "--name=repovec-github-oauth-token".to_owned(),
+            "-".to_owned(),
+            "-".to_owned(),
+        ]]
+    );
 }
 
 #[test]
@@ -155,6 +192,19 @@ fn systemd_creds_error_display_redacts_token() {
     assert!(message.contains("[redacted]"));
 }
 
+#[test]
+fn systemd_creds_error_debug_redacts_token() {
+    let error = SystemdCredsError::<Infallible>::CommandFailed {
+        operation: "encrypt",
+        status: Some(1),
+        stderr: super::LossyStderr("failure for gho_secret".to_owned()),
+    };
+    let message = format!("{error:?}");
+
+    assert!(!message.contains("gho_secret"));
+    assert!(message.contains("[redacted]"));
+}
+
 #[rstest]
 #[case("gho_secret")]
 #[case("ghp_secret")]
@@ -172,4 +222,43 @@ fn systemd_creds_error_display_redacts_github_token_prefixes(#[case] token: &str
 
     assert!(!message.contains(token));
     assert!(message.contains("[redacted]"));
+}
+
+#[test]
+fn atomic_writes_use_unique_temporary_files_under_concurrency() {
+    let tempdir = tempfile::tempdir().expect("tempdir should be created");
+    let root_path = camino::Utf8PathBuf::from_path_buf(tempdir.path().to_path_buf())
+        .expect("temporary path should be UTF-8");
+    let start_barrier = Arc::new(Barrier::new(8));
+    let handles = (0..8)
+        .map(|index| {
+            let writer_root_path = root_path.clone();
+            let writer_start_barrier = Arc::clone(&start_barrier);
+            thread::spawn(move || {
+                let opened_root = Dir::open_ambient_dir(&writer_root_path, ambient_authority())
+                    .expect("temporary root should open");
+                writer_start_barrier.wait();
+                let contents = format!("ciphertext-{index}");
+                super::write_atomically(
+                    &opened_root,
+                    EncryptedGitHubTokenStore::<PrefixEncryptor>::credential_file(),
+                    contents.as_bytes(),
+                )
+                .expect("atomic write should succeed");
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for handle in handles {
+        handle.join().expect("writer thread should not panic");
+    }
+
+    let readable_root =
+        Dir::open_ambient_dir(&root_path, ambient_authority()).expect("temporary root should open");
+    let raw_contents = readable_root
+        .read(EncryptedGitHubTokenStore::<PrefixEncryptor>::credential_file())
+        .expect("encrypted credential should be readable");
+    let contents = String::from_utf8(raw_contents).expect("test ciphertext should be UTF-8");
+
+    assert!((0..8).any(|index| contents == format!("ciphertext-{index}")));
 }

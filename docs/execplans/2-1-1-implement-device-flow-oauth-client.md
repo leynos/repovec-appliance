@@ -37,8 +37,11 @@ Implementation began after explicit approval in the 2026-06-02 user request.
   GitHub's documentation states that the device flow uses `client_id` plus the
   device code and grant type.
 - Respect the polling interval returned with the device code. A `slow_down`
-  response must increase the next poll delay by at least five seconds, or by
-  the interval returned by the server when present.
+  response uses additive backoff on the current active polling interval: the
+  next poll delay increases by at least five seconds, or by the
+  server-supplied interval when one is present. The server interval must not
+  substitute for or reduce the active interval. This additive behaviour is the
+  intended behaviour modelled by the core state machine.
 - Store the GitHub access token encrypted at rest under `/etc/repovec/`. The
   token must not appear in logs, command arguments, snapshots, panic messages,
   or committed files.
@@ -131,7 +134,7 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
 - Risk: the roadmap asks for a "test binary", while the repository currently
   uses unit tests, integration tests, and `rstest-bdd` scenarios rather than
   many auxiliary binaries. Severity: low. Likelihood: medium. Mitigation: add
-  an explicit `crates/repovecd/src/bin/device-flow-test.rs` or a clearly named
+  an explicit `crates/repovecd/examples/device-flow-test.rs` or a clearly named
   integration binary only if that is the least surprising way to meet the
   roadmap. If a test target provides the same observable contract, record the
   decision.
@@ -259,6 +262,15 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
   unrelated files were restored before continuing.
 - [x] (2026-06-02T07:26:00+02:00) Ran CodeRabbit for the documentation and
   roadmap closeout. CodeRabbit completed with 0 findings.
+- [x] (2026-06-24T00:00:00+02:00) Began review-feedback pass for post-review
+  security, orchestration, and documentation findings. Verified the branch,
+  reset Lody session title, created a Leta workspace, and patched still-valid
+  issues while keeping the changes focused.
+- [x] (2026-06-24T00:00:00+02:00) Validated the review-feedback fixes.
+  `make build`, `make check-fmt`, `make typecheck`, `make lint`,
+  `make test`, `make markdownlint`, and `make nixie` passed. `make test`
+  reported 258 nextest tests and 45 doctests passing.
+  `cargo run -p repovecd --example device-flow-test` completed successfully.
 
 ## Surprises & discoveries
 
@@ -454,6 +466,7 @@ is approved, and there are no unexpected local changes. Re-read this ExecPlan,
 Run baseline gates before code changes:
 
 ```sh
+make build 2>&1 | tee "/tmp/build-repovec-appliance-$(git branch --show-current).out"
 make check-fmt 2>&1 | tee "/tmp/check-fmt-repovec-appliance-$(git branch --show-current).out"
 make typecheck 2>&1 | tee "/tmp/typecheck-repovec-appliance-$(git branch --show-current).out"
 make lint 2>&1 | tee "/tmp/lint-repovec-appliance-$(git branch --show-current).out"
@@ -596,7 +609,7 @@ Add `rstest-bdd` feature coverage under
   device-code request;
 - malformed server responses producing typed errors.
 
-Add the roadmap's test binary as `crates/repovecd/src/bin/device-flow-test.rs`
+Add the roadmap's test binary as `crates/repovecd/examples/device-flow-test.rs`
 if still needed after the test suite shape is clear. The binary should target
 the local mock server, not live GitHub, and should exit successfully only after
 receiving and storing a token. If a Cargo integration test target is a better
@@ -637,6 +650,7 @@ technical design.
 Run documentation gates and full code gates:
 
 ```sh
+make build 2>&1 | tee "/tmp/build-repovec-appliance-$(git branch --show-current).out"
 make fmt 2>&1 | tee "/tmp/fmt-repovec-appliance-$(git branch --show-current).out"
 make markdownlint 2>&1 | tee "/tmp/markdownlint-repovec-appliance-$(git branch --show-current).out"
 make nixie 2>&1 | tee "/tmp/nixie-repovec-appliance-$(git branch --show-current).out"

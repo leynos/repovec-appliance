@@ -153,7 +153,10 @@ The token-store adapter encrypts and decrypts the bearer token through
 credential atomically, syncs the file and containing directory, and keeps token
 material off the command line and out of display diagnostics. Reloaded tokens
 contain the bearer secret only; scope metadata is treated as server response
-metadata and is not persisted with the credential.
+metadata and is not persisted with the credential. Permission checks based on
+granted scopes are therefore login-time checks only in this adapter. Components
+that need to enforce scope-derived permissions after a restart must revalidate
+the token with GitHub before relying on those permissions.
 
 ### Discovery and continuous monitoring
 

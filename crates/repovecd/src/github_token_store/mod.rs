@@ -5,6 +5,7 @@ use std::{
     fmt,
     io::{ErrorKind, Write},
     process::{Command, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -15,13 +16,15 @@ use cap_std::{
     fs_utf8::{Dir, OpenOptions},
 };
 use repovec_core::github_oauth::AccessToken;
-use tempfile::NamedTempFile;
 use thiserror::Error;
 
 use crate::github_device_flow::TokenStore;
 
 const TOKEN_CREDENTIAL_NAME: &str = "repovec-github-oauth-token";
 const TOKEN_CREDENTIAL_FILE: &str = "github-oauth-token.cred";
+const ATOMIC_WRITE_CREATE_RETRIES: u8 = 8;
+
+static NEXT_TEMP_FILE_ID: AtomicU64 = AtomicU64::new(0);
 
 /// Encrypts and decrypts token material before filesystem persistence.
 pub trait CredentialEncryptor {
@@ -165,9 +168,14 @@ pub trait CommandRunner {
     ///
     /// # Errors
     ///
-    /// Returns the runner error when the process cannot be started or waited
-    /// on.
-    fn run<I, S>(&self, command: &Utf8Path, args: I) -> Result<CommandOutput, Self::Error>
+    /// Returns the runner error when the process cannot be started, written to,
+    /// or waited on.
+    fn run<I, S>(
+        &self,
+        command: &Utf8Path,
+        args: I,
+        stdin: &[u8],
+    ) -> Result<CommandOutput, Self::Error>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>;
@@ -191,17 +199,30 @@ pub struct SystemCommandRunner;
 impl CommandRunner for SystemCommandRunner {
     type Error = std::io::Error;
 
-    fn run<I, S>(&self, command: &Utf8Path, args: I) -> Result<CommandOutput, Self::Error>
+    fn run<I, S>(
+        &self,
+        command: &Utf8Path,
+        args: I,
+        stdin: &[u8],
+    ) -> Result<CommandOutput, Self::Error>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let output = Command::new(command.as_str())
+        let mut child = Command::new(command.as_str())
             .args(args)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output()?;
+            .spawn()?;
+        if let Some(mut child_stdin) = child.stdin.take()
+            && let Err(error) = child_stdin.write_all(stdin)
+        {
+            drop(child.kill());
+            drop(child.wait());
+            return Err(error);
+        }
+        let output = child.wait_with_output()?;
         Ok(CommandOutput {
             status_code: output.status.code(),
             stderr: output.stderr,
@@ -242,12 +263,6 @@ pub enum SystemdCredsError<E>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
-    /// A temporary file for command input or output could not be created.
-    #[error("failed to create temporary credential file")]
-    TempFile(#[source] std::io::Error),
-    /// Plaintext or ciphertext could not be written to the temporary input.
-    #[error("failed to write temporary credential input")]
-    WriteInput(#[source] std::io::Error),
     /// The `systemd-creds` command failed to run.
     #[error("failed to run systemd-creds")]
     Run(#[source] E),
@@ -264,8 +279,14 @@ where
 }
 
 /// Lossy standard-error text that avoids panics on invalid UTF-8.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct LossyStderr(String);
+
+impl fmt::Debug for LossyStderr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("LossyStderr").field(&redact_tokenish_words(&self.0)).finish()
+    }
+}
 
 impl fmt::Display for LossyStderr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -288,23 +309,40 @@ fn contains_github_token_prefix(word: &str) -> bool {
 }
 
 fn write_atomically(root: &Dir, filename: &str, contents: &[u8]) -> std::io::Result<()> {
-    let temp_name = format!(".{filename}.{}.tmp", std::process::id());
-    if let Err(error) = root.remove_file(&temp_name)
-        && error.kind() != ErrorKind::NotFound
-    {
-        return Err(error);
-    }
-    let mut options = OpenOptions::new();
-    options.create(true).write(true).truncate(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    let mut temp_file = root.open_with(&temp_name, &options)?;
+    let (temp_name, mut temp_file) = create_atomic_write_temp_file(root, filename)?;
     temp_file.write_all(contents)?;
     temp_file.flush()?;
     temp_file.sync_all()?;
     drop(temp_file);
     root.rename(&temp_name, root, filename)?;
     root.open(".")?.sync_all()
+}
+
+fn create_atomic_write_temp_file(
+    root: &Dir,
+    filename: &str,
+) -> std::io::Result<(String, cap_std::fs_utf8::File)> {
+    for _ in 0..ATOMIC_WRITE_CREATE_RETRIES {
+        let temp_name = next_atomic_write_temp_name(filename);
+        let mut options = OpenOptions::new();
+        options.create_new(true).write(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        match root.open_with(&temp_name, &options) {
+            Ok(file) => return Ok((temp_name, file)),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::new(
+        ErrorKind::AlreadyExists,
+        "could not create a unique atomic-write temporary file",
+    ))
+}
+
+fn next_atomic_write_temp_name(filename: &str) -> String {
+    let id = NEXT_TEMP_FILE_ID.fetch_add(1, Ordering::Relaxed);
+    format!(".{filename}.{}.{id}.tmp", std::process::id())
 }
 
 struct SystemdCredsTransform<'a, R>
@@ -324,20 +362,17 @@ fn run_systemd_creds_file_transform<R>(
 where
     R: CommandRunner,
 {
-    // `tempfile` creates named temporary files with owner-only permissions on
-    // Unix; changing them afterwards would require a forbidden ambient
-    // `std::fs` permissions operation in this repository.
-    let mut input_file = NamedTempFile::new().map_err(SystemdCredsError::TempFile)?;
-    input_file.write_all(transform.input).map_err(SystemdCredsError::WriteInput)?;
-    let input_path = input_file.path().as_os_str().to_owned();
-    let mut args = vec![transform.operation.into()];
+    let mut args = vec![transform.operation.to_owned()];
     if let Some(credential_name) = transform.name {
-        args.push(format!("--name={credential_name}").into());
+        args.push(format!("--name={credential_name}"));
     }
-    args.push(input_path);
-    args.push("-".into());
+    args.push("-".to_owned());
+    args.push("-".to_owned());
 
-    let output = transform.runner.run(transform.command, args).map_err(SystemdCredsError::Run)?;
+    let output = transform
+        .runner
+        .run(transform.command, args, transform.input)
+        .map_err(SystemdCredsError::Run)?;
     if output.status_code != Some(0) {
         return Err(SystemdCredsError::CommandFailed {
             operation: transform.operation,

@@ -51,6 +51,13 @@ fn slow_down_increases_the_active_interval() {
     );
 }
 
+#[test]
+fn slow_down_saturates_extreme_active_interval() {
+    let decision = apply_poll_outcome(TokenPollOutcome::SlowDown, Duration::MAX);
+
+    assert_eq!(decision, PollDecision::Continue { next_interval: Duration::MAX });
+}
+
 #[rstest]
 #[case(TokenPollOutcome::AccessDenied, TerminalDeviceFlowError::AccessDenied)]
 #[case(TokenPollOutcome::ExpiredToken, TerminalDeviceFlowError::ExpiredToken)]
@@ -100,7 +107,7 @@ proptest! {
 
         match decision {
             PollDecision::Continue { next_interval } => {
-                prop_assert!(next_interval >= interval + SLOW_DOWN_EXTRA_DELAY);
+                prop_assert_eq!(next_interval, interval.saturating_add(SLOW_DOWN_EXTRA_DELAY));
             }
             unexpected => prop_assert!(false, "unexpected decision: {unexpected:?}"),
         }

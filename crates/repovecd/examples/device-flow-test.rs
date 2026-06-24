@@ -1,6 +1,6 @@
 //! Local test binary for the GitHub OAuth device-flow client.
 
-use std::{convert::Infallible, error::Error, io};
+use std::{error::Error, io};
 
 use oauth2_test_server::OAuthTestServer;
 use repovec_core::github_oauth::{ClientId, TokenPollOutcome};
@@ -14,7 +14,7 @@ use serde_json::json;
 struct ExampleEncryptor;
 
 impl CredentialEncryptor for ExampleEncryptor {
-    type Error = Infallible;
+    type Error = io::Error;
 
     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, Self::Error> {
         let mut ciphertext = b"example-encrypted:".to_vec();
@@ -23,7 +23,9 @@ impl CredentialEncryptor for ExampleEncryptor {
     }
 
     fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, Self::Error> {
-        let encrypted = ciphertext.strip_prefix(b"example-encrypted:").unwrap_or(ciphertext);
+        let encrypted = ciphertext.strip_prefix(b"example-encrypted:").ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "missing example encryption prefix")
+        })?;
         Ok(encrypted.iter().rev().copied().collect())
     }
 }

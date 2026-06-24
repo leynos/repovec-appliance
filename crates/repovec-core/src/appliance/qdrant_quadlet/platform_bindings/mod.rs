@@ -114,14 +114,11 @@ fn validate_storage_mount(
 ) -> Result<(), QdrantQuadletError> {
     let volumes = parsed.values(CONTAINER_SECTION, "Volume");
     let mut last_candidate_error = None;
+    let mut missing_storage_mount_volume = None;
 
     for (volume, parts) in volumes.iter().filter_map(|volume| storage_mount_candidate(volume)) {
         let Some(source) = parts.first().copied() else {
-            observer.missing_storage_mount_volume(
-                volume,
-                REQUIRED_STORAGE_SOURCE,
-                REQUIRED_STORAGE_TARGET,
-            );
+            missing_storage_mount_volume = Some(volume);
             last_candidate_error = Some(QdrantQuadletError::MissingStorageMount);
             continue;
         };
@@ -132,11 +129,7 @@ fn validate_storage_mount(
         }
 
         let Some(target) = parts.get(1).copied() else {
-            observer.missing_storage_mount_volume(
-                volume,
-                REQUIRED_STORAGE_SOURCE,
-                REQUIRED_STORAGE_TARGET,
-            );
+            missing_storage_mount_volume = Some(volume);
             last_candidate_error = Some(QdrantQuadletError::MissingStorageMount);
             continue;
         };
@@ -156,20 +149,31 @@ fn validate_storage_mount(
     }
 
     let error = last_candidate_error.unwrap_or(QdrantQuadletError::MissingStorageMount);
-    observe_storage_mount_error(observer, &error);
+    observe_storage_mount_error(observer, &error, missing_storage_mount_volume);
     Err(error)
 }
 
-fn observe_storage_mount_error(observer: &dyn QdrantQuadletObserver, error: &QdrantQuadletError) {
-    match error {
-        QdrantQuadletError::IncorrectStorageSource { source } => {
+fn observe_storage_mount_error(
+    observer: &dyn QdrantQuadletObserver,
+    error: &QdrantQuadletError,
+    missing_storage_mount_volume: Option<&str>,
+) {
+    match (error, missing_storage_mount_volume) {
+        (QdrantQuadletError::IncorrectStorageSource { source }, _) => {
             observer.incorrect_storage_source(source, REQUIRED_STORAGE_SOURCE);
         }
-        QdrantQuadletError::IncorrectStorageTarget { target } => {
+        (QdrantQuadletError::IncorrectStorageTarget { target }, _) => {
             observer.incorrect_storage_target(target, REQUIRED_STORAGE_TARGET);
         }
-        QdrantQuadletError::MissingSelinuxRelabel { volume } => {
+        (QdrantQuadletError::MissingSelinuxRelabel { volume }, _) => {
             observer.missing_selinux_relabel(volume, REQUIRED_SELINUX_OPTION);
+        }
+        (QdrantQuadletError::MissingStorageMount, Some(volume)) => {
+            observer.missing_storage_mount_volume(
+                volume,
+                REQUIRED_STORAGE_SOURCE,
+                REQUIRED_STORAGE_TARGET,
+            );
         }
         _ => observer.missing_storage_mount(REQUIRED_STORAGE_SOURCE, REQUIRED_STORAGE_TARGET),
     }

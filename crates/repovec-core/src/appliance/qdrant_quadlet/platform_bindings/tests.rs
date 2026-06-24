@@ -1,5 +1,7 @@
 //! Unit tests for appliance platform binding parsing helpers.
 
+use std::cell::Cell;
+
 use proptest::prelude::*;
 use rstest::rstest;
 
@@ -7,7 +9,28 @@ use super::{
     REQUIRED_SELINUX_OPTION, REQUIRED_STORAGE_SOURCE, has_required_selinux_relabel_option,
     published_container_port, storage_mount_candidate, validate_storage_mount,
 };
-use crate::appliance::qdrant_quadlet::parser::ParsedQuadlet;
+use crate::appliance::qdrant_quadlet::{observer::QdrantQuadletObserver, parser::ParsedQuadlet};
+
+#[derive(Default)]
+struct StorageMountObserver {
+    missing_mounts: Cell<usize>,
+    missing_volumes: Cell<usize>,
+}
+
+impl QdrantQuadletObserver for StorageMountObserver {
+    fn missing_storage_mount(&self, _expected_source: &str, _expected_target: &str) {
+        self.missing_mounts.set(self.missing_mounts.get() + 1);
+    }
+
+    fn missing_storage_mount_volume(
+        &self,
+        _volume: &str,
+        _expected_source: &str,
+        _expected_target: &str,
+    ) {
+        self.missing_volumes.set(self.missing_volumes.get() + 1);
+    }
+}
 
 #[rstest]
 #[case::rest_binding("127.0.0.1:6333:6333", Some(6333))]
@@ -64,6 +87,23 @@ Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:rw,Z
     .expect("quadlet fixture should parse");
 
     assert_eq!(validate_storage_mount(&parsed, &()), Ok(()));
+}
+
+#[test]
+fn validate_storage_mount_reports_one_terminal_missing_volume_callback() {
+    let observer = StorageMountObserver::default();
+    let parsed = ParsedQuadlet::parse(
+        "\
+[Container]
+Volume=/var/lib/repovec/qdrant-storage
+",
+        &(),
+    )
+    .expect("quadlet fixture should parse");
+
+    assert!(validate_storage_mount(&parsed, &observer).is_err());
+    assert_eq!(observer.missing_mounts.get(), 0);
+    assert_eq!(observer.missing_volumes.get(), 1);
 }
 
 #[test]

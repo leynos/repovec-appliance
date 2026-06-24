@@ -1,5 +1,6 @@
 ---
 source: crates/repovec-core/src/appliance/qdrant_quadlet/log_tests/mod.rs
+assertion_line: 221
 expression: events
 ---
 [
@@ -22,17 +23,6 @@ expression: events
             "expected_target": "/qdrant/storage",
             "message": "qdrant quadlet validation failed: missing storage mount",
             "volume": "/var/lib/repovec/qdrant-storage",
-        },
-    },
-    CapturedEvent {
-        level: Level(
-            Warn,
-        ),
-        target: "repovec_core::qdrant_quadlet",
-        fields: {
-            "expected_source": "/var/lib/repovec/qdrant-storage",
-            "expected_target": "/qdrant/storage",
-            "message": "qdrant quadlet validation failed: missing storage mount",
         },
     },
 ]

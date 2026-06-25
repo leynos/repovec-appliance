@@ -146,6 +146,7 @@ fn checked_in_qdrant_quadlet_validation_emits_entry_and_success_events() {
             fields: Vec::new(),
         },
     );
+    assert_debug_snapshot!("checked_in_qdrant_quadlet_success_events", events);
 }
 
 #[test]
@@ -171,6 +172,7 @@ fn inline_qdrant_quadlet_validation_emits_entry_and_success_events() {
             fields: Vec::new(),
         },
     );
+    assert_debug_snapshot!("inline_qdrant_quadlet_success_events", events);
 }
 
 #[test]

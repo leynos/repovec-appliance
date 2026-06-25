@@ -28,7 +28,23 @@ use super::{
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # use repovec_core::appliance::qdrant_quadlet::{QdrantQuadletError, QdrantQuadletObserver};
+/// # struct ParsedQuadlet;
+/// # impl ParsedQuadlet {
+/// #     fn parse(
+/// #         _contents: &str,
+/// #         _observer: &dyn QdrantQuadletObserver,
+/// #     ) -> Result<Self, QdrantQuadletError> {
+/// #         Ok(Self)
+/// #     }
+/// # }
+/// # fn validate_api_key_provisioning_dependency(
+/// #     _parsed: &ParsedQuadlet,
+/// #     _observer: &dyn QdrantQuadletObserver,
+/// # ) -> Result<(), QdrantQuadletError> {
+/// #     Ok(())
+/// # }
 /// let parsed = ParsedQuadlet::parse(
 ///     "[Unit]\nRequires=repovec-qdrant-api-key.service\nAfter=repovec-qdrant-api-key.service\n",
 ///     &(),
@@ -87,7 +103,23 @@ fn validate_unit_dependency(
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # use repovec_core::appliance::qdrant_quadlet::{QdrantQuadletError, QdrantQuadletObserver};
+/// # struct ParsedQuadlet;
+/// # impl ParsedQuadlet {
+/// #     fn parse(
+/// #         _contents: &str,
+/// #         _observer: &dyn QdrantQuadletObserver,
+/// #     ) -> Result<Self, QdrantQuadletError> {
+/// #         Ok(Self)
+/// #     }
+/// # }
+/// # fn validate_api_key_secret(
+/// #     _parsed: &ParsedQuadlet,
+/// #     _observer: &dyn QdrantQuadletObserver,
+/// # ) -> Result<(), QdrantQuadletError> {
+/// #     Ok(())
+/// # }
 /// let parsed = ParsedQuadlet::parse(
 ///     "[Container]\nSecret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
 ///     &(),
@@ -154,7 +186,23 @@ fn is_required_api_key_secret(secret: &str) -> bool {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
+/// # use repovec_core::appliance::qdrant_quadlet::{QdrantQuadletError, QdrantQuadletObserver};
+/// # struct ParsedQuadlet;
+/// # impl ParsedQuadlet {
+/// #     fn parse(
+/// #         _contents: &str,
+/// #         _observer: &dyn QdrantQuadletObserver,
+/// #     ) -> Result<Self, QdrantQuadletError> {
+/// #         Ok(Self)
+/// #     }
+/// # }
+/// # fn validate_no_inline_api_key_environment(
+/// #     _parsed: &ParsedQuadlet,
+/// #     _observer: &dyn QdrantQuadletObserver,
+/// # ) -> Result<(), QdrantQuadletError> {
+/// #     Ok(())
+/// # }
 /// let parsed = ParsedQuadlet::parse(
 ///     "[Container]\nEnvironment=QDRANT__SERVICE__API_KEY=secret\n",
 ///     &(),
@@ -224,7 +272,9 @@ fn split_environment_assignments(environment: &str) -> Vec<String> {
                 is_escaped = true;
             }
             (Some(active_quote), current) if active_quote == current => quote = None,
-            (None, '"' | '\'') => quote = Some(character),
+            (None, '"' | '\'') if assignment.is_empty() || assignment.ends_with('=') => {
+                quote = Some(character);
+            }
             (None, current) if current.is_ascii_whitespace() => {
                 if !assignment.is_empty() {
                     assignments.push(std::mem::take(&mut assignment));
@@ -279,6 +329,10 @@ mod tests {
     #[case::escaped_quotes_inside_quoted_value(
         r#"FOO="hello \"quoted\" world" BAR=baz"#,
         vec![r#"FOO=hello \"quoted\" world"#, "BAR=baz"],
+    )]
+    #[case::apostrophe_inside_unquoted_value_does_not_merge_assignments(
+        "AUTHOR=O'Reilly QDRANT__SERVICE__API_KEY=secret",
+        vec!["AUTHOR=O'Reilly", "QDRANT__SERVICE__API_KEY=secret"],
     )]
     fn split_environment_assignments_preserves_quote_aware_assignments(
         #[case] environment: &str,

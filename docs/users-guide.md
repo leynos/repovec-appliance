@@ -62,7 +62,6 @@ job can stay required even when it skips documentation-specific work. When the
 workflow takes the conservative Mermaid path because a file could not be read,
 it also publishes which files triggered that fallback.
 
-
 ## GitHub device-flow authentication
 
 repovec-appliance authenticates to GitHub using OAuth device flow. This lets an

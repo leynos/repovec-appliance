@@ -459,7 +459,6 @@ Daemon binaries call
 `error` as structured fields and exit non-zero, so systemd reports a failed
 startup rather than running under a broken checked-in unit contract.
 
-
 ### 5.4 Extension pattern
 
 To add validation for a new appliance asset:
@@ -629,7 +628,6 @@ appliance itself. None of these symbols ship in any wheel.
 
 `integration-tests/README.md` is the operator-level entry point for running
 the suite; this section is the developer-level reference for extending it.
-
 
 ## 7. GitHub OAuth device-flow implementation
 

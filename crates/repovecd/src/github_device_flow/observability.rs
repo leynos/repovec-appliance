@@ -21,9 +21,20 @@ pub(super) fn info_device_flow_result<O, S>(
     O: std::error::Error + Send + Sync + 'static,
     S: std::error::Error + Send + Sync + 'static,
 {
-    if result.is_ok() {
-        info!("metric.github_device_flow_completed_total");
+    match result {
+        Ok(_) => info!("metric.github_device_flow_completed_total"),
+        Err(DeviceFlowRunError::OAuth(error)) => info_failure("oauth", error),
+        Err(DeviceFlowRunError::Storage(error)) => info_failure("storage", error),
+        Err(DeviceFlowRunError::Terminal(_)) => {}
     }
+}
+
+fn info_failure(kind: &'static str, error: &dyn std::error::Error) {
+    info!(
+        error = %error,
+        failure_kind = kind,
+        "metric.github_device_flow_failed_total",
+    );
 }
 
 pub(super) fn info_terminal_outcome(error: TerminalDeviceFlowError, attempt: u64) {

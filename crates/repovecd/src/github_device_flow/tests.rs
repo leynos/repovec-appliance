@@ -1,13 +1,17 @@
 //! Tests for device-flow orchestration.
 
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use repovec_core::github_oauth::{AccessToken, ClientId, DeviceCode, TokenPollOutcome, UserCode};
 use rstest::{fixture, rstest};
 use thiserror::Error;
 
 use super::{
-    DeviceAuthorization, DeviceFlowApi, DeviceFlowLoginRequest, DeviceFlowRunError,
+    Clock, DeviceAuthorization, DeviceFlowApi, DeviceFlowLoginRequest, DeviceFlowRunError,
     DeviceFlowRuntime, Sleeper, TerminalDeviceFlowError, TokenStore, complete_device_flow,
 };
 
@@ -137,6 +141,15 @@ impl Sleeper for RecordingSleeper {
     }
 }
 
+#[derive(Debug)]
+struct FixedClock {
+    now: Instant,
+}
+
+impl Clock for FixedClock {
+    fn now(&self) -> Instant { self.now }
+}
+
 #[rstest]
 fn happy_path_stores_the_authorized_token(
     login_request: DeviceFlowLoginRequest,
@@ -216,6 +229,24 @@ fn local_expiry_stops_polling_before_the_next_sleep_would_exceed_the_deadline(
         Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::ExpiredToken)),
     ));
     assert!(recording_sleeper.sleeps.borrow().is_empty());
+}
+
+#[rstest]
+fn expiry_uses_the_injected_clock(login_request: DeviceFlowLoginRequest) {
+    let api = FakeApi::new(vec![TokenPollOutcome::AuthorizationPending])
+        .with_expires_in(Duration::from_secs(4));
+    let store = FakeStore::new();
+    let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
+    let clock = FixedClock { now: Instant::now() };
+
+    let runtime = DeviceFlowRuntime::with_clock(&api, &store, &sleeper, &clock);
+    let result = complete_device_flow(&runtime, &login_request, |_| {});
+
+    assert!(matches!(
+        result,
+        Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::ExpiredToken)),
+    ));
+    assert!(sleeper.sleeps.borrow().is_empty());
 }
 
 #[rstest]

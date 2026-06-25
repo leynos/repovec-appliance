@@ -1,4 +1,4 @@
-# Device-Flow OAuth Client Retrospective
+# Device-flow OAuth client retrospective
 
 This artefact preserves execution evidence moved out of the roadmap item
 `2.1.1` ExecPlan so the plan remains pre-implementation focused.

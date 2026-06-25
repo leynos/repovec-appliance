@@ -54,6 +54,20 @@ enum StoredTokenFixtureError {
     NonUtf8Path(PathBuf),
     #[error("token store setup failed")]
     Store(#[from] TokenStoreError<Infallible>),
+    #[error("temporary root should open")]
+    OpenRoot(#[source] std::io::Error),
+    #[error("encrypted credential should be readable")]
+    ReadCredential(#[source] std::io::Error),
+    #[error("encrypted credential metadata should be readable")]
+    ReadMetadata(#[source] std::io::Error),
+    #[error("stored credential was not encrypted")]
+    CredentialWasNotEncrypted,
+    #[error("stored credential exposed plaintext token material")]
+    CredentialExposedPlaintext,
+    #[error("credential mode should be 0600, got {0:o}")]
+    WrongCredentialMode(u32),
+    #[error("loaded token secret should match stored token, got {0}")]
+    WrongLoadedToken(String),
 }
 
 #[derive(Clone, Debug)]
@@ -107,38 +121,58 @@ impl CommandRunner for RecordingRunner {
 }
 
 #[rstest]
-fn store_writes_only_encrypted_token_material(stored_token: StoredTokenFixture) {
-    let readable_root = Dir::open_ambient_dir(&stored_token.root, ambient_authority())
-        .expect("temporary root should open");
+fn store_writes_only_encrypted_token_material(
+    stored_token: Result<StoredTokenFixture, StoredTokenFixtureError>,
+) -> Result<(), StoredTokenFixtureError> {
+    let fixture = stored_token?;
+    let readable_root = Dir::open_ambient_dir(&fixture.root, ambient_authority())
+        .map_err(StoredTokenFixtureError::OpenRoot)?;
     let contents = readable_root
         .read(EncryptedGitHubTokenStore::<PrefixEncryptor>::credential_file())
-        .expect("encrypted credential should be readable");
-    assert!(contents.starts_with(b"encrypted:"));
-    assert!(!String::from_utf8_lossy(&contents).contains("gho_secret"));
+        .map_err(StoredTokenFixtureError::ReadCredential)?;
+    if !contents.starts_with(b"encrypted:") {
+        return Err(StoredTokenFixtureError::CredentialWasNotEncrypted);
+    }
+    if String::from_utf8_lossy(&contents).contains("gho_secret") {
+        return Err(StoredTokenFixtureError::CredentialExposedPlaintext);
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
 #[rstest]
-fn store_writes_owner_only_credential_permissions(stored_token: StoredTokenFixture) {
-    let readable_root = Dir::open_ambient_dir(&stored_token.root, ambient_authority())
-        .expect("temporary root should open");
+fn store_writes_owner_only_credential_permissions(
+    stored_token: Result<StoredTokenFixture, StoredTokenFixtureError>,
+) -> Result<(), StoredTokenFixtureError> {
+    let fixture = stored_token?;
+    let readable_root = Dir::open_ambient_dir(&fixture.root, ambient_authority())
+        .map_err(StoredTokenFixtureError::OpenRoot)?;
     let metadata = readable_root
         .metadata(EncryptedGitHubTokenStore::<PrefixEncryptor>::credential_file())
-        .expect("encrypted credential metadata should be readable");
-    assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        .map_err(StoredTokenFixtureError::ReadMetadata)?;
+    let mode = metadata.permissions().mode() & 0o777;
+    if mode != 0o600 {
+        return Err(StoredTokenFixtureError::WrongCredentialMode(mode));
+    }
+    Ok(())
 }
 
 #[rstest]
-fn load_decrypts_the_stored_token(stored_token: StoredTokenFixture) {
-    assert_eq!(stored_token.store.load_token().expect("token should load").secret(), "gho_secret");
+fn load_decrypts_the_stored_token(
+    stored_token: Result<StoredTokenFixture, StoredTokenFixtureError>,
+) -> Result<(), StoredTokenFixtureError> {
+    let fixture = stored_token?;
+    let token = fixture.store.load_token()?;
+    if token.secret() != "gho_secret" {
+        return Err(StoredTokenFixtureError::WrongLoadedToken(token.secret().to_owned()));
+    }
+    Ok(())
 }
 
 #[fixture]
-fn stored_token() -> StoredTokenFixture {
-    match build_stored_token() {
-        Ok(stored_token) => stored_token,
-        Err(error) => panic!("stored token fixture should be created: {error}"),
-    }
+fn stored_token() -> Result<StoredTokenFixture, StoredTokenFixtureError> {
+    let stored_token = build_stored_token()?;
+    Ok(stored_token)
 }
 
 fn build_stored_token() -> Result<StoredTokenFixture, StoredTokenFixtureError> {

@@ -32,9 +32,9 @@ impl DeviceCodeWire {
 
 #[derive(Deserialize)]
 pub(super) struct TokenPollWire {
-    access_token: Option<String>,
-    error: Option<String>,
-    scope: Option<String>,
+    pub(super) access_token: Option<String>,
+    pub(super) error: Option<String>,
+    pub(super) scope: Option<String>,
 }
 
 impl TokenPollWire {

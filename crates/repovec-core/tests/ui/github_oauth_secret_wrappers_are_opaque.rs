@@ -1,3 +1,5 @@
+//! Compile-fail fixture proving OAuth secret wrapper fields stay private.
+
 use repovec_core::github_oauth::{AccessToken, DeviceCode, UserCode};
 
 fn main() {

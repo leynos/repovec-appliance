@@ -2,36 +2,59 @@
 
 use std::{
     ffi::OsStr,
-    io::{ErrorKind, Write},
+    io::Write,
     process::{Command, Stdio},
-    sync::atomic::{AtomicU64, Ordering},
     time::Instant,
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
-#[cfg(unix)]
-use cap_std::fs_utf8::OpenOptionsExt;
-use cap_std::{
-    ambient_authority,
-    fs_utf8::{Dir, OpenOptions},
-};
-use repovec_core::github_oauth::AccessToken;
+use cap_std::{ambient_authority, fs_utf8::Dir};
+use repovec_core::{GITHUB_OAUTH_TOKEN_CREDENTIAL_FILE, github_oauth::AccessToken};
 use thiserror::Error;
 use tracing::info_span;
 
 use crate::github_device_flow::TokenStore;
 
+mod atomic_write;
+mod observability;
 mod redaction;
 
+use atomic_write::write_atomically;
+use observability::{info_token_store_load, info_token_store_write};
 pub use redaction::LossyStderr;
 
 const TOKEN_CREDENTIAL_NAME: &str = "repovec-github-oauth-token";
-const TOKEN_CREDENTIAL_FILE: &str = "github-oauth-token.cred";
-const ATOMIC_WRITE_CREATE_RETRIES: u8 = 8;
-
-static NEXT_TEMP_FILE_ID: AtomicU64 = AtomicU64::new(0);
+const TOKEN_CREDENTIAL_FILE: &str = GITHUB_OAUTH_TOKEN_CREDENTIAL_FILE;
 
 /// Encrypts and decrypts token material before filesystem persistence.
+///
+/// # Examples
+///
+/// ```
+/// use std::convert::Infallible;
+///
+/// use repovecd::github_token_store::CredentialEncryptor;
+///
+/// #[derive(Clone, Debug)]
+/// struct PrefixEncryptor;
+///
+/// impl CredentialEncryptor for PrefixEncryptor {
+///     type Error = Infallible;
+///
+///     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, Self::Error> {
+///         let mut ciphertext = b"encrypted:".to_vec();
+///         ciphertext.extend_from_slice(plaintext);
+///         Ok(ciphertext)
+///     }
+///
+///     fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, Self::Error> {
+///         Ok(ciphertext
+///             .strip_prefix(b"encrypted:")
+///             .unwrap_or(ciphertext)
+///             .to_vec())
+///     }
+/// }
+/// ```
 pub trait CredentialEncryptor {
     /// Error returned by the encryption adapter.
     type Error: std::error::Error + Send + Sync + 'static;
@@ -64,6 +87,22 @@ where
 {
     /// Opens a token store rooted at the supplied directory.
     ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use repovecd::github_token_store::{EncryptedGitHubTokenStore, SystemCommandRunner, SystemdCredsEncryptor};
+    /// # fn open_store(root: &camino::Utf8Path) -> Result<(), Box<dyn std::error::Error>> {
+    /// let encryptor = SystemdCredsEncryptor::new(SystemCommandRunner);
+    /// let store = EncryptedGitHubTokenStore::open(root, encryptor)?;
+    ///
+    /// assert_eq!(
+    ///     EncryptedGitHubTokenStore::<SystemdCredsEncryptor<SystemCommandRunner>>::credential_file(),
+    ///     "github-oauth-token.cred",
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns an error if the directory cannot be opened.
@@ -74,6 +113,19 @@ where
     }
 
     /// Stores a token encrypted at rest.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use repovec_core::github_oauth::AccessToken;
+    /// # use repovecd::github_token_store::{CredentialEncryptor, EncryptedGitHubTokenStore};
+    /// # fn store<E>(store: &EncryptedGitHubTokenStore<E>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where E: CredentialEncryptor {
+    /// store.store_token(&AccessToken::new("gho_secret", ["repo"]))?;
+    ///
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -96,6 +148,19 @@ where
     /// information is not persisted because GitHub authorisation scope is
     /// discovered during the live login response and should be revalidated by
     /// callers that need it after process restart.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use repovecd::github_token_store::{CredentialEncryptor, EncryptedGitHubTokenStore};
+    /// # fn load<E>(store: &EncryptedGitHubTokenStore<E>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where E: CredentialEncryptor {
+    /// let token = store.load_token()?;
+    ///
+    /// assert!(token.scopes().is_empty());
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -290,63 +355,6 @@ where
         /// Captured standard error.
         stderr: LossyStderr,
     },
-}
-
-fn write_atomically(root: &Dir, filename: &str, contents: &[u8]) -> std::io::Result<()> {
-    let (temp_name, mut temp_file) = create_atomic_write_temp_file(root, filename)?;
-    temp_file.write_all(contents)?;
-    temp_file.flush()?;
-    temp_file.sync_all()?;
-    drop(temp_file);
-    root.rename(&temp_name, root, filename)?;
-    root.open(".")?.sync_all()
-}
-
-fn create_atomic_write_temp_file(
-    root: &Dir,
-    filename: &str,
-) -> std::io::Result<(String, cap_std::fs_utf8::File)> {
-    for _ in 0..ATOMIC_WRITE_CREATE_RETRIES {
-        let temp_name = next_atomic_write_temp_name(filename);
-        let mut options = OpenOptions::new();
-        options.create_new(true).write(true);
-        #[cfg(unix)]
-        options.mode(0o600);
-        match root.open_with(&temp_name, &options) {
-            Ok(file) => return Ok((temp_name, file)),
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::new(
-        ErrorKind::AlreadyExists,
-        "could not create a unique atomic-write temporary file",
-    ))
-}
-
-fn next_atomic_write_temp_name(filename: &str) -> String {
-    let id = NEXT_TEMP_FILE_ID.fetch_add(1, Ordering::Relaxed);
-    format!(".{filename}.{}.{id}.tmp", std::process::id())
-}
-
-fn info_token_store_write(started_at: Instant) {
-    let duration_span = info_span!(
-        "metric.github_token_store_write_duration_ms",
-        elapsed_ms = started_at.elapsed().as_millis(),
-    );
-    let _duration_entered = duration_span.enter();
-    let total_span = info_span!("metric.github_token_store_write_total");
-    let _total_entered = total_span.enter();
-}
-
-fn info_token_store_load(started_at: Instant) {
-    let duration_span = info_span!(
-        "metric.github_token_store_load_duration_ms",
-        elapsed_ms = started_at.elapsed().as_millis(),
-    );
-    let _duration_entered = duration_span.enter();
-    let total_span = info_span!("metric.github_token_store_load_total");
-    let _total_entered = total_span.enter();
 }
 
 struct SystemdCredsTransform<'a, R>

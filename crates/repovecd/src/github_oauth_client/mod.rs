@@ -362,13 +362,4 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    //! Unit tests for OAuth adapter helpers.
-
-    use super::join_scopes;
-
-    #[test]
-    fn scopes_are_joined_with_spaces() {
-        assert_eq!(join_scopes(["repo", "read:org"]), "repo read:org");
-    }
-}
+mod tests;

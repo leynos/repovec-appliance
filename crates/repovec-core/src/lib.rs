@@ -7,6 +7,9 @@ use camino::{Utf8Path, Utf8PathBuf};
 pub mod appliance;
 pub mod github_oauth;
 
+/// Relative filename for the encrypted GitHub OAuth bearer credential.
+pub const GITHUB_OAUTH_TOKEN_CREDENTIAL_FILE: &str = "github-oauth-token.cred";
+
 /// Service types: daemons (`Repovecd`, `RepovecMcpd`), terminal UI (`RepovecTui`), and CLI (`Repovectl`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServiceKind {
@@ -145,7 +148,7 @@ impl RuntimePaths {
     /// ```
     #[must_use]
     pub fn github_oauth_token_credential(&self) -> Utf8PathBuf {
-        self.config_child("github-oauth-token.cred")
+        self.config_child(GITHUB_OAUTH_TOKEN_CREDENTIAL_FILE)
     }
 
     /// Returns the bare-mirror directory root.

@@ -88,6 +88,11 @@ secret material even though it is encrypted. The encrypted credential is bound
 to the appliance through `systemd-creds` using the credential name
 `repovec-github-oauth-token`.
 
+After a restart, the appliance restores only the bearer secret from this
+encrypted credential. Scope-dependent permissions must be revalidated against
+GitHub before the control plane relies on them, and operators may need to run a
+fresh login if that revalidation fails.
+
 Roadmap item `2.1.1` provides the runtime client, encrypted token-store
 adapter, and mock-server test binary. The interactive TUI login screen is a
 later roadmap item and will call this authentication surface.
@@ -256,10 +261,10 @@ dependent services must use `qdrant.service`.
 
 `repovec-grepai@.service` is the template used for future per-repository
 indexer instances. It runs `grepai watch` as the `repovec` user, sets
-`HOME=/var/lib/repovec`, works in `/var/lib/repovec/worktrees/%I`, and
-writes stdout and stderr to journald. Later reconciliation work creates and
-manages concrete instances; operators should not expect installing the template
-alone to start indexers.
+`HOME=/var/lib/repovec`, works in `/var/lib/repovec/worktrees/%I`, and writes
+stdout and stderr to journald. Later reconciliation work creates and manages
+concrete instances; operators should not expect installing the template alone
+to start indexers.
 
 Enable and start the appliance service group with:
 

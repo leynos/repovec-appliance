@@ -143,11 +143,11 @@ impl Sleeper for RecordingSleeper {
 
 #[derive(Debug)]
 struct FixedClock {
-    now: Instant,
+    instants: RefCell<Vec<Instant>>,
 }
 
 impl Clock for FixedClock {
-    fn now(&self) -> Instant { self.now }
+    fn now(&self) -> Instant { self.instants.borrow_mut().remove(0) }
 }
 
 #[rstest]
@@ -234,10 +234,13 @@ fn local_expiry_stops_polling_before_the_next_sleep_would_exceed_the_deadline(
 #[rstest]
 fn expiry_uses_the_injected_clock(login_request: DeviceFlowLoginRequest) {
     let api = FakeApi::new(vec![TokenPollOutcome::AuthorizationPending])
-        .with_expires_in(Duration::from_secs(4));
+        .with_expires_in(Duration::from_secs(9));
     let store = FakeStore::new();
     let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
-    let clock = FixedClock { now: Instant::now() };
+    let started_at = Instant::now();
+    let clock = FixedClock {
+        instants: RefCell::new(vec![started_at, started_at + Duration::from_secs(5)]),
+    };
 
     let runtime = DeviceFlowRuntime::with_clock(&api, &store, &sleeper, &clock);
     let result = complete_device_flow(&runtime, &login_request, |_| {});

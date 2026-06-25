@@ -279,6 +279,7 @@ fn ensure_polling_not_expired(
     let elapsed = polling.elapsed(clock.now());
     if has_expired(elapsed, polling.interval, expires_in) {
         info_polling_expired(elapsed, polling, expires_in);
+        info_terminal_outcome(TerminalDeviceFlowError::ExpiredToken, polling.attempt);
         return Err(TerminalDeviceFlowError::ExpiredToken);
     }
     Ok(())
@@ -336,7 +337,6 @@ impl ActivePolling {
     }
     const fn record_attempt(&mut self) { self.attempt = self.attempt.saturating_add(1); }
     fn elapsed(&self, now: Instant) -> Duration { now.saturating_duration_since(self.started_at) }
-
     fn update_interval(&mut self, next_interval: Duration) {
         if next_interval > self.interval {
             info_interval_increase(self.attempt, self.interval, next_interval);

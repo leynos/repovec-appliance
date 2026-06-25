@@ -1,6 +1,6 @@
 //! Unit tests for appliance platform binding parsing helpers.
 
-use std::cell::Cell;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use proptest::prelude::*;
 use rstest::rstest;
@@ -13,13 +13,13 @@ use crate::appliance::qdrant_quadlet::{observer::QdrantQuadletObserver, parser::
 
 #[derive(Default)]
 struct StorageMountObserver {
-    missing_mounts: Cell<usize>,
-    missing_volumes: Cell<usize>,
+    missing_mounts: AtomicUsize,
+    missing_volumes: AtomicUsize,
 }
 
 impl QdrantQuadletObserver for StorageMountObserver {
     fn missing_storage_mount(&self, _expected_source: &str, _expected_target: &str) {
-        self.missing_mounts.set(self.missing_mounts.get() + 1);
+        self.missing_mounts.fetch_add(1, Ordering::Relaxed);
     }
 
     fn missing_storage_mount_volume(
@@ -28,7 +28,7 @@ impl QdrantQuadletObserver for StorageMountObserver {
         _expected_source: &str,
         _expected_target: &str,
     ) {
-        self.missing_volumes.set(self.missing_volumes.get() + 1);
+        self.missing_volumes.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -102,8 +102,8 @@ Volume=/var/lib/repovec/qdrant-storage
     .expect("quadlet fixture should parse");
 
     assert!(validate_storage_mount(&parsed, &observer).is_err());
-    assert_eq!(observer.missing_mounts.get(), 0);
-    assert_eq!(observer.missing_volumes.get(), 1);
+    assert_eq!(observer.missing_mounts.load(Ordering::Relaxed), 0);
+    assert_eq!(observer.missing_volumes.load(Ordering::Relaxed), 1);
 }
 
 #[test]

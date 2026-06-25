@@ -40,9 +40,11 @@ enum ValidationScenario {
 impl ValidationScenario {
     fn mutated_contents(self, canonical: &str) -> String {
         match self {
-            Self::InvalidLineInContainer => String::from("[Container]\nthis-is-not-valid\n"),
+            Self::InvalidLineInContainer => {
+                String::from("[Container]\nBearer correct horse battery\n")
+            }
             Self::PropertyBeforeFirstSection => {
-                String::from("Image=docker.io/qdrant/qdrant:v1\n[Container]\n")
+                String::from("Authorization=Bearer correct horse battery\n[Container]\n")
             }
             Self::MissingImage => {
                 canonical
@@ -139,11 +141,11 @@ impl ValidationScenario {
         match self {
             Self::InvalidLineInContainer => QdrantQuadletError::InvalidLine {
                 line_number: 2,
-                line: String::from("this-is-not-valid"),
+                line: String::from("Bearer <redacted>"),
             },
             Self::PropertyBeforeFirstSection => QdrantQuadletError::PropertyBeforeSection {
                 line_number: 1,
-                line: String::from("Image=docker.io/qdrant/qdrant:v1"),
+                line: String::from("Bearer <redacted>"),
             },
             Self::MissingImage => QdrantQuadletError::MissingImage,
             Self::ImageUnqualified => QdrantQuadletError::ImageNotFullyQualified {

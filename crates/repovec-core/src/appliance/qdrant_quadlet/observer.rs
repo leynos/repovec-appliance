@@ -12,8 +12,10 @@ use super::LOG_TARGET;
 /// Receives Qdrant Quadlet validation telemetry.
 ///
 /// Implementations can forward events to tracing, capture them in tests, or
-/// ignore them. Default method bodies are no-ops so callers can pass `()` when
-/// they need validation without telemetry.
+/// ignore them. Observers must be thread-safe so validators can cross worker
+/// boundaries without weakening the telemetry contract. Default method bodies
+/// are no-ops so callers can pass `()` when they need validation without
+/// telemetry.
 ///
 /// Re-use plan: keep this trait as the narrow observer port for the current
 /// Qdrant Quadlet validator while [issue #36] tracks whether it should be
@@ -23,7 +25,7 @@ use super::LOG_TARGET;
 /// for the shared observer shape from issue #36 when their events are generic.
 ///
 /// [issue #36]: https://github.com/leynos/repovec-appliance/issues/36
-pub trait QdrantQuadletObserver {
+pub trait QdrantQuadletObserver: Send + Sync {
     /// Records validation of the checked-in Quadlet asset.
     fn validating_checked_in_qdrant_quadlet(&self, _path: &str) {}
 

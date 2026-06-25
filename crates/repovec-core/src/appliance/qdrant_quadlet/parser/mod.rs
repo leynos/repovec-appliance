@@ -13,8 +13,8 @@
 //! when a non-comment, non-header line lacks `=`, and with
 //! [`QdrantQuadletError::PropertyBeforeSection`] when a key/value pair appears
 //! before any section header. Those cases are reported through the injected
-//! observer with redacted line content, while the returned error still carries
-//! the trimmed original line.
+//! observer with redacted line content, and the returned error carries the same
+//! redacted line so public diagnostics do not expose secret-bearing input.
 //!
 //! The parser is private to the `qdrant_quadlet` module family and feeds the
 //! structural validators in the parent module.
@@ -57,7 +57,7 @@ impl ParsedQuadlet {
             let Some((key, value)) = line.split_once('=') else {
                 let redacted_line = redact_line(line);
                 observer.invalid_line(line_number, &redacted_line);
-                return Err(QdrantQuadletError::InvalidLine { line_number, line: line.to_owned() });
+                return Err(QdrantQuadletError::InvalidLine { line_number, line: redacted_line });
             };
 
             let Some(section) = &current_section else {
@@ -65,7 +65,7 @@ impl ParsedQuadlet {
                 observer.property_before_section(line_number, &redacted_line);
                 return Err(QdrantQuadletError::PropertyBeforeSection {
                     line_number,
-                    line: line.to_owned(),
+                    line: redacted_line,
                 });
             };
 

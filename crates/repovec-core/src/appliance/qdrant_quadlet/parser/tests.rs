@@ -24,6 +24,17 @@ fn redact_line_redacts_quoted_bearer_token_with_spaces() {
 }
 
 #[test]
+fn redact_line_redacts_unquoted_bearer_token_and_stops() {
+    let line = "Authorization: Bearer correct horse battery";
+    let redacted_line = redact_line(line);
+
+    assert_eq!(redacted_line, "Authorization: Bearer <redacted>");
+    assert!(!redacted_line.contains("correct"));
+    assert!(!redacted_line.contains("horse"));
+    assert!(!redacted_line.contains("battery"));
+}
+
+#[test]
 fn redact_line_keeps_escaped_quotes_inside_sensitive_assignment() {
     let line = r#"Environment="DISPLAY_NAME=\"not a boundary\" PASSWORD=secret phrase""#;
 

@@ -21,6 +21,7 @@ use super::{
     CommandOutput, CommandRunner, CredentialEncryptor, EncryptedGitHubTokenStore,
     SystemdCredsEncryptor, SystemdCredsError, TokenStoreError,
 };
+use crate::tracing_test::capture_info_logs;
 
 #[derive(Clone, Debug)]
 struct PrefixEncryptor;
@@ -167,6 +168,30 @@ fn load_decrypts_the_stored_token(
         return Err(StoredTokenFixtureError::WrongLoadedToken(token.secret().to_owned()));
     }
     Ok(())
+}
+
+#[test]
+fn token_store_write_metrics_are_emitted_as_events() {
+    let ((), logs) = capture_info_logs(|| {
+        super::observability::info_token_store_write(std::time::Instant::now());
+    })
+    .expect("capturing tracing logs should succeed");
+
+    assert!(logs.contains("metric.github_token_store_write_duration_ms"));
+    assert!(logs.contains("elapsed_ms="));
+    assert!(logs.contains("metric.github_token_store_write_total"));
+}
+
+#[test]
+fn token_store_load_metrics_are_emitted_as_events() {
+    let ((), logs) = capture_info_logs(|| {
+        super::observability::info_token_store_load(std::time::Instant::now());
+    })
+    .expect("capturing tracing logs should succeed");
+
+    assert!(logs.contains("metric.github_token_store_load_duration_ms"));
+    assert!(logs.contains("elapsed_ms="));
+    assert!(logs.contains("metric.github_token_store_load_total"));
 }
 
 #[fixture]

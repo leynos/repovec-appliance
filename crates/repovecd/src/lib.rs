@@ -17,3 +17,6 @@
 pub mod github_device_flow;
 pub mod github_oauth_client;
 pub mod github_token_store;
+
+#[cfg(test)]
+mod tracing_test;

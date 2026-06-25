@@ -14,6 +14,7 @@ use super::{
     Clock, DeviceAuthorization, DeviceFlowApi, DeviceFlowLoginRequest, DeviceFlowRunError,
     DeviceFlowRuntime, Sleeper, TerminalDeviceFlowError, TokenStore, complete_device_flow,
 };
+use crate::tracing_test::capture_info_logs;
 
 struct FakeApi {
     outcomes: RefCell<Vec<TokenPollOutcome>>,
@@ -237,7 +238,9 @@ fn expiry_uses_the_injected_clock(login_request: DeviceFlowLoginRequest) {
         .with_expires_in(Duration::from_secs(9));
     let store = FakeStore::new();
     let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
-    let started_at = Instant::now();
+    let started_at = Instant::now()
+        .checked_sub(Duration::from_secs(60))
+        .expect("test instant should support subtracting one minute");
     let clock = FixedClock {
         instants: RefCell::new(vec![started_at, started_at + Duration::from_secs(5)]),
     };
@@ -250,6 +253,26 @@ fn expiry_uses_the_injected_clock(login_request: DeviceFlowLoginRequest) {
         Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::ExpiredToken)),
     ));
     assert!(sleeper.sleeps.borrow().is_empty());
+}
+
+#[rstest]
+fn local_expiry_emits_terminal_metric(login_request: DeviceFlowLoginRequest) {
+    let api = FakeApi::new(vec![TokenPollOutcome::AuthorizationPending])
+        .with_expires_in(Duration::from_secs(4));
+    let store = FakeStore::new();
+    let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
+    let runtime = DeviceFlowRuntime::new(&api, &store, &sleeper);
+
+    let (result, logs) =
+        capture_info_logs(|| complete_device_flow(&runtime, &login_request, |_| {}))
+            .expect("capturing tracing logs should succeed");
+
+    assert!(matches!(
+        result,
+        Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::ExpiredToken)),
+    ));
+    assert!(logs.contains("metric.github_device_flow_terminal_total"));
+    assert!(logs.contains("expired_token"));
 }
 
 #[rstest]

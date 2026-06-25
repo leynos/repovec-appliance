@@ -4,7 +4,7 @@ This ExecPlan (execution plan) is a living document. The sections `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
 and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETED
 
 ## Purpose / big picture
 
@@ -141,7 +141,21 @@ implementation, record the conflict in `Decision Log`, and ask for direction.
 
 ## Progress
 
-This ExecPlan retains the pre-implementation plan for roadmap item `2.1.1`.
+- [x] 2026-06-02: Approved and began roadmap item `2.1.1`.
+- [x] 2026-06-25: Added the pure device-flow state model in `repovec-core`,
+  including redacted token/code wrappers, additive `slow_down` handling, and
+  BDD/property coverage.
+- [x] 2026-06-25: Added `repovecd` runtime ports and adapters for GitHub OAuth
+  HTTP, prompt presentation, polling, encrypted token storage, and
+  systemd-creds command execution.
+- [x] 2026-06-25: Added the `device-flow-test` example and integration tests
+  that exercise the mock OAuth server, token polling, and encrypted reload.
+- [x] 2026-06-25: Updated operator, developer, roadmap, and technical-design
+  documentation for the device-flow client and token persistence contract.
+- [x] 2026-06-26: Closed review feedback for timeout bounds, redaction,
+  injected clocks, observable metrics, atomic writes, stdin-based credential
+  encryption, and restart-time permission revalidation.
+
 Retrospective execution evidence is preserved in the linked artefact:
 [device-flow OAuth client retrospective](2-1-1-implement-device-flow-oauth-client-retrospective.md).
 
@@ -260,10 +274,23 @@ Retrospective execution evidence is preserved in the linked artefact:
 
 ## Outcomes & retrospective
 
-This section is intentionally empty while the plan is in draft. Update it after
-each approved implementation milestone with what changed, what evidence was
-gathered, and what should be done differently in later repository-lifecycle
-tasks.
+Roadmap item `2.1.1` is implemented. Operators can run a GitHub device-flow
+login through the `repovecd` runtime boundary, present the verification URI and
+redacted user code before polling, receive a bearer token from a GitHub-like
+OAuth server, and persist only encrypted credential material below
+`/etc/repovec/`.
+
+The final design keeps protocol policy in `repovec-core` and runtime I/O in
+`repovecd`. The orchestration uses injected OAuth, storage, sleeper, and clock
+ports so polling, expiry, terminal outcomes, and adapter failures are covered
+without real sleeps. Token storage writes encrypted credentials atomically,
+pipes plaintext to `systemd-creds` over stdin, and emits observable tracing
+events for storage and device-flow outcomes.
+
+Validation evidence is recorded in the retrospective artefact and final review
+notes. The maintained gate set includes `make check-fmt`, `make typecheck`,
+`make lint`, `make test`, `make markdownlint`, `make nixie`, and the
+`device-flow-test` example against the local mock OAuth server.
 
 ## Context and orientation
 

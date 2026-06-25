@@ -39,10 +39,8 @@ fn info_failure(kind: &'static str, error: &dyn std::error::Error) {
 
 pub(super) fn info_terminal_outcome(error: TerminalDeviceFlowError, attempt: u64) {
     let outcome = terminal_error_label(error);
-    let terminal_span = info_span!("github_device_flow.terminal_outcome", attempt, outcome);
-    let _terminal_entered = terminal_span.enter();
-    let metric_span = info_span!("metric.github_device_flow_terminal_total", outcome);
-    let _metric_entered = metric_span.enter();
+    info_terminal_context(attempt, outcome);
+    info_terminal_total(outcome);
 }
 
 pub(super) fn info_interval_increase(
@@ -50,15 +48,30 @@ pub(super) fn info_interval_increase(
     previous_interval: Duration,
     next_interval: Duration,
 ) {
-    let slow_down_span = info_span!(
-        "github_device_flow.slow_down",
-        attempt,
-        previous_interval_seconds = previous_interval.as_secs(),
-        next_interval_seconds = next_interval.as_secs()
+    let previous_interval_seconds = previous_interval.as_secs();
+    let next_interval_seconds = next_interval.as_secs();
+    info_slow_down(attempt, previous_interval_seconds, next_interval_seconds);
+    info_slow_down_total();
+}
+
+fn info_terminal_context(attempt: u64, outcome: &'static str) {
+    info!("github_device_flow.terminal_outcome attempt={attempt} outcome={outcome}");
+}
+
+fn info_terminal_total(outcome: &'static str) {
+    info!("metric.github_device_flow_terminal_total outcome={outcome}");
+}
+
+fn info_slow_down(attempt: u64, previous_interval_seconds: u64, next_interval_seconds: u64) {
+    info!(
+        "github_device_flow.slow_down attempt={attempt} \
+         previous_interval_seconds={previous_interval_seconds} \
+         next_interval_seconds={next_interval_seconds}"
     );
-    let _slow_down_entered = slow_down_span.enter();
-    let metric_span = info_span!("metric.github_device_flow_slow_down_total");
-    let _metric_entered = metric_span.enter();
+}
+
+fn info_slow_down_total() {
+    info!("metric.github_device_flow_slow_down_total");
 }
 
 const fn terminal_error_label(error: TerminalDeviceFlowError) -> &'static str {
@@ -66,4 +79,43 @@ const fn terminal_error_label(error: TerminalDeviceFlowError) -> &'static str {
         TerminalDeviceFlowError::AccessDenied => "access_denied",
         TerminalDeviceFlowError::ExpiredToken => "expired_token",
     }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tests for device-flow observability events.
+
+    use std::time::Duration;
+
+    use thiserror::Error;
+
+    use super::*;
+    use crate::tracing_test::capture_info_logs;
+
+    #[test]
+    fn slow_down_metric_is_emitted_as_an_event() {
+        let ((), logs) = capture_info_logs(|| {
+            info_interval_increase(2, Duration::from_secs(5), Duration::from_secs(10));
+        })
+        .expect("capturing tracing logs should succeed");
+
+        assert!(logs.contains("github_device_flow.slow_down"));
+        assert!(logs.contains("metric.github_device_flow_slow_down_total"));
+        assert!(logs.contains("next_interval_seconds=10"));
+    }
+
+    #[test]
+    fn oauth_failure_metric_is_emitted_as_an_event() {
+        let result = Err(DeviceFlowRunError::<FakeError, FakeError>::OAuth(FakeError));
+
+        let ((), logs) = capture_info_logs(|| info_device_flow_result(&result))
+            .expect("capturing tracing logs should succeed");
+
+        assert!(logs.contains("metric.github_device_flow_failed_total"));
+        assert!(logs.contains("oauth"));
+    }
+
+    #[derive(Debug, Error)]
+    #[error("fake failure")]
+    struct FakeError;
 }

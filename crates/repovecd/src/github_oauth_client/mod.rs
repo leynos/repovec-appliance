@@ -1,21 +1,30 @@
 //! HTTP adapter for GitHub OAuth device-flow endpoints.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use oauth2::{
-    DeviceCodeErrorResponseType,
-    basic::BasicErrorResponseType,
-    reqwest::{StatusCode, blocking::Client, redirect::Policy},
+    reqwest::{
+        StatusCode,
+        blocking::{Client, Response},
+        redirect::Policy,
+    },
     url::Url,
 };
 use repovec_core::github_oauth::{
-    AccessToken, ClientId, DeviceAuthorization, DeviceCode, TokenPollOutcome, UserCode,
-    classify_device_code_error,
+    ClientId, DeviceAuthorization, DeviceCode, TokenPollOutcome, classify_device_flow_error,
 };
-use serde::Deserialize;
 use thiserror::Error;
+use tracing::{Span, info_span};
 
 use crate::github_device_flow::DeviceFlowApi;
+
+mod observability;
+mod wire;
+
+use observability::{
+    info_adapter_failure, info_http_request, info_token_poll, info_token_poll_outcome,
+};
+use wire::{DeviceCodeWire, TokenPollWire};
 
 const DEVICE_CODE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 const DEFAULT_DEVICE_POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -143,20 +152,12 @@ impl GitHubOAuthClient {
         S: AsRef<str>,
     {
         let scope = join_scopes(scopes);
-        let response = self
-            .http
-            .post(self.endpoints.device_code_url())
-            .header("Accept", "application/json")
-            .form(&[("client_id", client_id.as_str()), ("scope", scope.as_str())])
-            .send()
-            .map_err(OAuthClientError::RequestDeviceCode)?;
-
-        if !response.status().is_success() {
-            return Err(OAuthClientError::UnexpectedStatus {
-                endpoint: "device-code",
-                status: response.status(),
-            });
-        }
+        let span =
+            info_span!("github_oauth.request_device_code", scope_count = scope_count(&scope));
+        let started_at = Instant::now();
+        let response = self.send_device_code_request(&span, client_id, &scope)?;
+        info_http_request(&span, response.status(), started_at);
+        ensure_device_code_status(response.status(), &span)?;
 
         let wire = response.json::<DeviceCodeWire>().map_err(OAuthClientError::ReadDeviceCode)?;
         Ok(wire.into_domain())
@@ -196,35 +197,52 @@ impl GitHubOAuthClient {
         client_id: &ClientId,
         device_code: &DeviceCode,
     ) -> Result<TokenPollOutcome, OAuthClientError> {
-        let response = self
-            .http
-            .post(self.endpoints.token_url())
-            .header("Accept", "application/json")
-            .form(&[
-                ("client_id", client_id.as_str()),
-                ("device_code", device_code.secret()),
-                ("grant_type", DEVICE_CODE_GRANT_TYPE),
-            ])
-            .send()
-            .map_err(OAuthClientError::PollToken)?;
+        let span = info_span!("github_oauth.poll_token");
+        let started_at = Instant::now();
+        let response = self.send_token_poll_request(&span, client_id, device_code)?;
+        info_token_poll(&span, response.status(), started_at);
 
         let is_success = response.status().is_success();
         let body = response.json::<TokenPollWire>().map_err(OAuthClientError::ReadToken)?;
-        if let Some(error) = body.oauth_error() {
-            return classify_device_code_error(&error).map_or_else(
-                || {
-                    Err(OAuthClientError::UnsupportedOAuthError {
-                        error: error.as_ref().to_owned(),
-                    })
-                },
-                Ok,
-            );
-        }
-        if is_success {
-            return body.into_domain();
-        }
+        let outcome = token_poll_outcome(body, is_success)?;
+        info_token_poll_outcome(&span, &outcome);
+        Ok(outcome)
+    }
 
-        Err(OAuthClientError::ReadTokenErrorWithoutErrorField)
+    fn send_device_code_request(
+        &self,
+        span: &Span,
+        client_id: &ClientId,
+        scope: &str,
+    ) -> Result<Response, OAuthClientError> {
+        span.in_scope(|| {
+            self.http
+                .post(self.endpoints.device_code_url())
+                .header("Accept", "application/json")
+                .form(&[("client_id", client_id.as_str()), ("scope", scope)])
+                .send()
+        })
+        .map_err(OAuthClientError::RequestDeviceCode)
+    }
+
+    fn send_token_poll_request(
+        &self,
+        span: &Span,
+        client_id: &ClientId,
+        device_code: &DeviceCode,
+    ) -> Result<Response, OAuthClientError> {
+        span.in_scope(|| {
+            self.http
+                .post(self.endpoints.token_url())
+                .header("Accept", "application/json")
+                .form(&[
+                    ("client_id", client_id.as_str()),
+                    ("device_code", device_code.secret()),
+                    ("grant_type", DEVICE_CODE_GRANT_TYPE),
+                ])
+                .send()
+        })
+        .map_err(OAuthClientError::PollToken)
     }
 }
 
@@ -294,63 +312,30 @@ pub enum OAuthClientError {
     },
 }
 
-#[derive(Deserialize)]
-struct DeviceCodeWire {
-    device_code: String,
-    user_code: String,
-    verification_uri: String,
-    expires_in: u64,
-    interval: Option<u64>,
-}
-
-impl DeviceCodeWire {
-    fn into_domain(self) -> DeviceAuthorization {
-        DeviceAuthorization {
-            device_code: DeviceCode::new(self.device_code),
-            user_code: UserCode::new(self.user_code),
-            verification_uri: self.verification_uri,
-            expires_in: Duration::from_secs(self.expires_in),
-            interval: self.interval.map_or(DEFAULT_DEVICE_POLL_INTERVAL, Duration::from_secs),
-        }
+fn ensure_device_code_status(status: StatusCode, span: &Span) -> Result<(), OAuthClientError> {
+    if status.is_success() {
+        return Ok(());
     }
+    info_adapter_failure(span, status);
+    Err(OAuthClientError::UnexpectedStatus { endpoint: "device-code", status })
 }
 
-#[derive(Deserialize)]
-struct TokenPollWire {
-    access_token: Option<String>,
-    error: Option<String>,
-    scope: Option<String>,
-}
-
-impl TokenPollWire {
-    fn oauth_error(&self) -> Option<DeviceCodeErrorResponseType> {
-        self.error.as_ref().map(|error| TokenErrorWire { error: error.clone() }.into_oauth_error())
+fn token_poll_outcome(
+    body: TokenPollWire,
+    is_success: bool,
+) -> Result<TokenPollOutcome, OAuthClientError> {
+    if let Some(error) = body.oauth_error() {
+        return classify_device_flow_error(error.code)
+            .ok_or(OAuthClientError::UnsupportedOAuthError { error: error.raw });
     }
-
-    fn into_domain(self) -> Result<TokenPollOutcome, OAuthClientError> {
-        let access_token = self.access_token.ok_or(OAuthClientError::MissingAccessToken)?;
-        Ok(TokenPollOutcome::Authorized(AccessToken::new(
-            access_token,
-            split_scopes(self.scope.as_deref().unwrap_or_default()),
-        )))
+    if is_success {
+        return body.into_domain();
     }
+    Err(OAuthClientError::ReadTokenErrorWithoutErrorField)
 }
 
-#[derive(Deserialize)]
-struct TokenErrorWire {
-    error: String,
-}
-
-impl TokenErrorWire {
-    fn into_oauth_error(self) -> DeviceCodeErrorResponseType {
-        match self.error.as_str() {
-            "authorization_pending" => DeviceCodeErrorResponseType::AuthorizationPending,
-            "slow_down" => DeviceCodeErrorResponseType::SlowDown,
-            "access_denied" => DeviceCodeErrorResponseType::AccessDenied,
-            "expired_token" => DeviceCodeErrorResponseType::ExpiredToken,
-            _ => DeviceCodeErrorResponseType::Basic(BasicErrorResponseType::Extension(self.error)),
-        }
-    }
+fn scope_count(scopes: &str) -> usize {
+    scopes.split_whitespace().filter(|scope| !scope.is_empty()).count()
 }
 
 fn validate_token_url(token_url: &str) -> Result<(), OAuthClientError> {
@@ -376,25 +361,14 @@ where
     joined
 }
 
-fn split_scopes(scopes: &str) -> impl Iterator<Item = String> + '_ {
-    scopes.split([',', ' ']).filter(|scope| !scope.is_empty()).map(str::to_owned)
-}
-
 #[cfg(test)]
 mod tests {
     //! Unit tests for OAuth adapter helpers.
 
-    use super::{join_scopes, split_scopes};
+    use super::join_scopes;
 
     #[test]
     fn scopes_are_joined_with_spaces() {
         assert_eq!(join_scopes(["repo", "read:org"]), "repo read:org");
-    }
-
-    #[test]
-    fn returned_scopes_accept_github_commas_and_oauth_spaces() {
-        let scopes = split_scopes("repo,read:org gist").collect::<Vec<_>>();
-
-        assert_eq!(scopes, ["repo", "read:org", "gist"]);
     }
 }

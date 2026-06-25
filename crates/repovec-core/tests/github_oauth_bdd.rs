@@ -2,10 +2,9 @@
 
 use std::time::Duration;
 
-use oauth2::{DeviceCodeErrorResponseType, basic::BasicErrorResponseType};
 use repovec_core::github_oauth::{
-    AccessToken, PollDecision, TerminalDeviceFlowError, TokenPollOutcome, apply_poll_outcome,
-    classify_device_code_error,
+    AccessToken, DeviceFlowErrorCode, PollDecision, TerminalDeviceFlowError, TokenPollOutcome,
+    apply_poll_outcome, classify_device_flow_error,
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenarios, then, when};
@@ -15,7 +14,7 @@ struct GitHubOAuthWorld {
     active_interval: Duration,
     outcome: Option<TokenPollOutcome>,
     decision: Option<PollDecision>,
-    oauth_error: Option<DeviceCodeErrorResponseType>,
+    oauth_error: Option<DeviceFlowErrorCode>,
     has_classification: bool,
     classified_outcome: Option<TokenPollOutcome>,
 }
@@ -33,9 +32,7 @@ fn the_active_polling_interval_is_5_seconds(github_oauth_world: &mut GitHubOAuth
 
 #[given("the OAuth error is temporarily_unavailable")]
 fn the_oauth_error_is_temporarily_unavailable(github_oauth_world: &mut GitHubOAuthWorld) {
-    github_oauth_world.oauth_error = Some(DeviceCodeErrorResponseType::Basic(
-        BasicErrorResponseType::Extension("temporarily_unavailable".to_owned()),
-    ));
+    github_oauth_world.oauth_error = Some(DeviceFlowErrorCode::Unsupported);
 }
 
 #[when("the token endpoint returns an access token")]
@@ -68,7 +65,7 @@ fn the_oauth_error_is_classified(github_oauth_world: &mut GitHubOAuthWorld) {
     let Some(error) = github_oauth_world.oauth_error.as_ref() else {
         panic!("an OAuth error should be supplied");
     };
-    github_oauth_world.classified_outcome = classify_device_code_error(error);
+    github_oauth_world.classified_outcome = classify_device_flow_error(*error);
     github_oauth_world.has_classification = true;
 }
 

@@ -2,10 +2,10 @@
 
 use std::{
     ffi::OsStr,
-    fmt,
     io::{ErrorKind, Write},
     process::{Command, Stdio},
     sync::atomic::{AtomicU64, Ordering},
+    time::Instant,
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -17,8 +17,13 @@ use cap_std::{
 };
 use repovec_core::github_oauth::AccessToken;
 use thiserror::Error;
+use tracing::info_span;
 
 use crate::github_device_flow::TokenStore;
+
+mod redaction;
+
+pub use redaction::LossyStderr;
 
 const TOKEN_CREDENTIAL_NAME: &str = "repovec-github-oauth-token";
 const TOKEN_CREDENTIAL_FILE: &str = "github-oauth-token.cred";
@@ -74,10 +79,15 @@ where
     ///
     /// Returns an error if encryption or atomic persistence fails.
     pub fn store_token(&self, token: &AccessToken) -> Result<(), TokenStoreError<E::Error>> {
+        let span = info_span!("github_token_store.store");
+        let _entered = span.enter();
+        let started_at = Instant::now();
         let ciphertext =
             self.encryptor.encrypt(token.secret().as_bytes()).map_err(TokenStoreError::Encrypt)?;
         write_atomically(&self.root, TOKEN_CREDENTIAL_FILE, &ciphertext)
-            .map_err(TokenStoreError::Write)
+            .map_err(TokenStoreError::Write)?;
+        info_token_store_write(started_at);
+        Ok(())
     }
 
     /// Loads and decrypts a token from disk.
@@ -92,9 +102,13 @@ where
     /// Returns an error if the file cannot be read, decrypted, or decoded as
     /// UTF-8.
     pub fn load_token(&self) -> Result<AccessToken, TokenStoreError<E::Error>> {
+        let span = info_span!("github_token_store.load");
+        let _entered = span.enter();
+        let started_at = Instant::now();
         let ciphertext = self.root.read(TOKEN_CREDENTIAL_FILE).map_err(TokenStoreError::Read)?;
         let plaintext = self.encryptor.decrypt(&ciphertext).map_err(TokenStoreError::Decrypt)?;
         let token = String::from_utf8(plaintext).map_err(TokenStoreError::Decode)?;
+        info_token_store_load(started_at);
         Ok(AccessToken::new(token, std::iter::empty::<String>()))
     }
 
@@ -278,36 +292,6 @@ where
     },
 }
 
-/// Lossy standard-error text that avoids panics on invalid UTF-8.
-#[derive(Clone, Eq, PartialEq)]
-pub struct LossyStderr(String);
-
-impl fmt::Debug for LossyStderr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("LossyStderr").field(&redact_tokenish_words(&self.0)).finish()
-    }
-}
-
-impl fmt::Display for LossyStderr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&redact_tokenish_words(&self.0))
-    }
-}
-
-fn redact_tokenish_words(input: &str) -> String {
-    input
-        .split_whitespace()
-        .map(|word| if contains_github_token_prefix(word) { "[redacted]" } else { word })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn contains_github_token_prefix(word: &str) -> bool {
-    ["gho_", "ghp_", "ghs_", "ghr_", "ghu_", "github_pat_"]
-        .iter()
-        .any(|prefix| word.contains(prefix))
-}
-
 fn write_atomically(root: &Dir, filename: &str, contents: &[u8]) -> std::io::Result<()> {
     let (temp_name, mut temp_file) = create_atomic_write_temp_file(root, filename)?;
     temp_file.write_all(contents)?;
@@ -343,6 +327,26 @@ fn create_atomic_write_temp_file(
 fn next_atomic_write_temp_name(filename: &str) -> String {
     let id = NEXT_TEMP_FILE_ID.fetch_add(1, Ordering::Relaxed);
     format!(".{filename}.{}.{id}.tmp", std::process::id())
+}
+
+fn info_token_store_write(started_at: Instant) {
+    let duration_span = info_span!(
+        "metric.github_token_store_write_duration_ms",
+        elapsed_ms = started_at.elapsed().as_millis(),
+    );
+    let _duration_entered = duration_span.enter();
+    let total_span = info_span!("metric.github_token_store_write_total");
+    let _total_entered = total_span.enter();
+}
+
+fn info_token_store_load(started_at: Instant) {
+    let duration_span = info_span!(
+        "metric.github_token_store_load_duration_ms",
+        elapsed_ms = started_at.elapsed().as_millis(),
+    );
+    let _duration_entered = duration_span.enter();
+    let total_span = info_span!("metric.github_token_store_load_total");
+    let _total_entered = total_span.enter();
 }
 
 struct SystemdCredsTransform<'a, R>

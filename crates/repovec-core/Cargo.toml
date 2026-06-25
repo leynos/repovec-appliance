@@ -8,7 +8,6 @@ publish.workspace = true
 
 [dependencies]
 camino.workspace = true
-oauth2.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

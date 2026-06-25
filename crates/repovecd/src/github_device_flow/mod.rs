@@ -9,6 +9,13 @@ use repovec_core::github_oauth::{
 use thiserror::Error;
 use tracing::info;
 
+mod observability;
+
+use observability::{
+    device_flow_span, info_device_flow_result, info_device_flow_started, info_interval_increase,
+    info_terminal_outcome,
+};
+
 /// OAuth API operations required by the device-flow use case.
 pub trait DeviceFlowApi {
     /// Error returned by the adapter.
@@ -149,6 +156,25 @@ where
     S: Sleeper,
     P: FnOnce(&DeviceLoginPrompt),
 {
+    let flow_span = device_flow_span(request);
+    let _entered = flow_span.enter();
+    info_device_flow_started();
+    let result = complete_device_flow_in_span(runtime, request, present_prompt);
+    info_device_flow_result(&result);
+    result
+}
+
+fn complete_device_flow_in_span<A, T, S, P>(
+    runtime: &DeviceFlowRuntime<'_, A, T, S>,
+    request: &DeviceFlowLoginRequest,
+    present_prompt: P,
+) -> Result<CompletedDeviceFlow, DeviceFlowRunError<A::Error, T::Error>>
+where
+    A: DeviceFlowApi,
+    T: TokenStore,
+    S: Sleeper,
+    P: FnOnce(&DeviceLoginPrompt),
+{
     let (authorization, prompt) = begin_device_flow(runtime, request, present_prompt)?;
     let token = poll_until_token(runtime, request, &authorization)?;
     store_completed_token(runtime, &token)?;
@@ -189,7 +215,7 @@ where
     S: Sleeper,
 {
     runtime.store.store(token).map_err(DeviceFlowRunError::Storage)?;
-    info!("stored GitHub OAuth access token");
+    info!("metric.github_device_flow_storage_success_total");
     Ok(())
 }
 
@@ -240,6 +266,7 @@ where
 {
     runtime.sleeper.sleep(polling.interval);
     polling.record_attempt();
+    info!(attempt = polling.attempt, "metric.github_device_flow_poll_attempt_total");
     runtime
         .api
         .poll_token(&request.client_id, authorization)
@@ -261,10 +288,7 @@ where
             Ok(None)
         }
         PollDecision::Complete(token) => Ok(Some(token)),
-        PollDecision::Failed(error) => {
-            info!(attempt = polling.attempt, ?error, "GitHub device-flow terminal outcome");
-            Err(DeviceFlowRunError::Terminal(error))
-        }
+        PollDecision::Failed(error) => fail_poll_decision(error, polling.attempt),
     }
 }
 
@@ -284,15 +308,22 @@ impl ActivePolling {
 
     fn update_interval(&mut self, next_interval: Duration) {
         if next_interval > self.interval {
-            info!(
-                attempt = self.attempt,
-                previous_interval_seconds = self.interval.as_secs(),
-                next_interval_seconds = next_interval.as_secs(),
-                "GitHub device-flow slow_down adjusted the polling interval",
-            );
+            info_interval_increase(self.attempt, self.interval, next_interval);
         }
         self.interval = next_interval;
     }
+}
+
+fn fail_poll_decision<O, S>(
+    error: TerminalDeviceFlowError,
+    attempt: u64,
+) -> Result<Option<AccessToken>, DeviceFlowRunError<O, S>>
+where
+    O: std::error::Error + Send + Sync + 'static,
+    S: std::error::Error + Send + Sync + 'static,
+{
+    info_terminal_outcome(error, attempt);
+    Err(DeviceFlowRunError::Terminal(error))
 }
 
 fn info_polling_started(polling: &ActivePolling, expires_in: Duration) {

@@ -153,7 +153,8 @@ fn happy_path_stores_the_authorized_token(
         .expect("device flow should complete");
 
     assert_eq!(result.prompt.user_code.as_str(), "ABCD-1234");
-    assert_eq!(store.tokens.borrow().len(), 1);
+    assert_eq!(result.token.secret(), "gho_secret");
+    assert_eq!(store.tokens.borrow().as_slice(), [AccessToken::new("gho_secret", ["repo"])]);
     assert_eq!(
         *recording_sleeper.sleeps.borrow(),
         [Duration::from_secs(5), Duration::from_secs(5)]
@@ -259,7 +260,9 @@ fn reused_sleeper_starts_expiry_clock_per_login(
     let second_runtime = DeviceFlowRuntime::new(&second_api, &store, &recording_sleeper);
     let second_result = complete_device_flow(&second_runtime, &login_request, |_| {});
 
-    assert!(second_result.is_ok());
+    let completed = second_result.expect("second login should complete");
+    assert_eq!(completed.token.secret(), "gho_secret");
+    assert_eq!(store.tokens.borrow().as_slice(), [AccessToken::new("gho_secret", ["repo"])]);
 }
 
 #[rstest]

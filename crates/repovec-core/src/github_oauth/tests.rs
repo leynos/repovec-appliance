@@ -2,32 +2,26 @@
 
 use std::time::Duration;
 
-use oauth2::{DeviceCodeErrorResponseType, basic::BasicErrorResponseType};
 use proptest::prelude::*;
 use rstest::rstest;
 
 use super::{
-    AccessToken, DeviceCode, PollDecision, SLOW_DOWN_EXTRA_DELAY, TerminalDeviceFlowError,
-    TokenPollOutcome, UserCode, apply_poll_outcome, classify_device_code_error,
+    AccessToken, DeviceCode, DeviceFlowErrorCode, PollDecision, SLOW_DOWN_EXTRA_DELAY,
+    TerminalDeviceFlowError, TokenPollOutcome, UserCode, apply_poll_outcome,
+    classify_device_flow_error,
 };
 
 #[rstest]
-#[case(
-    DeviceCodeErrorResponseType::AuthorizationPending,
-    Some(TokenPollOutcome::AuthorizationPending)
-)]
-#[case(DeviceCodeErrorResponseType::SlowDown, Some(TokenPollOutcome::SlowDown))]
-#[case(DeviceCodeErrorResponseType::AccessDenied, Some(TokenPollOutcome::AccessDenied))]
-#[case(DeviceCodeErrorResponseType::ExpiredToken, Some(TokenPollOutcome::ExpiredToken))]
-#[case(
-    DeviceCodeErrorResponseType::Basic(BasicErrorResponseType::Extension("temporarily_unavailable".into())),
-    None
-)]
+#[case(DeviceFlowErrorCode::AuthorizationPending, Some(TokenPollOutcome::AuthorizationPending))]
+#[case(DeviceFlowErrorCode::SlowDown, Some(TokenPollOutcome::SlowDown))]
+#[case(DeviceFlowErrorCode::AccessDenied, Some(TokenPollOutcome::AccessDenied))]
+#[case(DeviceFlowErrorCode::ExpiredToken, Some(TokenPollOutcome::ExpiredToken))]
+#[case(DeviceFlowErrorCode::Unsupported, None)]
 fn device_code_errors_are_classified(
-    #[case] error: DeviceCodeErrorResponseType,
+    #[case] error: DeviceFlowErrorCode,
     #[case] expected: Option<TokenPollOutcome>,
 ) {
-    assert_eq!(classify_device_code_error(&error), expected);
+    assert_eq!(classify_device_flow_error(error), expected);
 }
 
 #[test]

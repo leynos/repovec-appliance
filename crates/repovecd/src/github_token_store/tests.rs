@@ -209,6 +209,10 @@ fn systemd_creds_error_display_redacts_token() {
 
     assert!(!message.contains("gho_secret"));
     assert!(message.contains("[redacted]"));
+    insta::assert_snapshot!(
+        message,
+        @"systemd-creds encrypt failed with status Some(1): failure for [redacted]"
+    );
 }
 
 #[test]
@@ -222,6 +226,10 @@ fn systemd_creds_error_debug_redacts_token() {
 
     assert!(!message.contains("gho_secret"));
     assert!(message.contains("[redacted]"));
+    insta::assert_snapshot!(
+        message,
+        @"CommandFailed { operation: \"encrypt\", status: Some(1), stderr: LossyStderr(\"failure for [redacted]\") }"
+    );
 }
 
 #[rstest]

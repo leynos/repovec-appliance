@@ -2,8 +2,6 @@
 
 use std::{fmt, time::Duration};
 
-use oauth2::DeviceCodeErrorResponseType;
-
 /// Minimum extra delay required by RFC 8628 after a `slow_down` response.
 pub const SLOW_DOWN_EXTRA_DELAY: Duration = Duration::from_secs(5);
 
@@ -199,6 +197,21 @@ pub enum TokenPollOutcome {
     ExpiredToken,
 }
 
+/// Device-flow error code returned by an OAuth token endpoint.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeviceFlowErrorCode {
+    /// The operator has not approved the flow yet.
+    AuthorizationPending,
+    /// The server asked the client to poll less frequently.
+    SlowDown,
+    /// The operator denied the authorization request.
+    AccessDenied,
+    /// The device code expired before approval.
+    ExpiredToken,
+    /// The OAuth server returned an error outside the device-flow contract.
+    Unsupported,
+}
+
 /// Next action after interpreting a token-poll response.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PollDecision {
@@ -267,31 +280,28 @@ pub fn apply_poll_outcome(outcome: TokenPollOutcome, active_interval: Duration) 
     }
 }
 
-/// Converts an OAuth device-code error into the domain polling outcome.
+/// Converts a device-flow error code into the domain polling outcome.
 ///
 /// # Examples
 ///
 /// ```
-/// use oauth2::DeviceCodeErrorResponseType;
-/// use repovec_core::github_oauth::{TokenPollOutcome, classify_device_code_error};
+/// use repovec_core::github_oauth::{
+///     DeviceFlowErrorCode, TokenPollOutcome, classify_device_flow_error,
+/// };
 ///
 /// assert_eq!(
-///     classify_device_code_error(&DeviceCodeErrorResponseType::AuthorizationPending),
+///     classify_device_flow_error(DeviceFlowErrorCode::AuthorizationPending),
 ///     Some(TokenPollOutcome::AuthorizationPending),
 /// );
 /// ```
 #[must_use]
-pub const fn classify_device_code_error(
-    error: &DeviceCodeErrorResponseType,
-) -> Option<TokenPollOutcome> {
+pub const fn classify_device_flow_error(error: DeviceFlowErrorCode) -> Option<TokenPollOutcome> {
     match error {
-        DeviceCodeErrorResponseType::AuthorizationPending => {
-            Some(TokenPollOutcome::AuthorizationPending)
-        }
-        DeviceCodeErrorResponseType::SlowDown => Some(TokenPollOutcome::SlowDown),
-        DeviceCodeErrorResponseType::AccessDenied => Some(TokenPollOutcome::AccessDenied),
-        DeviceCodeErrorResponseType::ExpiredToken => Some(TokenPollOutcome::ExpiredToken),
-        DeviceCodeErrorResponseType::Basic(_) => None,
+        DeviceFlowErrorCode::AuthorizationPending => Some(TokenPollOutcome::AuthorizationPending),
+        DeviceFlowErrorCode::SlowDown => Some(TokenPollOutcome::SlowDown),
+        DeviceFlowErrorCode::AccessDenied => Some(TokenPollOutcome::AccessDenied),
+        DeviceFlowErrorCode::ExpiredToken => Some(TokenPollOutcome::ExpiredToken),
+        DeviceFlowErrorCode::Unsupported => None,
     }
 }
 

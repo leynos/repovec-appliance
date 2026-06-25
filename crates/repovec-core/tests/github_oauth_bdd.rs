@@ -8,7 +8,7 @@ use repovec_core::github_oauth::{
     classify_device_code_error,
 };
 use rstest::fixture;
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 
 #[derive(Default)]
 struct GitHubOAuthWorld {
@@ -115,32 +115,4 @@ fn apply_outcome(github_oauth_world: &mut GitHubOAuthWorld) {
         Some(apply_poll_outcome(outcome, github_oauth_world.active_interval));
 }
 
-#[scenario(
-    path = "tests/features/github_oauth.feature",
-    name = "Authorization completes with a token"
-)]
-fn authorization_completes_with_a_token(github_oauth_world: GitHubOAuthWorld) {
-    let _ = github_oauth_world;
-}
-
-#[scenario(
-    path = "tests/features/github_oauth.feature",
-    name = "Slow down increases the next poll delay"
-)]
-fn slow_down_increases_the_next_poll_delay(github_oauth_world: GitHubOAuthWorld) {
-    let _ = github_oauth_world;
-}
-
-#[scenario(path = "tests/features/github_oauth.feature", name = "Access denied is terminal")]
-fn access_denied_is_terminal(github_oauth_world: GitHubOAuthWorld) { let _ = github_oauth_world; }
-
-#[scenario(path = "tests/features/github_oauth.feature", name = "Expired token is terminal")]
-fn expired_token_is_terminal(github_oauth_world: GitHubOAuthWorld) { let _ = github_oauth_world; }
-
-#[scenario(
-    path = "tests/features/github_oauth.feature",
-    name = "Unsupported OAuth errors are not device-flow outcomes"
-)]
-fn unsupported_oauth_errors_are_not_device_flow_outcomes(github_oauth_world: GitHubOAuthWorld) {
-    let _ = github_oauth_world;
-}
+scenarios!("tests/features/github_oauth.feature", fixtures = [github_oauth_world: GitHubOAuthWorld]);

@@ -154,9 +154,12 @@ credential atomically, syncs the file and containing directory, and keeps token
 material off the command line and out of display diagnostics. Reloaded tokens
 contain the bearer secret only; scope metadata is treated as server response
 metadata and is not persisted with the credential. Permission checks based on
-granted scopes are therefore login-time checks only in this adapter. Components
-that need to enforce scope-derived permissions after a restart must revalidate
-the token with GitHub before relying on those permissions.
+granted scopes are therefore login-time checks only in this adapter. The GitHub
+OAuth token reload flow infers no scope-derived authorization from the bearer
+secret alone. After a restart, the control plane must revalidate the reloaded
+token against GitHub before enforcing permissions that depend on granted
+scopes; if that lookup fails, permissions remain unknown and the operator must
+complete login again.
 
 ### Discovery and continuous monitoring
 

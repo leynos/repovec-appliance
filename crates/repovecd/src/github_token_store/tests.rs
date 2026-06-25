@@ -4,6 +4,7 @@ use std::{
     cell::RefCell,
     convert::Infallible,
     ffi::OsStr,
+    path::PathBuf,
     rc::Rc,
     sync::{Arc, Barrier},
     thread,
@@ -13,11 +14,12 @@ use std::{
 use cap_std::fs_utf8::PermissionsExt;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use repovec_core::github_oauth::AccessToken;
-use rstest::rstest;
+use rstest::{fixture, rstest};
+use thiserror::Error;
 
 use super::{
     CommandOutput, CommandRunner, CredentialEncryptor, EncryptedGitHubTokenStore,
-    SystemdCredsEncryptor, SystemdCredsError,
+    SystemdCredsEncryptor, SystemdCredsError, TokenStoreError,
 };
 
 #[derive(Clone, Debug)]
@@ -36,6 +38,22 @@ impl CredentialEncryptor for PrefixEncryptor {
         let encrypted = ciphertext.strip_prefix(b"encrypted:").unwrap_or(ciphertext);
         Ok(encrypted.iter().rev().copied().collect())
     }
+}
+
+struct StoredTokenFixture {
+    _tempdir: tempfile::TempDir,
+    root: camino::Utf8PathBuf,
+    store: EncryptedGitHubTokenStore<PrefixEncryptor>,
+}
+
+#[derive(Debug, Error)]
+enum StoredTokenFixtureError {
+    #[error("tempdir should be created")]
+    TempDir(#[from] std::io::Error),
+    #[error("temporary path should be UTF-8: {0:?}")]
+    NonUtf8Path(PathBuf),
+    #[error("token store setup failed")]
+    Store(#[from] TokenStoreError<Infallible>),
 }
 
 #[derive(Clone, Debug)]
@@ -88,16 +106,10 @@ impl CommandRunner for RecordingRunner {
     }
 }
 
-#[test]
-fn store_writes_only_encrypted_token_material() {
-    let tempdir = tempfile::tempdir().expect("tempdir should be created");
-    let root = camino::Utf8Path::from_path(tempdir.path()).expect("temporary path should be UTF-8");
-    let store = EncryptedGitHubTokenStore::open(root, PrefixEncryptor).expect("store should open");
-
-    store.store_token(&AccessToken::new("gho_secret", ["repo"])).expect("token should be stored");
-
-    let readable_root =
-        Dir::open_ambient_dir(root, ambient_authority()).expect("temporary root should open");
+#[rstest]
+fn store_writes_only_encrypted_token_material(stored_token: StoredTokenFixture) {
+    let readable_root = Dir::open_ambient_dir(&stored_token.root, ambient_authority())
+        .expect("temporary root should open");
     let contents = readable_root
         .read(EncryptedGitHubTokenStore::<PrefixEncryptor>::credential_file())
         .expect("encrypted credential should be readable");
@@ -106,31 +118,38 @@ fn store_writes_only_encrypted_token_material() {
 }
 
 #[cfg(unix)]
-#[test]
-fn store_writes_owner_only_credential_permissions() {
-    let tempdir = tempfile::tempdir().expect("tempdir should be created");
-    let root = camino::Utf8Path::from_path(tempdir.path()).expect("temporary path should be UTF-8");
-    let store = EncryptedGitHubTokenStore::open(root, PrefixEncryptor).expect("store should open");
-
-    store.store_token(&AccessToken::new("gho_secret", ["repo"])).expect("token should be stored");
-
-    let readable_root =
-        Dir::open_ambient_dir(root, ambient_authority()).expect("temporary root should open");
+#[rstest]
+fn store_writes_owner_only_credential_permissions(stored_token: StoredTokenFixture) {
+    let readable_root = Dir::open_ambient_dir(&stored_token.root, ambient_authority())
+        .expect("temporary root should open");
     let metadata = readable_root
         .metadata(EncryptedGitHubTokenStore::<PrefixEncryptor>::credential_file())
         .expect("encrypted credential metadata should be readable");
     assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
 }
 
-#[test]
-fn load_decrypts_the_stored_token() {
-    let tempdir = tempfile::tempdir().expect("tempdir should be created");
-    let root = camino::Utf8Path::from_path(tempdir.path()).expect("temporary path should be UTF-8");
-    let store = EncryptedGitHubTokenStore::open(root, PrefixEncryptor).expect("store should open");
+#[rstest]
+fn load_decrypts_the_stored_token(stored_token: StoredTokenFixture) {
+    assert_eq!(stored_token.store.load_token().expect("token should load").secret(), "gho_secret");
+}
 
-    store.store_token(&AccessToken::new("gho_secret", ["repo"])).expect("token should be stored");
+#[fixture]
+fn stored_token() -> StoredTokenFixture {
+    match build_stored_token() {
+        Ok(stored_token) => stored_token,
+        Err(error) => panic!("stored token fixture should be created: {error}"),
+    }
+}
 
-    assert_eq!(store.load_token().expect("token should load").secret(), "gho_secret");
+fn build_stored_token() -> Result<StoredTokenFixture, StoredTokenFixtureError> {
+    let tempdir = tempfile::tempdir()?;
+    let root = camino::Utf8PathBuf::from_path_buf(tempdir.path().to_path_buf())
+        .map_err(StoredTokenFixtureError::NonUtf8Path)?;
+    let store = EncryptedGitHubTokenStore::open(&root, PrefixEncryptor)?;
+
+    store.store_token(&AccessToken::new("gho_secret", ["repo"]))?;
+
+    Ok(StoredTokenFixture { _tempdir: tempdir, root, store })
 }
 
 #[test]

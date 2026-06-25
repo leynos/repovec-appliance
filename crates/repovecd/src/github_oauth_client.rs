@@ -19,6 +19,8 @@ use crate::github_device_flow::DeviceFlowApi;
 
 const DEVICE_CODE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 const DEFAULT_DEVICE_POLL_INTERVAL: Duration = Duration::from_secs(5);
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// GitHub OAuth endpoint URLs used by the device-flow adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,11 +92,22 @@ impl GitHubOAuthClient {
     ///
     /// Returns an error if either endpoint URL is invalid or the underlying
     /// HTTP client cannot be constructed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use repovecd::github_oauth_client::{DeviceFlowEndpoints, GitHubOAuthClient};
+    /// GitHubOAuthClient::new(DeviceFlowEndpoints::github())?;
+    ///
+    /// # Ok::<(), repovecd::github_oauth_client::OAuthClientError>(())
+    /// ```
     pub fn new(endpoints: DeviceFlowEndpoints) -> Result<Self, OAuthClientError> {
         validate_device_code_url(endpoints.device_code_url())?;
         validate_token_url(endpoints.token_url())?;
         let http = Client::builder()
             .redirect(Policy::none())
+            .connect_timeout(HTTP_CONNECT_TIMEOUT)
+            .timeout(HTTP_REQUEST_TIMEOUT)
             .build()
             .map_err(OAuthClientError::BuildHttpClient)?;
         Ok(Self { endpoints, http })
@@ -106,6 +119,20 @@ impl GitHubOAuthClient {
     ///
     /// Returns a typed error for transport failures, non-success server
     /// responses, or malformed response bodies.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use repovec_core::github_oauth::ClientId;
+    /// use repovecd::github_oauth_client::{DeviceFlowEndpoints, GitHubOAuthClient};
+    ///
+    /// let client = GitHubOAuthClient::new(DeviceFlowEndpoints::github())?;
+    /// let authorization =
+    ///     client.request_device_code(&ClientId::new("github-client-id"), ["repo"])?;
+    /// assert_eq!(authorization.interval.as_secs(), 5);
+    ///
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn request_device_code<I, S>(
         &self,
         client_id: &ClientId,
@@ -142,6 +169,28 @@ impl GitHubOAuthClient {
     /// Returns a typed error for transport failures, malformed success or
     /// error responses, and OAuth errors that are not part of the device-flow
     /// polling contract.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use repovec_core::github_oauth::{ClientId, DeviceCode, TokenPollOutcome};
+    /// use repovecd::github_oauth_client::{DeviceFlowEndpoints, GitHubOAuthClient};
+    ///
+    /// let client = GitHubOAuthClient::new(DeviceFlowEndpoints::github())?;
+    /// let outcome =
+    ///     client.poll_token(&ClientId::new("github-client-id"), &DeviceCode::new("device-code"))?;
+    /// match outcome {
+    ///     TokenPollOutcome::Authorized(token) => {
+    ///         assert!(token.scopes().iter().any(|scope| scope == "repo"));
+    ///     }
+    ///     TokenPollOutcome::AuthorizationPending => {}
+    ///     TokenPollOutcome::SlowDown => {}
+    ///     TokenPollOutcome::AccessDenied => {}
+    ///     TokenPollOutcome::ExpiredToken => {}
+    /// }
+    ///
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn poll_token(
         &self,
         client_id: &ClientId,

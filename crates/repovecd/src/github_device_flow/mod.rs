@@ -56,21 +56,16 @@ pub trait TokenStore {
 pub trait Sleeper {
     /// Waits for the supplied duration.
     fn sleep(&self, duration: Duration);
-
-    /// Returns elapsed time since this polling run started.
-    fn elapsed(&self) -> Duration;
 }
 
 /// Production sleeper backed by the current thread.
 #[derive(Clone, Debug)]
-pub struct ThreadSleeper {
-    started_at: Instant,
-}
+pub struct ThreadSleeper;
 
 impl ThreadSleeper {
-    /// Creates a sleeper whose elapsed time starts now.
+    /// Creates a sleeper backed by the current thread.
     #[must_use]
-    pub fn new() -> Self { Self { started_at: Instant::now() } }
+    pub const fn new() -> Self { Self }
 }
 
 impl Default for ThreadSleeper {
@@ -79,8 +74,6 @@ impl Default for ThreadSleeper {
 
 impl Sleeper for ThreadSleeper {
     fn sleep(&self, duration: Duration) { std::thread::sleep(duration); }
-
-    fn elapsed(&self) -> Duration { self.started_at.elapsed() }
 }
 
 /// User-facing information that should be shown before polling starts.
@@ -214,7 +207,7 @@ where
     info_polling_started(&polling, authorization.expires_in);
 
     loop {
-        ensure_polling_not_expired(runtime.sleeper, authorization.expires_in, polling.interval)
+        ensure_polling_not_expired(&polling, authorization.expires_in)
             .map_err(DeviceFlowRunError::Terminal)?;
         let decision = poll_once(runtime, request, authorization, &mut polling)?;
         if let Some(token) = apply_poll_decision(decision, &mut polling)? {
@@ -223,16 +216,12 @@ where
     }
 }
 
-fn ensure_polling_not_expired<S>(
-    sleeper: &S,
+fn ensure_polling_not_expired(
+    polling: &ActivePolling,
     expires_in: Duration,
-    next_interval: Duration,
-) -> Result<(), TerminalDeviceFlowError>
-where
-    S: Sleeper,
-{
-    if has_expired(sleeper, expires_in, next_interval) {
-        info_polling_expired(sleeper, next_interval, expires_in);
+) -> Result<(), TerminalDeviceFlowError> {
+    if has_expired(polling, expires_in) {
+        info_polling_expired(polling, expires_in);
         return Err(TerminalDeviceFlowError::ExpiredToken);
     }
     Ok(())
@@ -283,12 +272,15 @@ where
 struct ActivePolling {
     interval: Duration,
     attempt: u64,
+    started_at: Instant,
 }
 
 impl ActivePolling {
-    const fn new(interval: Duration) -> Self { Self { interval, attempt: 0 } }
+    fn new(interval: Duration) -> Self { Self { interval, attempt: 0, started_at: Instant::now() } }
 
     const fn record_attempt(&mut self) { self.attempt = self.attempt.saturating_add(1); }
+
+    fn elapsed(&self) -> Duration { self.started_at.elapsed() }
 
     fn update_interval(&mut self, next_interval: Duration) {
         if next_interval > self.interval {
@@ -311,23 +303,17 @@ fn info_polling_started(polling: &ActivePolling, expires_in: Duration) {
     );
 }
 
-fn info_polling_expired<S>(sleeper: &S, next_interval: Duration, expires_in: Duration)
-where
-    S: Sleeper,
-{
+fn info_polling_expired(polling: &ActivePolling, expires_in: Duration) {
     info!(
-        elapsed_seconds = sleeper.elapsed().as_secs(),
-        next_interval_seconds = next_interval.as_secs(),
+        elapsed_seconds = polling.elapsed().as_secs(),
+        next_interval_seconds = polling.interval.as_secs(),
         expires_in_seconds = expires_in.as_secs(),
         "GitHub device-flow authorization expired before next poll",
     );
 }
 
-fn has_expired<S>(sleeper: &S, expires_in: Duration, next_interval: Duration) -> bool
-where
-    S: Sleeper,
-{
-    sleeper.elapsed().saturating_add(next_interval) >= expires_in
+fn has_expired(polling: &ActivePolling, expires_in: Duration) -> bool {
+    polling.elapsed().saturating_add(polling.interval) >= expires_in
 }
 
 /// Errors returned while running the device flow.

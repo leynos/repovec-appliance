@@ -30,6 +30,8 @@ mod platform_bindings;
 #[cfg(test)]
 mod api_key_tests;
 #[cfg(test)]
+mod api_key_unit_tests;
+#[cfg(test)]
 mod log_tests;
 #[cfg(test)]
 mod provisioning_tests;

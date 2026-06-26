@@ -26,6 +26,7 @@ rstest-bdd = "0.5.0"
 rstest-bdd-macros = { version = "0.5.0", features = ["strict-compile-time-validation"] }
 tracing = "0.1.43"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+trybuild = "1.0.117"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

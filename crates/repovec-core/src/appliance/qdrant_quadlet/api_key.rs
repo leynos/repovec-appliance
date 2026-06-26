@@ -29,29 +29,28 @@ use super::{
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use repovec_core::appliance::qdrant_quadlet::{QdrantQuadletError, QdrantQuadletObserver};
-/// # struct ParsedQuadlet;
-/// # impl ParsedQuadlet {
-/// #     fn parse(
-/// #         _contents: &str,
-/// #         _observer: &dyn QdrantQuadletObserver,
-/// #     ) -> Result<Self, QdrantQuadletError> {
-/// #         Ok(Self)
-/// #     }
-/// # }
-/// # fn validate_api_key_provisioning_dependency(
-/// #     _parsed: &ParsedQuadlet,
-/// #     _observer: &dyn QdrantQuadletObserver,
-/// # ) -> Result<(), QdrantQuadletError> {
-/// #     Ok(())
-/// # }
-/// let parsed = ParsedQuadlet::parse(
-///     "[Unit]\nRequires=repovec-qdrant-api-key.service\nAfter=repovec-qdrant-api-key.service\n",
-///     &(),
-/// )?;
+/// use repovec_core::appliance::qdrant_quadlet::{
+///     QdrantQuadletError, validate_qdrant_quadlet,
+/// };
 ///
-/// validate_api_key_provisioning_dependency(&parsed, &())?;
-/// # Ok::<(), QdrantQuadletError>(())
+/// # fn main() -> Result<(), QdrantQuadletError> {
+/// let contents = concat!(
+///     "[Unit]\n",
+///     "Requires=repovec-qdrant-api-key.service\n",
+///     "After=repovec-qdrant-api-key.service\n",
+///     "\n",
+///     "[Container]\n",
+///     "Image=docker.io/qdrant/qdrant:v1\n",
+///     "AutoUpdate=registry\n",
+///     "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+///     "PublishPort=127.0.0.1:6333:6333\n",
+///     "PublishPort=127.0.0.1:6334:6334\n",
+///     "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
+/// );
+///
+/// validate_qdrant_quadlet(contents, &())?;
+/// # Ok(())
+/// # }
 /// ```
 pub(super) fn validate_api_key_provisioning_dependency(
     parsed: &ParsedQuadlet,
@@ -104,29 +103,28 @@ fn validate_unit_dependency(
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use repovec_core::appliance::qdrant_quadlet::{QdrantQuadletError, QdrantQuadletObserver};
-/// # struct ParsedQuadlet;
-/// # impl ParsedQuadlet {
-/// #     fn parse(
-/// #         _contents: &str,
-/// #         _observer: &dyn QdrantQuadletObserver,
-/// #     ) -> Result<Self, QdrantQuadletError> {
-/// #         Ok(Self)
-/// #     }
-/// # }
-/// # fn validate_api_key_secret(
-/// #     _parsed: &ParsedQuadlet,
-/// #     _observer: &dyn QdrantQuadletObserver,
-/// # ) -> Result<(), QdrantQuadletError> {
-/// #     Ok(())
-/// # }
-/// let parsed = ParsedQuadlet::parse(
-///     "[Container]\nSecret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
-///     &(),
-/// )?;
+/// use repovec_core::appliance::qdrant_quadlet::{
+///     QdrantQuadletError, validate_qdrant_quadlet,
+/// };
 ///
-/// assert!(validate_api_key_secret(&parsed, &()).is_ok());
-/// # Ok::<(), QdrantQuadletError>(())
+/// # fn main() -> Result<(), QdrantQuadletError> {
+/// let contents = concat!(
+///     "[Unit]\n",
+///     "Requires=repovec-qdrant-api-key.service\n",
+///     "After=repovec-qdrant-api-key.service\n",
+///     "\n",
+///     "[Container]\n",
+///     "Image=docker.io/qdrant/qdrant:v1\n",
+///     "AutoUpdate=registry\n",
+///     "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+///     "PublishPort=127.0.0.1:6333:6333\n",
+///     "PublishPort=127.0.0.1:6334:6334\n",
+///     "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
+/// );
+///
+/// assert!(validate_qdrant_quadlet(contents, &()).is_ok());
+/// # Ok(())
+/// # }
 /// ```
 pub(super) fn validate_api_key_secret(
     parsed: &ParsedQuadlet,
@@ -187,32 +185,29 @@ fn is_required_api_key_secret(secret: &str) -> bool {
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use repovec_core::appliance::qdrant_quadlet::{QdrantQuadletError, QdrantQuadletObserver};
-/// # struct ParsedQuadlet;
-/// # impl ParsedQuadlet {
-/// #     fn parse(
-/// #         _contents: &str,
-/// #         _observer: &dyn QdrantQuadletObserver,
-/// #     ) -> Result<Self, QdrantQuadletError> {
-/// #         Ok(Self)
-/// #     }
-/// # }
-/// # fn validate_no_inline_api_key_environment(
-/// #     _parsed: &ParsedQuadlet,
-/// #     _observer: &dyn QdrantQuadletObserver,
-/// # ) -> Result<(), QdrantQuadletError> {
-/// #     Ok(())
-/// # }
-/// let parsed = ParsedQuadlet::parse(
-///     "[Container]\nEnvironment=QDRANT__SERVICE__API_KEY=secret\n",
-///     &(),
-/// )?;
+/// use repovec_core::appliance::qdrant_quadlet::{
+///     QdrantQuadletError, validate_qdrant_quadlet,
+/// };
+///
+/// let contents = concat!(
+///     "[Unit]\n",
+///     "Requires=repovec-qdrant-api-key.service\n",
+///     "After=repovec-qdrant-api-key.service\n",
+///     "\n",
+///     "[Container]\n",
+///     "Image=docker.io/qdrant/qdrant:v1\n",
+///     "AutoUpdate=registry\n",
+///     "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+///     "Environment=QDRANT__SERVICE__API_KEY=secret\n",
+///     "PublishPort=127.0.0.1:6333:6333\n",
+///     "PublishPort=127.0.0.1:6334:6334\n",
+///     "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
+/// );
 ///
 /// assert!(matches!(
-///     validate_no_inline_api_key_environment(&parsed, &()),
+///     validate_qdrant_quadlet(contents, &()),
 ///     Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed { .. })
 /// ));
-/// # Ok::<(), QdrantQuadletError>(())
 /// ```
 pub(super) fn validate_no_inline_api_key_environment(
     parsed: &ParsedQuadlet,
@@ -237,14 +232,14 @@ pub(super) fn validate_no_inline_api_key_environment(
     Ok(())
 }
 
-fn redact_api_key_environment_assignment(assignment: &str) -> String {
+pub(super) fn redact_api_key_environment_assignment(assignment: &str) -> String {
     match assignment.split_once('=') {
         Some((key, _)) => format!("{key}=<redacted>"),
         None => assignment.to_owned(),
     }
 }
 
-fn split_environment_assignments(environment: &str) -> Vec<String> {
+pub(super) fn split_environment_assignments(environment: &str) -> Vec<String> {
     let mut assignments = Vec::new();
     let mut assignment = String::new();
     let mut quote = None;
@@ -291,66 +286,9 @@ fn split_environment_assignments(environment: &str) -> Vec<String> {
     assignments
 }
 
-fn is_api_key_environment_assignment(assignment: &str) -> bool {
+pub(super) fn is_api_key_environment_assignment(assignment: &str) -> bool {
     assignment == QDRANT_API_KEY_ENVIRONMENT_VARIABLE
         || assignment
             .split_once('=')
             .is_some_and(|(key, _value)| key == QDRANT_API_KEY_ENVIRONMENT_VARIABLE)
-}
-
-#[cfg(test)]
-mod tests {
-    //! Unit tests for API-key environment assignment tokenisation.
-
-    use rstest::rstest;
-
-    use super::{
-        QDRANT_API_KEY_ENVIRONMENT_VARIABLE, is_api_key_environment_assignment,
-        redact_api_key_environment_assignment, split_environment_assignments,
-    };
-
-    #[rstest]
-    #[case::double_quoted_values_with_spaces(
-        r#"FOO="hello world" BAR=baz"#,
-        vec!["FOO=hello world", "BAR=baz"],
-    )]
-    #[case::single_quoted_values_with_spaces(
-        "FOO='hello world' BAR=baz",
-        vec!["FOO=hello world", "BAR=baz"],
-    )]
-    #[case::repeated_whitespace(
-        "  FOO=bar \t  BAR=baz  ",
-        vec!["FOO=bar", "BAR=baz"],
-    )]
-    #[case::unmatched_quote(
-        r#"FOO="unterminated value BAR=baz"#,
-        vec!["FOO=unterminated value BAR=baz"],
-    )]
-    #[case::escaped_quotes_inside_quoted_value(
-        r#"FOO="hello \"quoted\" world" BAR=baz"#,
-        vec![r#"FOO=hello \"quoted\" world"#, "BAR=baz"],
-    )]
-    #[case::apostrophe_inside_unquoted_value_does_not_merge_assignments(
-        "AUTHOR=O'Reilly QDRANT__SERVICE__API_KEY=secret",
-        vec!["AUTHOR=O'Reilly", "QDRANT__SERVICE__API_KEY=secret"],
-    )]
-    fn split_environment_assignments_preserves_quote_aware_assignments(
-        #[case] environment: &str,
-        #[case] expected: Vec<&str>,
-    ) {
-        assert_eq!(split_environment_assignments(environment), expected);
-    }
-
-    #[test]
-    fn is_api_key_environment_assignment_detects_bare_variable() {
-        assert!(is_api_key_environment_assignment(QDRANT_API_KEY_ENVIRONMENT_VARIABLE));
-    }
-
-    #[test]
-    fn redact_api_key_environment_assignment_formats_key_value_pair() {
-        assert_eq!(
-            redact_api_key_environment_assignment("QDRANT__SERVICE__API_KEY=secret"),
-            "QDRANT__SERVICE__API_KEY=<redacted>",
-        );
-    }
 }

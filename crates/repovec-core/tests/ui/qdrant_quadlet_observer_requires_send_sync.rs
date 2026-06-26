@@ -1,3 +1,5 @@
+//! Compile-fail fixture proving `QdrantQuadletObserver` requires `Send + Sync`.
+
 use std::rc::Rc;
 
 use repovec_core::appliance::qdrant_quadlet::QdrantQuadletObserver;

@@ -1,35 +1,35 @@
 error[E0277]: `Rc<()>` cannot be shared between threads safely
- --> tests/ui/qdrant_quadlet_observer_requires_send_sync.rs:9:32
-  |
-9 | impl QdrantQuadletObserver for NotThreadSafeObserver {}
-  |                                ^^^^^^^^^^^^^^^^^^^^^ `Rc<()>` cannot be shared between threads safely
-  |
-  = help: within `NotThreadSafeObserver`, the trait `Sync` is not implemented for `Rc<()>`
+  --> tests/ui/qdrant_quadlet_observer_requires_send_sync.rs:11:32
+   |
+11 | impl QdrantQuadletObserver for NotThreadSafeObserver {}
+   |                                ^^^^^^^^^^^^^^^^^^^^^ `Rc<()>` cannot be shared between threads safely
+   |
+   = help: within `NotThreadSafeObserver`, the trait `Sync` is not implemented for `Rc<()>`
 note: required because it appears within the type `NotThreadSafeObserver`
- --> tests/ui/qdrant_quadlet_observer_requires_send_sync.rs:5:8
-  |
-5 | struct NotThreadSafeObserver {
-  |        ^^^^^^^^^^^^^^^^^^^^^
+  --> tests/ui/qdrant_quadlet_observer_requires_send_sync.rs:7:8
+   |
+ 7 | struct NotThreadSafeObserver {
+   |        ^^^^^^^^^^^^^^^^^^^^^
 note: required by a bound in `QdrantQuadletObserver`
- --> src/appliance/qdrant_quadlet/observer.rs
-  |
-  | pub trait QdrantQuadletObserver: Send + Sync {
-  |                                         ^^^^ required by this bound in `QdrantQuadletObserver`
+  --> src/appliance/qdrant_quadlet/observer.rs
+   |
+   | pub trait QdrantQuadletObserver: Send + Sync {
+   |                                         ^^^^ required by this bound in `QdrantQuadletObserver`
 
 error[E0277]: `Rc<()>` cannot be sent between threads safely
- --> tests/ui/qdrant_quadlet_observer_requires_send_sync.rs:9:32
-  |
-9 | impl QdrantQuadletObserver for NotThreadSafeObserver {}
-  |                                ^^^^^^^^^^^^^^^^^^^^^ `Rc<()>` cannot be sent between threads safely
-  |
-  = help: within `NotThreadSafeObserver`, the trait `Send` is not implemented for `Rc<()>`
+  --> tests/ui/qdrant_quadlet_observer_requires_send_sync.rs:11:32
+   |
+11 | impl QdrantQuadletObserver for NotThreadSafeObserver {}
+   |                                ^^^^^^^^^^^^^^^^^^^^^ `Rc<()>` cannot be sent between threads safely
+   |
+   = help: within `NotThreadSafeObserver`, the trait `Send` is not implemented for `Rc<()>`
 note: required because it appears within the type `NotThreadSafeObserver`
- --> tests/ui/qdrant_quadlet_observer_requires_send_sync.rs:5:8
-  |
-5 | struct NotThreadSafeObserver {
-  |        ^^^^^^^^^^^^^^^^^^^^^
+  --> tests/ui/qdrant_quadlet_observer_requires_send_sync.rs:7:8
+   |
+ 7 | struct NotThreadSafeObserver {
+   |        ^^^^^^^^^^^^^^^^^^^^^
 note: required by a bound in `QdrantQuadletObserver`
- --> src/appliance/qdrant_quadlet/observer.rs
-  |
-  | pub trait QdrantQuadletObserver: Send + Sync {
-  |                                  ^^^^ required by this bound in `QdrantQuadletObserver`
+  --> src/appliance/qdrant_quadlet/observer.rs
+   |
+   | pub trait QdrantQuadletObserver: Send + Sync {
+   |                                  ^^^^ required by this bound in `QdrantQuadletObserver`

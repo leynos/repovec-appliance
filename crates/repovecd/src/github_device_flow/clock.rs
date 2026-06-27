@@ -33,24 +33,28 @@ pub(crate) mod test_support {
     #[derive(Debug)]
     pub(crate) struct FixedMonotonicClock {
         instants: Mutex<VecDeque<Instant>>,
-        fallback: Instant,
     }
 
     impl FixedMonotonicClock {
         /// Creates a fixed clock that returns the supplied instants in order.
         pub(crate) fn from_instants(instants: impl IntoIterator<Item = Instant>) -> Self {
-            let queued_instants = instants.into_iter().collect::<VecDeque<_>>();
-            let fallback = queued_instants.back().copied().unwrap_or_else(Instant::now);
-            Self { instants: Mutex::new(queued_instants), fallback }
+            Self { instants: Mutex::new(instants.into_iter().collect()) }
         }
     }
 
     impl MonotonicClock for FixedMonotonicClock {
         fn now(&self) -> Instant {
             match self.instants.lock() {
-                Ok(mut instants) => instants.pop_front().unwrap_or(self.fallback),
-                Err(poisoned) => poisoned.into_inner().pop_front().unwrap_or(self.fallback),
+                Ok(mut instants) => next_instant(&mut instants),
+                Err(poisoned) => next_instant(&mut poisoned.into_inner()),
             }
         }
+    }
+
+    fn next_instant(instants: &mut VecDeque<Instant>) -> Instant {
+        let Some(instant) = instants.pop_front() else {
+            panic!("fixed monotonic clock has no instants remaining");
+        };
+        instant
     }
 }

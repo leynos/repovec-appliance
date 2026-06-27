@@ -126,9 +126,9 @@ where
     pub api: &'a A,
     /// Encrypted token persistence adapter.
     pub store: &'a T,
-    /// Sleep and elapsed-time adapter.
+    /// Delay adapter used between token polling attempts.
     pub sleeper: &'a S,
-    /// Monotonic time adapter.
+    /// Monotonic time adapter used for device authorization expiry.
     pub clock: &'a dyn MonotonicClock,
 }
 

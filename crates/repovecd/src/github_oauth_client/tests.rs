@@ -31,19 +31,22 @@ fn invalid_token_url_is_rejected() {
     assert!(matches!(result, Err(OAuthClientError::InvalidTokenUrl(_))));
 }
 
-#[test]
-fn token_poll_maps_device_flow_error_codes() {
-    let pending = token_poll_outcome(
-        TokenPollWire {
-            access_token: None,
-            error: Some("authorization_pending".to_owned()),
-            scope: None,
-        },
+#[rstest::rstest]
+#[case::authorization_pending("authorization_pending", TokenPollOutcome::AuthorizationPending)]
+#[case::slow_down("slow_down", TokenPollOutcome::SlowDown)]
+#[case::access_denied("access_denied", TokenPollOutcome::AccessDenied)]
+#[case::expired_token("expired_token", TokenPollOutcome::ExpiredToken)]
+fn token_poll_maps_device_flow_error_codes(
+    #[case] error: &str,
+    #[case] expected: TokenPollOutcome,
+) {
+    let outcome = token_poll_outcome(
+        TokenPollWire { access_token: None, error: Some(error.to_owned()), scope: None },
         false,
     )
     .expect("known device-flow error should map to an outcome");
 
-    assert_eq!(pending, TokenPollOutcome::AuthorizationPending);
+    assert_eq!(outcome, expected);
 }
 
 #[test]

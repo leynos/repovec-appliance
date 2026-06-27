@@ -438,7 +438,7 @@ Security controls:
 - The Quadlet owns only the container contract; boot-target wiring remains the
   responsibility of roadmap item `1.3.1`.
 
-Validation telemetry boundary:
+### Validation telemetry boundary
 
 - Qdrant Quadlet validation emits operational telemetry through the
   `QdrantQuadletObserver` trait in `repovec-core`. The validator receives this

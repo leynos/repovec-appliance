@@ -61,9 +61,9 @@ roadmap item `1.2.2`.
   in `repovec-core`, rather than relying on shell greps in tests. This keeps
   the behaviour testable under `cargo test` and makes failures diagnostic.
 - Route validation telemetry through an explicit `QdrantQuadletObserver`
-  boundary. Production callers use `TracingQdrantQuadletObserver` to emit
-  structured `tracing` events, while `()` remains the no-op observer for tests
-  and silent validation paths.
+  reference. Production callers pass `&TracingQdrantQuadletObserver` to emit
+  structured `tracing` events, while `&()` remains the no-op observer reference
+  for tests and silent validation paths.
 - Record these decisions in
   `docs/repovec-appliance-technical-design.md` when the implementation lands.
 
@@ -215,7 +215,7 @@ set -o pipefail && make test 2>&1 | tee /tmp/1-2-1-test.log
   implementation remains within the repository's 400-line-per-file guidance.
 - Added `QdrantQuadletObserver` as the validation telemetry boundary.
   `TracingQdrantQuadletObserver` maps observer callbacks to structured
-  `tracing` events under `repovec_core::qdrant_quadlet`; `()` provides a no-op
+  `tracing` events under `repovec_core::qdrant_quadlet`; `&()` provides a no-op
   sink for tests and silent callers.
 - Added redaction for parser diagnostics and parse-error display paths so
   malformed Quadlet lines containing API keys or bearer tokens are not exposed

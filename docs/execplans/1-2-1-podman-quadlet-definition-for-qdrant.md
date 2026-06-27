@@ -60,6 +60,10 @@ roadmap item `1.2.2`.
 - Validate the checked-in Quadlet with a small Rust parser and contract checker
   in `repovec-core`, rather than relying on shell greps in tests. This keeps
   the behaviour testable under `cargo test` and makes failures diagnostic.
+- Route validation telemetry through an explicit `QdrantQuadletObserver`
+  boundary. Production callers use `TracingQdrantQuadletObserver` to emit
+  structured `tracing` events, while `()` remains the no-op observer for tests
+  and silent validation paths.
 - Record these decisions in
   `docs/repovec-appliance-technical-design.md` when the implementation lands.
 
@@ -105,6 +109,11 @@ roadmap item `1.2.2`.
   `MissingStorageMount`, `IncorrectStorageTarget`, and `MissingAutoUpdate`.
 - Keep the parser deliberately small. A section-aware line parser is sufficient
   here and avoids introducing a new dependency for one static file format.
+- Add structured validation telemetry at the validation boundary rather than in
+  callers. Emit lifecycle events at `INFO`, contract violations at `WARN`, and
+  malformed syntax diagnostics at `ERROR` through the observer adapter. Redact
+  secret-bearing line content before it reaches either logs or public
+  parse-error display text.
 
 ### 4.4. Add `rstest` unit coverage
 
@@ -204,11 +213,21 @@ set -o pipefail && make test 2>&1 | tee /tmp/1-2-1-test.log
   statically under `cargo test`.
 - Refactored the validator into `qdrant_quadlet/` submodules so the
   implementation remains within the repository's 400-line-per-file guidance.
+- Added `QdrantQuadletObserver` as the validation telemetry boundary.
+  `TracingQdrantQuadletObserver` maps observer callbacks to structured
+  `tracing` events under `repovec_core::qdrant_quadlet`; `()` provides a no-op
+  sink for tests and silent callers.
+- Added redaction for parser diagnostics and parse-error display paths so
+  malformed Quadlet lines containing API keys or bearer tokens are not exposed
+  through logs or `QdrantQuadletError::to_string()`.
 - Added `rstest` unit tests for the happy path and the required unhappy-path
   regressions.
 - Added `rstest-bdd` behavioural coverage under
   `crates/repovec-core/tests/features/qdrant_quadlet.feature` and
   `crates/repovec-core/tests/qdrant_quadlet_bdd.rs`.
+- Added log snapshot coverage and trybuild coverage for the observer contract,
+  including the `Send + Sync` trait bound required by async and threaded
+  validation callers.
 - Updated `docs/repovec-appliance-technical-design.md`,
   `docs/users-guide.md`, and `docs/roadmap.md` to reflect the shipped contract.
 
@@ -217,6 +236,11 @@ set -o pipefail && make test 2>&1 | tee /tmp/1-2-1-test.log
 - Completed on 2026-04-20:
   `make fmt`, `make markdownlint`, `make nixie`, `make check-fmt`, `make lint`,
   and `make test` all passed.
+- Review updates through 2026-06-27 added observer-driven validation telemetry,
+  redaction of parse-error line content, log snapshot coverage, and
+  `QdrantQuadletObserver: Send + Sync` compile-fail coverage. The current
+  branch validates with `make check-fmt`, `make lint`, `make typecheck`, and
+  `make test`.
 - `make lint` completed with the repository's normal Whitaker behaviour:
   the target reported `whitaker` absent on `PATH` and skipped that optional
   sub-check without failing the gate.
@@ -231,6 +255,8 @@ Roadmap item `1.2.1` is complete when all of the following are true:
   localhost, storage, image, and auto-update contract
 - `repovec-core` contains Rust validation logic with `rstest` unit tests
 - `rstest-bdd` behavioural tests cover happy and unhappy paths
+- the observer-driven telemetry boundary emits structured, redacted validation
+  events without coupling domain validation to a concrete logger
 - the technical design and canonical users guide document the implemented
   behaviour
 - `make fmt`, `make markdownlint`, `make nixie`, `make check-fmt`,

@@ -11,8 +11,9 @@ use rstest::{fixture, rstest};
 use thiserror::Error;
 
 use super::{
-    Clock, DeviceAuthorization, DeviceFlowApi, DeviceFlowLoginRequest, DeviceFlowRunError,
-    DeviceFlowRuntime, Sleeper, TerminalDeviceFlowError, TokenStore, complete_device_flow,
+    DeviceAuthorization, DeviceFlowApi, DeviceFlowLoginRequest, DeviceFlowRunError,
+    DeviceFlowRuntime, Sleeper, TerminalDeviceFlowError, TokenStore,
+    clock::test_support::FixedMonotonicClock, complete_device_flow,
 };
 use crate::tracing_test::capture_info_logs;
 
@@ -142,15 +143,6 @@ impl Sleeper for RecordingSleeper {
     }
 }
 
-#[derive(Debug)]
-struct FixedClock {
-    instants: RefCell<Vec<Instant>>,
-}
-
-impl Clock for FixedClock {
-    fn now(&self) -> Instant { self.instants.borrow_mut().remove(0) }
-}
-
 #[rstest]
 fn happy_path_stores_the_authorized_token(
     login_request: DeviceFlowLoginRequest,
@@ -239,11 +231,10 @@ fn expiry_uses_the_injected_clock(login_request: DeviceFlowLoginRequest) {
     let store = FakeStore::new();
     let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
     let started_at = Instant::now()
-        .checked_sub(Duration::from_secs(60))
-        .expect("test instant should support subtracting one minute");
-    let clock = FixedClock {
-        instants: RefCell::new(vec![started_at, started_at + Duration::from_secs(5)]),
-    };
+        .checked_add(Duration::from_secs(60))
+        .expect("test instant should support adding one minute");
+    let clock =
+        FixedMonotonicClock::from_instants([started_at, started_at + Duration::from_secs(5)]);
 
     let runtime = DeviceFlowRuntime::with_clock(&api, &store, &sleeper, &clock);
     let result = complete_device_flow(&runtime, &login_request, |_| {});

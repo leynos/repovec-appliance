@@ -9,8 +9,10 @@ use repovec_core::github_oauth::{
 use thiserror::Error;
 use tracing::info;
 
+mod clock;
 mod observability;
 
+pub use clock::{MonotonicClock, StdMonotonicClock};
 use observability::{
     device_flow_span, info_device_flow_result, info_device_flow_started, info_interval_increase,
     info_terminal_outcome,
@@ -65,21 +67,7 @@ pub trait Sleeper {
     fn sleep(&self, duration: Duration);
 }
 
-/// Time boundary used to make expiry checks deterministic.
-pub trait Clock: std::fmt::Debug {
-    /// Returns the current monotonic instant.
-    fn now(&self) -> Instant;
-}
-
-/// Production clock backed by [`Instant::now`].
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now(&self) -> Instant { Instant::now() }
-}
-
-static SYSTEM_CLOCK: SystemClock = SystemClock;
+static STD_MONOTONIC_CLOCK: StdMonotonicClock = StdMonotonicClock;
 
 /// Production sleeper backed by the current thread.
 #[derive(Clone, Debug)]
@@ -141,7 +129,7 @@ where
     /// Sleep and elapsed-time adapter.
     pub sleeper: &'a S,
     /// Monotonic time adapter.
-    pub clock: &'a dyn Clock,
+    pub clock: &'a dyn MonotonicClock,
 }
 
 impl<'a, A, T, S> DeviceFlowRuntime<'a, A, T, S>
@@ -153,7 +141,7 @@ where
     /// Creates a runtime adapter bundle.
     #[must_use]
     pub const fn new(api: &'a A, store: &'a T, sleeper: &'a S) -> Self {
-        Self { api, store, sleeper, clock: &SYSTEM_CLOCK }
+        Self { api, store, sleeper, clock: &STD_MONOTONIC_CLOCK }
     }
 
     /// Creates a runtime adapter bundle with an explicit clock.
@@ -162,7 +150,7 @@ where
         api: &'a A,
         store: &'a T,
         sleeper: &'a S,
-        clock: &'a dyn Clock,
+        clock: &'a dyn MonotonicClock,
     ) -> Self {
         Self { api, store, sleeper, clock }
     }
@@ -272,7 +260,7 @@ where
 }
 
 fn ensure_polling_not_expired(
-    clock: &dyn Clock,
+    clock: &dyn MonotonicClock,
     polling: &ActivePolling,
     expires_in: Duration,
 ) -> Result<(), TerminalDeviceFlowError> {

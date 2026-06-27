@@ -648,6 +648,14 @@ The runtime modules live in `repovecd`:
 - `github_token_store`: encrypted credential persistence under
   `/etc/repovec/`.
 
+Device-flow expiry and polling deadlines must use a monotonic clock port over
+`std::time::Instant`; do not use wall-clock time (`SystemTime`, UTC, local
+time, or chrono timestamps) for elapsed-time decisions. The runtime adapter
+should inject the clock alongside the sleeper so tests can drive deterministic
+instants without sleeping. Test clocks should be queued or otherwise explicitly
+advanced across `now()` calls, and expiry tests should fail if production code
+bypasses the injected clock by calling `Instant::now()` directly.
+
 Do not pass GitHub access tokens on command lines or include them in formatted
 diagnostics. The token-store adapter encrypts through `systemd-creds` with
 `--name=repovec-github-oauth-token`, writes `github-oauth-token.cred`

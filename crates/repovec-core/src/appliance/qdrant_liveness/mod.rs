@@ -13,7 +13,7 @@ use cap_std::{ambient_authority, fs_utf8::Dir};
 use qdrant_client::{Qdrant, QdrantError, qdrant::HealthCheckReply};
 
 /// Qdrant's appliance gRPC endpoint.
-pub const DEFAULT_QDRANT_GRPC_ENDPOINT: &str = "http://localhost:6334";
+pub const DEFAULT_QDRANT_GRPC_ENDPOINT: &str = "http://127.0.0.1:6334";
 
 /// Location populated by the Qdrant API-key provisioning service.
 pub const DEFAULT_QDRANT_API_KEY_PATH: &str = "/etc/repovec/qdrant-api-key";

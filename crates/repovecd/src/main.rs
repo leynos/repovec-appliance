@@ -1,6 +1,6 @@
 //! Process entry point for the repovec control-plane daemon.
 //!
-//! This binary initialises the process-wide `tracing` subscriber, validates the
+//! This binary initializes the process-wide `tracing` subscriber, validates the
 //! checked-in systemd unit contract, validates Qdrant gRPC liveness, and treats
 //! any startup contract violation as fatal. The substantive startup path lives
 //! in [`startup`] so tests can verify the wiring without terminating the
@@ -10,12 +10,13 @@
 //! `repovec-test-helpers`, including log capture and snapshot coverage for the
 //! tracing events emitted by the shared startup adapter.
 
-use std::{error::Error, fmt, future::Future};
+use std::{error::Error, fmt, future::Future, time::Duration};
 
 use repovec_core::appliance::{
     qdrant_liveness::{QdrantLivenessConfig, QdrantLivenessError, check_qdrant_liveness},
     systemd_units::{SystemdUnitError, validate_and_trace_checked_in_units},
 };
+use tokio::time::Instant;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -37,7 +38,7 @@ impl fmt::Display for StartupError {
             Self::SystemdUnit(error) => write!(formatter, "{error}"),
             Self::QdrantLiveness(error) => write!(formatter, "{error}"),
             Self::AsyncRuntime(error) => {
-                write!(formatter, "failed to initialise async runtime: {error}")
+                write!(formatter, "failed to initialize async runtime: {error}")
             }
         }
     }
@@ -53,11 +54,25 @@ impl Error for StartupError {
     }
 }
 
-fn startup() -> Result<(), i32> {
-    validate_startup_contracts().map_err(|error| {
-        tracing::error!(error = %error, "startup contract violation - aborting startup");
-        1
-    })
+fn startup() -> Result<(), i32> { validate_startup_contracts().map_err(log_startup_error) }
+
+fn log_startup_error(startup_error: StartupError) -> i32 {
+    match startup_error {
+        StartupError::SystemdUnit(systemd_error) => tracing::error!(
+            unit = %systemd_error.unit(),
+            error = %systemd_error,
+            "systemd unit contract violation - aborting startup",
+        ),
+        StartupError::QdrantLiveness(qdrant_error) => tracing::error!(
+            error = %qdrant_error,
+            "Qdrant liveness validation failed - aborting startup",
+        ),
+        StartupError::AsyncRuntime(runtime_error) => tracing::error!(
+            error = %runtime_error,
+            "async runtime initialization failed - aborting startup",
+        ),
+    }
+    1
 }
 
 fn validate_startup_contracts() -> Result<(), StartupError> {
@@ -72,16 +87,36 @@ fn validate_startup_contracts_with<S, H, F>(
 ) -> Result<(), StartupError>
 where
     S: FnOnce() -> Result<(), SystemdUnitError>,
-    H: FnOnce() -> F,
+    H: FnMut() -> F,
     F: Future<Output = Result<(), QdrantLivenessError>>,
 {
     systemd_validator().map_err(StartupError::SystemdUnit)?;
+    tracing::debug!("systemd unit contract validated at daemon startup");
     validate_qdrant_liveness_with(qdrant_liveness_check)
 }
 
+const QDRANT_STARTUP_READINESS_TIMEOUT: Duration = Duration::from_secs(30);
+const QDRANT_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
+
 fn validate_qdrant_liveness_with<H, F>(health_check: H) -> Result<(), StartupError>
 where
-    H: FnOnce() -> F,
+    H: FnMut() -> F,
+    F: Future<Output = Result<(), QdrantLivenessError>>,
+{
+    validate_qdrant_liveness_with_policy(
+        health_check,
+        QDRANT_STARTUP_READINESS_TIMEOUT,
+        QDRANT_STARTUP_POLL_INTERVAL,
+    )
+}
+
+fn validate_qdrant_liveness_with_policy<H, F>(
+    health_check: H,
+    readiness_timeout: Duration,
+    poll_interval: Duration,
+) -> Result<(), StartupError>
+where
+    H: FnMut() -> F,
     F: Future<Output = Result<(), QdrantLivenessError>>,
 {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -89,11 +124,34 @@ where
         .enable_time()
         .build()
         .map_err(StartupError::AsyncRuntime)?;
-    let result = runtime.block_on(health_check());
+    let result =
+        runtime.block_on(wait_for_qdrant_liveness(health_check, readiness_timeout, poll_interval));
     if result.is_ok() {
         tracing::debug!("Qdrant liveness validated");
     }
     result.map_err(StartupError::QdrantLiveness)
+}
+
+async fn wait_for_qdrant_liveness<H, F>(
+    mut health_check: H,
+    readiness_timeout: Duration,
+    poll_interval: Duration,
+) -> Result<(), QdrantLivenessError>
+where
+    H: FnMut() -> F,
+    F: Future<Output = Result<(), QdrantLivenessError>>,
+{
+    let deadline = Instant::now() + readiness_timeout;
+    loop {
+        match health_check().await {
+            Ok(()) => return Ok(()),
+            Err(error) if Instant::now() >= deadline => return Err(error),
+            Err(error) => {
+                tracing::debug!(error = %error, "Qdrant liveness not ready; retrying");
+                tokio::time::sleep(poll_interval).await;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -106,7 +164,10 @@ mod tests {
         qdrant_liveness::QdrantLivenessError, systemd_units::SystemdUnitError,
     };
 
-    use super::{StartupError, validate_qdrant_liveness_with, validate_startup_contracts_with};
+    use super::{
+        StartupError, log_startup_error, validate_qdrant_liveness_with_policy,
+        validate_startup_contracts_with,
+    };
 
     const UNIT: &str = "repovecd.service";
 
@@ -148,6 +209,12 @@ mod tests {
             "TRACE",
             "systemd unit contract validated",
             "startup contract validation should call the real systemd validator",
+        )?;
+        repovec_test_helpers::ensure_log_line_contains(
+            &logs,
+            "DEBUG",
+            "systemd unit contract validated at daemon startup",
+            "startup contract validation should log systemd success before Qdrant validation",
         )?;
         repovec_test_helpers::ensure_log_line_contains(
             &logs,
@@ -198,13 +265,61 @@ mod tests {
 
     #[test]
     fn validate_qdrant_liveness_with_returns_injected_error() {
-        let result = validate_qdrant_liveness_with(|| async {
-            Err(QdrantLivenessError::Timeout { timeout: Duration::from_millis(5) })
-        });
+        let result = validate_qdrant_liveness_with_policy(
+            || async { Err(QdrantLivenessError::Timeout { timeout: Duration::from_millis(5) }) },
+            Duration::ZERO,
+            Duration::from_millis(1),
+        );
 
         assert!(matches!(
             result,
             Err(StartupError::QdrantLiveness(QdrantLivenessError::Timeout { .. }))
         ));
+    }
+
+    #[test]
+    fn validate_qdrant_liveness_with_retries_transient_failures() {
+        let attempts = Cell::new(0);
+
+        let result = validate_qdrant_liveness_with_policy(
+            || {
+                let attempt = attempts.get();
+                attempts.set(attempt + 1);
+                async move { transient_qdrant_result(attempt) }
+            },
+            Duration::from_millis(50),
+            Duration::from_millis(1),
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(attempts.get(), 2);
+    }
+
+    fn transient_qdrant_result(attempt: i32) -> Result<(), QdrantLivenessError> {
+        match attempt {
+            0 => Err(QdrantLivenessError::GrpcUnavailable {
+                message: String::from("connection refused"),
+            }),
+            _ => Ok(()),
+        }
+    }
+
+    #[test]
+    fn startup_error_logging_preserves_systemd_unit_field() -> Result<(), String> {
+        let injected_error = StartupError::SystemdUnit(SystemdUnitError::MissingSection {
+            unit: UNIT,
+            section: "Service",
+        });
+
+        let (exit_code, logs) =
+            repovec_test_helpers::capture_logs(|| log_startup_error(injected_error))?;
+
+        repovec_test_helpers::ensure(exit_code == 1, "startup error should map to exit code 1")?;
+        repovec_test_helpers::ensure_log_line_contains(
+            &logs,
+            "ERROR",
+            &format!("unit={UNIT}"),
+            "startup failure log should preserve the systemd unit field",
+        )
     }
 }

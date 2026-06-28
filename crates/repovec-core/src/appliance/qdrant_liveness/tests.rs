@@ -17,6 +17,8 @@ use super::{
     load_qdrant_api_key,
 };
 
+const TEST_QDRANT_ENDPOINT: &str = "http://127.0.0.1:6334";
+
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct TempKeyFile {
@@ -101,7 +103,7 @@ fn load_qdrant_api_key_reads_configured_key_file() {
     let key_file =
         TempKeyFile::create("0123456789abcdef").expect("temporary key file should be created");
     let config = QdrantLivenessConfig::new(
-        "http://localhost:6334",
+        TEST_QDRANT_ENDPOINT,
         key_file.path.clone(),
         Duration::from_secs(1),
     );
@@ -116,7 +118,7 @@ fn load_qdrant_api_key_reads_configured_key_file() {
 fn load_qdrant_api_key_maps_missing_file() {
     let path = temp_root().join(unique_temp_dir_name()).join("missing-key");
     let config =
-        QdrantLivenessConfig::new("http://localhost:6334", path.clone(), Duration::from_secs(1));
+        QdrantLivenessConfig::new(TEST_QDRANT_ENDPOINT, path.clone(), Duration::from_secs(1));
 
     let error = load_qdrant_api_key(&config).expect_err("missing key file should fail");
 
@@ -134,7 +136,7 @@ fn load_qdrant_api_key_rejects_invalid_file_contents(
 ) {
     let key_file = TempKeyFile::create(contents).expect("temporary key file should be created");
     let config = QdrantLivenessConfig::new(
-        "http://localhost:6334",
+        TEST_QDRANT_ENDPOINT,
         key_file.path.clone(),
         Duration::from_secs(1),
     );
@@ -148,7 +150,7 @@ fn load_qdrant_api_key_rejects_invalid_file_contents(
 #[test]
 fn load_qdrant_api_key_maps_unreadable_paths() {
     let config =
-        QdrantLivenessConfig::new("http://localhost:6334", temp_root(), Duration::from_secs(1));
+        QdrantLivenessConfig::new(TEST_QDRANT_ENDPOINT, temp_root(), Duration::from_secs(1));
 
     let error = load_qdrant_api_key(&config).expect_err("directory path should be unreadable");
 
@@ -267,6 +269,46 @@ fn liveness_report_exposes_server_metadata_without_commit() {
 fn default_config_matches_appliance_contract() {
     let config = QdrantLivenessConfig::default();
 
-    assert_eq!(config.endpoint(), "http://localhost:6334");
+    assert_eq!(config.endpoint(), TEST_QDRANT_ENDPOINT);
     assert_eq!(config.api_key_path().as_str(), "/etc/repovec/qdrant-api-key");
+}
+
+#[test]
+fn qdrant_liveness_error_display_matches_contract() {
+    let rendered = [
+        QdrantLivenessError::MissingApiKeyFile {
+            path: Utf8PathBuf::from("/etc/repovec/qdrant-api-key"),
+        },
+        QdrantLivenessError::UnreadableApiKeyFile {
+            path: Utf8PathBuf::from("/etc/repovec/qdrant-api-key"),
+            source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied"),
+        },
+        QdrantLivenessError::EmptyApiKey,
+        QdrantLivenessError::InvalidApiKey,
+        QdrantLivenessError::InvalidEndpoint { endpoint: String::from("not a uri") },
+        QdrantLivenessError::Timeout { timeout: Duration::from_millis(250) },
+        QdrantLivenessError::AuthenticationFailed,
+        QdrantLivenessError::GrpcUnavailable {
+            message: String::from("transport error: connection refused"),
+        },
+        QdrantLivenessError::MissingServerVersion,
+    ]
+    .into_iter()
+    .map(|error| error.to_string())
+    .collect::<Vec<_>>()
+    .join("\n");
+
+    insta::assert_snapshot!(
+        &rendered,
+        @r"
+Qdrant API-key file is missing: /etc/repovec/qdrant-api-key
+Qdrant API-key file cannot be read: /etc/repovec/qdrant-api-key
+Qdrant API key is empty
+Qdrant API key is not a valid gRPC metadata value: <redacted>
+Qdrant gRPC endpoint is invalid: not a uri
+Qdrant liveness check timed out after 250ms
+Qdrant rejected the configured API key
+Qdrant gRPC liveness check failed: transport error: connection refused
+Qdrant health reply did not include a server version"
+    );
 }

@@ -12,7 +12,7 @@ Roadmap item `1.2.3` completes the runtime half of the local Qdrant contract.
 Roadmap items `1.2.1` and `1.2.2` already prove, through static validation,
 that the checked-in Quadlet binds Qdrant to loopback and injects the API key.
 This work adds the runtime proof: a Rust health-check function in
-`repovec-core` connects to Qdrant's gRPC endpoint at `localhost:6334`, supplies
+`repovec-core` connects to Qdrant's gRPC endpoint at `127.0.0.1:6334`, supplies
 the stored API key from `/etc/repovec/qdrant-api-key`, and confirms Qdrant is
 ready before dependent appliance services proceed.
 
@@ -20,9 +20,6 @@ After implementation, a maintainer can observe success by starting a Qdrant
 container with the packaged configuration and running the new integration test.
 The test starts Qdrant, calls the Rust liveness check with the generated key,
 and fails if the service is unreachable, unauthenticated, or not ready.
-
-This plan is pre-implementation. Do not implement it until the user explicitly
-approves this document.
 
 ## Constraints
 
@@ -40,7 +37,7 @@ approves this document.
   pure systemd unit text contract validator.
 - Add runtime Qdrant probing as a sibling appliance module, not by expanding
   `QdrantQuadletError` or making static validators perform I/O.
-- The default Qdrant endpoint remains `http://localhost:6334`, matching the
+- The default Qdrant endpoint remains `http://127.0.0.1:6334`, matching the
   checked-in Quadlet gRPC loopback binding.
 - The default API-key path remains `/etc/repovec/qdrant-api-key`. The key file
   stores the raw key, not an environment assignment.
@@ -142,7 +139,7 @@ edge cases as unit or integration tests.
 
 Risk: a future implementation may be tempted to use REST `/healthz` because
 Qdrant documents that endpoint clearly. Severity: medium. Likelihood: medium.
-Mitigation: record that the roadmap requires gRPC at `localhost:6334`; REST
+Mitigation: record that the roadmap requires gRPC at `127.0.0.1:6334`; REST
 `/healthz` is useful prior art but is not the implementation target unless the
 user approves a scope change.
 
@@ -195,7 +192,7 @@ External source evidence gathered during planning:
 - `qdrant-client` `1.18.0` is the current crates.io Rust client version
   reported by `cargo search qdrant-client --limit 3` on `2026-05-26`.
 - The downloaded `qdrant-client` `1.18.0` source includes
-  `qdrant.Qdrant/HealthCheck`, `Qdrant::from_url("http://localhost:6334")`,
+  `qdrant.Qdrant/HealthCheck`, `Qdrant::from_url("http://127.0.0.1:6334")`,
   `QdrantBuilder::api_key(...)`, `skip_compatibility_check()`, and
   `Qdrant::health_check().await`.
 
@@ -212,7 +209,7 @@ distinct responsibilities.
 Define small public types:
 
 - `QdrantLivenessConfig`, carrying the endpoint, API-key file path and timeout
-  policy. The default endpoint is `http://localhost:6334`, and the default key
+  policy. The default endpoint is `http://127.0.0.1:6334`, and the default key
   path is `/etc/repovec/qdrant-api-key`.
 - `QdrantLivenessReport`, carrying the positive readiness evidence returned by
   Qdrant, such as title, version and optional commit. Do not store the key.
@@ -302,7 +299,7 @@ and then clean up the container. The default path should skip these tests with
 
 Prefer a dynamic host port if implementation discovers that fixed
 `127.0.0.1:6334` would make the test flaky on developer machines. If the test
-uses a dynamic host port, keep the production default at `localhost:6334` and
+uses a dynamic host port, keep the production default at `127.0.0.1:6334` and
 document the test-only override.
 
 Cover at least:
@@ -715,7 +712,7 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
 
 - Decision: prefer the official `qdrant-client` crate for the gRPC health
   call. Rationale: the crate already exposes `Qdrant::health_check().await`,
-  handles the `api-key` metadata header, and targets the same `localhost:6334`
+  handles the `api-key` metadata header, and targets the same `127.0.0.1:6334`
   gRPC endpoint required by the roadmap. This is lower risk than generating and
   maintaining local protobuf bindings.
 
@@ -755,7 +752,7 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
 
 - Decision: use a dynamic loopback host port for the live integration test
   rather than fixed `127.0.0.1:6334`. Rationale: the production default remains
-  `localhost:6334`, but tests should not fail merely because a developer has a
+  `127.0.0.1:6334`, but tests should not fail merely because a developer has a
   local Qdrant already bound to the appliance port.
 
 - Decision: define liveness as health-readiness plus a read-only authenticated
@@ -803,7 +800,7 @@ process boundary that runs the async liveness probe.
 
 The live integration test uses a dynamic loopback host port instead of fixed
 `127.0.0.1:6334`, while the production default remains
-`http://localhost:6334`. The test pins the Qdrant image to
+`http://127.0.0.1:6334`. The test pins the Qdrant image to
 `docker.io/qdrant/qdrant:v1.18.1` for reproducibility.
 
 The most important implementation discovery was that Qdrant's gRPC

@@ -1,0 +1,25 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/log_tests/mod.rs
+assertion_line: 175
+expression: events
+---
+[
+    CapturedEvent {
+        level: Level(
+            Info,
+        ),
+        target: "repovec_core::qdrant_quadlet",
+        fields: {
+            "message": "validating qdrant quadlet contract",
+        },
+    },
+    CapturedEvent {
+        level: Level(
+            Info,
+        ),
+        target: "repovec_core::qdrant_quadlet",
+        fields: {
+            "message": "qdrant quadlet contract validation succeeded",
+        },
+    },
+]

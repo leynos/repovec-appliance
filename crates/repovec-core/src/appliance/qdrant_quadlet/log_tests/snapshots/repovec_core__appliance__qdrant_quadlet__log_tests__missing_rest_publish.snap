@@ -1,0 +1,26 @@
+---
+source: crates/repovec-core/src/appliance/qdrant_quadlet/log_tests/mod.rs
+expression: events
+---
+[
+    CapturedEvent {
+        level: Level(
+            Info,
+        ),
+        target: "repovec_core::qdrant_quadlet",
+        fields: {
+            "message": "validating qdrant quadlet contract",
+        },
+    },
+    CapturedEvent {
+        level: Level(
+            Warn,
+        ),
+        target: "repovec_core::qdrant_quadlet",
+        fields: {
+            "expected_publish_port": "127.0.0.1:6333:6333",
+            "message": "qdrant quadlet validation failed: missing publish port",
+            "port": "6333",
+        },
+    },
+]

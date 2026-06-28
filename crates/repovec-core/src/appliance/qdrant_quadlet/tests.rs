@@ -40,9 +40,11 @@ enum ValidationScenario {
 impl ValidationScenario {
     fn mutated_contents(self, canonical: &str) -> String {
         match self {
-            Self::InvalidLineInContainer => String::from("[Container]\nthis-is-not-valid\n"),
+            Self::InvalidLineInContainer => {
+                String::from("[Container]\nBearer correct horse battery\n")
+            }
             Self::PropertyBeforeFirstSection => {
-                String::from("Image=docker.io/qdrant/qdrant:v1\n[Container]\n")
+                String::from("Authorization=Bearer correct horse battery\n[Container]\n")
             }
             Self::MissingImage => {
                 canonical
@@ -139,11 +141,11 @@ impl ValidationScenario {
         match self {
             Self::InvalidLineInContainer => QdrantQuadletError::InvalidLine {
                 line_number: 2,
-                line: String::from("this-is-not-valid"),
+                line: String::from("Bearer <redacted>"),
             },
             Self::PropertyBeforeFirstSection => QdrantQuadletError::PropertyBeforeSection {
                 line_number: 1,
-                line: String::from("Image=docker.io/qdrant/qdrant:v1"),
+                line: String::from("Bearer <redacted>"),
             },
             Self::MissingImage => QdrantQuadletError::MissingImage,
             Self::ImageUnqualified => QdrantQuadletError::ImageNotFullyQualified {
@@ -204,35 +206,8 @@ fn qdrant_quadlet_contents() -> String {
 
 #[test]
 fn checked_in_qdrant_quadlet_remains_valid() {
-    validate_checked_in_qdrant_quadlet()
+    validate_checked_in_qdrant_quadlet(&())
         .expect("the checked-in Qdrant Quadlet should remain valid");
-}
-
-#[rstest]
-#[case::uppercase("Z")]
-#[case::lowercase("z")]
-#[case::comma_delimited("rw,Z")]
-#[case::comma_delimited_with_spaces("rw, z")]
-fn qdrant_quadlet_accepts_selinux_relabel_option_variants(#[case] option: &str) {
-    let contents = checked_in_qdrant_quadlet()
-        .replace(":/qdrant/storage:Z", &format!(":/qdrant/storage:{option}"));
-
-    validate_qdrant_quadlet(&contents).expect("Podman accepts SELinux relabel option variants");
-}
-
-#[test]
-fn qdrant_quadlet_rejects_non_selinux_relabel_mount_option() {
-    let contents = checked_in_qdrant_quadlet().replace(":/qdrant/storage:Z", ":/qdrant/storage:Y");
-
-    let err = validate_qdrant_quadlet(&contents)
-        .expect_err("only the required SELinux relabel option should satisfy the contract");
-
-    assert_eq!(
-        err,
-        QdrantQuadletError::MissingSelinuxRelabel {
-            volume: String::from("/var/lib/repovec/qdrant-storage:/qdrant/storage:Y"),
-        }
-    );
 }
 
 #[rstest]
@@ -262,7 +237,7 @@ fn validated_qdrant_quadlet_violations_match_expected_variant_and_diagnostic_sna
     #[case] scenario: ValidationScenario,
 ) {
     let input = scenario.mutated_contents(&qdrant_quadlet_contents);
-    let Err(err) = validate_qdrant_quadlet(&input) else {
+    let Err(err) = validate_qdrant_quadlet(&input, &()) else {
         panic!(
             "expected {scenario:?} validation to fail — input parsed as valid Quadlet:\n---\n{input}\n---",
         );

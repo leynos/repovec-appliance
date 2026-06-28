@@ -1,5 +1,6 @@
 ---
 source: crates/repovec-core/src/appliance/qdrant_quadlet/tests.rs
+assertion_line: 247
 expression: err.to_string()
 ---
-quadlet property before section on line 1: Image=docker.io/qdrant/qdrant:v1
+quadlet property before section on line 1: Bearer <redacted>

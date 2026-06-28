@@ -23,14 +23,14 @@ pub enum QdrantQuadletError {
     InvalidLine {
         /// The 1-indexed source line number.
         line_number: usize,
-        /// The invalid line contents after trimming.
+        /// The invalid line contents after trimming and redaction.
         line: String,
     },
     /// A key-value pair appeared before any section header.
     PropertyBeforeSection {
         /// The 1-indexed source line number.
         line_number: usize,
-        /// The misplaced property line after trimming.
+        /// The misplaced property line after trimming and redaction.
         line: String,
     },
     /// No `Image=` entry exists in the `[Container]` section.

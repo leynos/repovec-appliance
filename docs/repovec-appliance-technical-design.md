@@ -438,6 +438,21 @@ Security controls:
 - The Quadlet owns only the container contract; boot-target wiring remains the
   responsibility of roadmap item `1.3.1`.
 
+### Validation telemetry boundary
+
+- Qdrant Quadlet validation emits operational telemetry through the
+  `QdrantQuadletObserver` trait in `repovec-core`. The validator receives this
+  observer explicitly so logging remains a caller-visible adapter dependency,
+  not hidden domain logic.
+- `TracingQdrantQuadletObserver` is the production adapter. It maps validation
+  lifecycle events, contract violations, and parser diagnostics to `tracing`
+  events under the target `repovec_core::qdrant_quadlet`.
+- The no-op implementation for `()` keeps test and silent validation paths
+  available without forcing a tracing subscriber into every caller.
+- Parser and validation telemetry redacts secret-bearing line content before
+  emission. Public parse-error variants store the same redacted line content so
+  `Display` output and logs share the safe operator-facing surface.
+
 ### Automatic updates and safe rollouts
 
 There are three independently versioned artefacts:

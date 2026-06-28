@@ -802,13 +802,19 @@ The existing public validation functions remain:
 
 ```rust
 pub const fn checked_in_qdrant_quadlet() -> &'static str;
-pub fn validate_checked_in_qdrant_quadlet() -> Result<(), QdrantQuadletError>;
-pub fn validate_qdrant_quadlet(contents: &str) -> Result<(), QdrantQuadletError>;
+pub fn validate_checked_in_qdrant_quadlet(
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError>;
+pub fn validate_qdrant_quadlet(
+    contents: &str,
+    observer: &dyn QdrantQuadletObserver,
+) -> Result<(), QdrantQuadletError>;
 ```
 
-If implementation adds a separate provisioning-asset validator, keep the same
-style: pure functions that accept string contents and return semantic error
-enums. Do not expose opaque `eyre::Report` from library APIs.
+If the implementation adds a separate provisioning-asset validator, keep the same
+style: functions that accept string contents and explicit observer dependencies,
+then return semantic error enums. Do not expose opaque `eyre::Report` from
+library APIs.
 
 ## Revision note
 

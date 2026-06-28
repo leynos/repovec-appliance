@@ -53,6 +53,13 @@ fn api_key_secret_type_is_wrong() -> String {
     )
 }
 
+fn api_key_secret_type_is_contradictory() -> String {
+    qdrant_quadlet_contents().replace(
+        "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+        "Secret=repovec-qdrant-api-key,type=env,type=mount,target=QDRANT__SERVICE__API_KEY\n",
+    )
+}
+
 fn api_key_requires_dependency_missing() -> String {
     qdrant_quadlet_contents().replace("Requires=repovec-qdrant-api-key.service\n", "")
 }
@@ -95,6 +102,10 @@ fn inline_api_key_environment() -> String {
     api_key_secret_type_is_wrong(),
     "incorrect_api_key_secret_type_display"
 )]
+#[case::contradictory_api_key_secret_type(
+    api_key_secret_type_is_contradictory(),
+    "contradictory_api_key_secret_type_display"
+)]
 #[case::inline_api_key_environment(
     inline_api_key_environment(),
     "inline_api_key_environment_display"
@@ -103,11 +114,9 @@ fn api_key_error_display_messages_remain_stable(
     #[case] contents: String,
     #[case] snapshot_label: &str,
 ) {
-    #[expect(
-        clippy::unwrap_used,
-        reason = "the Display snapshot harness is required to call unwrap_err() directly"
-    )]
-    let display = validate_qdrant_quadlet(&contents).unwrap_err().to_string();
+    let display = validate_qdrant_quadlet(&contents, &())
+        .expect_err("invalid API-key quadlets should still return an error for the snapshot")
+        .to_string();
 
     assert_snapshot!(snapshot_label, display);
 }
@@ -115,8 +124,8 @@ fn api_key_error_display_messages_remain_stable(
 #[test]
 fn qdrant_quadlet_requires_api_key_secret() {
     let contents = api_key_secret_missing();
-    let error =
-        validate_qdrant_quadlet(&contents).expect_err("missing API-key secret should be rejected");
+    let error = validate_qdrant_quadlet(&contents, &())
+        .expect_err("missing API-key secret should be rejected");
 
     assert_eq!(error, QdrantQuadletError::MissingApiKeySecret);
 }
@@ -124,7 +133,7 @@ fn qdrant_quadlet_requires_api_key_secret() {
 #[test]
 fn qdrant_quadlet_requires_api_key_secret_name() {
     let contents = api_key_secret_name_is_wrong();
-    let error = validate_qdrant_quadlet(&contents)
+    let error = validate_qdrant_quadlet(&contents, &())
         .expect_err("wrong API-key secret name should be rejected");
 
     assert_eq!(
@@ -138,7 +147,7 @@ fn qdrant_quadlet_requires_api_key_secret_name() {
 #[test]
 fn qdrant_quadlet_requires_api_key_secret_target() {
     let contents = api_key_secret_target_is_wrong();
-    let error = validate_qdrant_quadlet(&contents)
+    let error = validate_qdrant_quadlet(&contents, &())
         .expect_err("wrong API-key secret target should be rejected");
 
     assert_eq!(
@@ -154,7 +163,7 @@ fn qdrant_quadlet_requires_api_key_secret_target() {
 #[test]
 fn qdrant_quadlet_requires_api_key_secret_env_type() {
     let contents = api_key_secret_type_is_wrong();
-    let error = validate_qdrant_quadlet(&contents)
+    let error = validate_qdrant_quadlet(&contents, &())
         .expect_err("wrong API-key secret type should be rejected");
 
     assert_eq!(
@@ -168,9 +177,25 @@ fn qdrant_quadlet_requires_api_key_secret_env_type() {
 }
 
 #[test]
+fn qdrant_quadlet_rejects_contradictory_api_key_secret_type() {
+    let contents = api_key_secret_type_is_contradictory();
+    let error = validate_qdrant_quadlet(&contents, &())
+        .expect_err("contradictory API-key secret types should be rejected");
+
+    assert_eq!(
+        error,
+        QdrantQuadletError::IncorrectApiKeySecret {
+            secret: String::from(
+                "repovec-qdrant-api-key,type=env,type=mount,target=QDRANT__SERVICE__API_KEY",
+            ),
+        }
+    );
+}
+
+#[test]
 fn qdrant_quadlet_requires_api_key_requires_dependency() {
     let contents = api_key_requires_dependency_missing();
-    let error = validate_qdrant_quadlet(&contents)
+    let error = validate_qdrant_quadlet(&contents, &())
         .expect_err("missing API-key Requires= dependency should be rejected");
 
     assert_eq!(
@@ -182,7 +207,7 @@ fn qdrant_quadlet_requires_api_key_requires_dependency() {
 #[test]
 fn qdrant_quadlet_requires_api_key_after_dependency() {
     let contents = api_key_after_dependency_missing();
-    let error = validate_qdrant_quadlet(&contents)
+    let error = validate_qdrant_quadlet(&contents, &())
         .expect_err("missing API-key After= dependency should be rejected");
 
     assert_eq!(
@@ -194,7 +219,7 @@ fn qdrant_quadlet_requires_api_key_after_dependency() {
 #[test]
 fn qdrant_quadlet_rejects_wrong_api_key_dependency() {
     let contents = api_key_requires_dependency_wrong();
-    let error = validate_qdrant_quadlet(&contents)
+    let error = validate_qdrant_quadlet(&contents, &())
         .expect_err("wrong API-key dependency should be rejected");
 
     assert_eq!(
@@ -209,7 +234,7 @@ fn qdrant_quadlet_rejects_wrong_api_key_dependency() {
 #[test]
 fn qdrant_quadlet_rejects_wrong_api_key_after_dependency() {
     let contents = api_key_after_dependency_wrong();
-    let error = validate_qdrant_quadlet(&contents)
+    let error = validate_qdrant_quadlet(&contents, &())
         .expect_err("wrong API-key After= dependency should be rejected");
 
     assert_eq!(
@@ -224,7 +249,8 @@ fn qdrant_quadlet_rejects_wrong_api_key_after_dependency() {
 #[test]
 fn qdrant_quadlet_rejects_inline_api_key_environment() {
     let contents = inline_api_key_environment();
-    let error = validate_qdrant_quadlet(&contents).expect_err("inline API keys should be rejected");
+    let error =
+        validate_qdrant_quadlet(&contents, &()).expect_err("inline API keys should be rejected");
 
     assert_eq!(
         error,
@@ -238,7 +264,7 @@ fn qdrant_quadlet_rejects_inline_api_key_environment() {
 #[case(quoted_inline_api_key_environment())]
 #[case(multi_assignment_inline_api_key_environment())]
 fn qdrant_quadlet_rejects_shell_tokenized_inline_api_key_environment(#[case] contents: String) {
-    let error = validate_qdrant_quadlet(&contents)
+    let error = validate_qdrant_quadlet(&contents, &())
         .expect_err("inline API keys should be rejected after tokenization");
 
     assert_eq!(

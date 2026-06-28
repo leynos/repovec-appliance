@@ -62,6 +62,41 @@ job can stay required even when it skips documentation-specific work. When the
 workflow takes the conservative Mermaid path because a file could not be read,
 it also publishes which files triggered that fallback.
 
+## GitHub device-flow authentication
+
+repovec-appliance authenticates to GitHub using OAuth device flow. This lets an
+operator authorize the appliance over SSH without opening a browser on the VM.
+The appliance requests a device code, shows the verification URL and user code,
+then polls GitHub until the user approves the request, denies it, or the code
+expires.
+
+During login, the operator-visible values are:
+
+- verification URL: `https://github.com/login/device`
+- user code: the short code to enter in GitHub's browser flow
+
+The token polling loop respects GitHub's polling interval and handles the
+standard device-flow terminal responses:
+
+- `slow_down`: wait longer before the next poll.
+- `access_denied`: stop the login attempt because the user denied access.
+- `expired_token`: stop the login attempt because the device code expired.
+
+The access token is encrypted at rest in
+`/etc/repovec/github-oauth-token.cred`. Operators should treat that file as
+secret material even though it is encrypted. The encrypted credential is bound
+to the appliance through `systemd-creds` using the credential name
+`repovec-github-oauth-token`.
+
+After a restart, the appliance restores only the bearer secret from this
+encrypted credential. Scope-dependent permissions must be revalidated against
+GitHub before the control plane relies on them, and operators may need to run a
+fresh login if that revalidation fails.
+
+Roadmap item `2.1.1` provides the runtime client, encrypted token-store
+adapter, and mock-server test binary. The interactive TUI login screen is a
+later roadmap item and will call this authentication surface.
+
 ## Qdrant service
 
 repovec-appliance ships Qdrant as an appliance-internal Podman Quadlet.
@@ -112,78 +147,12 @@ EOF'
 
 Requests to Qdrant without the `api-key` header are rejected.
 
-### Troubleshooting
-
-Qdrant Quadlet validation emits structured events with the target
-`repovec_core::qdrant_quadlet`. Enable these events with
-`RUST_LOG=repovec_core::qdrant_quadlet=info` or an equivalent tracing
-subscriber configuration.
-
-The message `validating checked-in qdrant quadlet` confirms that the embedded
-`packaging/systemd/qdrant.container` asset is being checked. The message
-`qdrant quadlet contract validation succeeded` confirms that the current
-Quadlet satisfies the appliance contract.
-Most contract failures use the message prefix
-`qdrant quadlet validation failed:`. Use the suffix and structured fields to
-find the broken contract clause:
-
-- `missing image`: inspect `expected_image`. Ensure `Image=` is present and set
-  exactly to `docker.io/qdrant/qdrant:v1`.
-- `image is not fully qualified and pinned`: inspect `image` and
-  `expected_image`. Ensure `Image=` uses the fully qualified pinned image.
-- `unexpected image`: inspect `image` and `expected_image`. Ensure `Image=` is
-  set exactly to `docker.io/qdrant/qdrant:v1`.
-- `missing publish port`: inspect `port` and `expected_publish_port`. Ensure the
-  Quadlet publishes `127.0.0.1:6333:6333` for REST and
-  `127.0.0.1:6334:6334` for gRPC.
-- `publish port is not bound to loopback`: inspect `port`, `publish_port`, and
-  `expected_publish_port`. Ensure the published port uses the loopback address.
-- `missing storage mount`: inspect `expected_source` and `expected_target`. If a
-  partial mount was parsed, the event may also include `volume`. Ensure the
-  Quadlet mounts `/var/lib/repovec/qdrant-storage:/qdrant/storage:Z`.
-- `incorrect storage source`: inspect `source` and `expected_source`. Ensure the
-  mount source is `/var/lib/repovec/qdrant-storage`.
-- `incorrect storage target`: inspect `storage_target` and `expected_target`.
-  Ensure the mount target is `/qdrant/storage`.
-- `missing selinux relabel`: inspect `volume` and
-  `expected_selinux_relabel`. Ensure the storage mount ends with the explicit
-  `:Z` relabel option so Podman can write to the directory on enforcing SELinux
-  hosts.
-- `missing auto-update policy`: inspect `expected_auto_update`. Ensure
-  `AutoUpdate=registry` is present in the `[Container]` section.
-- `incorrect auto-update policy`: inspect `auto_update` and
-  `expected_auto_update`. Ensure `AutoUpdate=registry` is present exactly once
-  in the `[Container]` section.
-- `missing api key provisioning dependency`: inspect `directive` and
-  `expected_dependency`. Ensure the `[Unit]` section includes both
-  `Requires=repovec-qdrant-api-key.service` and
-  `After=repovec-qdrant-api-key.service`.
-- `incorrect api key provisioning dependency`: inspect `directive`,
-  `dependency`, and `expected_dependency`. Ensure the dependency references
-  `repovec-qdrant-api-key.service`.
-- `missing api key secret`: inspect `expected_secret` and `expected_target`.
-  Ensure the `[Container]` section includes
-  `Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY`.
-- `incorrect api key secret`: inspect `secret`, `expected_secret`, and
-  `expected_target`. Ensure the `Secret=` entry uses the expected secret name,
-  type, and target.
-- `inline api key environment is disallowed`: inspect the redacted
-  `environment`, `expected_secret`, and `expected_target` fields. Remove any
-  inline `Environment=QDRANT__SERVICE__API_KEY=...` assignment and inject the
-  API key through the Podman secret instead.
-
-Parser failures use the messages `qdrant quadlet validation rejected invalid
-line` and `qdrant quadlet validation rejected property before section`. Inspect
-`line_number` and `redacted_line`; every non-comment line must be either a
-section header or a `Key=Value` property, and properties must appear after a
-section header.
-
 ### Qdrant API-key provisioning behaviour
 
 #### `REPOVEC_DEBUG` environment variable
 
-Setting `REPOVEC_DEBUG=1` enables debug-level log lines emitted to stderr by
-the `repovec-qdrant-api-key` helper.  When enabled, the helper logs lock
+Setting `REPOVEC_DEBUG=1` enables debug-level log lines emitted to stderr by the
+`repovec-qdrant-api-key` helper.  When enabled, the helper logs lock
 acquisition and release events alongside other diagnostic output.  This
 variable is intended for troubleshooting only.  It must not be set in
 production systemd service units, and the default behaviour (no debug output)
@@ -208,8 +177,62 @@ than silently continuing with stale credentials.  When the removal fails
 because the secret is in use (`podman secret rm` reports "in use"), the helper
 exits zero because the existing secret remains valid and does not need to be
 replaced.  This fail-closed invariant ensures that an unexpected removal error
-never results in the Qdrant Quadlet running with an outdated or missing API
-key.
+never results in the Qdrant Quadlet running with an outdated or missing API key.
+
+### Qdrant Quadlet validation diagnostics
+
+`repovec_core::appliance::qdrant_quadlet` exposes `validate_qdrant_quadlet` and
+the public `QdrantQuadletError` type for checking the packaged Quadlet
+contract. The validator reports the first contract violation it finds. Display
+strings are stable operator diagnostics and use these formats:
+
+The validator is a static contract check. It does not emit tracing spans, logs,
+or metrics itself; callers should log or count the returned
+`QdrantQuadletError` when they need runtime observability.
+
+- `InvalidLine`: `invalid quadlet line {line_number}: {line}`.
+- `PropertyBeforeSection`:
+  `quadlet property before section on line {line_number}: {line}`.
+- `MissingImage`: `missing Image= entry in [Container]`.
+- `ImageNotFullyQualified`:
+  `image reference must be fully qualified and tagged: {image}`.
+- `UnexpectedImage`:
+  `image reference must remain docker.io/qdrant/qdrant:v1: {image}`.
+- `MissingRestPort`: `missing PublishPort=6333 in [Container]`.
+- `MissingGrpcPort`: `missing PublishPort=6334 in [Container]`.
+- `PortNotBoundToLoopback`:
+  `port {port} must be published on 127.0.0.1 only: {publish_port}`.
+- `MissingStorageMount`: `missing persistent Qdrant storage mount`.
+- `IncorrectStorageSource`:
+  `storage source must be /var/lib/repovec/qdrant-storage: {source}`.
+- `IncorrectStorageTarget`:
+  `storage target must be /qdrant/storage: {target}`.
+- `MissingSelinuxRelabel`:
+  `storage mount must include SELinux relabel :Z: {volume}`.
+- `MissingAutoUpdate`: `missing AutoUpdate= entry in [Container]`.
+- `IncorrectAutoUpdate`: `AutoUpdate must remain registry: {auto_update}`.
+- `MissingApiKeyProvisioningDependency`:
+
+  ```text
+  missing {directive}=repovec-qdrant-api-key.service dependency for Qdrant API-key provisioning
+  ```
+
+- `IncorrectApiKeyProvisioningDependency`:
+
+  ```text
+  {directive} must include repovec-qdrant-api-key.service for Qdrant API-key provisioning: {dependency}
+  ```
+
+- `MissingApiKeySecret`:
+  `missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY`.
+- `IncorrectApiKeySecret`:
+
+  ```text
+  Qdrant API-key secret must be repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}
+  ```
+
+- `InlineApiKeyEnvironmentDisallowed`:
+  `Qdrant API keys must use a Podman secret, not inline Environment=<redacted>`.
 
 ## Appliance systemd target
 
@@ -238,10 +261,10 @@ dependent services must use `qdrant.service`.
 
 `repovec-grepai@.service` is the template used for future per-repository
 indexer instances. It runs `grepai watch` as the `repovec` user, sets
-`HOME=/var/lib/repovec`, works in `/var/lib/repovec/worktrees/%I`, and
-writes stdout and stderr to journald. Later reconciliation work creates and
-manages concrete instances; operators should not expect installing the template
-alone to start indexers.
+`HOME=/var/lib/repovec`, works in `/var/lib/repovec/worktrees/%I`, and writes
+stdout and stderr to journald. Later reconciliation work creates and manages
+concrete instances; operators should not expect installing the template alone
+to start indexers.
 
 Enable and start the appliance service group with:
 

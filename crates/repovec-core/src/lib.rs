@@ -5,6 +5,10 @@ use std::fmt;
 use camino::{Utf8Path, Utf8PathBuf};
 
 pub mod appliance;
+pub mod github_oauth;
+
+/// Relative filename for the encrypted GitHub OAuth bearer credential.
+pub const GITHUB_OAUTH_TOKEN_CREDENTIAL_FILE: &str = "github-oauth-token.cred";
 
 /// Service types: daemons (`Repovecd`, `RepovecMcpd`), terminal UI (`RepovecTui`), and CLI (`Repovectl`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -124,6 +128,29 @@ impl RuntimePaths {
     #[inline]
     fn data_child(&self, name: &str) -> Utf8PathBuf { self.data_root.join(name) }
 
+    /// Private helper for constructing configuration paths.
+    #[inline]
+    fn config_child(&self, name: &str) -> Utf8PathBuf { self.config_root.join(name) }
+
+    /// Returns the encrypted GitHub OAuth token credential path.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use repovec_core::RuntimePaths;
+    ///
+    /// let paths = RuntimePaths::appliance_defaults();
+    ///
+    /// assert_eq!(
+    ///     paths.github_oauth_token_credential().as_str(),
+    ///     "/etc/repovec/github-oauth-token.cred",
+    /// );
+    /// ```
+    #[must_use]
+    pub fn github_oauth_token_credential(&self) -> Utf8PathBuf {
+        self.config_child(GITHUB_OAUTH_TOKEN_CREDENTIAL_FILE)
+    }
+
     /// Returns the bare-mirror directory root.
     ///
     /// # Examples
@@ -196,5 +223,9 @@ mod tests {
         assert_eq!(paths.git_mirrors_root().as_str(), "/srv/repovec/git-mirrors");
         assert_eq!(paths.worktrees_root().as_str(), "/srv/repovec/worktrees");
         assert_eq!(paths.grepai_root().as_str(), "/srv/repovec/.grepai");
+        assert_eq!(
+            paths.github_oauth_token_credential().as_str(),
+            "/tmp/config/github-oauth-token.cred",
+        );
     }
 }

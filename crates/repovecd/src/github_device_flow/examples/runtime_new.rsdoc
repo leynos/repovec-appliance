@@ -1,0 +1,52 @@
+# Examples
+
+```
+# use std::{convert::Infallible, time::Duration};
+# use repovec_core::github_oauth::{
+#     AccessToken, ClientId, DeviceAuthorization, DeviceCode, TokenPollOutcome, UserCode,
+# };
+# use repovecd::github_device_flow::{
+#     DeviceFlowApi, DeviceFlowRuntime, Sleeper, TokenStore,
+# };
+# struct Api;
+# struct Store;
+# struct NoSleep;
+# impl DeviceFlowApi for Api {
+#     type Error = Infallible;
+#     fn request_device_code(
+#         &self,
+#         _client_id: &ClientId,
+#         _scopes: &[String],
+#     ) -> Result<DeviceAuthorization, Self::Error> {
+#         Ok(DeviceAuthorization {
+#             device_code: DeviceCode::new("device"),
+#             user_code: UserCode::new("ABCD-1234"),
+#             verification_uri: "https://github.com/login/device".to_owned(),
+#             expires_in: Duration::from_secs(900),
+#             interval: Duration::from_secs(5),
+#         })
+#     }
+#     fn poll_token(
+#         &self,
+#         _client_id: &ClientId,
+#         _authorization: &DeviceAuthorization,
+#     ) -> Result<TokenPollOutcome, Self::Error> {
+#         Ok(TokenPollOutcome::AuthorizationPending)
+#     }
+# }
+# impl TokenStore for Store {
+#     type Error = Infallible;
+#     fn store(&self, _token: &AccessToken) -> Result<(), Self::Error> {
+#         Ok(())
+#     }
+# }
+# impl Sleeper for NoSleep {
+#     fn sleep(&self, _duration: Duration) {}
+# }
+let api = Api;
+let store = Store;
+let sleeper = NoSleep;
+let runtime = DeviceFlowRuntime::new(&api, &store, &sleeper);
+
+assert!(std::ptr::eq(runtime.api, &api));
+```

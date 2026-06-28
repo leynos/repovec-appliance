@@ -1,0 +1,43 @@
+# Examples
+
+```
+use std::{convert::Infallible, time::Duration};
+
+use repovec_core::github_oauth::{
+    ClientId, DeviceAuthorization, DeviceCode, TokenPollOutcome, UserCode,
+};
+use repovecd::github_device_flow::DeviceFlowApi;
+
+struct Api;
+
+impl DeviceFlowApi for Api {
+    type Error = Infallible;
+
+    fn request_device_code(
+        &self,
+        _client_id: &ClientId,
+        _scopes: &[String],
+    ) -> Result<DeviceAuthorization, Self::Error> {
+        Ok(DeviceAuthorization {
+            device_code: DeviceCode::new("device"),
+            user_code: UserCode::new("ABCD-1234"),
+            verification_uri: "https://github.com/login/device".to_owned(),
+            expires_in: Duration::from_secs(900),
+            interval: Duration::from_secs(5),
+        })
+    }
+
+    fn poll_token(
+        &self,
+        _client_id: &ClientId,
+        _authorization: &DeviceAuthorization,
+    ) -> Result<TokenPollOutcome, Self::Error> {
+        Ok(TokenPollOutcome::AuthorizationPending)
+    }
+}
+
+let authorization = Api.request_device_code(&ClientId::new("client"), &[])?;
+
+assert_eq!(authorization.user_code.as_str(), "ABCD-1234");
+# Ok::<(), Infallible>(())
+```

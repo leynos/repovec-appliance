@@ -1,0 +1,84 @@
+# Examples
+
+```
+use std::{cell::RefCell, convert::Infallible, time::Duration};
+
+use repovec_core::github_oauth::{
+    AccessToken, ClientId, DeviceAuthorization, DeviceCode, TokenPollOutcome, UserCode,
+};
+use repovecd::github_device_flow::{
+    DeviceFlowApi, DeviceFlowLoginRequest, DeviceFlowRuntime, DeviceFlowRunError, Sleeper,
+    TokenStore, complete_device_flow,
+};
+
+struct Api {
+    outcomes: RefCell<Vec<TokenPollOutcome>>,
+}
+
+struct Store {
+    tokens: RefCell<Vec<AccessToken>>,
+}
+
+struct NoSleep;
+
+impl DeviceFlowApi for Api {
+    type Error = Infallible;
+
+    fn request_device_code(
+        &self,
+        _client_id: &ClientId,
+        _scopes: &[String],
+    ) -> Result<DeviceAuthorization, Self::Error> {
+        Ok(DeviceAuthorization {
+            device_code: DeviceCode::new("device"),
+            user_code: UserCode::new("ABCD-1234"),
+            verification_uri: "https://github.com/login/device".to_owned(),
+            expires_in: Duration::from_secs(900),
+            interval: Duration::from_secs(5),
+        })
+    }
+
+    fn poll_token(
+        &self,
+        _client_id: &ClientId,
+        _authorization: &DeviceAuthorization,
+    ) -> Result<TokenPollOutcome, Self::Error> {
+        Ok(self.outcomes.borrow_mut().remove(0))
+    }
+}
+
+impl TokenStore for Store {
+    type Error = Infallible;
+
+    fn store(&self, token: &AccessToken) -> Result<(), Self::Error> {
+        self.tokens.borrow_mut().push(token.clone());
+        Ok(())
+    }
+}
+
+impl Sleeper for NoSleep {
+    fn sleep(&self, _duration: Duration) {}
+}
+
+let api = Api {
+    outcomes: RefCell::new(vec![
+        TokenPollOutcome::AuthorizationPending,
+        TokenPollOutcome::Authorized(AccessToken::new("gho_token", ["repo"])),
+    ]),
+};
+let store = Store { tokens: RefCell::new(Vec::new()) };
+let sleeper = NoSleep;
+let runtime = DeviceFlowRuntime::new(&api, &store, &sleeper);
+let request = DeviceFlowLoginRequest {
+    client_id: ClientId::new("client"),
+    scopes: vec!["repo".to_owned()],
+};
+
+let completed = complete_device_flow(&runtime, &request, |prompt| {
+    assert_eq!(prompt.user_code.as_str(), "ABCD-1234");
+})?;
+
+assert_eq!(completed.token.secret(), "gho_token");
+assert_eq!(store.tokens.borrow()[0].secret(), "gho_token");
+# Ok::<(), DeviceFlowRunError<Infallible, Infallible>>(())
+```

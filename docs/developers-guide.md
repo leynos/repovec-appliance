@@ -314,7 +314,6 @@ The helper is host-facing packaging code. It owns filesystem, user, permission
 and Podman-secret operations; `repovec-core` only validates the static contract
 that those assets expose.
 
-
 ### 5.3 `qdrant_liveness` runtime surface
 
 The `qdrant_liveness` module exposes the public runtime validation surface for
@@ -350,7 +349,6 @@ ignored by default and can be run explicitly on a host with Podman:
 ```sh
 cargo test -p repovec-core --test qdrant_liveness_integration -- --ignored
 ```
-
 
 ### 5.4 `systemd_units` validation surface
 

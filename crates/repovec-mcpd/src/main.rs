@@ -56,23 +56,37 @@ impl Error for StartupError {
 
 fn startup() -> Result<(), i32> { validate_startup_contracts().map_err(log_startup_error) }
 
+const STARTUP_FAILURE_EXIT_CODE: i32 = 1;
+
 fn log_startup_error(startup_error: StartupError) -> i32 {
     match startup_error {
-        StartupError::SystemdUnit(systemd_error) => tracing::error!(
-            unit = %systemd_error.unit(),
-            error = %systemd_error,
-            "systemd unit contract violation - aborting startup",
-        ),
-        StartupError::QdrantLiveness(qdrant_error) => tracing::error!(
-            error = %qdrant_error,
-            "Qdrant liveness validation failed - aborting startup",
-        ),
-        StartupError::AsyncRuntime(runtime_error) => tracing::error!(
-            error = %runtime_error,
-            "async runtime initialization failed - aborting startup",
-        ),
+        StartupError::SystemdUnit(error) => log_systemd_startup_error(&error),
+        StartupError::QdrantLiveness(error) => log_qdrant_startup_error(&error),
+        StartupError::AsyncRuntime(error) => log_async_runtime_startup_error(&error),
     }
-    1
+    STARTUP_FAILURE_EXIT_CODE
+}
+
+fn log_systemd_startup_error(error: &SystemdUnitError) {
+    tracing::error!(
+        unit = %error.unit(),
+        error = %error,
+        "systemd unit contract violation - aborting startup",
+    );
+}
+
+fn log_qdrant_startup_error(error: &QdrantLivenessError) {
+    tracing::error!(
+        error = %error,
+        "Qdrant liveness validation failed - aborting startup",
+    );
+}
+
+fn log_async_runtime_startup_error(error: &std::io::Error) {
+    tracing::error!(
+        error = %error,
+        "async runtime initialization failed - aborting startup",
+    );
 }
 
 fn validate_startup_contracts() -> Result<(), StartupError> {
@@ -143,14 +157,45 @@ where
 {
     let deadline = Instant::now() + readiness_timeout;
     loop {
-        match health_check().await {
-            Ok(()) => return Ok(()),
-            Err(error) if Instant::now() >= deadline => return Err(error),
-            Err(error) => {
-                tracing::debug!(error = %error, "Qdrant liveness not ready; retrying");
-                tokio::time::sleep(poll_interval).await;
-            }
+        if check_qdrant_liveness_attempt(&mut health_check, deadline).await?.is_ready() {
+            return Ok(());
         }
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
+enum QdrantReadiness {
+    Ready,
+    Retry,
+}
+
+impl QdrantReadiness {
+    const fn is_ready(&self) -> bool { matches!(self, Self::Ready) }
+}
+
+async fn check_qdrant_liveness_attempt<H, F>(
+    health_check: &mut H,
+    deadline: Instant,
+) -> Result<QdrantReadiness, QdrantLivenessError>
+where
+    H: FnMut() -> F,
+    F: Future<Output = Result<(), QdrantLivenessError>>,
+{
+    health_check()
+        .await
+        .map(|()| QdrantReadiness::Ready)
+        .or_else(|error| classify_qdrant_liveness_error(error, deadline))
+}
+
+fn classify_qdrant_liveness_error(
+    error: QdrantLivenessError,
+    deadline: Instant,
+) -> Result<QdrantReadiness, QdrantLivenessError> {
+    if Instant::now() >= deadline {
+        Err(error)
+    } else {
+        tracing::debug!(error = %error, "Qdrant liveness not ready; retrying");
+        Ok(QdrantReadiness::Retry)
     }
 }
 

@@ -1379,6 +1379,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "monotony"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c07971c6281a9a50979e8426fa6c6c618a42b729180847cb4363a794fdc4e607"
+
+[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2046,6 +2052,7 @@ dependencies = [
  "camino",
  "cap-std",
  "insta",
+ "monotony",
  "oauth2",
  "oauth2-test-server",
  "repovec-core",

@@ -6,14 +6,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use monotony::test_util::QueuedMonotonicClock;
 use repovec_core::github_oauth::{AccessToken, ClientId, DeviceCode, TokenPollOutcome, UserCode};
 use rstest::{fixture, rstest};
 use thiserror::Error;
 
 use super::{
     DeviceAuthorization, DeviceFlowApi, DeviceFlowLoginRequest, DeviceFlowRunError,
-    DeviceFlowRuntime, Sleeper, TerminalDeviceFlowError, TokenStore,
-    clock::test_support::FixedMonotonicClock, complete_device_flow,
+    DeviceFlowRuntime, Sleeper, TerminalDeviceFlowError, TokenStore, complete_device_flow,
 };
 use crate::tracing_test::capture_info_logs;
 
@@ -234,7 +234,7 @@ fn expiry_uses_the_injected_clock(login_request: DeviceFlowLoginRequest) {
         .checked_add(Duration::from_secs(60))
         .expect("test instant should support adding one minute");
     let clock =
-        FixedMonotonicClock::from_instants([started_at, started_at + Duration::from_secs(5)]);
+        QueuedMonotonicClock::from_instants([started_at, started_at + Duration::from_secs(5)]);
 
     let runtime = DeviceFlowRuntime::with_clock(&api, &store, &sleeper, &clock);
     let result = complete_device_flow(&runtime, &login_request, |_| {});

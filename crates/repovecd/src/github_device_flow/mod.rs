@@ -9,10 +9,10 @@ use repovec_core::github_oauth::{
 use thiserror::Error;
 use tracing::info;
 
-mod clock;
 mod observability;
+mod runtime_debug;
 
-pub use clock::{MonotonicClock, StdMonotonicClock};
+pub use monotony::{MonotonicClock, StdMonotonicClock};
 use observability::{
     device_flow_span, info_device_flow_result, info_device_flow_started, info_interval_increase,
     info_terminal_outcome,
@@ -118,7 +118,7 @@ pub struct DeviceFlowLoginRequest {
 }
 
 /// Runtime adapters for one device-flow login attempt.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct DeviceFlowRuntime<'a, A, T, S>
 where
     A: DeviceFlowApi,

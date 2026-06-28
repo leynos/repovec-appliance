@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 camino.workspace = true
 cap-std.workspace = true
+monotony.workspace = true
 oauth2 = { workspace = true, features = ["reqwest-blocking", "rustls-tls"] }
 repovec-core = { path = "../repovec-core" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
@@ -20,6 +21,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+monotony = { workspace = true, features = ["test-util"] }
 oauth2-test-server.workspace = true
 repovec-test-helpers = { path = "../repovec-test-helpers", features = ["snapshots"] }
 rstest.workspace = true

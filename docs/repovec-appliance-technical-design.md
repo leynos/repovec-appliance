@@ -464,7 +464,7 @@ Security controls:
 Runtime liveness validation is separate from the static Quadlet validator.
 `repovec_core::appliance::qdrant_liveness` reads the raw API key from
 `/etc/repovec/qdrant-api-key`, connects to the default gRPC endpoint
-`http://localhost:6334`, and returns a redacted semantic error when the key
+`http://127.0.0.1:6334`, and returns a redacted semantic error when the key
 file, endpoint, authentication, connection, or readiness contract fails.
 
 The liveness policy performs two gRPC operations:

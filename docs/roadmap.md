@@ -81,7 +81,7 @@ with API-key authentication, and survives host reboots.
     hosts rootful nested Podman.
 - [x] 1.2.3. Validate Qdrant liveness from Rust
   - Implement a health-check function in `repovec-core` that connects to
-    Qdrant gRPC at `localhost:6334` with the stored API key and confirms the
+    Qdrant gRPC at `127.0.0.1:6334` with the stored API key and confirms the
     service is ready.
   - Add an integration test that starts Qdrant and runs the health check.
   - Status: complete. `repovec-core` now exposes an authenticated gRPC

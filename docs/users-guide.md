@@ -151,7 +151,7 @@ Requests to Qdrant without the `api-key` header are rejected.
 
 `repovecd` and `repovec-mcpd` validate Qdrant before they continue startup.
 Each daemon reads `/etc/repovec/qdrant-api-key`, connects to Qdrant gRPC at
-`http://localhost:6334`, checks the gRPC health service, and performs a
+`http://127.0.0.1:6334`, checks the gRPC health service, and performs a
 read-only authenticated collection-list request. This proves both process
 readiness and API-key validity.
 
@@ -167,7 +167,7 @@ stat -c '%U:%G %a %n' /etc/repovec/qdrant-api-key
 ```
 
 Common failure classes are missing or unreadable API-key file, empty or invalid
-key material, Qdrant not listening on `localhost:6334`, Qdrant taking longer
+key material, Qdrant not listening on `127.0.0.1:6334`, Qdrant taking longer
 than the configured probe timeout, and authentication failure. Regenerate or
 repair the key file and Podman secret only when the journal points to an
 API-key problem; connection failures normally require inspecting
@@ -300,8 +300,9 @@ sudo systemctl start repovec.target
 ```
 
 > **Note:** `repovecd` and `repovec-mcpd` validate the checked-in systemd unit
-> contract at startup before doing any other work. If validation fails, the
-> daemon exits immediately with a non-zero exit code. Inspect the journal with
+> contract and Qdrant liveness at startup before doing any other work. If
+> validation fails, the daemon exits immediately with a non-zero exit code.
+> Inspect the journal with
 > `journalctl -u repovecd.service --no-pager | tail -20` or
 > `journalctl -u repovec-mcpd.service --no-pager | tail -20`; the error message
 > identifies the violated unit contract or Qdrant liveness condition. This

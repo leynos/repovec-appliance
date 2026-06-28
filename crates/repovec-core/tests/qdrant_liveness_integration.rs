@@ -169,7 +169,17 @@ impl QdrantContainer {
         ])?;
         assert_success("podman run", &output)?;
 
-        let endpoint = published_grpc_endpoint(&name)?;
+        let endpoint = match published_grpc_endpoint(&name) {
+            Ok(endpoint) => endpoint,
+            Err(error) => {
+                log_cleanup_result(
+                    "podman rm --force",
+                    &name,
+                    Command::new("podman").args(["rm", "--force", &name]).output(),
+                );
+                return Err(error);
+            }
+        };
         Ok(Self { name, endpoint })
     }
 }
@@ -279,6 +289,6 @@ fn log_cleanup_result(command: &str, subject: &str, cleanup_result: std::io::Res
 
 fn write_cleanup_warning(arguments: std::fmt::Arguments<'_>) {
     let mut stderr = std::io::stderr().lock();
-    let _write_result = stderr.write_fmt(arguments);
-    let _newline_result = stderr.write_all(b"\n");
+    stderr.write_fmt(arguments).ok();
+    stderr.write_all(b"\n").ok();
 }

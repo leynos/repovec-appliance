@@ -1,0 +1,23 @@
+# Examples
+
+```
+use std::{cell::Cell, time::Duration};
+
+use repovecd::github_device_flow::Sleeper;
+
+struct RecordingSleeper {
+    last_sleep: Cell<Option<Duration>>,
+}
+
+impl Sleeper for RecordingSleeper {
+    fn sleep(&self, duration: Duration) {
+        self.last_sleep.set(Some(duration));
+    }
+}
+
+let sleeper = RecordingSleeper { last_sleep: Cell::new(None) };
+
+sleeper.sleep(Duration::from_secs(5));
+
+assert_eq!(sleeper.last_sleep.get(), Some(Duration::from_secs(5)));
+```

@@ -19,6 +19,7 @@ use observability::{
 };
 
 /// OAuth API operations required by the device-flow use case.
+#[doc = include_str!("examples/device_flow_api.rsdoc")]
 pub trait DeviceFlowApi {
     /// Error returned by the adapter.
     type Error: std::error::Error + Send + Sync + 'static;
@@ -49,6 +50,7 @@ pub trait DeviceFlowApi {
 }
 
 /// Encrypted persistence required by the device-flow use case.
+#[doc = include_str!("examples/token_store.rsdoc")]
 pub trait TokenStore {
     /// Error returned by the storage adapter.
     type Error: std::error::Error + Send + Sync + 'static;
@@ -62,6 +64,7 @@ pub trait TokenStore {
 }
 
 /// Sleep boundary used to make polling tests deterministic.
+#[doc = include_str!("examples/sleeper.rsdoc")]
 pub trait Sleeper {
     /// Waits for the supplied duration.
     fn sleep(&self, duration: Duration);
@@ -139,12 +142,14 @@ where
     S: Sleeper,
 {
     /// Creates a runtime adapter bundle.
+    #[doc = include_str!("examples/runtime_new.rsdoc")]
     #[must_use]
     pub const fn new(api: &'a A, store: &'a T, sleeper: &'a S) -> Self {
         Self { api, store, sleeper, clock: &STD_MONOTONIC_CLOCK }
     }
 
     /// Creates a runtime adapter bundle with an explicit clock.
+    #[doc = include_str!("examples/runtime_with_clock.rsdoc")]
     #[must_use]
     pub const fn with_clock(
         api: &'a A,
@@ -157,6 +162,7 @@ where
 }
 
 /// Runs the device flow until it succeeds or reaches a terminal outcome.
+#[doc = include_str!("examples/complete_device_flow.rsdoc")]
 ///
 /// # Errors
 ///

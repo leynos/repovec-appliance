@@ -314,40 +314,48 @@ fn reused_sleeper_starts_expiry_clock_per_login(
 }
 
 #[rstest]
-fn request_device_code_errors_are_propagated(login_request: DeviceFlowLoginRequest) {
-    let api = FakeApi::request_fails(FakeApiError::Request);
-    let store = FakeStore::new();
+#[case::request_device_code(
+    FakeApi::request_fails(FakeApiError::Request),
+    FakeStore::new(),
+    ExpectedRunError::OAuth(FakeApiError::Request)
+)]
+#[case::poll_token(
+    FakeApi::poll_fails(FakeApiError::Poll),
+    FakeStore::new(),
+    ExpectedRunError::OAuth(FakeApiError::Poll)
+)]
+#[case::store(
+    FakeApi::new(vec![TokenPollOutcome::Authorized(AccessToken::new("gho_secret", ["repo"]))]),
+    FakeStore::failing(FakeStoreError::Store),
+    ExpectedRunError::Storage(FakeStoreError::Store),
+)]
+fn adapter_errors_are_propagated(
+    login_request: DeviceFlowLoginRequest,
+    #[case] api: FakeApi,
+    #[case] store: FakeStore,
+    #[case] expected_error: ExpectedRunError,
+) {
     let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
-
     let runtime = DeviceFlowRuntime::new(&api, &store, &sleeper);
     let result = complete_device_flow(&runtime, &login_request, |_| {});
 
-    assert!(matches!(result, Err(DeviceFlowRunError::OAuth(FakeApiError::Request))));
+    match (result, expected_error) {
+        (Err(DeviceFlowRunError::OAuth(actual)), ExpectedRunError::OAuth(expected_oauth)) => {
+            assert_eq!(actual, expected_oauth);
+        }
+        (Err(DeviceFlowRunError::Storage(actual)), ExpectedRunError::Storage(expected_storage)) => {
+            assert_eq!(actual, expected_storage);
+        }
+        (actual, unmatched_expected) => {
+            panic!("expected {unmatched_expected:?}, got {actual:?}");
+        }
+    }
 }
 
-#[rstest]
-fn poll_token_errors_are_propagated(login_request: DeviceFlowLoginRequest) {
-    let api = FakeApi::poll_fails(FakeApiError::Poll);
-    let store = FakeStore::new();
-    let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
-
-    let runtime = DeviceFlowRuntime::new(&api, &store, &sleeper);
-    let result = complete_device_flow(&runtime, &login_request, |_| {});
-
-    assert!(matches!(result, Err(DeviceFlowRunError::OAuth(FakeApiError::Poll))));
-}
-
-#[rstest]
-fn store_errors_are_propagated(login_request: DeviceFlowLoginRequest) {
-    let api =
-        FakeApi::new(vec![TokenPollOutcome::Authorized(AccessToken::new("gho_secret", ["repo"]))]);
-    let store = FakeStore::failing(FakeStoreError::Store);
-    let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
-
-    let runtime = DeviceFlowRuntime::new(&api, &store, &sleeper);
-    let result = complete_device_flow(&runtime, &login_request, |_| {});
-
-    assert!(matches!(result, Err(DeviceFlowRunError::Storage(FakeStoreError::Store))));
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExpectedRunError {
+    OAuth(FakeApiError),
+    Storage(FakeStoreError),
 }
 
 #[fixture]

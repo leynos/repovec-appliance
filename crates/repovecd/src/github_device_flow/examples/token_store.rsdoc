@@ -1,0 +1,28 @@
+# Examples
+
+```
+use std::{cell::RefCell, convert::Infallible};
+
+use repovec_core::github_oauth::AccessToken;
+use repovecd::github_device_flow::TokenStore;
+
+struct Store {
+    tokens: RefCell<Vec<AccessToken>>,
+}
+
+impl TokenStore for Store {
+    type Error = Infallible;
+
+    fn store(&self, token: &AccessToken) -> Result<(), Self::Error> {
+        self.tokens.borrow_mut().push(token.clone());
+        Ok(())
+    }
+}
+
+let store = Store { tokens: RefCell::new(Vec::new()) };
+
+store.store(&AccessToken::new("gho_token", ["repo"]))?;
+
+assert_eq!(store.tokens.borrow()[0].secret(), "gho_token");
+# Ok::<(), Infallible>(())
+```

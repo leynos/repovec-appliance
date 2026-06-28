@@ -53,3 +53,63 @@ const fn token_poll_outcome_label(outcome: &TokenPollOutcome) -> &'static str {
         TokenPollOutcome::ExpiredToken => "expired_token",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Tests for OAuth HTTP adapter observability events.
+
+    use super::*;
+    use crate::tracing_test::capture_info_logs;
+
+    #[test]
+    fn token_poll_outcome_metric_is_emitted_as_an_event() {
+        let span = tracing::info_span!("github_oauth_client.test");
+        let ((), logs) = capture_info_logs(|| {
+            info_token_poll_outcome(&span, &TokenPollOutcome::SlowDown);
+        })
+        .expect("capturing tracing logs should succeed");
+
+        assert!(logs.contains("metric.github_oauth_poll_outcome_total"));
+        assert!(logs.contains("slow_down"));
+    }
+
+    #[test]
+    fn device_code_request_metrics_are_emitted_as_events() {
+        let span = tracing::info_span!("github_oauth_client.test");
+        let ((), logs) = capture_info_logs(|| {
+            info_http_request(&span, StatusCode::OK, Instant::now());
+        })
+        .expect("capturing tracing logs should succeed");
+
+        assert!(logs.contains("metric.github_oauth_http_request_total"));
+        assert!(logs.contains("status=200"));
+        assert!(logs.contains("metric.github_oauth_http_request_duration_ms"));
+        assert!(logs.contains("elapsed_ms="));
+    }
+
+    #[test]
+    fn token_poll_metrics_are_emitted_as_events() {
+        let span = tracing::info_span!("github_oauth_client.test");
+        let ((), logs) = capture_info_logs(|| {
+            info_token_poll(&span, StatusCode::ACCEPTED, Instant::now());
+        })
+        .expect("capturing tracing logs should succeed");
+
+        assert!(logs.contains("metric.github_oauth_poll_total"));
+        assert!(logs.contains("status=202"));
+        assert!(logs.contains("metric.github_oauth_poll_duration_ms"));
+        assert!(logs.contains("elapsed_ms="));
+    }
+
+    #[test]
+    fn adapter_failure_metric_is_emitted_as_an_event() {
+        let span = tracing::info_span!("github_oauth_client.test");
+        let ((), logs) = capture_info_logs(|| {
+            info_adapter_failure(&span, StatusCode::BAD_GATEWAY);
+        })
+        .expect("capturing tracing logs should succeed");
+
+        assert!(logs.contains("metric.github_oauth_adapter_failure_total"));
+        assert!(logs.contains("status=502"));
+    }
+}

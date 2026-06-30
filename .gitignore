@@ -1,6 +1,7 @@
 target/
 **/*.rs.bk
 .agents/mcp/context_pack/packs/.repo.lock
+.memdb/
 
 # Python integration-test harness
 integration-tests/.venv/

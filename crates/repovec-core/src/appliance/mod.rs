@@ -21,6 +21,7 @@
 //! layer, [`systemd_units`] covers the systemd service orchestration layer, and
 //! [`qdrant_liveness`] covers runtime readiness.
 
+pub mod daemon_startup;
 pub mod qdrant_liveness;
 pub mod qdrant_quadlet;
 pub mod systemd_units;

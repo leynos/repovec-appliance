@@ -13,10 +13,12 @@
 use std::{error::Error, fmt, future::Future, time::Duration};
 
 use repovec_core::appliance::{
-    qdrant_liveness::{QdrantLivenessConfig, QdrantLivenessError, check_qdrant_liveness},
+    qdrant_liveness::{
+        QdrantLivenessConfig, QdrantLivenessError, QdrantStartupLivenessPolicy,
+        check_qdrant_liveness, wait_for_qdrant_startup_liveness,
+    },
     systemd_units::{SystemdUnitError, validate_and_trace_checked_in_units},
 };
-use tokio::time::Instant;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -138,85 +140,22 @@ where
         .enable_time()
         .build()
         .map_err(StartupError::AsyncRuntime)?;
-    let result =
-        runtime.block_on(wait_for_qdrant_liveness(health_check, readiness_timeout, poll_interval));
+    let policy = QdrantStartupLivenessPolicy::new(readiness_timeout, poll_interval);
+    let result = runtime.block_on(wait_for_qdrant_startup_liveness(health_check, policy));
     if result.is_ok() {
         tracing::debug!("Qdrant liveness validated");
     }
     result.map_err(StartupError::QdrantLiveness)
 }
 
-async fn wait_for_qdrant_liveness<H, F>(
-    mut health_check: H,
-    readiness_timeout: Duration,
-    poll_interval: Duration,
-) -> Result<(), QdrantLivenessError>
-where
-    H: FnMut() -> F,
-    F: Future<Output = Result<(), QdrantLivenessError>>,
-{
-    let deadline = Instant::now() + readiness_timeout;
-    loop {
-        if check_qdrant_liveness_attempt(&mut health_check, deadline).await?.is_ready() {
-            return Ok(());
-        }
-        tokio::time::sleep(poll_interval).await;
-    }
-}
-
-enum QdrantReadiness {
-    Ready,
-    Retry,
-}
-
-impl QdrantReadiness {
-    const fn is_ready(&self) -> bool { matches!(self, Self::Ready) }
-}
-
-async fn check_qdrant_liveness_attempt<H, F>(
-    health_check: &mut H,
-    deadline: Instant,
-) -> Result<QdrantReadiness, QdrantLivenessError>
-where
-    H: FnMut() -> F,
-    F: Future<Output = Result<(), QdrantLivenessError>>,
-{
-    health_check()
-        .await
-        .map(|()| QdrantReadiness::Ready)
-        .or_else(|error| classify_qdrant_liveness_error(error, deadline))
-}
-
-fn classify_qdrant_liveness_error(
-    error: QdrantLivenessError,
-    deadline: Instant,
-) -> Result<QdrantReadiness, QdrantLivenessError> {
-    if is_permanent_qdrant_liveness_error(&error) || Instant::now() >= deadline {
-        Err(error)
-    } else {
-        tracing::debug!(error = %error, "Qdrant liveness not ready; retrying");
-        Ok(QdrantReadiness::Retry)
-    }
-}
-
-const fn is_permanent_qdrant_liveness_error(error: &QdrantLivenessError) -> bool {
-    matches!(
-        error,
-        QdrantLivenessError::MissingApiKeyFile { .. }
-            | QdrantLivenessError::UnreadableApiKeyFile { .. }
-            | QdrantLivenessError::EmptyApiKey
-            | QdrantLivenessError::InvalidApiKey
-            | QdrantLivenessError::InvalidEndpoint { .. }
-            | QdrantLivenessError::AuthenticationFailed
-            | QdrantLivenessError::MissingServerVersion
-    )
-}
-
 #[cfg(test)]
 mod tests {
     //! Unit coverage for repovecd startup checks.
 
-    use std::{cell::Cell, time::Duration};
+    use std::{
+        cell::{Cell, RefCell},
+        time::Duration,
+    };
 
     use repovec_core::appliance::{
         qdrant_liveness::QdrantLivenessError, systemd_units::SystemdUnitError,
@@ -355,22 +294,47 @@ mod tests {
 
     #[test]
     fn validate_qdrant_liveness_with_fails_permanent_errors_immediately() {
+        for injected_error in permanent_qdrant_liveness_errors() {
+            assert_permanent_qdrant_error_fails_immediately(injected_error);
+        }
+    }
+
+    fn assert_permanent_qdrant_error_fails_immediately(injected: QdrantLivenessError) {
         let attempts = Cell::new(0);
+        let expected_error = injected.to_string();
+        let injected_error = RefCell::new(Some(injected));
 
         let result = validate_qdrant_liveness_with_policy(
             || {
                 attempts.set(attempts.get() + 1);
-                async { Err(QdrantLivenessError::AuthenticationFailed) }
+                let Some(failure) = injected_error.borrow_mut().take() else {
+                    panic!("permanent errors must not be retried");
+                };
+                std::future::ready(Err(failure))
             },
             Duration::from_millis(50),
             Duration::from_millis(1),
         );
 
-        assert!(matches!(
-            result,
-            Err(StartupError::QdrantLiveness(QdrantLivenessError::AuthenticationFailed))
-        ));
+        let Err(StartupError::QdrantLiveness(startup_error)) = result else {
+            panic!("permanent Qdrant liveness errors should fail startup");
+        };
+        assert_eq!(startup_error.to_string(), expected_error);
         assert_eq!(attempts.get(), 1);
+    }
+
+    fn permanent_qdrant_liveness_errors() -> Vec<QdrantLivenessError> {
+        vec![
+            QdrantLivenessError::AuthenticationFailed,
+            QdrantLivenessError::InvalidEndpoint { endpoint: String::from("not a uri") },
+            QdrantLivenessError::MissingApiKeyFile { path: "/tmp/missing-qdrant-api-key".into() },
+            QdrantLivenessError::UnreadableApiKeyFile {
+                path: "/tmp/unreadable-qdrant-api-key".into(),
+                source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+            },
+            QdrantLivenessError::EmptyApiKey,
+            QdrantLivenessError::InvalidApiKey,
+        ]
     }
 
     fn transient_qdrant_result(attempt: i32) -> Result<(), QdrantLivenessError> {

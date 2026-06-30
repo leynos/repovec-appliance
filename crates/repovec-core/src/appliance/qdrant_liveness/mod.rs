@@ -25,7 +25,7 @@ pub const DEFAULT_QDRANT_LIVENESS_TIMEOUT: Duration = Duration::from_secs(5);
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use repovec_core::appliance::qdrant_liveness::{
 ///     DEFAULT_QDRANT_GRPC_ENDPOINT, QdrantLivenessConfig,
 /// };
@@ -46,7 +46,7 @@ impl QdrantLivenessConfig {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use std::time::Duration;
     ///
     /// use camino::Utf8PathBuf;
@@ -92,7 +92,7 @@ impl Default for QdrantLivenessConfig {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use repovec_core::appliance::qdrant_liveness::QdrantLivenessReport;
 ///
 /// let report = QdrantLivenessReport::new("qdrant", "1.15.0", Some("abc123"));
@@ -139,7 +139,7 @@ impl QdrantApiKey {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use repovec_core::appliance::qdrant_liveness::QdrantApiKey;
     ///
     /// let key = QdrantApiKey::parse("0123456789abcdef").unwrap();

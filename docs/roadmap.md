@@ -79,11 +79,15 @@ with API-key authentication, and survives host reboots.
     addressing `#30`. The harness pairs a fast `cmd-mox` command-contract
     suite with a `testcontainers`-driven privileged Fedora container that
     hosts rootful nested Podman.
-- [ ] 1.2.3. Validate Qdrant liveness from Rust
+- [x] 1.2.3. Validate Qdrant liveness from Rust
   - Implement a health-check function in `repovec-core` that connects to
-    Qdrant gRPC at `localhost:6334` with the stored API key and confirms the
+    Qdrant gRPC at `127.0.0.1:6334` with the stored API key and confirms the
     service is ready.
   - Add an integration test that starts Qdrant and runs the health check.
+  - Status: complete. `repovec-core` now exposes an authenticated gRPC
+    liveness check, `repovecd` and `repovec-mcpd` run it at startup, and the
+    ignored live integration test starts Qdrant with Podman to validate
+    success and failure paths.
 - [x] 1.2.4. Add property-based tests for Qdrant Quadlet parser and validator
   - Add `proptest` as a workspace dev-dependency.
   - Implement property tests covering parser invariants, duplicate-entry

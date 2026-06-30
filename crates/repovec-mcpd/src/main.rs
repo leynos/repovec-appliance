@@ -191,12 +191,25 @@ fn classify_qdrant_liveness_error(
     error: QdrantLivenessError,
     deadline: Instant,
 ) -> Result<QdrantReadiness, QdrantLivenessError> {
-    if Instant::now() >= deadline {
+    if is_permanent_qdrant_liveness_error(&error) || Instant::now() >= deadline {
         Err(error)
     } else {
         tracing::debug!(error = %error, "Qdrant liveness not ready; retrying");
         Ok(QdrantReadiness::Retry)
     }
+}
+
+const fn is_permanent_qdrant_liveness_error(error: &QdrantLivenessError) -> bool {
+    matches!(
+        error,
+        QdrantLivenessError::MissingApiKeyFile { .. }
+            | QdrantLivenessError::UnreadableApiKeyFile { .. }
+            | QdrantLivenessError::EmptyApiKey
+            | QdrantLivenessError::InvalidApiKey
+            | QdrantLivenessError::InvalidEndpoint { .. }
+            | QdrantLivenessError::AuthenticationFailed
+            | QdrantLivenessError::MissingServerVersion
+    )
 }
 
 #[cfg(test)]
@@ -338,6 +351,26 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(attempts.get(), 2);
+    }
+
+    #[test]
+    fn validate_qdrant_liveness_with_fails_permanent_errors_immediately() {
+        let attempts = Cell::new(0);
+
+        let result = validate_qdrant_liveness_with_policy(
+            || {
+                attempts.set(attempts.get() + 1);
+                async { Err(QdrantLivenessError::AuthenticationFailed) }
+            },
+            Duration::from_millis(50),
+            Duration::from_millis(1),
+        );
+
+        assert!(matches!(
+            result,
+            Err(StartupError::QdrantLiveness(QdrantLivenessError::AuthenticationFailed))
+        ));
+        assert_eq!(attempts.get(), 1);
     }
 
     fn transient_qdrant_result(attempt: i32) -> Result<(), QdrantLivenessError> {

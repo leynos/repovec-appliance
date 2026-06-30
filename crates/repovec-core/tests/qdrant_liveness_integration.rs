@@ -289,6 +289,6 @@ fn log_cleanup_result(command: &str, subject: &str, cleanup_result: std::io::Res
 
 fn write_cleanup_warning(arguments: std::fmt::Arguments<'_>) {
     let mut stderr = std::io::stderr().lock();
-    stderr.write_fmt(arguments).ok();
-    stderr.write_all(b"\n").ok();
+    drop(stderr.write_fmt(arguments));
+    drop(stderr.write_all(b"\n"));
 }

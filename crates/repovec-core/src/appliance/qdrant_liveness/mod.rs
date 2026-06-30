@@ -12,6 +12,10 @@ use camino::Utf8PathBuf;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use qdrant_client::{Qdrant, QdrantError, qdrant::HealthCheckReply};
 
+mod startup;
+
+pub use startup::{QdrantStartupLivenessPolicy, wait_for_qdrant_startup_liveness};
+
 /// Qdrant's appliance gRPC endpoint.
 pub const DEFAULT_QDRANT_GRPC_ENDPOINT: &str = "http://127.0.0.1:6334";
 

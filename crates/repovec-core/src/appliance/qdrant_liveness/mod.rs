@@ -12,8 +12,13 @@ use camino::Utf8PathBuf;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use qdrant_client::{Qdrant, QdrantError, qdrant::HealthCheckReply};
 
+mod error;
+mod observability;
 mod startup;
 
+pub use error::QdrantLivenessError;
+pub use observability::qdrant_liveness_error_category;
+use observability::{qdrant_liveness_span, record_qdrant_liveness_result};
 pub use startup::{QdrantStartupLivenessPolicy, wait_for_qdrant_startup_liveness};
 
 /// Qdrant's appliance gRPC endpoint.
@@ -232,6 +237,15 @@ pub fn load_qdrant_api_key(
 pub async fn check_qdrant_liveness(
     config: &QdrantLivenessConfig,
 ) -> Result<QdrantLivenessReport, QdrantLivenessError> {
+    let span = qdrant_liveness_span(config);
+    let result = check_qdrant_liveness_once(config).await;
+    record_qdrant_liveness_result(&span, config, &result);
+    result
+}
+
+async fn check_qdrant_liveness_once(
+    config: &QdrantLivenessConfig,
+) -> Result<QdrantLivenessReport, QdrantLivenessError> {
     let api_key = load_qdrant_api_key(config)?;
     let client = build_qdrant_client(config, &api_key)?;
 
@@ -335,56 +349,6 @@ impl TryFrom<HealthCheckReply> for QdrantLivenessReport {
 
         Ok(Self::new(reply.title, reply.version, reply.commit))
     }
-}
-
-/// Errors returned while proving Qdrant runtime liveness.
-#[derive(Debug, thiserror::Error)]
-pub enum QdrantLivenessError {
-    /// The API-key file does not exist.
-    #[error("Qdrant API-key file is missing: {path}")]
-    MissingApiKeyFile {
-        /// The configured API-key file path.
-        path: Utf8PathBuf,
-    },
-    /// The API-key file exists but cannot be read.
-    #[error("Qdrant API-key file cannot be read: {path}")]
-    UnreadableApiKeyFile {
-        /// The configured API-key file path.
-        path: Utf8PathBuf,
-        /// The underlying filesystem error.
-        #[source]
-        source: std::io::Error,
-    },
-    /// The API-key file is empty.
-    #[error("Qdrant API key is empty")]
-    EmptyApiKey,
-    /// The API key cannot be represented as gRPC metadata.
-    #[error("Qdrant API key is not a valid gRPC metadata value: <redacted>")]
-    InvalidApiKey,
-    /// The configured Qdrant endpoint cannot be parsed.
-    #[error("Qdrant gRPC endpoint is invalid: {endpoint}")]
-    InvalidEndpoint {
-        /// The configured endpoint URI.
-        endpoint: String,
-    },
-    /// The liveness check did not complete within the configured timeout.
-    #[error("Qdrant liveness check timed out after {timeout:?}")]
-    Timeout {
-        /// The timeout that elapsed.
-        timeout: Duration,
-    },
-    /// Qdrant rejected the supplied API key.
-    #[error("Qdrant rejected the configured API key")]
-    AuthenticationFailed,
-    /// Qdrant could not be reached over gRPC.
-    #[error("Qdrant gRPC liveness check failed: {message}")]
-    GrpcUnavailable {
-        /// A redacted diagnostic from the gRPC client.
-        message: String,
-    },
-    /// Qdrant responded but did not provide readiness metadata.
-    #[error("Qdrant health reply did not include a server version")]
-    MissingServerVersion,
 }
 
 #[cfg(test)]

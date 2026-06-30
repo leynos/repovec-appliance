@@ -13,8 +13,8 @@ use rstest::rstest;
 
 use super::{
     QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport,
-    build_qdrant_client, is_authentication_failure_code, is_authentication_failure_status,
-    load_qdrant_api_key,
+    build_qdrant_client, check_qdrant_liveness, is_authentication_failure_code,
+    is_authentication_failure_status, load_qdrant_api_key,
 };
 
 const TEST_QDRANT_ENDPOINT: &str = "http://127.0.0.1:6334";
@@ -271,6 +271,51 @@ fn default_config_matches_appliance_contract() {
 
     assert_eq!(config.endpoint(), TEST_QDRANT_ENDPOINT);
     assert_eq!(config.api_key_path().as_str(), "/etc/repovec/qdrant-api-key");
+}
+
+#[test]
+fn liveness_failure_observability_includes_probe_context() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .expect("test runtime should build");
+    let config = QdrantLivenessConfig::new(
+        TEST_QDRANT_ENDPOINT,
+        Utf8PathBuf::from("/tmp/repovec-missing-qdrant-key"),
+        Duration::from_millis(7),
+    );
+
+    let (result, logs) =
+        repovec_test_helpers::capture_logs(|| runtime.block_on(check_qdrant_liveness(&config)))?;
+
+    repovec_test_helpers::ensure(
+        matches!(result, Err(QdrantLivenessError::MissingApiKeyFile { .. })),
+        "missing API-key file should fail liveness",
+    )?;
+    repovec_test_helpers::ensure_log_line_contains(
+        &logs,
+        "DEBUG",
+        "endpoint=\"http://127.0.0.1:6334\"",
+        "failure log should include the Qdrant endpoint",
+    )?;
+    repovec_test_helpers::ensure_log_line_contains(
+        &logs,
+        "DEBUG",
+        "timeout_ms=7",
+        "failure log should include the probe timeout",
+    )?;
+    repovec_test_helpers::ensure_log_line_contains(
+        &logs,
+        "DEBUG",
+        "error_category=\"missing_api_key_file\"",
+        "failure log should include the error category",
+    )?;
+    repovec_test_helpers::ensure_log_line_contains(
+        &logs,
+        "INFO",
+        "metric.qdrant_liveness_failure_total",
+        "failure should emit a bounded metric event",
+    )
 }
 
 #[test]

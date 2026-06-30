@@ -5,20 +5,21 @@ use std::{future::Future, time::Duration};
 use tokio::time::Instant;
 use tracing::Span;
 
-use super::QdrantLivenessError;
+use super::{DEFAULT_QDRANT_GRPC_ENDPOINT, QdrantLivenessError, qdrant_liveness_error_category};
 
 /// Bounded retry policy for daemon startup Qdrant liveness validation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct QdrantStartupLivenessPolicy {
     readiness_timeout: Duration,
     poll_interval: Duration,
+    endpoint: &'static str,
 }
 
 impl QdrantStartupLivenessPolicy {
     /// Creates a startup liveness policy from explicit timing values.
     #[must_use]
     pub const fn new(readiness_timeout: Duration, poll_interval: Duration) -> Self {
-        Self { readiness_timeout, poll_interval }
+        Self { readiness_timeout, poll_interval, endpoint: DEFAULT_QDRANT_GRPC_ENDPOINT }
     }
 
     /// Returns the maximum time spent waiting for transient readiness failures.
@@ -28,6 +29,10 @@ impl QdrantStartupLivenessPolicy {
     /// Returns the delay between retryable liveness attempts.
     #[must_use]
     pub const fn poll_interval(&self) -> Duration { self.poll_interval }
+
+    /// Returns the endpoint described by startup liveness observability.
+    #[must_use]
+    pub const fn endpoint(&self) -> &str { self.endpoint }
 }
 
 /// Waits for Qdrant liveness while failing permanent configuration errors fast.
@@ -52,6 +57,7 @@ where
     let deadline = started_at + policy.readiness_timeout();
     let span = tracing::info_span!(
         "qdrant_startup_liveness",
+        endpoint = policy.endpoint(),
         readiness_timeout_ms = policy.readiness_timeout().as_millis(),
         poll_interval_ms = policy.poll_interval().as_millis(),
     );
@@ -59,7 +65,14 @@ where
 
     record_startup_liveness_started(&span);
     loop {
-        let context = StartupLivenessAttempt { span: &span, started_at, deadline, attempt };
+        let context = StartupLivenessAttempt {
+            span: &span,
+            started_at,
+            deadline,
+            endpoint: policy.endpoint(),
+            readiness_timeout: policy.readiness_timeout(),
+            attempt,
+        };
         match check_qdrant_liveness_attempt(&mut health_check, context).await {
             Ok(QdrantReadiness::Ready) => {
                 record_startup_liveness_success(context);
@@ -82,11 +95,15 @@ struct StartupLivenessAttempt<'a> {
     span: &'a Span,
     started_at: Instant,
     deadline: Instant,
+    endpoint: &'a str,
+    readiness_timeout: Duration,
     attempt: u64,
 }
 
 impl StartupLivenessAttempt<'_> {
     fn elapsed_ms(&self) -> u128 { self.started_at.elapsed().as_millis() }
+
+    const fn readiness_timeout_ms(&self) -> u128 { self.readiness_timeout.as_millis() }
 }
 
 enum QdrantReadiness {
@@ -143,30 +160,38 @@ fn record_startup_liveness_started(span: &Span) {
 
 fn record_startup_liveness_success(context: StartupLivenessAttempt<'_>) {
     record_startup_liveness_success_log(context);
-    record_startup_liveness_success_metric(context.span);
+    record_startup_liveness_success_metric(context);
 }
 
 fn record_startup_liveness_success_log(context: StartupLivenessAttempt<'_>) {
     let attempt = context.attempt;
+    let endpoint = context.endpoint;
+    let readiness_timeout_ms = context.readiness_timeout_ms();
     let elapsed_ms = context.elapsed_ms();
     tracing::debug!(
         parent: context.span,
+        endpoint,
+        readiness_timeout_ms,
         attempt,
         elapsed_ms,
         "Qdrant startup liveness validated",
     );
 }
 
-fn record_startup_liveness_success_metric(span: &Span) {
+fn record_startup_liveness_success_metric(context: StartupLivenessAttempt<'_>) {
+    let endpoint = context.endpoint;
+    let readiness_timeout_ms = context.readiness_timeout_ms();
     tracing::info!(
-        parent: span,
+        parent: context.span,
+        endpoint,
+        readiness_timeout_ms,
         "metric.qdrant_startup_liveness_success_total",
     );
 }
 
 fn record_startup_liveness_retry(context: StartupLivenessAttempt<'_>, error: &QdrantLivenessError) {
     record_startup_liveness_retry_log(context, error);
-    record_startup_liveness_retry_metric(context);
+    record_startup_liveness_retry_metric(context, error);
 }
 
 fn record_startup_liveness_retry_log(
@@ -174,21 +199,36 @@ fn record_startup_liveness_retry_log(
     error: &QdrantLivenessError,
 ) {
     let attempt = context.attempt;
+    let endpoint = context.endpoint;
+    let readiness_timeout_ms = context.readiness_timeout_ms();
     let elapsed_ms = context.elapsed_ms();
+    let error_category = qdrant_liveness_error_category(error);
     tracing::debug!(
         parent: context.span,
+        endpoint,
+        readiness_timeout_ms,
         attempt,
         elapsed_ms,
+        error_category,
         error = %error,
         "Qdrant liveness not ready; retrying",
     );
 }
 
-fn record_startup_liveness_retry_metric(context: StartupLivenessAttempt<'_>) {
+fn record_startup_liveness_retry_metric(
+    context: StartupLivenessAttempt<'_>,
+    error: &QdrantLivenessError,
+) {
     let attempt = context.attempt;
+    let endpoint = context.endpoint;
+    let readiness_timeout_ms = context.readiness_timeout_ms();
+    let error_category = qdrant_liveness_error_category(error);
     tracing::info!(
         parent: context.span,
+        endpoint,
+        readiness_timeout_ms,
         attempt,
+        error_category,
         "metric.qdrant_startup_liveness_retry_total",
     );
 }
@@ -197,10 +237,16 @@ fn record_startup_liveness_failure(
     context: StartupLivenessAttempt<'_>,
     error: &QdrantLivenessError,
 ) {
+    let endpoint = context.endpoint;
+    let readiness_timeout_ms = context.readiness_timeout_ms();
+    let error_category = qdrant_liveness_error_category(error);
     tracing::info!(
         parent: context.span,
+        endpoint,
+        readiness_timeout_ms,
         attempt = context.attempt,
         elapsed_ms = context.elapsed_ms(),
+        error_category,
         error = %error,
         "metric.qdrant_startup_liveness_failure_total",
     );
@@ -248,6 +294,24 @@ mod tests {
             "DEBUG",
             "elapsed_ms=",
             "retry log should include elapsed time",
+        )?;
+        repovec_test_helpers::ensure_log_line_contains(
+            &logs,
+            "DEBUG",
+            "endpoint=\"http://127.0.0.1:6334\"",
+            "retry log should include the Qdrant endpoint",
+        )?;
+        repovec_test_helpers::ensure_log_line_contains(
+            &logs,
+            "DEBUG",
+            "readiness_timeout_ms=50",
+            "retry log should include the readiness timeout",
+        )?;
+        repovec_test_helpers::ensure_log_line_contains(
+            &logs,
+            "DEBUG",
+            "error_category=\"grpc_unavailable\"",
+            "retry log should include the liveness error category",
         )?;
         repovec_test_helpers::ensure_log_line_contains(
             &logs,

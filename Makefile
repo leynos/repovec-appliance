@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie validate-systemd integration-test integration-command-test _check-python _check-integration-prereqs _check-command-test-prereqs
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie validate-systemd integration-test integration-command-test test-workflow-contracts _check-python _check-integration-prereqs _check-command-test-prereqs
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
@@ -114,6 +114,9 @@ integration-test: _check-integration-prereqs ## Run testcontainers-based provisi
 
 integration-command-test: _check-command-test-prereqs ## Run cmd-mox-based command-contract tests
 	cd $(INTEGRATION_TESTS_DIR) && "$(PYTHON)" -m pytest -m cmd_mox provisioning $(PYTEST_FLAGS)
+
+test-workflow-contracts: ## Validate the mutation-testing caller contract
+	uv run --with 'pytest>=8' --with 'pyyaml>=6' pytest tests/workflow_contracts -q
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \

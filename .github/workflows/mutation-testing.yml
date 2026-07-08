@@ -1,0 +1,33 @@
+name: Mutation testing
+
+# Thin caller of the shared mutation-testing reusable workflow; caller
+# guide: leynos/shared-actions docs/mutation-cargo-workflow.md.
+on:
+  schedule:
+    - cron: "5 11 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: mutation-testing-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mutation:
+    permissions:
+      contents: read
+      id-token: write # OIDC workflow-source resolution
+    uses: leynos/shared-actions/.github/workflows/mutation-cargo.yml@859416a90eb3987b46a57682c5d6b8964ad3f0a6
+    with:
+      # All Rust source lives in the cargo workspace under crates/; the
+      # integration-tests/ directory is a Python harness and is not a
+      # mutation target.
+      paths: "crates/"
+      # repovec-test-helpers is a dev-dependency fixture crate consumed
+      # only by other crates' tests; mutating it yields noise survivors.
+      exclude-globs: "crates/repovec-test-helpers/**"
+      # CI tests with --all-features across the whole workspace, and
+      # library crates are covered by dependent crates' tests, so run
+      # the full workspace suite against each mutant.
+      extra-args: "--all-features --test-workspace=true"

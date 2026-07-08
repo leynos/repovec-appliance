@@ -7,3 +7,7 @@ integration-tests/.venv/
 integration-tests/**/__pycache__/
 integration-tests/.pytest_cache/
 integration-tests/*.egg-info/
+
+# Workflow contract tests
+tests/**/__pycache__/
+.pytest_cache/

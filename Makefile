@@ -2,6 +2,7 @@
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
+WHITAKER ?= whitaker
 PYTHON ?= python3
 INTEGRATION_TESTS_DIR ?= integration-tests
 PYTEST_FLAGS ?=
@@ -49,14 +50,14 @@ test: ensure-cargo ## Run tests with warnings treated as errors
 		RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(CARGO) test --doc $(DOCTEST_FLAGS) $(BUILD_JOBS); \
 	fi
 
-lint: ensure-cargo ## Run Clippy with warnings denied
+lint: ensure-cargo ## Run Clippy and the Whitaker Dylint suite with warnings denied
 	RUSTDOCFLAGS="$(EFFECTIVE_RUSTDOC_FLAGS)" $(CARGO) doc --no-deps --workspace
 	$(CARGO) clippy --workspace $(CLIPPY_FLAGS)
 	$(MAKE) whitaker-lint
 
-whitaker-lint: ## Run Whitaker when available
-	@if command -v whitaker >/dev/null 2>&1; then \
-		RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" whitaker --all -- $(CARGO_FLAGS); \
+whitaker-lint: ## Run the Whitaker Dylint suite when available
+	@if command -v "$(WHITAKER)" >/dev/null 2>&1; then \
+		RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(WHITAKER) --all -- $(CARGO_FLAGS); \
 	else \
 		echo "whitaker not found on PATH; skipping whitaker lint. Install whitaker to run this check."; \
 	fi

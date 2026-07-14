@@ -89,7 +89,7 @@ def test_creates_repovec_system_user_when_absent(
 def test_creates_key_file_with_mode_0400_and_ownership_repovec(
     container_session: ContainerSession,
 ) -> None:
-    """The key file must materialise with the documented mode and ownership."""
+    """The key file must materialize with the documented mode and ownership."""
 
     precheck = container_session.run("test", "-e", KEY_FILE)
     assert not precheck.ok, "key file existed before the helper ran"
@@ -97,7 +97,7 @@ def test_creates_key_file_with_mode_0400_and_ownership_repovec(
     _run_helper(container_session)
 
     # ``assert_key_file_contract`` already validates the hex regex; the
-    # extra check exists here purely as a localised re-statement of the
+    # extra check exists here purely as a localized re-statement of the
     # contract. Use an ``if``-raised ``AssertionError`` (not a bare
     # ``assert <expr>, <expr>`` form) so neither pytest's rewriter nor
     # the failure message ever interpolates the captured key.
@@ -126,7 +126,7 @@ def test_creates_podman_secret_repovec_qdrant_api_key(
     _run_helper(container_session)
 
     secret_id = assert_podman_secret_exists(container_session)
-    # A non-empty ID proves the secret is fully materialised; an empty string
+    # A non-empty ID proves the secret is fully materialized; an empty string
     # back from ``podman secret inspect`` means the helper succeeded but the
     # secret entry is half-created.
     assert secret_id, f"podman secret {SECRET_NAME!r} returned an empty ID"

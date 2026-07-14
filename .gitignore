@@ -3,6 +3,7 @@ target/
 .agents/mcp/context_pack/packs/.repo.lock
 
 # Python integration-test harness
+__pycache__/
 integration-tests/.venv/
 integration-tests/**/__pycache__/
 integration-tests/.pytest_cache/
@@ -11,3 +12,7 @@ integration-tests/*.egg-info/
 # Workflow contract tests
 tests/**/__pycache__/
 .pytest_cache/
+.uv-cache/
+.uv-tools/
+.typos-oxendict-base.json
+.typos-oxendict-base.toml

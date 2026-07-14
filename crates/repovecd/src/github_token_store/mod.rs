@@ -145,7 +145,7 @@ where
     /// Loads and decrypts a token from disk.
     ///
     /// Reloaded tokens contain the persisted bearer secret only. Scope
-    /// information is not persisted because GitHub authorisation scope is
+    /// information is not persisted because GitHub authorization scope is
     /// discovered during the live login response and should be revalidated by
     /// callers that need it after process restart.
     ///

@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie validate-systemd integration-test integration-command-test test-workflow-contracts _check-python _check-integration-prereqs _check-command-test-prereqs
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie spelling spelling-config spelling-phrase-check spelling-helper-test validate-systemd integration-test integration-command-test test-workflow-contracts _check-python _check-integration-prereqs _check-command-test-prereqs
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
@@ -19,6 +19,25 @@ TEST_FLAGS ?= $(CARGO_FLAGS)
 DOCTEST_FLAGS ?= --workspace --all-features
 MDLINT ?= $(or $(shell command -v markdownlint-cli2 2>/dev/null),$(HOME)/.bun/bin/markdownlint-cli2)
 NIXIE ?= nixie
+UV ?= uv
+UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
+RUFF_VERSION ?= 0.15.12
+PATHSPEC_VERSION ?= 1.1.1
+TYPOS_VERSION ?= 1.48.0
+PYTEST_VERSION ?= 9.0.2
+PYTEST_COV_VERSION ?= 7.0.0
+TYPOS_CONFIG_BUILDER_COMMIT := d6da92f02240a79a945c835f69bdd08a888da1d0
+TYPOS_CONFIG_BUILDER_SOURCE := git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_COMMIT)
+TYPOS_CONFIG_BUILDER := $(UV_ENV) $(UV) tool run --python 3.14 \
+	--from "$(TYPOS_CONFIG_BUILDER_SOURCE)" typos-config-builder
+SPELLING_PY_SRCS := \
+	scripts/typos_rollout_check.py scripts/tests/test_typos_rollout_check.py
+SPELLING_PY_TESTS := scripts/tests/test_typos_rollout_check.py
+SPELLING_COVERAGE_ARGS := --cov=typos_rollout_check --cov-fail-under=90
+SPELLING_HELPER_PYTEST = PYTHONPATH=scripts $(UV_ENV) $(UV) run --no-project \
+	--python 3.14 --with pathspec==$(PATHSPEC_VERSION) \
+	--with pytest==$(PYTEST_VERSION) --with pytest-cov==$(PYTEST_COV_VERSION) \
+	python -m pytest
 
 ensure-cargo: ## Validate cargo toolchain is available for Rust targets
 	@if { command -v "$(CARGO)" >/dev/null 2>&1 || test -x "$(CARGO)"; } then \
@@ -34,9 +53,9 @@ build: ensure-cargo ## Build the entire workspace in debug mode
 release: ensure-cargo ## Build the entire workspace in release mode
 	$(CARGO) build --workspace --release $(BUILD_JOBS)
 
-all: check-fmt lint test ## Perform a comprehensive check of code
+all: check-fmt lint test spelling ## Perform a comprehensive check of code and prose
 
-clean: ensure-cargo ## Remove build artifacts
+clean: ensure-cargo ## Remove build artefacts
 	$(CARGO) clean
 
 test: ensure-cargo ## Run tests with warnings treated as errors
@@ -72,13 +91,29 @@ fmt: ensure-cargo ## Format Rust and Markdown sources
 check-fmt: ensure-cargo ## Verify formatting
 	$(CARGO) fmt --all -- --check
 
-markdownlint: ## Lint Markdown files
+markdownlint: spelling ## Lint Markdown files and enforce spelling
 	@if command -v "$(MDLINT)" >/dev/null 2>&1 || test -x "$(MDLINT)"; then \
 		$(MDLINT) '**/*.md'; \
 	else \
 		echo "markdownlint-cli2 executable not found; set MDLINT or install markdownlint-cli2 at $(HOME)/.bun/bin/markdownlint-cli2"; \
 		exit 1; \
 	fi
+
+spelling: spelling-phrase-check ## Enforce en-GB-oxendict spelling in Markdown prose
+	@git ls-files -z '*.md' | xargs -0 -r env $(UV_ENV) \
+		$(UV) tool run typos@$(TYPOS_VERSION) --config typos.toml --force-exclude
+
+spelling-phrase-check: spelling-config ## Reject prohibited spelling phrases
+	@PYTHONPATH=scripts $(UV_ENV) $(UV) run --no-project --python 3.14 scripts/typos_rollout_check.py --repository .
+
+spelling-config: spelling-helper-test ## Generate and verify the spelling configuration
+	@git ls-files --error-unmatch typos.toml >/dev/null
+	@$(TYPOS_CONFIG_BUILDER) --repository . --check
+
+spelling-helper-test: ## Validate the shared spelling-policy integration
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated --target-version py313 --check $(SPELLING_PY_SRCS)
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated --target-version py313 $(SPELLING_PY_SRCS)
+	@$(SPELLING_HELPER_PYTEST) $(SPELLING_PY_TESTS) -c /dev/null --rootdir=. -p no:cacheprovider $(SPELLING_COVERAGE_ARGS)
 
 docs-lint: ## Backwards-compatible docs lint target
 	$(MAKE) markdownlint

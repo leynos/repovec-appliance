@@ -1,0 +1,22 @@
+# Repository-specific formal names.
+
+schema = 1
+
+[oxford]
+stems = []
+
+[words]
+# Official name: the ratatui Rust crate.
+accepted = ["ratatui"]
+
+[words.corrections]
+
+[patterns]
+ignore = [
+  # Official documentation and product names across line wrapping.
+  'Azure Architecture\s+Center\s+\|\s+Microsoft Learn',
+  'GitHub\s+Flavored\s+Markdown',
+]
+
+[files]
+exclude = []

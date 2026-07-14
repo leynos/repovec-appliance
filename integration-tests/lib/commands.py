@@ -88,7 +88,7 @@ def run_host(
     env: Mapping[str, str] | None = None,
     cwd: str | os.PathLike[str] | None = None,
 ) -> CommandResult:
-    """Execute a curated host command via cuprum and normalise its result.
+    """Execute a curated host command via cuprum and normalize its result.
 
     Parameters
     ----------

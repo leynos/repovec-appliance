@@ -1,6 +1,6 @@
 //! Process entry point for the repovec control-plane daemon.
 //!
-//! This binary initialises the process-wide `tracing` subscriber, runs the
+//! This binary initializes the process-wide `tracing` subscriber, runs the
 //! shared systemd unit startup validation adapter from
 //! [`repovec_core::appliance::systemd_units`], and treats any contract
 //! violation as a fatal startup error. The substantive startup path lives in

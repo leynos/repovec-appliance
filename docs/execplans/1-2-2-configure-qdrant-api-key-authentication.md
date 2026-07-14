@@ -744,7 +744,7 @@ inspect the generated unit and Podman secret, fix the contract, and rerun the
 manual smoke test. Do not mark the roadmap item done until unauthenticated
 requests are rejected.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Primary local documents and code paths:
 

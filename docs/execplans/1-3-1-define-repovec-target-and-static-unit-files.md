@@ -524,7 +524,7 @@ If manual smoke validation installs files to `/etc/systemd/system`, use only a
 disposable host. Remove the copied files and run `systemctl daemon-reload` to
 return the host to its prior state.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Planning context was shared with the Wyvern team through context pack
 `pk_duyt3wbs`, named `repovec-1-3-1-systemd-plan`.

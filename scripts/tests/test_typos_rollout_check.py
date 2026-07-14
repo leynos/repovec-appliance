@@ -59,9 +59,14 @@ def test_load_policy_combines_phrase_and_generated_scan_policy(
     assert policy.phrase_corrections == (
         ("fit-for-purpose", "suitable"),
         (PROHIBITED, "handwritten"),
+    ), "shared and local phrase corrections should merge deterministically"
+    assert policy.ignore_patterns == (r"`[^`\n]+`",), (
+        "generated ignore patterns should load unchanged"
     )
-    assert policy.ignore_patterns == (r"`[^`\n]+`",)
-    assert policy.excluded_files == ("*.md", "!README.md")
+    assert policy.excluded_files == (
+        "*.md",
+        "!README.md",
+    ), "generated exclusion patterns should load unchanged"
 
     (tmp_path / ".typos-oxendict-base.toml").unlink()
     with pytest.raises(FileNotFoundError, match="docs/developers-guide.md"):
@@ -75,9 +80,11 @@ def test_checker_preserves_boundaries_masking_and_exclusions(
     initialize(
         tmp_path,
         {
-            "README.md": f"{PROHIBITED}\n{TITLE_PROHIBITED} prose\n`{PROHIBITED}`\n",
+            "README.md": (
+                f"{PROHIBITED}\n{TITLE_PROHIBITED} prose\n`{PROHIBITED}`\n"
+                f"pre-{PROHIBITED}\n"
+            ),
             "skip.md": f"{PROHIBITED}\n",
-            "joined.md": "pre-hand" + "-written\n",
             **policy_files(),
         },
     )
@@ -87,7 +94,7 @@ def test_checker_preserves_boundaries_masking_and_exclusions(
     assert [(item.line, item.phrase) for item in findings] == [
         (1, PROHIBITED),
         (2, TITLE_PROHIBITED),
-    ]
+    ], "only standalone, unmasked README phrases should be reported"
 
 
 def test_main_reports_location_and_exit_two(
@@ -101,5 +108,9 @@ def test_main_reports_location_and_exit_two(
         {"README.md": f"Prefer {PROHIBITED}.\n", **policy_files()},
     )
 
-    assert checker.main(["--repository", str(tmp_path)]) == 2
-    assert capsys.readouterr().out == (f"README.md:1:8: {PROHIBITED} -> handwritten\n")
+    assert checker.main(["--repository", str(tmp_path)]) == 2, (
+        "a prohibited phrase should produce exit status 2"
+    )
+    assert capsys.readouterr().out == (
+        f"README.md:1:8: {PROHIBITED} -> handwritten\n"
+    ), "the diagnostic should include the exact location and correction"

@@ -28,7 +28,21 @@ POLICY_PATHS = frozenset(
 
 @dataclass(frozen=True)
 class PhraseFinding:
-    """Describe one prohibited phrase in tracked text."""
+    """Describe one prohibited phrase in tracked text.
+
+    Attributes
+    ----------
+    path
+        Repository-relative path containing the phrase.
+    line
+        One-based line number of the finding.
+    column
+        One-based column number of the finding.
+    phrase
+        Original-case phrase found in the tracked text.
+    correction
+        Replacement required by the phrase policy.
+    """
 
     path: Path
     line: int
@@ -39,7 +53,17 @@ class PhraseFinding:
 
 @dataclass(frozen=True)
 class PhrasePolicy:
-    """Hold the effective policy needed by the consumer phrase scanner."""
+    """Hold the effective policy needed by the consumer phrase scanner.
+
+    Attributes
+    ----------
+    phrase_corrections
+        Sorted prohibited-phrase and replacement pairs.
+    ignore_patterns
+        Regular expressions for spans masked without changing positions.
+    excluded_files
+        Effective gitignore-style path exclusions.
+    """
 
     phrase_corrections: tuple[tuple[str, str], ...]
     ignore_patterns: tuple[str, ...]
@@ -77,7 +101,23 @@ def _phrases(document: dict[str, object]) -> dict[str, str]:
 
 
 def load_policy(repository: Path) -> PhrasePolicy:
-    """Load generated scan policy and shared phrase corrections."""
+    """Load generated scan policy and shared phrase corrections.
+
+    Parameters
+    ----------
+    repository
+        Repository whose generated and local policies should be loaded.
+
+    Returns
+    -------
+    PhrasePolicy
+        Effective phrase and tracked-file scan policy.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the shared Oxford dictionary cache is missing.
+    """
     generated = _document(repository / "typos.toml")
     shared_cache = repository / ".typos-oxendict-base.toml"
     if not shared_cache.is_file():
@@ -155,7 +195,20 @@ def _phrase_findings(
 def check_phrase_corrections(
     repository: Path, policy: PhrasePolicy
 ) -> tuple[PhraseFinding, ...]:
-    """Find prohibited exact phrases in tracked UTF-8 text."""
+    """Find prohibited exact phrases in tracked UTF-8 text.
+
+    Parameters
+    ----------
+    repository
+        Repository whose tracked text should be checked.
+    policy
+        Effective phrase and exclusion policy.
+
+    Returns
+    -------
+    tuple[PhraseFinding, ...]
+        Findings in deterministic tracked-path and phrase order.
+    """
     found = []
     exclusion_spec = _exclusion_spec(policy)
     for relative in _tracked(repository):
@@ -173,7 +226,18 @@ def check_phrase_corrections(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Report prohibited phrases and return the spelling-gate status."""
+    """Report prohibited phrases and return the spelling-gate status.
+
+    Parameters
+    ----------
+    argv
+        Optional command-line arguments, defaulting to the process arguments.
+
+    Returns
+    -------
+    int
+        Zero when the repository is clean, or two when findings are reported.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", type=Path, default=Path.cwd())
     repository = parser.parse_args(argv).repository

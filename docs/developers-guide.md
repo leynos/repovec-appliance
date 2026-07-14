@@ -7,7 +7,7 @@ describes the repository-level build, test, lint, and continuous integration
 ## Spelling policy
 
 Run `make spelling` to enforce en-GB-oxendict prose spelling. The generated
-`typos.toml` starts from the shared estate dictionary and applies the narrow
+`typos.toml` starts from the shared Oxford dictionary and applies the narrow
 repository policy in `typos.local.toml`. Edit the local policy, then run
 `make spelling-config` rather than changing generated entries by hand. The
 focused shared config builder refreshes its untracked dictionary cache only

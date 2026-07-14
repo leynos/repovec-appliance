@@ -22,7 +22,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
+        uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1
         with:
           python-version: '3.14'
           enable-cache: false
@@ -110,7 +110,7 @@ jobs:
       - name: Lint
         run: make lint
       - name: Setup uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
+        uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1
         with:
           python-version: '3.13'
           enable-cache: true
@@ -193,7 +193,7 @@ jobs:
         if: >-
           steps.docs_gate_plan.outputs.docs_gate_required == 'true' ||
           steps.docs_gate_plan.outputs.nixie_required == 'true'
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
+        uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1
         with:
           python-version: '3.14'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6

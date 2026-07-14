@@ -1,4 +1,4 @@
-//! Property-based tests for parser tokenisation and redaction invariants.
+//! Property-based tests for parser tokenization and redaction invariants.
 
 use proptest::prelude::*;
 

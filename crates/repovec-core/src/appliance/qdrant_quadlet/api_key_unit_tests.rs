@@ -1,4 +1,4 @@
-//! Fixed-case tests for API-key environment assignment tokenisation.
+//! Fixed-case tests for API-key environment assignment tokenization.
 
 use rstest::rstest;
 

@@ -111,7 +111,7 @@ podman run --rm --privileged repovec-integration-tests \
 | ---------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `test_invokes_useradd_when_repovec_user_is_absent`               | `useradd` is invoked with the documented system-user arguments.    |
 | `test_skips_useradd_when_repovec_user_exists`                    | `useradd` is not invoked when `getent` reports the user.           |
-| `test_generates_key_when_key_file_is_absent`                     | `chown`/`chmod`/`mv` materialise a fresh key with `0400`/owner.    |
+| `test_generates_key_when_key_file_is_absent`                     | `chown`/`chmod`/`mv` materialize a fresh key with `0400`/owner.    |
 | `test_creates_or_refreshes_podman_secret_from_key_file`          | `podman secret rm` precedes `podman secret create`.                |
 | `test_does_not_regenerate_valid_existing_key`                    | A valid 64-hex key survives a rerun with mtime unchanged.          |
 

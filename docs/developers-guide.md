@@ -4,6 +4,16 @@ This guide is for maintainers and contributors working on repovec-appliance. It
 describes the repository-level build, test, lint, and continuous integration
 (CI) workflow that must remain true as the project evolves.
 
+## Spelling policy
+
+Run `make spelling` to enforce en-GB-oxendict prose spelling. The generated
+`typos.toml` starts from the shared estate dictionary and applies the narrow
+repository policy in `typos.local.toml`. Edit the local policy, then run
+`make spelling-config` rather than changing generated entries by hand. The
+focused shared config builder refreshes its untracked dictionary cache only
+when the authoritative copy is newer. The consumer checker enforces exact
+phrase corrections that the token-based Typos scanner cannot represent.
+
 ## Normative references
 
 - [Documentation contents](contents.md) if present
@@ -24,6 +34,8 @@ set -o pipefail
 make lint 2>&1 | tee /tmp/repovec-make-lint.log
 set -o pipefail
 make test 2>&1 | tee /tmp/repovec-make-test.log
+set -o pipefail
+make spelling 2>&1 | tee /tmp/repovec-make-spelling.log
 ```
 
 When a change touches Markdown or documentation-tooling configuration, also run:
@@ -59,8 +71,9 @@ for the full prerequisite and execution contract.
 
 ## 2. GitHub Actions gate set
 
-The repository CI workflow exposes six stable, required job names:
+The repository CI workflow exposes seven stable, required job names:
 
+- `spelling`
 - `build`
 - `check-fmt`
 - `lint`
@@ -68,7 +81,7 @@ The repository CI workflow exposes six stable, required job names:
 - `docs-gate`
 - `systemd-gate`
 
-The first four jobs run on pull request updates, pushes to `main`, and manual
+The first five jobs run on pull request updates, pushes to `main`, and manual
 workflow dispatch.
 
 `docs-gate` always reports a result so it can be configured as a required

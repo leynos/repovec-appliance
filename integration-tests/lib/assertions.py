@@ -122,7 +122,7 @@ def assert_key_file_contract(session: ContainerSession) -> str:
     """
 
     stat = stat_file(session, KEY_FILE)
-    # ``stat -c %a`` may emit ``400`` or ``0400`` depending on libc; normalise.
+    # ``stat -c %a`` may emit ``400`` or ``0400`` depending on libc; normalize.
     assert stat.mode.zfill(4) == KEY_FILE_MODE, stat
     assert stat.user == REPOVEC_USER, stat
     assert stat.group == REPOVEC_GROUP, stat

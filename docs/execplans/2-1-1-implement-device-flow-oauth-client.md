@@ -659,7 +659,7 @@ Rollback is normal Git rollback. Because commits are milestone-sized, revert
 the most recent milestone commit if a later gate or review uncovers a design
 problem.
 
-## Artifacts and notes
+## Artefacts and notes
 
 External research used for this draft:
 

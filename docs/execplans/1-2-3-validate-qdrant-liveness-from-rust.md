@@ -661,7 +661,7 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   invariant deserves property coverage, so property tests are warranted for
   this small but security-relevant validation boundary.
 - `cap-std` was already present in the repository through `repovec-ci`, but not
-  centralised in `[workspace.dependencies]`. Milestone 2 moved that existing
+  centralized in `[workspace.dependencies]`. Milestone 2 moved that existing
   dependency into the workspace table and reused it from `repovec-core` so
   API-key file loading follows the repository's capability-oriented filesystem
   convention.

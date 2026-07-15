@@ -179,11 +179,9 @@ fn record_startup_liveness_success_log(context: StartupLivenessAttempt<'_>) {
 }
 
 fn record_startup_liveness_success_metric(context: StartupLivenessAttempt<'_>) {
-    let endpoint = context.endpoint;
     let readiness_timeout_ms = context.readiness_timeout_ms();
     tracing::info!(
         parent: context.span,
-        endpoint,
         readiness_timeout_ms,
         "metric.qdrant_startup_liveness_success_total",
     );
@@ -220,12 +218,10 @@ fn record_startup_liveness_retry_metric(
     error: &QdrantLivenessError,
 ) {
     let attempt = context.attempt;
-    let endpoint = context.endpoint;
     let readiness_timeout_ms = context.readiness_timeout_ms();
     let error_category = qdrant_liveness_error_category(error);
     tracing::info!(
         parent: context.span,
-        endpoint,
         readiness_timeout_ms,
         attempt,
         error_category,
@@ -237,12 +233,10 @@ fn record_startup_liveness_failure(
     context: StartupLivenessAttempt<'_>,
     error: &QdrantLivenessError,
 ) {
-    let endpoint = context.endpoint;
     let readiness_timeout_ms = context.readiness_timeout_ms();
     let error_category = qdrant_liveness_error_category(error);
     tracing::info!(
         parent: context.span,
-        endpoint,
         readiness_timeout_ms,
         attempt = context.attempt,
         elapsed_ms = context.elapsed_ms(),
@@ -318,6 +312,34 @@ mod tests {
             "INFO",
             "metric.qdrant_startup_liveness_retry_total",
             "retry should emit a bounded metric event",
+        )
+    }
+
+    #[test]
+    fn startup_liveness_success_logs_a_bounded_metric() -> Result<(), String> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect("test runtime should build");
+        let policy =
+            QdrantStartupLivenessPolicy::new(Duration::from_millis(50), Duration::from_millis(1));
+
+        let (result, logs) = repovec_test_helpers::capture_logs(|| {
+            runtime.block_on(super::wait_for_qdrant_startup_liveness(|| async { Ok(()) }, policy))
+        })?;
+
+        repovec_test_helpers::ensure(result.is_ok(), "successful liveness check should pass")?;
+        repovec_test_helpers::ensure_log_line_contains(
+            &logs,
+            "DEBUG",
+            "Qdrant startup liveness validated",
+            "success should emit a liveness log",
+        )?;
+        repovec_test_helpers::ensure_log_line_contains(
+            &logs,
+            "INFO",
+            "metric.qdrant_startup_liveness_success_total",
+            "success should emit a bounded metric event",
         )
     }
 

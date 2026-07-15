@@ -34,13 +34,21 @@ where
 }
 
 pub(super) fn read_api_key_file(path: &camino::Utf8Path) -> Result<String, QdrantLivenessError> {
-    let root = Dir::open_ambient_dir("/", ambient_authority()).map_err(|source| {
-        QdrantLivenessError::UnreadableApiKeyFile { path: path.to_path_buf(), source }
-    })?;
-    let relative_path = path.strip_prefix("/").unwrap_or(path);
+    let parent = path.parent().ok_or_else(|| invalid_api_key_path_error(path))?;
+    let filename = path.file_name().ok_or_else(|| invalid_api_key_path_error(path))?;
+    let directory = Dir::open_ambient_dir(parent, ambient_authority())
+        .map_err(|source| map_api_key_read_error(path.to_path_buf(), source))?;
 
-    root.read_to_string(relative_path)
+    directory
+        .read_to_string(filename)
         .map_err(|source| map_api_key_read_error(path.to_path_buf(), source))
+}
+
+fn invalid_api_key_path_error(path: &camino::Utf8Path) -> QdrantLivenessError {
+    QdrantLivenessError::UnreadableApiKeyFile {
+        path: path.to_path_buf(),
+        source: io::Error::new(io::ErrorKind::InvalidInput, "API-key path must name a file"),
+    }
 }
 
 fn map_api_key_read_error(path: Utf8PathBuf, source: io::Error) -> QdrantLivenessError {

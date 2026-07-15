@@ -10,6 +10,7 @@ use std::{
 
 use camino::Utf8PathBuf;
 use cap_std::{ambient_authority, fs_utf8::Dir};
+use qdrant_client::Qdrant;
 use repovec_core::appliance::qdrant_liveness::{
     QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport, check_qdrant_liveness,
 };
@@ -33,10 +34,23 @@ fn live_qdrant_accepts_the_configured_api_key() {
     let qdrant_container = QdrantContainer::start(container_name, TEST_API_KEY)
         .expect("Qdrant container should start");
     let config = config_for(&qdrant_container.endpoint, &api_key_file.path, PROBE_TIMEOUT);
+    let collections = block_on(async {
+        Qdrant::from_url(&qdrant_container.endpoint)
+            .api_key(TEST_API_KEY)
+            .skip_compatibility_check()
+            .build()
+            .map_err(|error| error.to_string())?
+            .list_collections()
+            .await
+            .map_err(|error| error.to_string())
+    })
+    .expect("Tokio runtime should list Qdrant collections")
+    .expect("configured API key should authenticate collection listing");
     let report = block_on(wait_for_qdrant_liveness(&config, STARTUP_TIMEOUT))
         .expect("Tokio runtime should run the liveness wait")
         .expect("Qdrant should become live with the configured API key");
 
+    assert!(collections.collections.is_empty());
     assert!(!report.version().is_empty());
 }
 

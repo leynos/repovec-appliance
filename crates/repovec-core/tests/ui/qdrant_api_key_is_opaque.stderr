@@ -1,0 +1,5 @@
+error[E0616]: field `0` of struct `QdrantApiKey` is private
+ --> tests/ui/qdrant_api_key_is_opaque.rs:7:23
+  |
+7 |     let _secret = key.0;
+  |                       ^ private field

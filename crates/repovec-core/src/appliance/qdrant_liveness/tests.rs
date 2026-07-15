@@ -12,7 +12,8 @@ use qdrant_client::qdrant::HealthCheckReply;
 use rstest::rstest;
 
 use super::{
-    QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport,
+    DEFAULT_QDRANT_LIVENESS_TIMEOUT, QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError,
+    QdrantLivenessReport,
     adapter::{
         build_qdrant_client, is_authentication_failure_code, is_authentication_failure_status,
     },
@@ -273,8 +274,35 @@ fn default_config_matches_appliance_contract() {
 
     assert_eq!(config.endpoint(), TEST_QDRANT_ENDPOINT);
     assert_eq!(config.api_key_path().as_str(), "/etc/repovec/qdrant-api-key");
+    assert_eq!(config.timeout(), DEFAULT_QDRANT_LIVENESS_TIMEOUT);
 }
 
+#[test]
+fn liveness_success_observability_uses_a_bounded_metric() -> Result<(), String> {
+    let config = QdrantLivenessConfig::new(
+        TEST_QDRANT_ENDPOINT,
+        Utf8PathBuf::from("/tmp/repovec-qdrant-key"),
+        Duration::from_millis(7),
+    );
+    let result = Ok(QdrantLivenessReport::new("qdrant", "1.15.0", None::<String>));
+    let ((), logs) = repovec_test_helpers::capture_logs(|| {
+        let span = super::observability::qdrant_liveness_span(&config);
+        super::observability::record_qdrant_liveness_result(&span, &config, &result);
+    })?;
+
+    repovec_test_helpers::ensure_log_line_contains(
+        &logs,
+        "DEBUG",
+        "endpoint=\"http://127.0.0.1:6334\"",
+        "success log should include the Qdrant endpoint",
+    )?;
+    repovec_test_helpers::ensure_log_line_contains(
+        &logs,
+        "INFO",
+        "metric.qdrant_liveness_success_total",
+        "success should emit a metric event",
+    )
+}
 #[test]
 fn liveness_failure_observability_includes_probe_context() -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()

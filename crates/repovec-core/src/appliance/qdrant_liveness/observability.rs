@@ -29,7 +29,7 @@ fn record_qdrant_liveness_success(
     report: &QdrantLivenessReport,
 ) {
     record_qdrant_liveness_success_log(span, config, report);
-    record_qdrant_liveness_success_metric(span, config);
+    record_qdrant_liveness_success_metric(span);
 }
 
 fn record_qdrant_liveness_success_log(
@@ -49,13 +49,9 @@ fn record_qdrant_liveness_success_log(
     );
 }
 
-fn record_qdrant_liveness_success_metric(span: &Span, config: &QdrantLivenessConfig) {
-    let endpoint = config.endpoint();
-    let timeout_ms = config.timeout().as_millis();
+fn record_qdrant_liveness_success_metric(span: &Span) {
     tracing::info!(
         parent: span,
-        endpoint,
-        timeout_ms,
         "metric.qdrant_liveness_success_total",
     );
 }
@@ -66,7 +62,7 @@ fn record_qdrant_liveness_failure(
     error: &QdrantLivenessError,
 ) {
     record_qdrant_liveness_failure_log(span, config, error);
-    record_qdrant_liveness_failure_metric(span, config, error);
+    record_qdrant_liveness_failure_metric(span, error);
 }
 
 fn record_qdrant_liveness_failure_log(
@@ -87,18 +83,10 @@ fn record_qdrant_liveness_failure_log(
     );
 }
 
-fn record_qdrant_liveness_failure_metric(
-    span: &Span,
-    config: &QdrantLivenessConfig,
-    error: &QdrantLivenessError,
-) {
-    let endpoint = config.endpoint();
-    let timeout_ms = config.timeout().as_millis();
+fn record_qdrant_liveness_failure_metric(span: &Span, error: &QdrantLivenessError) {
     let error_category = qdrant_liveness_error_category(error);
     tracing::info!(
         parent: span,
-        endpoint,
-        timeout_ms,
         error_category,
         "metric.qdrant_liveness_failure_total",
     );

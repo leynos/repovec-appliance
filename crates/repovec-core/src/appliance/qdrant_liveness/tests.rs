@@ -13,8 +13,10 @@ use rstest::rstest;
 
 use super::{
     QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport,
-    build_qdrant_client, check_qdrant_liveness, is_authentication_failure_code,
-    is_authentication_failure_status, load_qdrant_api_key,
+    adapter::{
+        build_qdrant_client, is_authentication_failure_code, is_authentication_failure_status,
+    },
+    check_qdrant_liveness, load_qdrant_api_key,
 };
 
 const TEST_QDRANT_ENDPOINT: &str = "http://127.0.0.1:6334";

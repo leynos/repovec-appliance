@@ -49,6 +49,14 @@ impl Error for DaemonStartupError {
 
 /// Runs the shared daemon startup contract and maps failures to exit codes.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use repovec_core::appliance::daemon_startup::run_daemon_startup;
+///
+/// assert_eq!(run_daemon_startup(), Ok(()));
+/// ```
+///
 /// # Errors
 ///
 /// Returns the daemon startup failure exit code when a startup contract fails.
@@ -57,6 +65,14 @@ pub fn run_daemon_startup() -> Result<(), i32> {
 }
 
 /// Validates checked-in systemd units and default Qdrant liveness.
+///
+/// # Examples
+///
+/// ```no_run
+/// use repovec_core::appliance::daemon_startup::validate_daemon_startup_contracts;
+///
+/// assert!(validate_daemon_startup_contracts().is_ok());
+/// ```
 ///
 /// # Errors
 ///
@@ -73,6 +89,22 @@ pub fn validate_daemon_startup_contracts() -> Result<(), DaemonStartupError> {
 ///
 /// This is the shared test seam for daemon binaries. Production callers should
 /// use [`validate_daemon_startup_contracts`].
+///
+/// # Examples
+///
+/// ```no_run
+/// use repovec_core::appliance::{
+///     daemon_startup::validate_daemon_startup_contracts_with,
+///     qdrant_liveness::QdrantLivenessError,
+///     systemd_units::SystemdUnitError,
+/// };
+///
+/// let result = validate_daemon_startup_contracts_with(
+///     || Ok::<(), SystemdUnitError>(()),
+///     || async { Ok::<(), QdrantLivenessError>(()) },
+/// );
+/// assert!(result.is_ok());
+/// ```
 ///
 /// # Errors
 ///
@@ -166,6 +198,8 @@ mod tests {
         cell::{Cell, RefCell},
         time::Duration,
     };
+
+    use rstest::rstest;
 
     use super::{
         DaemonStartupError, QdrantLivenessError, STARTUP_FAILURE_EXIT_CODE, SystemdUnitError,
@@ -298,11 +332,24 @@ mod tests {
         assert_eq!(attempts.get(), 2);
     }
 
-    #[test]
-    fn qdrant_liveness_fails_permanent_errors_immediately() {
-        for injected_error in permanent_qdrant_liveness_errors() {
-            assert_permanent_qdrant_error_fails_immediately(injected_error);
-        }
+    #[rstest]
+    #[case::authentication_failed(QdrantLivenessError::AuthenticationFailed)]
+    #[case::invalid_endpoint(QdrantLivenessError::InvalidEndpoint {
+        endpoint: String::from("not a uri"),
+    })]
+    #[case::missing_api_key_file(QdrantLivenessError::MissingApiKeyFile {
+        path: "/tmp/missing-qdrant-api-key".into(),
+    })]
+    #[case::unreadable_api_key_file(QdrantLivenessError::UnreadableApiKeyFile {
+        path: "/tmp/unreadable-qdrant-api-key".into(),
+        source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+    })]
+    #[case::empty_api_key(QdrantLivenessError::EmptyApiKey)]
+    #[case::invalid_api_key(QdrantLivenessError::InvalidApiKey)]
+    fn qdrant_liveness_fails_permanent_errors_immediately(
+        #[case] injected_error: QdrantLivenessError,
+    ) {
+        assert_permanent_qdrant_error_fails_immediately(injected_error);
     }
 
     fn run_startup_with_systemd_error(unit: &'static str) -> Result<(), i32> {
@@ -335,20 +382,6 @@ mod tests {
         };
         assert_eq!(startup_error.to_string(), expected_error);
         assert_eq!(attempts.get(), 1);
-    }
-
-    fn permanent_qdrant_liveness_errors() -> Vec<QdrantLivenessError> {
-        vec![
-            QdrantLivenessError::AuthenticationFailed,
-            QdrantLivenessError::InvalidEndpoint { endpoint: String::from("not a uri") },
-            QdrantLivenessError::MissingApiKeyFile { path: "/tmp/missing-qdrant-api-key".into() },
-            QdrantLivenessError::UnreadableApiKeyFile {
-                path: "/tmp/unreadable-qdrant-api-key".into(),
-                source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
-            },
-            QdrantLivenessError::EmptyApiKey,
-            QdrantLivenessError::InvalidApiKey,
-        ]
     }
 
     fn transient_qdrant_result(attempt: i32) -> Result<(), QdrantLivenessError> {

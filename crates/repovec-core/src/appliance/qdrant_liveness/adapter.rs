@@ -8,14 +8,13 @@ use qdrant_client::{Qdrant, QdrantError, qdrant::HealthCheckReply};
 
 use super::{
     DEFAULT_QDRANT_GRPC_ENDPOINT, QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError,
-    QdrantLivenessReport, load_qdrant_api_key,
+    QdrantLivenessReport,
 };
 
 pub(super) async fn check_qdrant_liveness_once(
     config: &QdrantLivenessConfig,
 ) -> Result<QdrantLivenessReport, QdrantLivenessError> {
-    let api_key = load_qdrant_api_key(config)?;
-    let client = build_qdrant_client(config, &api_key)?;
+    let client = build_qdrant_client(config, config.api_key())?;
 
     let reply = timed_probe(config.timeout(), client.health_check()).await?;
     timed_probe(config.timeout(), client.list_collections()).await?;

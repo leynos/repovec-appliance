@@ -17,10 +17,11 @@ use super::{
     adapter::{
         build_qdrant_client, is_authentication_failure_code, is_authentication_failure_status,
     },
-    check_qdrant_liveness, load_qdrant_api_key,
+    load_qdrant_api_key,
 };
 
 const TEST_QDRANT_ENDPOINT: &str = "http://127.0.0.1:6334";
+const TEST_API_KEY: &str = "repovec-test-qdrant-api-key";
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -105,14 +106,8 @@ fn invalid_api_key_display_is_redacted() {
 fn load_qdrant_api_key_reads_configured_key_file() {
     let key_file =
         TempKeyFile::create("0123456789abcdef").expect("temporary key file should be created");
-    let config = QdrantLivenessConfig::new(
-        TEST_QDRANT_ENDPOINT,
-        key_file.path.clone(),
-        Duration::from_secs(1),
-    );
-
-    let key =
-        load_qdrant_api_key(&config).expect("configured API-key file should load successfully");
+    let key = load_qdrant_api_key(&key_file.path)
+        .expect("configured API-key file should load successfully");
 
     assert_eq!(key.as_secret(), "0123456789abcdef");
 }
@@ -120,10 +115,7 @@ fn load_qdrant_api_key_reads_configured_key_file() {
 #[test]
 fn load_qdrant_api_key_maps_missing_file() {
     let path = temp_root().join(unique_temp_dir_name()).join("missing-key");
-    let config =
-        QdrantLivenessConfig::new(TEST_QDRANT_ENDPOINT, path.clone(), Duration::from_secs(1));
-
-    let error = load_qdrant_api_key(&config).expect_err("missing key file should fail");
+    let error = load_qdrant_api_key(&path).expect_err("missing key file should fail");
 
     assert!(
         matches!(error, QdrantLivenessError::MissingApiKeyFile { path: error_path } if error_path == path)
@@ -138,13 +130,7 @@ fn load_qdrant_api_key_rejects_invalid_file_contents(
     #[case] expected_error: QdrantLivenessError,
 ) {
     let key_file = TempKeyFile::create(contents).expect("temporary key file should be created");
-    let config = QdrantLivenessConfig::new(
-        TEST_QDRANT_ENDPOINT,
-        key_file.path.clone(),
-        Duration::from_secs(1),
-    );
-
-    let error = load_qdrant_api_key(&config).expect_err("invalid API-key file should fail");
+    let error = load_qdrant_api_key(&key_file.path).expect_err("invalid API-key file should fail");
 
     assert_eq!(error.to_string(), expected_error.to_string());
     assert!(!error.to_string().contains("0123456789abcdef"));
@@ -152,10 +138,8 @@ fn load_qdrant_api_key_rejects_invalid_file_contents(
 
 #[test]
 fn load_qdrant_api_key_maps_unreadable_paths() {
-    let config =
-        QdrantLivenessConfig::new(TEST_QDRANT_ENDPOINT, temp_root(), Duration::from_secs(1));
-
-    let error = load_qdrant_api_key(&config).expect_err("directory path should be unreadable");
+    let error = load_qdrant_api_key(temp_root().as_path())
+        .expect_err("directory path should be unreadable");
 
     assert!(matches!(error, QdrantLivenessError::UnreadableApiKeyFile { .. }));
 }
@@ -163,13 +147,9 @@ fn load_qdrant_api_key_maps_unreadable_paths() {
 #[test]
 fn build_qdrant_client_maps_invalid_endpoint() {
     let key = QdrantApiKey::parse("0123456789abcdef").expect("valid API key should parse");
-    let config = QdrantLivenessConfig::new(
-        "not a uri",
-        Utf8PathBuf::from("/tmp/qdrant-api-key"),
-        Duration::from_secs(1),
-    );
+    let config = QdrantLivenessConfig::new("not a uri", key, Duration::from_secs(1));
 
-    let Err(error) = build_qdrant_client(&config, &key) else {
+    let Err(error) = build_qdrant_client(&config, config.api_key()) else {
         panic!("invalid endpoint should fail");
     };
 
@@ -269,11 +249,14 @@ fn liveness_report_exposes_server_metadata_without_commit() {
 }
 
 #[test]
-fn default_config_matches_appliance_contract() {
-    let config = QdrantLivenessConfig::default();
+fn in_memory_config_retains_endpoint_and_timeout_contract() {
+    let config = QdrantLivenessConfig::new(
+        TEST_QDRANT_ENDPOINT,
+        test_api_key().expect("test API key should be valid"),
+        DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+    );
 
     assert_eq!(config.endpoint(), TEST_QDRANT_ENDPOINT);
-    assert_eq!(config.api_key_path().as_str(), "/etc/repovec/qdrant-api-key");
     assert_eq!(config.timeout(), DEFAULT_QDRANT_LIVENESS_TIMEOUT);
 }
 
@@ -281,7 +264,7 @@ fn default_config_matches_appliance_contract() {
 fn liveness_success_observability_uses_a_bounded_metric() -> Result<(), String> {
     let config = QdrantLivenessConfig::new(
         TEST_QDRANT_ENDPOINT,
-        Utf8PathBuf::from("/tmp/repovec-qdrant-key"),
+        test_api_key().map_err(|error| error.to_string())?,
         Duration::from_millis(7),
     );
     let result = Ok(QdrantLivenessReport::new("qdrant", "1.15.0", None::<String>));
@@ -305,23 +288,20 @@ fn liveness_success_observability_uses_a_bounded_metric() -> Result<(), String> 
 }
 #[test]
 fn liveness_failure_observability_includes_probe_context() -> Result<(), String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_time()
-        .build()
-        .expect("test runtime should build");
     let config = QdrantLivenessConfig::new(
         TEST_QDRANT_ENDPOINT,
-        Utf8PathBuf::from("/tmp/repovec-missing-qdrant-key"),
+        test_api_key().map_err(|error| error.to_string())?,
         Duration::from_millis(7),
     );
+    let result = Err(QdrantLivenessError::MissingApiKeyFile {
+        path: Utf8PathBuf::from("/etc/repovec/qdrant-api-key"),
+    });
 
-    let (result, logs) =
-        repovec_test_helpers::capture_logs(|| runtime.block_on(check_qdrant_liveness(&config)))?;
+    let ((), logs) = repovec_test_helpers::capture_logs(|| {
+        let span = super::observability::qdrant_liveness_span(&config);
+        super::observability::record_qdrant_liveness_result(&span, &config, &result);
+    })?;
 
-    repovec_test_helpers::ensure(
-        matches!(result, Err(QdrantLivenessError::MissingApiKeyFile { .. })),
-        "missing API-key file should fail liveness",
-    )?;
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "DEBUG",
@@ -347,6 +327,8 @@ fn liveness_failure_observability_includes_probe_context() -> Result<(), String>
         "failure should emit a bounded metric event",
     )
 }
+
+fn test_api_key() -> Result<QdrantApiKey, QdrantLivenessError> { QdrantApiKey::parse(TEST_API_KEY) }
 
 #[test]
 fn qdrant_liveness_error_display_matches_contract() {

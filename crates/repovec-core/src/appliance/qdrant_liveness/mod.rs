@@ -8,8 +8,6 @@
 
 use std::{fmt, time::Duration};
 
-use camino::Utf8PathBuf;
-
 mod adapter;
 mod error;
 mod observability;
@@ -24,7 +22,7 @@ pub use startup::{QdrantStartupLivenessPolicy, wait_for_qdrant_startup_liveness}
 pub const DEFAULT_QDRANT_GRPC_ENDPOINT: &str = "http://127.0.0.1:6334";
 
 /// Location populated by the Qdrant API-key provisioning service.
-pub const DEFAULT_QDRANT_API_KEY_PATH: &str = "/etc/repovec/qdrant-api-key";
+pub(super) const DEFAULT_QDRANT_API_KEY_PATH: &str = "/etc/repovec/qdrant-api-key";
 
 /// Maximum time spent waiting for one Qdrant liveness probe by default.
 pub const DEFAULT_QDRANT_LIVENESS_TIMEOUT: Duration = Duration::from_secs(5);
@@ -35,17 +33,24 @@ pub const DEFAULT_QDRANT_LIVENESS_TIMEOUT: Duration = Duration::from_secs(5);
 ///
 /// ```no_run
 /// use repovec_core::appliance::qdrant_liveness::{
-///     DEFAULT_QDRANT_GRPC_ENDPOINT, QdrantLivenessConfig,
+///     DEFAULT_QDRANT_GRPC_ENDPOINT, DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+///     QdrantApiKey, QdrantLivenessConfig,
 /// };
 ///
-/// let config = QdrantLivenessConfig::default();
+/// let api_key = QdrantApiKey::parse("test-qdrant-api-key")?;
+/// let config = QdrantLivenessConfig::new(
+///     DEFAULT_QDRANT_GRPC_ENDPOINT,
+///     api_key,
+///     DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+/// );
 ///
 /// assert_eq!(config.endpoint(), DEFAULT_QDRANT_GRPC_ENDPOINT);
+/// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QdrantLivenessConfig {
     endpoint: String,
-    api_key_path: Utf8PathBuf,
+    api_key: QdrantApiKey,
     timeout: Duration,
 }
 
@@ -57,20 +62,51 @@ impl QdrantLivenessConfig {
     /// ```no_run
     /// use std::time::Duration;
     ///
-    /// use camino::Utf8PathBuf;
-    /// use repovec_core::appliance::qdrant_liveness::QdrantLivenessConfig;
+    /// use repovec_core::appliance::qdrant_liveness::{
+    ///     QdrantApiKey, QdrantLivenessConfig,
+    /// };
     ///
+    /// let api_key = QdrantApiKey::parse("test-qdrant-api-key")?;
     /// let config = QdrantLivenessConfig::new(
     ///     "http://127.0.0.1:6334",
-    ///     Utf8PathBuf::from("/tmp/qdrant-key"),
+    ///     api_key,
     ///     Duration::from_secs(2),
     /// );
     ///
     /// assert_eq!(config.timeout(), Duration::from_secs(2));
+    /// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
     /// ```
     #[must_use]
-    pub fn new(endpoint: impl Into<String>, api_key_path: Utf8PathBuf, timeout: Duration) -> Self {
-        Self { endpoint: endpoint.into(), api_key_path, timeout }
+    pub fn new(endpoint: impl Into<String>, api_key: QdrantApiKey, timeout: Duration) -> Self {
+        Self { endpoint: endpoint.into(), api_key, timeout }
+    }
+
+    /// Loads the provisioned appliance API key and returns its default probe configuration.
+    ///
+    /// This is the production constructor. It deliberately keeps appliance file
+    /// access inside the liveness adapter rather than exposing it to callers.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use repovec_core::appliance::qdrant_liveness::QdrantLivenessConfig;
+    ///
+    /// let config = QdrantLivenessConfig::for_appliance()?;
+    ///
+    /// assert_eq!(config.endpoint(), "http://127.0.0.1:6334");
+    /// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QdrantLivenessError`] when the provisioned key file is missing,
+    /// unreadable, empty, or unsuitable for gRPC metadata.
+    pub fn for_appliance() -> Result<Self, QdrantLivenessError> {
+        Self::from_api_key_file(
+            DEFAULT_QDRANT_GRPC_ENDPOINT,
+            camino::Utf8Path::new(DEFAULT_QDRANT_API_KEY_PATH),
+            DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+        )
     }
 
     /// Returns the Qdrant gRPC endpoint URI.
@@ -79,29 +115,21 @@ impl QdrantLivenessConfig {
     ///
     /// ```no_run
     /// use repovec_core::appliance::qdrant_liveness::{
-    ///     DEFAULT_QDRANT_GRPC_ENDPOINT, QdrantLivenessConfig,
+    ///     DEFAULT_QDRANT_GRPC_ENDPOINT, DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+    ///     QdrantApiKey, QdrantLivenessConfig,
     /// };
     ///
-    /// let config = QdrantLivenessConfig::default();
+    /// let config = QdrantLivenessConfig::new(
+    ///     DEFAULT_QDRANT_GRPC_ENDPOINT,
+    ///     QdrantApiKey::parse("test-qdrant-api-key")?,
+    ///     DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+    /// );
     ///
     /// assert_eq!(config.endpoint(), DEFAULT_QDRANT_GRPC_ENDPOINT);
+    /// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
     /// ```
     #[must_use]
     pub fn endpoint(&self) -> &str { &self.endpoint }
-
-    /// Returns the file path from which the API key is loaded.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use repovec_core::appliance::qdrant_liveness::QdrantLivenessConfig;
-    ///
-    /// let config = QdrantLivenessConfig::default();
-    ///
-    /// assert_eq!(config.api_key_path().as_str(), "/etc/repovec/qdrant-api-key");
-    /// ```
-    #[must_use]
-    pub fn api_key_path(&self) -> &camino::Utf8Path { self.api_key_path.as_path() }
 
     /// Returns the per-probe timeout.
     ///
@@ -109,24 +137,30 @@ impl QdrantLivenessConfig {
     ///
     /// ```no_run
     /// use repovec_core::appliance::qdrant_liveness::{
-    ///     DEFAULT_QDRANT_LIVENESS_TIMEOUT, QdrantLivenessConfig,
+    ///     DEFAULT_QDRANT_LIVENESS_TIMEOUT, QdrantApiKey, QdrantLivenessConfig,
     /// };
     ///
-    /// let config = QdrantLivenessConfig::default();
+    /// let config = QdrantLivenessConfig::new(
+    ///     "http://127.0.0.1:6334",
+    ///     QdrantApiKey::parse("test-qdrant-api-key")?,
+    ///     DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+    /// );
     ///
     /// assert_eq!(config.timeout(), DEFAULT_QDRANT_LIVENESS_TIMEOUT);
+    /// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
     /// ```
     #[must_use]
     pub const fn timeout(&self) -> Duration { self.timeout }
-}
 
-impl Default for QdrantLivenessConfig {
-    fn default() -> Self {
-        Self::new(
-            DEFAULT_QDRANT_GRPC_ENDPOINT,
-            Utf8PathBuf::from(DEFAULT_QDRANT_API_KEY_PATH),
-            DEFAULT_QDRANT_LIVENESS_TIMEOUT,
-        )
+    pub(super) const fn api_key(&self) -> &QdrantApiKey { &self.api_key }
+
+    pub(super) fn from_api_key_file(
+        endpoint: impl Into<String>,
+        api_key_path: &camino::Utf8Path,
+        timeout: Duration,
+    ) -> Result<Self, QdrantLivenessError> {
+        let api_key = load_qdrant_api_key(api_key_path)?;
+        Ok(Self::new(endpoint, api_key, timeout))
     }
 }
 
@@ -219,29 +253,10 @@ impl fmt::Debug for QdrantApiKey {
 
 const fn is_invalid_metadata_value_byte(byte: u8) -> bool { !matches!(byte, 0x20..=0x7e) }
 
-/// Loads and validates the Qdrant API key from the configured file path.
-///
-/// # Examples
-///
-/// ```no_run
-/// use repovec_core::appliance::qdrant_liveness::{
-///     QdrantLivenessConfig, load_qdrant_api_key,
-/// };
-///
-/// let key = load_qdrant_api_key(&QdrantLivenessConfig::default())?;
-///
-/// assert!(format!("{key:?}").contains("<redacted>"));
-/// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
-/// ```
-///
-/// # Errors
-///
-/// Returns [`QdrantLivenessError`] when the configured key file is missing,
-/// unreadable, empty, or unsuitable for gRPC metadata.
-pub fn load_qdrant_api_key(
-    config: &QdrantLivenessConfig,
+pub(super) fn load_qdrant_api_key(
+    path: &camino::Utf8Path,
 ) -> Result<QdrantApiKey, QdrantLivenessError> {
-    let contents = adapter::read_api_key_file(config.api_key_path())?;
+    let contents = adapter::read_api_key_file(path)?;
     QdrantApiKey::parse(contents)
 }
 
@@ -256,7 +271,8 @@ pub fn load_qdrant_api_key(
 ///     QdrantLivenessConfig, check_qdrant_liveness,
 /// };
 ///
-/// let report = check_qdrant_liveness(&QdrantLivenessConfig::default()).await?;
+/// let config = QdrantLivenessConfig::for_appliance()?;
+/// let report = check_qdrant_liveness(&config).await?;
 ///
 /// assert!(!report.version().is_empty());
 /// # Ok(())

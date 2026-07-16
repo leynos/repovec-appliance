@@ -476,10 +476,14 @@ The liveness policy performs two gRPC operations:
 
 The second operation is required because live integration testing showed that
 Qdrant's gRPC health endpoint can answer even when the supplied API key is
-wrong. `repovecd` and `repovec-mcpd` both run this liveness check at startup
-after validating the checked-in systemd unit contract. A failed liveness check
-is fatal and causes the daemon to exit with status `1`, leaving systemd to
-report a failed service and apply its normal restart policy.
+wrong. `repovec_core::appliance::daemon_startup` owns startup composition: it
+validates checked-in systemd-unit contracts first, then establishes
+authenticated Qdrant liveness. `repovecd` and `repovec-mcpd` are thin
+delegates to that shared boundary. A failed liveness check is fatal and causes
+the daemon to exit with status `1`, leaving systemd to report a failed service
+and apply its normal restart policy. Its unit tests inject the liveness closure
+to exercise ordering and failure mapping, while the ignored Podman integration
+test verifies the network and authentication boundary.
 
 ### Validation telemetry boundary
 

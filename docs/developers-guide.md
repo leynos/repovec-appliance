@@ -368,12 +368,10 @@ that those assets expose.
 The `qdrant_liveness` module exposes the public runtime validation surface for
 the local Qdrant service:
 
-- `QdrantLivenessConfig` carries the gRPC endpoint, API-key file path, and
-  timeout. The appliance defaults are `http://127.0.0.1:6334`,
-  `/etc/repovec/qdrant-api-key`, and a short bounded probe timeout.
-- `load_qdrant_api_key(...) -> Result<QdrantApiKey, QdrantLivenessError>`
-  reads and validates raw key material without logging or returning the secret
-  value.
+- `QdrantLivenessConfig` carries the gRPC endpoint, validated API-key material,
+  and timeout. `for_appliance()` reads the fixed
+  provisioned path internally; `new(...)` is the deliberate in-memory seam for
+  tests and integration callers that supply validated key material.
 - `check_qdrant_liveness(config).await -> Result<QdrantLivenessReport, QdrantLivenessError>`
   connects to Qdrant over gRPC with the stored key and returns non-secret
   server metadata when Qdrant is ready.
@@ -387,13 +385,14 @@ The liveness policy currently requires both `health_check()` and an
 authenticated, read-only `list_collections()` request because the health
 endpoint alone does not prove API-key validity.
 
-Daemon binaries call `check_qdrant_liveness()` at startup through injectable
-helpers. Unit tests for those binaries must inject async success and failure
-closures rather than opening sockets. This keeps daemon tests focused on
-startup orchestration, exit-code mapping, and structured logging while the
-live Qdrant integration test proves the real network and authentication
-contract in `repovec-core`. The live Qdrant integration test is
-ignored by default and can be run explicitly on a host with Podman:
+`repovec_core::appliance::daemon_startup` is the composition layer. It first
+validates checked-in systemd-unit contracts, then establishes authenticated
+Qdrant startup liveness. Both daemon binaries are thin delegates to that
+shared process boundary. Unit tests inject the liveness closure so they can
+prove ordering, retry policy, exit-code mapping, and structured logging without
+opening sockets; the ignored Podman integration test covers the real network
+and authentication boundary. Run that integration test explicitly on a host
+with Podman:
 
 ```sh
 cargo test -p repovec-core --test qdrant_liveness_integration -- --ignored

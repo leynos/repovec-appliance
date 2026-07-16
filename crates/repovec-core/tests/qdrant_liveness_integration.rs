@@ -8,11 +8,10 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use camino::Utf8PathBuf;
-use cap_std::{ambient_authority, fs_utf8::Dir};
 use qdrant_client::Qdrant;
 use repovec_core::appliance::qdrant_liveness::{
-    QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport, check_qdrant_liveness,
+    QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport,
+    check_qdrant_liveness,
 };
 
 const QDRANT_IMAGE: &str = "docker.io/qdrant/qdrant:v1.18.1";
@@ -29,14 +28,16 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[ignore = "requires Podman and network access"]
 fn live_qdrant_accepts_the_configured_api_key() {
     let container_name = container_name();
-    let api_key_file =
-        TemporaryApiKeyFile::create(TEST_API_KEY).expect("API-key file should be created");
     let qdrant_container = QdrantContainer::start(container_name, TEST_API_KEY)
         .expect("Qdrant container should start");
-    let config = config_for(&qdrant_container.endpoint, &api_key_file.path, PROBE_TIMEOUT);
-    let report = block_on(wait_for_qdrant_liveness(&config, STARTUP_TIMEOUT))
+    let config = config_for(&qdrant_container.endpoint, TEST_API_KEY, PROBE_TIMEOUT)
+        .expect("integration config should build");
+    block_on(wait_for_qdrant_liveness(&config, STARTUP_TIMEOUT))
         .expect("Tokio runtime should run the liveness wait")
         .expect("Qdrant should become live with the configured API key");
+    let report = block_on(check_qdrant_liveness(&config))
+        .expect("Tokio runtime should run the direct liveness check")
+        .expect("direct liveness check should succeed after readiness");
     let collections = block_on(async {
         Qdrant::from_url(&qdrant_container.endpoint)
             .api_key(TEST_API_KEY)
@@ -58,20 +59,16 @@ fn live_qdrant_accepts_the_configured_api_key() {
 #[ignore = "requires Podman and network access"]
 fn live_qdrant_rejects_a_wrong_api_key() {
     let container_name = container_name();
-    let wrong_api_key_file =
-        TemporaryApiKeyFile::create(WRONG_API_KEY).expect("wrong API-key file should be created");
     let qdrant_container = QdrantContainer::start(container_name, TEST_API_KEY)
         .expect("Qdrant container should start");
-    let correct_api_key_file =
-        TemporaryApiKeyFile::create(TEST_API_KEY).expect("correct API-key file should be created");
-    let ready_config =
-        config_for(&qdrant_container.endpoint, &correct_api_key_file.path, PROBE_TIMEOUT);
+    let ready_config = config_for(&qdrant_container.endpoint, TEST_API_KEY, PROBE_TIMEOUT)
+        .expect("integration readiness config should build");
     block_on(wait_for_qdrant_liveness(&ready_config, STARTUP_TIMEOUT))
         .expect("Tokio runtime should run the readiness wait")
         .expect("Qdrant should become live before testing authentication failure");
 
-    let wrong_config =
-        config_for(&qdrant_container.endpoint, &wrong_api_key_file.path, PROBE_TIMEOUT);
+    let wrong_config = config_for(&qdrant_container.endpoint, WRONG_API_KEY, PROBE_TIMEOUT)
+        .expect("wrong-key integration config should build");
     let error = block_on(check_qdrant_liveness(&wrong_config))
         .expect("Tokio runtime should run the wrong-key liveness check")
         .expect_err("wrong API key should be rejected");
@@ -85,9 +82,8 @@ fn live_qdrant_rejects_a_wrong_api_key() {
 #[test]
 #[ignore = "requires explicit live Qdrant integration run"]
 fn liveness_fails_when_the_service_port_is_closed() {
-    let api_key_file =
-        TemporaryApiKeyFile::create(TEST_API_KEY).expect("API-key file should be created");
-    let config = config_for("http://127.0.0.1:9", &api_key_file.path, Duration::from_millis(500));
+    let config = config_for("http://127.0.0.1:9", TEST_API_KEY, Duration::from_millis(500))
+        .expect("closed-port integration config should build");
     let error = block_on(check_qdrant_liveness(&config))
         .expect("Tokio runtime should run the closed-port liveness check")
         .expect_err("closed port should fail liveness");
@@ -98,9 +94,8 @@ fn liveness_fails_when_the_service_port_is_closed() {
 #[test]
 #[ignore = "requires explicit live Qdrant integration run"]
 fn waiting_for_qdrant_liveness_times_out() {
-    let api_key_file =
-        TemporaryApiKeyFile::create(TEST_API_KEY).expect("API-key file should be created");
-    let config = config_for("http://127.0.0.1:9", &api_key_file.path, Duration::from_millis(50));
+    let config = config_for("http://127.0.0.1:9", TEST_API_KEY, Duration::from_millis(50))
+        .expect("timeout integration config should build");
     let error = block_on(wait_for_qdrant_liveness(&config, Duration::from_millis(75)))
         .expect("Tokio runtime should run the readiness timeout check")
         .expect_err("readiness wait should time out");
@@ -135,10 +130,13 @@ const fn wait_timeout_error(timeout: Duration) -> QdrantLivenessError {
 
 fn config_for(
     endpoint: &str,
-    api_key_path: &camino::Utf8Path,
+    raw_api_key: &str,
     timeout: Duration,
-) -> QdrantLivenessConfig {
-    QdrantLivenessConfig::new(endpoint, api_key_path.to_path_buf(), timeout)
+) -> Result<QdrantLivenessConfig, String> {
+    let api_key = QdrantApiKey::parse(raw_api_key)
+        .map_err(|error| format!("integration API key should be valid: {error}"))?;
+
+    Ok(QdrantLivenessConfig::new(endpoint, api_key, timeout))
 }
 
 fn container_name() -> String { format!("repovec-qdrant-liveness-{}", unique_suffix()) }
@@ -236,54 +234,6 @@ fn assert_success(command: &str, output: &Output) -> Result<(), String> {
             String::from_utf8_lossy(&output.stderr)
         ))
     }
-}
-
-struct TemporaryApiKeyFile {
-    directory: Utf8PathBuf,
-    filename: String,
-    path: Utf8PathBuf,
-}
-
-impl TemporaryApiKeyFile {
-    fn create(api_key: &str) -> Result<Self, String> {
-        let directory = temp_directory()?;
-        let filename = format!("repovec-qdrant-api-key-{}", unique_suffix());
-        let path = directory.join(&filename);
-        let dir = match Dir::open_ambient_dir(&directory, ambient_authority()) {
-            Ok(dir) => dir,
-            Err(error) => return Err(format!("temporary directory should open: {error}")),
-        };
-
-        if let Err(error) = dir.write(&filename, api_key) {
-            return Err(format!("temporary API-key file should be written: {error}"));
-        }
-
-        Ok(Self { directory, filename, path })
-    }
-}
-
-impl Drop for TemporaryApiKeyFile {
-    fn drop(&mut self) {
-        match Dir::open_ambient_dir(&self.directory, ambient_authority()) {
-            Ok(dir) => {
-                if let Err(error) = dir.remove_file(&self.filename) {
-                    write_cleanup_warning(format_args!(
-                        "failed to remove temporary Qdrant API-key file {}: {error}",
-                        self.path
-                    ));
-                }
-            }
-            Err(error) => write_cleanup_warning(format_args!(
-                "failed to open temporary directory {} for cleanup of {}: {error}",
-                self.directory, self.filename
-            )),
-        }
-    }
-}
-
-fn temp_directory() -> Result<Utf8PathBuf, String> {
-    Utf8PathBuf::from_path_buf(std::env::temp_dir())
-        .map_err(|path| format!("temporary directory path is not UTF-8: {}", path.display()))
 }
 
 fn log_cleanup_result(command: &str, subject: &str, cleanup_result: std::io::Result<Output>) {

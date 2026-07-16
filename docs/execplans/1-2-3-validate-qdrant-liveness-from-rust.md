@@ -210,9 +210,9 @@ distinct responsibilities.
 
 Define small public types:
 
-- `QdrantLivenessConfig`, carrying the endpoint, API-key file path and timeout
-  policy. The default endpoint is `http://127.0.0.1:6334`, and the default key
-  path is `/etc/repovec/qdrant-api-key`.
+- `QdrantLivenessConfig`, carrying the endpoint, validated API-key material,
+  and timeout policy. `for_appliance()` loads the fixed provisioned key path
+  internally, while `new(...)` remains the explicit in-memory test seam.
 - `QdrantLivenessReport`, carrying the positive readiness evidence returned by
   Qdrant, such as title, version and optional commit. Do not store the key.
 - `QdrantLivenessError`, a semantic error enum covering missing key file,
@@ -791,7 +791,6 @@ The final public API lives in
 - `QdrantApiKey`
 - `QdrantLivenessReport`
 - `QdrantLivenessError`
-- `load_qdrant_api_key(...)`
 - `check_qdrant_liveness(...)`
 
 The implementation uses `qdrant-client` `1.18.0` with default features

@@ -384,7 +384,7 @@ the local Qdrant service:
 Keep this module split from `qdrant_quadlet`. `qdrant_quadlet` validates static
 Quadlet text; `qdrant_liveness` performs runtime filesystem and network I/O.
 The liveness policy currently requires both `health_check()` and an
-authenticated read-only `list_collections()` request, because the health
+authenticated, read-only `list_collections()` request because the health
 endpoint alone does not prove API-key validity.
 
 Daemon binaries call `check_qdrant_liveness()` at startup through injectable
@@ -549,7 +549,7 @@ The `repovec-test-helpers` crate owns the shared daemon startup test harness
 used by `repovec-core`, `repovecd`, and `repovec-mcpd`. It exposes a generic
 `capture_logs(action)` helper that captures formatted `tracing` output in
 memory for the duration of an injected closure, plus the `ensure` and
-`ensure_log_line_contains` assertion primitives. On top of these it provides
+`ensure_log_line_contains` assertion primitives. On top of these, it provides
 the binary-facing `assert_startup_*` wrappers that the daemon crates call.
 
 Use the `assert_startup_*` wrappers for binary-level daemon startup tests
@@ -557,7 +557,7 @@ whenever the behaviour is the same across daemons and only the unit name
 differs. Keep unit tests for `run_startup_validation()` itself in
 `repovec-core`; those tests reuse `capture_logs` (via a dev-dependency on
 `repovec-test-helpers`) and should assert the core adapter emits the expected
-`TRACE`, `DEBUG`, and `ERROR` events so the logging contract cannot disappear
+`TRACE`, `DEBUG`, and `ERROR` events, so the logging contract cannot disappear
 while return-code tests still pass.
 
 Snapshot helpers in `repovec-test-helpers` are behind its `snapshots` feature

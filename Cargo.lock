@@ -2423,8 +2423,6 @@ version = "0.1.0"
 dependencies = [
  "repovec-core",
  "repovec-test-helpers",
- "tokio",
- "tracing",
  "tracing-subscriber",
 ]
 

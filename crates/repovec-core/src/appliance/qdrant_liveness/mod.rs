@@ -74,14 +74,48 @@ impl QdrantLivenessConfig {
     }
 
     /// Returns the Qdrant gRPC endpoint URI.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use repovec_core::appliance::qdrant_liveness::{
+    ///     DEFAULT_QDRANT_GRPC_ENDPOINT, QdrantLivenessConfig,
+    /// };
+    ///
+    /// let config = QdrantLivenessConfig::default();
+    ///
+    /// assert_eq!(config.endpoint(), DEFAULT_QDRANT_GRPC_ENDPOINT);
+    /// ```
     #[must_use]
     pub fn endpoint(&self) -> &str { &self.endpoint }
 
     /// Returns the file path from which the API key is loaded.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use repovec_core::appliance::qdrant_liveness::QdrantLivenessConfig;
+    ///
+    /// let config = QdrantLivenessConfig::default();
+    ///
+    /// assert_eq!(config.api_key_path().as_str(), "/etc/repovec/qdrant-api-key");
+    /// ```
     #[must_use]
     pub fn api_key_path(&self) -> &camino::Utf8Path { self.api_key_path.as_path() }
 
     /// Returns the per-probe timeout.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use repovec_core::appliance::qdrant_liveness::{
+    ///     DEFAULT_QDRANT_LIVENESS_TIMEOUT, QdrantLivenessConfig,
+    /// };
+    ///
+    /// let config = QdrantLivenessConfig::default();
+    ///
+    /// assert_eq!(config.timeout(), DEFAULT_QDRANT_LIVENESS_TIMEOUT);
+    /// ```
     #[must_use]
     pub const fn timeout(&self) -> Duration { self.timeout }
 }
@@ -106,6 +140,7 @@ impl Default for QdrantLivenessConfig {
 /// let report = QdrantLivenessReport::new("qdrant", "1.15.0", Some("abc123"));
 ///
 /// assert_eq!(report.title(), "qdrant");
+/// assert_eq!(report.commit(), Some("abc123"));
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QdrantLivenessReport {
@@ -152,7 +187,7 @@ impl QdrantApiKey {
     ///
     /// let key = QdrantApiKey::parse("0123456789abcdef").unwrap();
     ///
-    /// assert_eq!(key.as_secret(), "0123456789abcdef");
+    /// assert!(format!("{key:?}").contains("<redacted>"));
     /// ```
     ///
     /// # Errors
@@ -173,7 +208,7 @@ impl QdrantApiKey {
 
     /// Exposes the secret to the gRPC adapter.
     #[must_use]
-    pub fn as_secret(&self) -> &str { &self.0 }
+    pub(super) fn as_secret(&self) -> &str { &self.0 }
 }
 
 impl fmt::Debug for QdrantApiKey {
@@ -195,7 +230,7 @@ const fn is_invalid_metadata_value_byte(byte: u8) -> bool { !matches!(byte, 0x20
 ///
 /// let key = load_qdrant_api_key(&QdrantLivenessConfig::default())?;
 ///
-/// assert!(!key.as_secret().is_empty());
+/// assert!(format!("{key:?}").contains("<redacted>"));
 /// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
 /// ```
 ///

@@ -93,6 +93,22 @@ fn record_qdrant_liveness_failure_metric(span: &Span, error: &QdrantLivenessErro
 }
 
 /// Returns a stable, non-secret category label for a liveness error.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::time::Duration;
+///
+/// use repovec_core::appliance::qdrant_liveness::{
+///     qdrant_liveness_error_category, QdrantLivenessError,
+/// };
+///
+/// let error = QdrantLivenessError::Timeout {
+///     timeout: Duration::from_secs(5),
+/// };
+///
+/// assert_eq!(qdrant_liveness_error_category(&error), "timeout");
+/// ```
 #[must_use]
 pub const fn qdrant_liveness_error_category(error: &QdrantLivenessError) -> &'static str {
     match error {

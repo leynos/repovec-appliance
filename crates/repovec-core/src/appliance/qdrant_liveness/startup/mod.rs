@@ -62,6 +62,7 @@ where
         poll_interval_ms = policy.poll_interval().as_millis(),
     );
     let mut attempt = 1_u64;
+    let mut last_transient_error = None;
 
     record_startup_liveness_started(&span);
     loop {
@@ -73,23 +74,51 @@ where
             readiness_timeout: policy.readiness_timeout(),
             attempt,
         };
-        match check_qdrant_liveness_attempt(&mut health_check, context).await {
-            Ok(QdrantReadiness::Ready) => {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return record_startup_liveness_timeout(context, last_transient_error, policy);
+        }
+
+        match tokio::time::timeout(
+            remaining,
+            check_qdrant_liveness_attempt(&mut health_check, context),
+        )
+        .await
+        {
+            Ok(Ok(QdrantReadiness::Ready)) => {
                 record_startup_liveness_success(context);
                 return Ok(());
             }
-            Ok(QdrantReadiness::Retry) => {
+            Ok(Ok(QdrantReadiness::Retry(error))) => {
+                last_transient_error = Some(error);
                 attempt += 1;
-                tokio::time::sleep(policy.poll_interval()).await;
+                let remaining_sleep = deadline.saturating_duration_since(Instant::now());
+                if remaining_sleep.is_zero() {
+                    return record_startup_liveness_timeout(context, last_transient_error, policy);
+                }
+                tokio::time::sleep(policy.poll_interval().min(remaining_sleep)).await;
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 record_startup_liveness_failure(context, &error);
                 return Err(error);
+            }
+            Err(_) => {
+                return record_startup_liveness_timeout(context, last_transient_error, policy);
             }
         }
     }
 }
 
+fn record_startup_liveness_timeout(
+    context: StartupLivenessAttempt<'_>,
+    last_transient_error: Option<QdrantLivenessError>,
+    policy: QdrantStartupLivenessPolicy,
+) -> Result<(), QdrantLivenessError> {
+    let error = last_transient_error
+        .unwrap_or_else(|| QdrantLivenessError::Timeout { timeout: policy.readiness_timeout() });
+    record_startup_liveness_failure(context, &error);
+    Err(error)
+}
 #[derive(Clone, Copy)]
 struct StartupLivenessAttempt<'a> {
     span: &'a Span,
@@ -105,12 +134,10 @@ impl StartupLivenessAttempt<'_> {
 
     const fn readiness_timeout_ms(&self) -> u128 { self.readiness_timeout.as_millis() }
 }
-
 enum QdrantReadiness {
     Ready,
-    Retry,
+    Retry(QdrantLivenessError),
 }
-
 async fn check_qdrant_liveness_attempt<H, F>(
     health_check: &mut H,
     context: StartupLivenessAttempt<'_>,
@@ -124,7 +151,6 @@ where
         .map(|()| QdrantReadiness::Ready)
         .or_else(|error| classify_qdrant_liveness_error(error, context))
 }
-
 fn classify_qdrant_liveness_error(
     error: QdrantLivenessError,
     context: StartupLivenessAttempt<'_>,
@@ -133,14 +159,12 @@ fn classify_qdrant_liveness_error(
         Err(error)
     } else {
         record_startup_liveness_retry(context, &error);
-        Ok(QdrantReadiness::Retry)
+        Ok(QdrantReadiness::Retry(error))
     }
 }
-
 fn should_fail_qdrant_liveness_fast(error: &QdrantLivenessError, deadline: Instant) -> bool {
     is_permanent_qdrant_liveness_error(error) || Instant::now() >= deadline
 }
-
 const fn is_permanent_qdrant_liveness_error(error: &QdrantLivenessError) -> bool {
     matches!(
         error,
@@ -153,11 +177,9 @@ const fn is_permanent_qdrant_liveness_error(error: &QdrantLivenessError) -> bool
             | QdrantLivenessError::MissingServerVersion
     )
 }
-
 fn record_startup_liveness_started(span: &Span) {
     tracing::debug!(parent: span, "Qdrant startup liveness validation started");
 }
-
 fn record_startup_liveness_success(context: StartupLivenessAttempt<'_>) {
     record_startup_liveness_success_log(context);
     record_startup_liveness_success_metric(context);
@@ -247,108 +269,4 @@ fn record_startup_liveness_failure(
 }
 
 #[cfg(test)]
-mod tests {
-    //! Unit coverage for startup retry classification and observability.
-
-    use std::{cell::Cell, time::Duration};
-
-    use super::QdrantStartupLivenessPolicy;
-    use crate::appliance::qdrant_liveness::QdrantLivenessError;
-
-    #[test]
-    fn startup_liveness_retry_logs_attempt_elapsed_and_metric() -> Result<(), String> {
-        let attempts = Cell::new(0);
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()
-            .expect("test runtime should build");
-        let policy =
-            QdrantStartupLivenessPolicy::new(Duration::from_millis(50), Duration::from_millis(1));
-
-        let (result, logs) = repovec_test_helpers::capture_logs(|| {
-            runtime.block_on(super::wait_for_qdrant_startup_liveness(
-                || {
-                    let attempt = attempts.get();
-                    attempts.set(attempt + 1);
-                    std::future::ready(transient_qdrant_result(attempt))
-                },
-                policy,
-            ))
-        })?;
-
-        repovec_test_helpers::ensure(result.is_ok(), "transient retry should eventually pass")?;
-        repovec_test_helpers::ensure_log_line_contains(
-            &logs,
-            "DEBUG",
-            "attempt=1",
-            "retry log should include the attempt number",
-        )?;
-        repovec_test_helpers::ensure_log_line_contains(
-            &logs,
-            "DEBUG",
-            "elapsed_ms=",
-            "retry log should include elapsed time",
-        )?;
-        repovec_test_helpers::ensure_log_line_contains(
-            &logs,
-            "DEBUG",
-            "endpoint=\"http://127.0.0.1:6334\"",
-            "retry log should include the Qdrant endpoint",
-        )?;
-        repovec_test_helpers::ensure_log_line_contains(
-            &logs,
-            "DEBUG",
-            "readiness_timeout_ms=50",
-            "retry log should include the readiness timeout",
-        )?;
-        repovec_test_helpers::ensure_log_line_contains(
-            &logs,
-            "DEBUG",
-            "error_category=\"grpc_unavailable\"",
-            "retry log should include the liveness error category",
-        )?;
-        repovec_test_helpers::ensure_log_line_contains(
-            &logs,
-            "INFO",
-            "metric.qdrant_startup_liveness_retry_total",
-            "retry should emit a bounded metric event",
-        )
-    }
-
-    #[test]
-    fn startup_liveness_success_logs_a_bounded_metric() -> Result<(), String> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()
-            .expect("test runtime should build");
-        let policy =
-            QdrantStartupLivenessPolicy::new(Duration::from_millis(50), Duration::from_millis(1));
-
-        let (result, logs) = repovec_test_helpers::capture_logs(|| {
-            runtime.block_on(super::wait_for_qdrant_startup_liveness(|| async { Ok(()) }, policy))
-        })?;
-
-        repovec_test_helpers::ensure(result.is_ok(), "successful liveness check should pass")?;
-        repovec_test_helpers::ensure_log_line_contains(
-            &logs,
-            "DEBUG",
-            "Qdrant startup liveness validated",
-            "success should emit a liveness log",
-        )?;
-        repovec_test_helpers::ensure_log_line_contains(
-            &logs,
-            "INFO",
-            "metric.qdrant_startup_liveness_success_total",
-            "success should emit a bounded metric event",
-        )
-    }
-
-    fn transient_qdrant_result(attempt: i32) -> Result<(), QdrantLivenessError> {
-        match attempt {
-            0 => Err(QdrantLivenessError::GrpcUnavailable {
-                message: String::from("connection refused"),
-            }),
-            _ => Ok(()),
-        }
-    }
-}
+mod startup_tests;

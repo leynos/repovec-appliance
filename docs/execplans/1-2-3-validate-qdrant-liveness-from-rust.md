@@ -25,9 +25,11 @@ and fails if the service is unreachable, unauthenticated, or not ready.
 
 - Implementation was approved by the user on `2026-06-02T00:12:58+02:00`.
   Continue milestone-by-milestone within the tolerances below.
-- Keep scope to roadmap item `1.2.3`. Do not implement repository discovery,
-  indexing, full service status APIs, terminal session handling, resize event
-  propagation, or exit-code reporting.
+- Keep scope to roadmap item `1.2.3` only. Do not implement repository
+  discovery, indexing, full service status APIs, terminal-session handling,
+  or resize-event propagation. Generic interactive-session exit-code reporting
+  is out of scope, but daemon startup failures should still exit with status
+  `1`.
 - The prompt's completion criteria about interactive sessions, terminal
   resize events, and exit codes do not match roadmap item `1.2.3`. Treat them
   as contradictory boilerplate unless the user explicitly re-scopes this task.
@@ -84,8 +86,8 @@ and fails if the service is unreachable, unauthenticated, or not ready.
   `HealthCheck` call with the `api-key` metadata header, stop and present the
   alternatives rather than falling back silently to REST.
 - Platform: if a local Podman integration test cannot bind to
-  `127.0.0.1:6334` because a host Qdrant instance is already listening, stop
-  and ask whether to use a dynamic host port or a pre-existing service.
+  `127.0.0.1:6334` because a host Qdrant instance is already listening, use a
+  dynamic loopback host port for the test.
 - Security: if a test or diagnostic would expose the API key, stop and
   redesign that path.
 - Testing: if `make check-fmt`, `make typecheck`, `make lint`, or `make test`
@@ -291,7 +293,7 @@ Add an opt-in integration test under `crates/repovec-core/tests/`, for example
 `qdrant_liveness_integration.rs`. Keep helper setup fallible and scoped to the
 test body so default test discovery can skip the live cases cleanly.
 
-The test should start `docker.io/qdrant/qdrant:v1` with Podman, set
+The test should start `docker.io/qdrant/qdrant:v1.18.1` with Podman, set
 `QDRANT__SERVICE__API_KEY` from a temporary key value, bind the container gRPC
 port to loopback, wait for bounded readiness, call the Rust liveness function,
 and then clean up the container. The default path should skip these tests with
@@ -491,7 +493,7 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   `repovec-core` doctests.
 - [x] (2026-06-02T01:53:41+02:00) CodeRabbit completed Milestone 3 review
   with zero findings after one recoverable rate-limit backoff.
-- [ ] (2026-06-02T02:11:08+02:00) Milestone 4 in progress: added an
+- [x] (2026-06-02T02:11:08+02:00) Milestone 4 complete: added an
   ignored, opt-in live Qdrant integration test that starts a rootless Podman
   container, uses a dynamic loopback gRPC port, validates success and failure
   paths, and skips Podman startup in default `make test`.
@@ -597,7 +599,7 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   with zero findings. Milestone 4 is ready to commit.
 - [x] (2026-06-02T06:20:00+02:00) Committed Milestone 4 as `b31930d`
   (`Add Qdrant liveness integration test`).
-- [ ] (2026-06-02T06:27:00+02:00) Milestone 5 in progress: wired both
+- [x] (2026-06-02T06:27:00+02:00) Milestone 5 complete: wired both
   `repovecd` and `repovec-mcpd` to fail closed when the Qdrant liveness check
   fails, because both checked-in systemd units directly require and order after
   Qdrant. Startup tests use injected async health-check closures and do not
@@ -615,7 +617,7 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   with zero findings.
 - [x] (2026-06-02T06:45:00+02:00) Committed Milestone 5 as `d0c65b3`
   (`Validate Qdrant during daemon startup`).
-- [ ] (2026-06-02T06:50:00+02:00) Milestone 6 in progress: updated the
+- [x] (2026-06-02T06:50:00+02:00) Milestone 6 complete: updated the
   technical design, users guide, developers guide, contents index, and roadmap
   to describe authenticated Qdrant liveness, daemon startup failure behaviour,
   the opt-in live integration command, and completion of roadmap item `1.2.3`.
@@ -794,9 +796,9 @@ The final public API lives in
 
 The implementation uses `qdrant-client` `1.18.0` with default features
 disabled, `tokio` `1.48.0` with `rt-multi-thread` and `time`, and
-`cap-std`/`camino` for capability-oriented API-key file access. The daemon
-crates depend directly on workspace `tokio` because they own the synchronous
-process boundary that runs the async liveness probe.
+`cap-std`/`camino` for capability-oriented API-key file access. `repovec-core`
+owns the async liveness startup policy and runtime, while daemon binaries
+delegate to `daemon_startup`.
 
 The live integration test uses a dynamic loopback host port instead of fixed
 `127.0.0.1:6334`, while the production default remains

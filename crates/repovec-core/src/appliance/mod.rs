@@ -1,7 +1,7 @@
 //! Appliance-specific assets and validation helpers.
 //!
 //! This module groups appliance packaging and runtime validation surfaces that
-//! validate the repovec appliance's Qdrant and systemd contracts at startup or
+//! compose the repovec appliance's Qdrant and systemd contracts at startup or
 //! during tests:
 //!
 //! - [`qdrant_quadlet`] validates the checked-in Qdrant Quadlet container
@@ -17,9 +17,12 @@
 //! - [`qdrant_liveness`] validates the live Qdrant gRPC endpoint using the
 //!   stored appliance API key.
 //!
-//! The submodules are independent: [`qdrant_quadlet`] covers the Podman/Quadlet
-//! layer, [`systemd_units`] covers the systemd service orchestration layer, and
-//! [`qdrant_liveness`] covers runtime readiness.
+//! - [`daemon_startup`] composes [`systemd_units`] and [`qdrant_liveness`]
+//!   during daemon startup.
+//!
+//! The submodules compose the appliance surface: [`qdrant_quadlet`] covers the
+//! Podman/Quadlet layer, [`systemd_units`] covers the systemd service
+//! orchestration layer, and [`qdrant_liveness`] covers runtime readiness.
 
 pub mod daemon_startup;
 pub mod qdrant_liveness;

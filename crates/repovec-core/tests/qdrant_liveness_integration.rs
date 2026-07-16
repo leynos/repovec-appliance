@@ -34,6 +34,9 @@ fn live_qdrant_accepts_the_configured_api_key() {
     let qdrant_container = QdrantContainer::start(container_name, TEST_API_KEY)
         .expect("Qdrant container should start");
     let config = config_for(&qdrant_container.endpoint, &api_key_file.path, PROBE_TIMEOUT);
+    let report = block_on(wait_for_qdrant_liveness(&config, STARTUP_TIMEOUT))
+        .expect("Tokio runtime should run the liveness wait")
+        .expect("Qdrant should become live with the configured API key");
     let collections = block_on(async {
         Qdrant::from_url(&qdrant_container.endpoint)
             .api_key(TEST_API_KEY)
@@ -46,9 +49,6 @@ fn live_qdrant_accepts_the_configured_api_key() {
     })
     .expect("Tokio runtime should list Qdrant collections")
     .expect("configured API key should authenticate collection listing");
-    let report = block_on(wait_for_qdrant_liveness(&config, STARTUP_TIMEOUT))
-        .expect("Tokio runtime should run the liveness wait")
-        .expect("Qdrant should become live with the configured API key");
 
     assert!(collections.collections.is_empty());
     assert!(!report.version().is_empty());

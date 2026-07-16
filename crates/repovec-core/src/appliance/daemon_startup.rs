@@ -346,6 +346,7 @@ mod tests {
     })]
     #[case::empty_api_key(QdrantLivenessError::EmptyApiKey)]
     #[case::invalid_api_key(QdrantLivenessError::InvalidApiKey)]
+    #[case::missing_server_version(QdrantLivenessError::MissingServerVersion)]
     fn qdrant_liveness_fails_permanent_errors_immediately(
         #[case] injected_error: QdrantLivenessError,
     ) {

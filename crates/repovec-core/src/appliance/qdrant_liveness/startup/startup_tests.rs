@@ -2,16 +2,22 @@
 
 use std::{cell::Cell, time::Duration};
 
+use rstest::{fixture, rstest};
+
 use super::QdrantStartupLivenessPolicy;
 use crate::appliance::qdrant_liveness::QdrantLivenessError;
 
-#[test]
-fn startup_liveness_retry_logs_attempt_elapsed_and_metric() -> Result<(), String> {
+#[fixture]
+fn current_thread_runtime() -> std::io::Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_current_thread().enable_time().build()
+}
+
+#[rstest]
+fn startup_liveness_retry_logs_attempt_elapsed_and_metric(
+    current_thread_runtime: std::io::Result<tokio::runtime::Runtime>,
+) -> Result<(), String> {
     let attempts = Cell::new(0);
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_time()
-        .build()
-        .expect("test runtime should build");
+    let runtime = current_thread_runtime.map_err(|error| error.to_string())?;
     let policy =
         QdrantStartupLivenessPolicy::new(Duration::from_millis(50), Duration::from_millis(1));
 
@@ -65,12 +71,11 @@ fn startup_liveness_retry_logs_attempt_elapsed_and_metric() -> Result<(), String
     )
 }
 
-#[test]
-fn startup_liveness_success_logs_a_bounded_metric() -> Result<(), String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_time()
-        .build()
-        .expect("test runtime should build");
+#[rstest]
+fn startup_liveness_success_logs_a_bounded_metric(
+    current_thread_runtime: std::io::Result<tokio::runtime::Runtime>,
+) -> Result<(), String> {
+    let runtime = current_thread_runtime.map_err(|error| error.to_string())?;
     let policy =
         QdrantStartupLivenessPolicy::new(Duration::from_millis(50), Duration::from_millis(1));
 
@@ -93,13 +98,12 @@ fn startup_liveness_success_logs_a_bounded_metric() -> Result<(), String> {
     )
 }
 
-#[test]
-fn startup_liveness_returns_last_transient_error_at_the_deadline() {
+#[rstest]
+fn startup_liveness_returns_last_transient_error_at_the_deadline(
+    current_thread_runtime: std::io::Result<tokio::runtime::Runtime>,
+) {
     let attempts = Cell::new(0);
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_time()
-        .build()
-        .expect("test runtime should build");
+    let runtime = current_thread_runtime.expect("test runtime should build");
     let policy =
         QdrantStartupLivenessPolicy::new(Duration::from_millis(10), Duration::from_secs(1));
 
@@ -116,12 +120,11 @@ fn startup_liveness_returns_last_transient_error_at_the_deadline() {
     assert_eq!(attempts.get(), 1);
 }
 
-#[test]
-fn startup_liveness_rejects_success_after_the_deadline() {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_time()
-        .build()
-        .expect("test runtime should build");
+#[rstest]
+fn startup_liveness_rejects_success_after_the_deadline(
+    current_thread_runtime: std::io::Result<tokio::runtime::Runtime>,
+) {
+    let runtime = current_thread_runtime.expect("test runtime should build");
     let policy =
         QdrantStartupLivenessPolicy::new(Duration::from_millis(10), Duration::from_secs(1));
 

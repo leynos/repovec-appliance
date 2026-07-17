@@ -79,9 +79,8 @@ pub fn run_daemon_startup() -> Result<(), i32> {
 /// Returns [`DaemonStartupError`] when either startup contract fails or the
 /// startup-only async runtime cannot be built.
 pub fn validate_daemon_startup_contracts() -> Result<(), DaemonStartupError> {
-    let config =
-        QdrantLivenessConfig::for_appliance().map_err(DaemonStartupError::QdrantLiveness)?;
     validate_daemon_startup_contracts_with(validate_and_trace_checked_in_units, || async {
+        let config = QdrantLivenessConfig::for_appliance()?;
         check_qdrant_liveness(&config).await.map(|_report| ())
     })
 }

@@ -13,6 +13,7 @@ use repovec_core::appliance::qdrant_liveness::{
     QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport,
     check_qdrant_liveness,
 };
+use rstest::{fixture, rstest};
 
 const QDRANT_IMAGE: &str = "docker.io/qdrant/qdrant:v1.18.1";
 const QDRANT_GRPC_PORT: &str = "6334/tcp";
@@ -24,22 +25,15 @@ const POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[test]
+#[rstest]
 #[ignore = "requires Podman and network access"]
-fn live_qdrant_accepts_the_configured_api_key() {
-    let container_name = container_name();
-    let qdrant_container = QdrantContainer::start(container_name, TEST_API_KEY)
-        .expect("Qdrant container should start");
-    let config = config_for(&qdrant_container.endpoint, TEST_API_KEY, PROBE_TIMEOUT)
-        .expect("integration config should build");
-    block_on(wait_for_qdrant_liveness(&config, STARTUP_TIMEOUT))
-        .expect("Tokio runtime should run the liveness wait")
-        .expect("Qdrant should become live with the configured API key");
-    let report = block_on(check_qdrant_liveness(&config))
+fn live_qdrant_accepts_the_configured_api_key(ready_qdrant: Result<ReadyQdrant, String>) {
+    let setup = ready_qdrant.expect("Qdrant should become live with the configured API key");
+    let report = block_on(check_qdrant_liveness(&setup.config))
         .expect("Tokio runtime should run the direct liveness check")
         .expect("direct liveness check should succeed after readiness");
     let collections = block_on(async {
-        Qdrant::from_url(&qdrant_container.endpoint)
+        Qdrant::from_url(&setup.container.endpoint)
             .api_key(TEST_API_KEY)
             .skip_compatibility_check()
             .build()
@@ -55,19 +49,12 @@ fn live_qdrant_accepts_the_configured_api_key() {
     assert!(!report.version().is_empty());
 }
 
-#[test]
+#[rstest]
 #[ignore = "requires Podman and network access"]
-fn live_qdrant_rejects_a_wrong_api_key() {
-    let container_name = container_name();
-    let qdrant_container = QdrantContainer::start(container_name, TEST_API_KEY)
-        .expect("Qdrant container should start");
-    let ready_config = config_for(&qdrant_container.endpoint, TEST_API_KEY, PROBE_TIMEOUT)
-        .expect("integration readiness config should build");
-    block_on(wait_for_qdrant_liveness(&ready_config, STARTUP_TIMEOUT))
-        .expect("Tokio runtime should run the readiness wait")
-        .expect("Qdrant should become live before testing authentication failure");
-
-    let wrong_config = config_for(&qdrant_container.endpoint, WRONG_API_KEY, PROBE_TIMEOUT)
+fn live_qdrant_rejects_a_wrong_api_key(ready_qdrant: Result<ReadyQdrant, String>) {
+    let setup =
+        ready_qdrant.expect("Qdrant should become live before testing authentication failure");
+    let wrong_config = config_for(&setup.container.endpoint, WRONG_API_KEY, PROBE_TIMEOUT)
         .expect("wrong-key integration config should build");
     let error = block_on(check_qdrant_liveness(&wrong_config))
         .expect("Tokio runtime should run the wrong-key liveness check")
@@ -77,6 +64,21 @@ fn live_qdrant_rejects_a_wrong_api_key() {
         matches!(error, QdrantLivenessError::AuthenticationFailed),
         "wrong key should map to AuthenticationFailed, got {error:?}"
     );
+}
+
+struct ReadyQdrant {
+    container: QdrantContainer,
+    config: QdrantLivenessConfig,
+}
+
+#[fixture]
+fn ready_qdrant() -> Result<ReadyQdrant, String> {
+    let container = QdrantContainer::start(container_name(), TEST_API_KEY)?;
+    let config = config_for(&container.endpoint, TEST_API_KEY, PROBE_TIMEOUT)?;
+    let readiness = block_on(wait_for_qdrant_liveness(&config, STARTUP_TIMEOUT))?;
+    readiness.map_err(|error| error.to_string())?;
+
+    Ok(ReadyQdrant { container, config })
 }
 
 #[test]

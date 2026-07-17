@@ -219,9 +219,10 @@ impl QdrantApiKey {
     /// ```no_run
     /// use repovec_core::appliance::qdrant_liveness::QdrantApiKey;
     ///
-    /// let key = QdrantApiKey::parse("0123456789abcdef").unwrap();
+    /// let key = QdrantApiKey::parse("0123456789abcdef")?;
     ///
     /// assert!(format!("{key:?}").contains("<redacted>"));
+    /// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
     /// ```
     ///
     /// # Errors

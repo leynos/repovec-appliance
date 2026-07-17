@@ -278,7 +278,7 @@ failures, and inspect `qdrant.service` for connection failures.
 
 Acceptance for this milestone:
 
-- A function such as `check_qdrant_liveness(config).await` connects by gRPC
+- A function such as `check_qdrant_liveness(&config).await` connects by gRPC
   and returns `QdrantLivenessReport` on success.
 - The report includes non-secret server information from Qdrant's health
   reply.

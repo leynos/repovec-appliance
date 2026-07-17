@@ -372,7 +372,7 @@ the local Qdrant service:
   and timeout. `for_appliance()` reads the fixed
   provisioned path internally; `new(...)` is the deliberate in-memory seam for
   tests and integration callers that supply validated key material.
-- `check_qdrant_liveness(config).await ->`
+- `check_qdrant_liveness(&config).await ->`
   `Result<QdrantLivenessReport, QdrantLivenessError>` connects to Qdrant over
   gRPC with the stored key and returns non-secret server metadata when Qdrant
   is ready.

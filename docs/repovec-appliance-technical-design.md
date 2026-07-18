@@ -441,8 +441,8 @@ Security controls:
 - The provisioning helper logs secret lifecycle decisions to journald through
   `repovec-qdrant-api-key.service` without printing the key value. Operators
   detect provisioning failures through the oneshot unit state, journal entries,
-  and later service-health work from roadmap item `1.2.3`; no metrics exporter
-  exists for this first-boot packaging step yet.
+  and dependent daemon startup failures; no metrics exporter exists for this
+  first-boot packaging step yet.
 - Local clients authenticate to Qdrant by sending the stored key in the
   `api-key` request header. Requests without the header are expected to fail
   with Qdrant's authentication error response.
@@ -460,6 +460,30 @@ Security controls:
   appliance uses rootful Podman-managed system services.
 - The Quadlet owns only the container contract; boot-target wiring remains the
   responsibility of roadmap item `1.3.1`.
+
+Runtime liveness validation is separate from the static Quadlet validator.
+`repovec_core::appliance::qdrant_liveness` reads the raw API key from
+`/etc/repovec/qdrant-api-key`, connects to the default gRPC endpoint
+`http://127.0.0.1:6334`, and returns a redacted semantic error when the key
+file, endpoint, authentication, connection, or readiness contract fails.
+
+The liveness policy performs two gRPC operations:
+
+- `health_check()` proves that the Qdrant process answers the gRPC health
+  service.
+- `list_collections()` proves that the stored API key authenticates a
+  lightweight read-only Qdrant request.
+
+The second operation is required because live integration testing showed that
+Qdrant's gRPC health endpoint can answer even when the supplied API key is
+wrong. `repovec_core::appliance::daemon_startup` owns startup composition: it
+validates checked-in systemd-unit contracts first, then establishes
+authenticated Qdrant liveness. `repovecd` and `repovec-mcpd` are thin
+delegates to that shared boundary. A failed liveness check is fatal and causes
+the daemon to exit with status `1`, leaving systemd to report a failed service
+and apply its normal restart policy. Its unit tests inject the liveness closure
+to exercise ordering and failure mapping, while the ignored Podman integration
+test verifies the network and authentication boundary.
 
 ### Validation telemetry boundary
 

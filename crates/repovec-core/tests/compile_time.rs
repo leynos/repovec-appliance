@@ -4,4 +4,5 @@
 fn github_oauth_secret_wrappers_are_opaque() {
     let tests = trybuild::TestCases::new();
     tests.compile_fail("tests/ui/github_oauth_secret_wrappers_are_opaque.rs");
+    tests.compile_fail("tests/ui/qdrant_api_key_is_opaque.rs");
 }

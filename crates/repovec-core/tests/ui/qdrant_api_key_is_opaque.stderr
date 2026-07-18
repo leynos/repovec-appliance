@@ -1,0 +1,10 @@
+error[E0624]: method `as_secret` is private
+ --> tests/ui/qdrant_api_key_is_opaque.rs:7:23
+  |
+7 |     let _secret = key.as_secret();
+  |                       ^^^^^^^^^ private method
+  |
+ ::: src/appliance/qdrant_liveness/mod.rs
+  |
+  |     pub(super) fn as_secret(&self) -> &str { &self.0 }
+  |     -------------------------------------- private method defined here

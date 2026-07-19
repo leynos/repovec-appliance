@@ -1,5 +1,8 @@
 # repovec-appliance
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](
+https://deepwiki.com/leynos/repovec-appliance)
+
 *A self-hosted VM appliance that turns private GitHub repositories into a
 continuously indexed, semantically searchable MCP server.*
 

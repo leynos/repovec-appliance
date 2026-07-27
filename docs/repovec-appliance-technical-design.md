@@ -378,9 +378,9 @@ template declares `Requires=qdrant.service repovecd.service`,
 `WantedBy=repovec.target`. `WantedBy=repovec.target` wires manually enabled
 instances into the appliance target at enable time, while
 `PartOf=repovec.target` propagates target stop and restart operations to those
-instances. The template keeps stdout and stderr in
-journald with `StandardOutput=journal` and `StandardError=journal`; it must not
-create bespoke log files.
+instances. The template keeps stdout and stderr in journald with
+`StandardOutput=journal` and `StandardError=journal`; it must not create
+bespoke log files.
 
 The template includes conservative systemd sandboxing directives such as
 `NoNewPrivileges=yes`, private temporary storage, read-only host filesystem
@@ -478,11 +478,11 @@ The second operation is required because live integration testing showed that
 Qdrant's gRPC health endpoint can answer even when the supplied API key is
 wrong. `repovec_core::appliance::daemon_startup` owns startup composition: it
 validates checked-in systemd-unit contracts first, then establishes
-authenticated Qdrant liveness. `repovecd` and `repovec-mcpd` are thin
-delegates to that shared boundary. A failed liveness check is fatal and causes
-the daemon to exit with status `1`, leaving systemd to report a failed service
-and apply its normal restart policy. Its unit tests inject the liveness closure
-to exercise ordering and failure mapping, while the ignored Podman integration
+authenticated Qdrant liveness. `repovecd` and `repovec-mcpd` are thin delegates
+to that shared boundary. A failed liveness check is fatal and causes the daemon
+to exit with status `1`, leaving systemd to report a failed service and apply
+its normal restart policy. Its unit tests inject the liveness closure to
+exercise ordering and failure mapping, while the ignored Podman integration
 test verifies the network and authentication boundary.
 
 ### Validation telemetry boundary

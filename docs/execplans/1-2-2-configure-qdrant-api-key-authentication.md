@@ -369,28 +369,25 @@ do not grant; it is invoked through the new `make integration-test` and
 The harness ships two suites with different runtime requirements:
 
 - A `cmd-mox` command-contract suite
-  (`integration-tests/provisioning/test_qdrant_api_key_cmd_mox.py`,
-  marker `cmd_mox`) runs the real helper script through a `PATH`
-  populated with `cmd-mox` shims and asserts that the expected
-  external commands (`useradd`, `chown`, `chmod`, `mv`,
-  `podman secret rm`/`create`, …) are dispatched with the expected
-  arguments. No container runtime is required.
+  (`integration-tests/provisioning/test_qdrant_api_key_cmd_mox.py`, marker
+  `cmd_mox`) runs the real helper script through a `PATH` populated with
+  `cmd-mox` shims and asserts that the expected external commands (`useradd`,
+  `chown`, `chmod`, `mv`, `podman secret rm`/`create`, …) are dispatched with
+  the expected arguments. No container runtime is required.
 - A `testcontainers`-driven lifecycle suite
-  (`integration-tests/provisioning/test_qdrant_api_key.py`,
-  marker `integration`) builds a Fedora image carrying the
-  packaging assets, runs it privileged so rootful nested Podman is
-  available, and exercises the helper end-to-end. It verifies the
-  six lifecycle scenarios: system-user creation, key-file mode and
-  ownership, rootful Podman secret creation, idempotence on rerun,
-  regeneration on key-file absence with secret refresh, and
+  (`integration-tests/provisioning/test_qdrant_api_key.py`, marker
+  `integration`) builds a Fedora image carrying the packaging assets, runs it
+  privileged so rootful nested Podman is available, and exercises the helper
+  end-to-end. It verifies the six lifecycle scenarios: system-user creation,
+  key-file mode and ownership, rootful Podman secret creation, idempotence on
+  rerun, regeneration on key-file absence with secret refresh, and
   `/etc/repovec` directory mode and ownership.
 
-The lifecycle suite is gated by phony prereq targets
-(`_check-python`, `_check-integration-prereqs`,
-`_check-command-test-prereqs`) that exit non-zero with an
-actionable message when prereqs are missing, so a developer
-running on an under-provisioned host sees the skip reason rather
-than a confusing `pytest` failure.
+The lifecycle suite is gated by phony prereq targets (`_check-python`,
+`_check-integration-prereqs`, `_check-command-test-prereqs`) that exit non-zero
+with an actionable message when prereqs are missing, so a developer running on
+an under-provisioned host sees the skip reason rather than a confusing `pytest`
+failure.
 
 Validation evidence (run on a developer host with rootless Podman):
 
@@ -811,10 +808,10 @@ pub fn validate_qdrant_quadlet(
 ) -> Result<(), QdrantQuadletError>;
 ```
 
-If the implementation adds a separate provisioning-asset validator, keep the same
-style: functions that accept string contents and explicit observer dependencies,
-then return semantic error enums. Do not expose opaque `eyre::Report` from
-library APIs.
+If the implementation adds a separate provisioning-asset validator, keep the
+same style: functions that accept string contents and explicit observer
+dependencies, then return semantic error enums. Do not expose opaque
+`eyre::Report` from library APIs.
 
 ## Revision note
 

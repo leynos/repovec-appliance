@@ -59,15 +59,15 @@ deliberately kept out of `make test`:
   uses `cmd-mox` shims; it needs only the Python harness dependencies.
 - `make integration-test` runs the full lifecycle suite inside a privileged
   Fedora container managed by `testcontainers-python`; it needs a
-  Docker-compatible runtime and the ability to launch privileged nested
-  rootful Podman.
+  Docker-compatible runtime and the ability to launch privileged nested rootful
+  Podman.
 
 Both targets gate on phony prerequisite helpers (`_check-python`,
-`_check-integration-prereqs`, `_check-command-test-prereqs`) that exit
-non-zero when their checks fail, so missing prerequisites abort the chain
-with an actionable skip message rather than letting `pytest` produce a
-second misleading error on top. See [Section 6](#6-provisioning-integration-tests)
-for the full prerequisite and execution contract.
+`_check-integration-prereqs`, `_check-command-test-prereqs`) that exit non-zero
+when their checks fail, so missing prerequisites abort the chain with an
+actionable skip message rather than letting `pytest` produce a second
+misleading error on top. See [Section 6](#6-provisioning-integration-tests) for
+the full prerequisite and execution contract.
 
 ## 2. GitHub Actions gate set
 
@@ -117,15 +117,15 @@ Run `make validate-systemd` locally before proposing a change to any file under
 
 ### 2.1 Workflow pins and Dependabot
 
-Dependabot owns the upgrade of GitHub Actions and reusable workflows,
-including calls into `leynos/shared-actions`. Contract tests that assert a
-caller's exact commit SHA create a lockstep dependency: every time Dependabot
-opens a bump PR, the test fails until a human edits the pinned constant to
-match. That defeats the purpose of automated dependency updates and turns a
-routine bump into a manual chore.
+Dependabot owns the upgrade of GitHub Actions and reusable workflows, including
+calls into `leynos/shared-actions`. Contract tests that assert a caller's exact
+commit SHA create a lockstep dependency: every time Dependabot opens a bump PR,
+the test fails until a human edits the pinned constant to match. That defeats
+the purpose of automated dependency updates and turns a routine bump into a
+manual chore.
 
-Contract tests may still verify the *shape* of a reusable-workflow caller.
-They must not verify the specific SHA value.
+Contract tests may still verify the *shape* of a reusable-workflow caller. They
+must not verify the specific SHA value.
 
 - Do assert the workflow references the correct reusable workflow path.
 - Do assert the ref is pinned to a full 40-character commit SHA, not a
@@ -260,7 +260,7 @@ On failure it writes a human-readable error to stderr and exits with status 1.
 
 The desired repository ruleset is versioned in
 [`/.github/rulesets/main-ci-gating.json`](../.github/rulesets/main-ci-gating.json).
- Apply that payload only after the workflow changes that produce the required
+Apply that payload only after the workflow changes that produce the required
 checks are available on the default branch.
 
 Example application command:
@@ -369,9 +369,9 @@ The `qdrant_liveness` module exposes the public runtime validation surface for
 the local Qdrant service:
 
 - `QdrantLivenessConfig` carries the gRPC endpoint, validated API-key material,
-  and timeout. `for_appliance()` reads the fixed
-  provisioned path internally; `new(...)` is the deliberate in-memory seam for
-  tests and integration callers that supply validated key material.
+  and timeout. `for_appliance()` reads the fixed provisioned path internally;
+  `new(...)` is the deliberate in-memory seam for tests and integration callers
+  that supply validated key material.
 - `check_qdrant_liveness(&config).await ->`
   `Result<QdrantLivenessReport, QdrantLivenessError>` connects to Qdrant over
   gRPC with the stored key and returns non-secret server metadata when Qdrant
@@ -388,9 +388,9 @@ endpoint alone does not prove API-key validity.
 
 `repovec_core::appliance::daemon_startup` is the composition layer. It first
 validates checked-in systemd-unit contracts, then establishes authenticated
-Qdrant startup liveness. Both daemon binaries are thin delegates to that
-shared process boundary. Unit tests inject the liveness closure so they can
-prove ordering, retry policy, exit-code mapping, and structured logging without
+Qdrant startup liveness. Both daemon binaries are thin delegates to that shared
+process boundary. Unit tests inject the liveness closure so they can prove
+ordering, retry policy, exit-code mapping, and structured logging without
 opening sockets; the ignored Podman integration test covers the real network
 and authentication boundary. Run that integration test explicitly on a host
 with Podman:
@@ -460,11 +460,11 @@ only on the facade crate. Binary crates and test harnesses choose and configure
 the subscriber, such as `tracing-subscriber`, at the application boundary.
 
 Qdrant Quadlet validation reports telemetry through `QdrantQuadletObserver`.
-The validation pipeline receives the observer explicitly, making logging
-side effects visible at call sites. `TracingQdrantQuadletObserver` is the
-production adapter that maps observer callbacks to `tracing` events.
-The unit type `()` implements `QdrantQuadletObserver` as a no-op sink for test
-and silent paths that should validate without telemetry overhead.
+The validation pipeline receives the observer explicitly, making logging side
+effects visible at call sites. `TracingQdrantQuadletObserver` is the production
+adapter that maps observer callbacks to `tracing` events. The unit type `()`
+implements `QdrantQuadletObserver` as a no-op sink for test and silent paths
+that should validate without telemetry overhead.
 
 Qdrant Quadlet observer adapters follow these instrumentation conventions:
 
@@ -499,11 +499,11 @@ When adding instrumentation:
 
 ##### `LOCK_FILE`
 
-The helper uses `/etc/repovec/repovec-qdrant-api-key.lock` as its lock file.
-It opens the file on descriptor 9 with `exec 9>"${LOCK_FILE}"` and acquires an
-exclusive lock via `flock 9`.  The lock file is placed in `/etc/repovec`
-rather than `/var/lock` because `/etc/repovec` is a root-owned directory with
-mode `0750` that is not world-writable.  This prevents unprivileged users from
+The helper uses `/etc/repovec/repovec-qdrant-api-key.lock` as its lock file. It
+opens the file on descriptor 9 with `exec 9>"${LOCK_FILE}"` and acquires an
+exclusive lock via `flock 9`.  The lock file is placed in `/etc/repovec` rather
+than `/var/lock` because `/etc/repovec` is a root-owned directory with mode
+`0750` that is not world-writable.  This prevents unprivileged users from
 substituting the lock file in a way that could interfere with the mutual
 exclusion protocol.
 
@@ -630,32 +630,31 @@ paper. End-to-end behaviour of the `repovec-qdrant-api-key` service — system
 user creation, key-file mode and ownership, rootful Podman secret lifecycle —
 is exercised by a Python-based integration harness rooted at
 `integration-tests/`. The harness is opt-in: it is **not** part of `make test`
-and does not run in default CI, because its lifecycle suite requires
-privileges that CI runners typically do not grant.
+and does not run in default CI, because its lifecycle suite requires privileges
+that CI runners typically do not grant.
 
 ### 6.1 Suite layout
 
-| Suite                                          | Marker          | Runtime requirement                                                       |
-| ---------------------------------------------- | --------------- | ------------------------------------------------------------------------- |
-| `provisioning/test_qdrant_api_key_cmd_mox.py`  | `cmd_mox`       | Python and the harness dependencies. No container runtime needed.         |
-| `provisioning/test_qdrant_api_key.py`          | `integration`   | A Docker-compatible runtime able to host privileged Podman-in-Podman.     |
+| Suite                                         | Marker        | Runtime requirement                                                   |
+| --------------------------------------------- | ------------- | --------------------------------------------------------------------- |
+| `provisioning/test_qdrant_api_key_cmd_mox.py` | `cmd_mox`     | Python and the harness dependencies. No container runtime needed.     |
+| `provisioning/test_qdrant_api_key.py`         | `integration` | A Docker-compatible runtime able to host privileged Podman-in-Podman. |
 
 The `cmd_mox` suite exercises the helper's external command orchestration by
-running the real shell script through a `PATH` populated with `cmd-mox`
-shims. The `integration` suite runs the real helper inside a privileged
-Fedora container managed by `testcontainers-python`, and uses rootful nested
-Podman to validate the full secret lifecycle.
+running the real shell script through a `PATH` populated with `cmd-mox` shims.
+The `integration` suite runs the real helper inside a privileged Fedora
+container managed by `testcontainers-python`, and uses rootful nested Podman to
+validate the full secret lifecycle.
 
 ### 6.2 Prerequisites
 
 - Python 3.13 (managed by [`uv`](https://github.com/astral-sh/uv)).
 - The harness dependencies, installed via `cd integration-tests && uv sync`.
   This matches the contract the `integration-test` and
-  `integration-command-test` Makefile targets advertise in their
-  skip-message hint, so a `uv sync` here is sufficient to satisfy
-  their prerequisite checks. It brings in `pytest`,
-  `testcontainers-python`, `cuprum`, `cmd-mox`, and the `docker` SDK
-  that `testcontainers` uses to talk to the runtime.
+  `integration-command-test` Makefile targets advertise in their skip-message
+  hint, so a `uv sync` here is sufficient to satisfy their prerequisite checks.
+  It brings in `pytest`, `testcontainers-python`, `cuprum`, `cmd-mox`, and the
+  `docker` SDK that `testcontainers` uses to talk to the runtime.
 - For the `integration` suite only: a reachable Docker API socket and the
   ability to launch privileged containers. On Linux, the canonical
   configuration is rootless Podman exposing its socket via
@@ -676,11 +675,11 @@ PYTHON=$(pwd)/integration-tests/.venv/bin/python \
 ```
 
 Set `PYTHON` to the path of an interpreter whose environment has the harness
-dependencies installed (typically the `uv`-managed `.venv`). Pass extra
-options to pytest via `PYTEST_FLAGS`, for example
-`PYTEST_FLAGS=--no-skip-on-missing-runtime` to convert any "no runtime"
-skips inside the harness into hard failures — useful for CI jobs that must
-guarantee the suite ran.
+dependencies installed (typically the `uv`-managed `.venv`). Pass extra options
+to pytest via `PYTEST_FLAGS`, for example
+`PYTEST_FLAGS=--no-skip-on-missing-runtime` to convert any "no runtime" skips
+inside the harness into hard failures — useful for CI jobs that must guarantee
+the suite ran.
 
 ### 6.4 Internal harness APIs
 
@@ -688,9 +687,10 @@ The harness exposes a small surface intended for use by tests, not by the
 appliance itself. None of these symbols ship in any wheel.
 
 - `lib.container.ContainerSession` — argv-first wrapper around the running
-  `DockerContainer`. Tests prefer `session.must_run("getent", "passwd",
-  "repovec")` over hand-rolled `subprocess` calls, so failures surface
-  rendered stdout/stderr/exit-code rather than opaque traceback fragments.
+  `DockerContainer`. Tests prefer
+  `session.must_run("getent", "passwd", "repovec")` over hand-rolled
+  `subprocess` calls, so failures surface rendered stdout/stderr/exit-code
+  rather than opaque traceback fragments.
 - `lib.commands.run_host` — `cuprum`-backed host-side command runner with a
   curated allowlist (`python3`, `podman`, `git`, `gh`, `coderabbit`, `sh`).
   Anything off the allowlist raises `UnknownProgramError`; that is the safety
@@ -701,17 +701,16 @@ appliance itself. None of these symbols ship in any wheel.
   contract being violated rather than the shell incantation.
 - `integration_container` / `container_session` pytest fixtures — session-
   scoped privileged container plus a per-test wrapper whose `cleanup_state`
-  runs both before and after every test, isolating lifecycle scenarios
-  without paying for a fresh container build per case.
+  runs both before and after every test, isolating lifecycle scenarios without
+  paying for a fresh container build per case.
 - `patched_helper` / `helper_env` pytest fixtures — `cmd-mox` analogue that
   copies the real helper script into `tmp_path`, rewrites `CONFIG_DIR`,
-  `KEY_FILE`, and `LOCK_FILE` to point at the tmp tree, and supplies a
-  minimal environment overlay (`HOME` + `LANG` only; `PATH` is sourced live
-  from `os.environ` at invocation time so `cmd-mox` shims are always
-  picked up).
+  `KEY_FILE`, and `LOCK_FILE` to point at the tmp tree, and supplies a minimal
+  environment overlay (`HOME` + `LANG` only; `PATH` is sourced live from
+  `os.environ` at invocation time so `cmd-mox` shims are always picked up).
 
-`integration-tests/README.md` is the operator-level entry point for running
-the suite; this section is the developer-level reference for extending it.
+`integration-tests/README.md` is the operator-level entry point for running the
+suite; this section is the developer-level reference for extending it.
 
 ## 7. GitHub OAuth device-flow implementation
 
@@ -748,10 +747,10 @@ atomically, and redacts known GitHub token prefixes in captured stderr. Persist
 only the bearer token secret; scopes returned by the OAuth server are response
 metadata and are not restored when a token is loaded from disk.
 
-Use dependency injection at every network, persistence, and time boundary.
-Unit tests should use `rstest` fixtures. Behavioural tests should use
-`rstest-bdd` for policy scenarios. The `repovecd` example binary
-`device-flow-test` is the externally observable success criterion: it starts
-`oauth2-test-server`, completes a local device-flow exchange, stores the token
-through the encrypted-store boundary, reloads it, and verifies the same token
-secret is recovered.
+Use dependency injection at every network, persistence, and time boundary. Unit
+tests should use `rstest` fixtures. Behavioural tests should use `rstest-bdd`
+for policy scenarios. The `repovecd` example binary `device-flow-test` is the
+externally observable success criterion: it starts `oauth2-test-server`,
+completes a local device-flow exchange, stores the token through the
+encrypted-store boundary, reloads it, and verifies the same token secret is
+recovered.

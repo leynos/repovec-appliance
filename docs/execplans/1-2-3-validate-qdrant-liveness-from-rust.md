@@ -26,10 +26,9 @@ and fails if the service is unreachable, unauthenticated, or not ready.
 - Implementation was approved by the user on `2026-06-02T00:12:58+02:00`.
   Continue milestone-by-milestone within the tolerances below.
 - Keep scope to roadmap item `1.2.3` only. Do not implement repository
-  discovery, indexing, full service status APIs, terminal-session handling,
-  or resize-event propagation. Generic interactive-session exit-code reporting
-  is out of scope, but daemon startup failures should still exit with status
-  `1`.
+  discovery, indexing, full service status APIs, terminal-session handling, or
+  resize-event propagation. Generic interactive-session exit-code reporting is
+  out of scope, but daemon startup failures should still exit with status `1`.
 - The prompt's completion criteria about interactive sessions, terminal
   resize events, and exit codes do not match roadmap item `1.2.3`. Treat them
   as contradictory boilerplate unless the user explicitly re-scopes this task.
@@ -700,9 +699,9 @@ Resolve all applicable CodeRabbit concerns before moving to the next milestone.
   startup helper is now the canonical no-argument entry point, while the
   individual systemd helper remains injectable for unit tests.
 - `make fmt` still cannot be used as a clean acceptance gate in this worktree:
-  its `markdownlint --fix` phase reports unrelated pre-existing line-length
-  and missing-reference issues in documentation files outside this feature.
-  The accidental formatter churn from running it was restored, while
+  its `markdownlint --fix` phase reports unrelated pre-existing line-length and
+  missing-reference issues in documentation files outside this feature. The
+  accidental formatter churn from running it was restored, while
   `make markdownlint` and `make nixie` pass for the final tree.
 
 ## Decision Log
@@ -784,8 +783,7 @@ Roadmap item `1.2.3` now has a documented Rust liveness check that proves
 Qdrant is reachable over authenticated local gRPC and prevents dependent
 services from silently starting against an unavailable vector store.
 
-The final public API lives in
-`repovec_core::appliance::qdrant_liveness`:
+The final public API lives in `repovec_core::appliance::qdrant_liveness`:
 
 - `QdrantLivenessConfig`
 - `QdrantApiKey`
@@ -793,21 +791,20 @@ The final public API lives in
 - `QdrantLivenessError`
 - `check_qdrant_liveness(...)`
 
-The implementation uses `qdrant-client` `1.18.0` with default features
-disabled, `tokio` `1.48.0` with `rt-multi-thread` and `time`, and
-`cap-std`/`camino` for capability-oriented API-key file access. `repovec-core`
-owns the async liveness startup policy and runtime, while daemon binaries
-delegate to `daemon_startup`.
+The implementation uses `qdrant-client` `1.18.0` with default features disabled,
+`tokio` `1.48.0` with `rt-multi-thread` and `time`, and `cap-std`/`camino` for
+capability-oriented API-key file access. `repovec-core` owns the async liveness
+startup policy and runtime, while daemon binaries delegate to `daemon_startup`.
 
 The live integration test uses a dynamic loopback host port instead of fixed
-`127.0.0.1:6334`, while the production default remains
-`http://127.0.0.1:6334`. The test pins the Qdrant image to
-`docker.io/qdrant/qdrant:v1.18.1` for reproducibility.
+`127.0.0.1:6334`, while the production default remains `http://127.0.0.1:6334`.
+The test pins the Qdrant image to `docker.io/qdrant/qdrant:v1.18.1` for
+reproducibility.
 
 The most important implementation discovery was that Qdrant's gRPC
 `health_check()` can succeed with the wrong API key. The final liveness policy
-therefore requires both `health_check()` and authenticated
-`list_collections()` before reporting success.
+therefore requires both `health_check()` and authenticated `list_collections()`
+before reporting success.
 
 Documentation now describes the liveness policy and operator diagnostics in
 `docs/repovec-appliance-technical-design.md`, `docs/users-guide.md`, and

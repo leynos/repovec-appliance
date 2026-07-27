@@ -216,8 +216,8 @@ conflict in `Decision Log`, and ask for direction.
   `8d791a1 Add grepai indexer service template`.
 - [x] (2026-06-02T06:31:18+02:00) Completed the documentation milestone:
   updated the technical design, user guide, developer guide, and roadmap entry
-  for `1.3.2`; the roadmap item is now marked done and points concrete
-  instance reconciliation at item `3.2.1`.
+  for `1.3.2`; the roadmap item is now marked done and points concrete instance
+  reconciliation at item `3.2.1`.
 - [x] (2026-06-02T06:38:06+02:00) Documentation validation passed for the
   changed files and for the full explicit documentation targets:
   `make markdownlint` and `make nixie` succeeded, and the changed docs pass a
@@ -368,8 +368,8 @@ conflict in `Decision Log`, and ask for direction.
 The implementation shipped the checked-in
 `packaging/systemd/repovec-grepai@.service` template and committed it with the
 static validation changes for roadmap item `1.3.2`. The template runs
-`/usr/bin/grepai watch` as `repovec:repovec`, sets `HOME=/var/lib/repovec`,
-uses `WorkingDirectory=/var/lib/repovec/worktrees/%I`, stays tied to
+`/usr/bin/grepai watch` as `repovec:repovec`, sets `HOME=/var/lib/repovec`, uses
+`WorkingDirectory=/var/lib/repovec/worktrees/%I`, stays tied to
 `repovec.target`, depends on Qdrant and `repovecd.service`, and leaves stdout
 and stderr in journald.
 

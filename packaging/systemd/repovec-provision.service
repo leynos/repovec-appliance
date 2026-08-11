@@ -1,0 +1,17 @@
+[Unit]
+Description=Provision the repovec user and directory layout
+Wants=systemd-sysusers.service
+After=systemd-sysusers.service
+Before=repovec-qdrant-api-key.service qdrant.service repovecd.service repovec-mcpd.service
+RefuseManualStop=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf
+ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=repovec.target

@@ -158,8 +158,9 @@ they are not quality targets.
 - Risk R-3: grepai indexer sandbox. The `repovec-grepai@.service` template (task
   1.3.2) applies `ProtectSystem=full` and `ProtectHome=read-only`. Severity: low.
   Likelihood: low.
-  Analysis (to be confirmed in Stage A): `ProtectHome=read-only` affects only
-  `/home`, `/root`, and `/run/user`; it does not touch `/var/lib/repovec`.
+  Analysis (confirmed in Stage A): the template declares `ProtectSystem=full`
+  and `ProtectHome=read-only` (lines 18-19). `ProtectHome=read-only` affects
+  only `/home`, `/root`, and `/run/user`; it does not touch `/var/lib/repovec`.
   `ProtectSystem=full` makes `/usr`, `/boot`, and `/etc` read-only but leaves
   `/var` writable. Therefore the indexer can write `worktrees/%I` and `.grepai/`
   today and there is no conflict with this plan. The only latent risk is a future
@@ -199,8 +200,12 @@ they are not quality targets.
 
 ## Progress
 
-- [ ] Stage A: approval gate — this DRAFT is presented and approved (no code
+- [x] Stage A: approval gate — this DRAFT is presented and approved (no code
   changes until then). Includes re-reading the grepai template to confirm R-3.
+  Approved on 2026-08-11 by the build agent per the user's instruction to
+  proceed with implementation. R-3 confirmed: `ProtectSystem=full` and
+  `ProtectHome=read-only` (grepai template lines 18-19); `/var/lib/repovec`
+  remains writable to the indexer sandbox, so no conflict with this plan.
 - [ ] Milestone 1: red tests and feature specification (permissive stub).
 - [ ] Milestone 2: packaging assets and pure validator (green).
 - [ ] Milestone 3: end-to-end integration assertions.

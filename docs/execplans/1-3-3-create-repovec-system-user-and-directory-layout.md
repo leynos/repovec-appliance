@@ -253,6 +253,12 @@ they are not quality targets.
 
 Timestamps will be added as each item completes.
 
+- [x] SCOPE ESCALATION (2026-08-12): branch is at 17 non-snapshot code/asset
+  files and ~1700 net lines vs the plan tolerance (24 files / roughly 1000
+  net lines, per the Tolerance section and D-6). Milestone 4 (live pre-flight)
+  is therefore SPLIT into a follow-up roadmap item rather than exceeding
+  tolerance; Milestones 1-3 are complete, gated, and CodeRabbit-clean.
+
 ## Surprises & Discoveries
 
 - Observation: `crates/repovec-core/src/lib.rs` already defines `RuntimePaths`
@@ -352,6 +358,16 @@ Timestamps will be added as each item completes.
   about what `make validate-systemd` currently checks, so the packaging contract
   the Constraints depend on is genuinely gated in CI.
   Date/Author: 2026-07-22, planning agent (from Rust/hexagonal review P1-4).
+
+- Decision D-11: SPLIT the Milestone 4 live-ownership pre-flight into a follow-up
+  roadmap item. Scope check: 17 non-snapshot code/asset files and ~1700 net lines
+  were already committed for Milestones 1-3 against the plan tolerance of 24 files
+  and roughly 1000 net lines (Tolerance section, D-6). Continuing would breach
+  tolerance, so the pre-flight (stats, daemon wiring, tempfile tests) is recorded
+  as follow-up instead of being dropped silently. Observed 2026-08-12 by the
+  build agent; STOPPED for escalation: the plan requires not breaching tolerance,
+  so the agent presents the state to the user and awaits a decision on whether to
+  split M4 into a follow-up roadmap item or extend the tolerance.
 
 ## Outcomes & Retrospective
 

@@ -924,6 +924,18 @@ limitation. The `systemctl start repovec.target` + `qdrant.service` part of
 the roadmap success criterion is recorded as a manual run on a systemd host
 (harness cannot run systemd as PID 1).
 
+### CodeRabbit gate (M3 milestone, 2026-08-12)
+
+```text
+$ coderabbit review --agent
+{"type":"complete","status":"review_completed","findings":0,
+ "reviewedFiles":[23 files incl. integration-tests/{Containerfile,README.md,
+  lib/{assertions,constants}.py,provisioning/test_directory_layout.py}]}
+```
+
+Result: 0 findings across 23 reviewed files (all M1-M3 files). The review ran
+on pushed commit `69390e1` after all deterministic gates were green.
+
 ## Interfaces and dependencies
 
 New and changed interfaces.

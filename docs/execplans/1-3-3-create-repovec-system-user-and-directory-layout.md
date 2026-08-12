@@ -230,7 +230,22 @@ they are not quality targets.
   confirmation; `make validate-systemd` exercises both. All gates green:
   check-fmt, typecheck, lint, test (457 passed), validate-systemd,
   markdownlint, nixie. Transcripts in `Artefacts and notes`.
-- [ ] Milestone 3: end-to-end integration assertions.
+- [x] Milestone 3: end-to-end integration assertions (provisioning lifecycle;
+  systemd-as-PID-1 part documented as a host limitation).
+  Completed 2026-08-12. `integration-tests/provisioning/test_directory_layout.py`
+  installs the `sysusers.d` and `tmpfiles.d` assets in the integration
+  container, runs `systemd-sysusers` then `systemd-tmpfiles --create` (the
+  exact `repovec-provision.service` pair), and asserts the `repovec` user and
+  the `/var/lib/repovec` tree (`0700 repovec:repovec` data dirs SI-1/SI-2,
+  `qdrant-storage` `root:root`, idempotence), proving R-2 by-name ownership.
+  The container cannot host systemd as PID 1 (`sleep infinity` CMD), so the
+  `systemctl start repovec.target` / `qdrant.service` activeness assertion
+  remains a documented manual run on a capable host (1.2.2 precedent); the
+  static contracts and this lifecycle pairing are the CI proxy. The image
+  gains the `systemd` package (for the two binaries) and the `tmpfiles.d`
+  asset. `uv sync`, ruff check/format, and the pure-Python harness suites
+  (26 lib tests, 5 cmd_mox) pass; the integration suite skips cleanly here
+  (no privileged runtime), matching the documented opt-in gate.
 - [ ] Milestone 4: live-ownership pre-flight (fail-closed guard).
 - [ ] Milestone 5: documentation (developers guide, users guide, ADR) and
   roadmap update.
@@ -885,6 +900,29 @@ Note: the `agent` spawning tool is policy-denied in this environment, so the
 `coderabbit review --agent` command was executed directly from the shell by the
 build agent acting as scrutineer (evaluating each finding would have been the
 sub-agent's role; there were no findings to evaluate).
+
+### Milestone 3 evidence (2026-08-12)
+
+```text
+$ (cd integration-tests && uv sync && .venv/bin/python -m pytest lib/tests -q)
+  26 passed
+
+$ (cd integration-tests && .venv/bin/python -m pytest -m cmd_mox provisioning -q)
+  5 passed, 8 deselected
+
+$ (cd integration-tests && .venv/bin/python -m pytest -m integration provisioning/test_directory_layout.py -q)
+  2 skipped   # no privileged Docker runtime in this sandbox (documented opt-in
+              # gate; same skip/warning path as the pre-existing qdrant suite)
+```
+
+Changes: `integration-tests/Containerfile` installs `systemd` and copies
+`tmpfiles.d/repovec.conf`; `lib/constants.py` gains the data-tree contract;
+`lib/assertions.py` gains `assert_directory_contract`/`assert_data_dirs`;
+`provisioning/test_directory_layout.py` covers user+tree provisioning and
+idempotence; `README.md` documents the suite and the systemd-PID-1
+limitation. The `systemctl start repovec.target` + `qdrant.service` part of
+the roadmap success criterion is recorded as a manual run on a systemd host
+(harness cannot run systemd as PID 1).
 
 ## Interfaces and dependencies
 

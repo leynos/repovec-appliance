@@ -14,9 +14,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .constants import (
+    DATA_DIRS,
+    DATA_DIR_MODE,
     KEY_FILE,
     KEY_FILE_MODE,
     KEY_HEX_LENGTH,
+    QDRANT_DATA_DIR,
+    QDRANT_DATA_DIR_MODE,
     REPOVEC_GROUP,
     REPOVEC_HOME,
     REPOVEC_SHELL,
@@ -179,3 +183,41 @@ def assert_podman_secret_name(session: ContainerSession) -> None:
         SECRET_NAME,
     )
     assert result.stdout.strip() == SECRET_NAME, result.stdout
+
+
+def assert_directory_contract(session: ContainerSession) -> None:
+    """Assert the provisioned `/var/lib/repovec` data tree contract.
+
+    Every data directory must be `repovec:repovec` with mode `0700` (SI-1),
+    and the `qdrant-storage` child must be `root:root` with mode `0700`
+    (SI-2). Ownership is asserted by name, proving the
+    sysusers-before-tmpfiles ordering resolved the `repovec` account first
+    (R-2).
+    """
+
+    expected = {
+        **{path: (DATA_DIR_MODE, REPOVEC_USER, REPOVEC_GROUP) for path in DATA_DIRS},
+        QDRANT_DATA_DIR: (QDRANT_DATA_DIR_MODE, "root", "root"),
+    }
+    assert_data_dirs(session, expected)
+
+
+def assert_data_dirs(
+    session: ContainerSession,
+    expected: dict[str, tuple[str, str, str]],
+) -> None:
+    """Assert each directory in ``expected`` has the mandated mode/owner/group.
+
+    Parameters
+    ----------
+    expected
+        Mapping of directory path to ``(mode, user, group)`` where mode is
+        the four-digit octal form (for example ``"0700"``).
+    """
+
+    for path, (mode, user, group) in expected.items():
+        stat = stat_file(session, path)
+        # ``stat -c %a`` may emit ``700`` or ``0700``; normalize to 4 digits.
+        assert stat.mode.zfill(4) == mode, (path, stat)
+        assert stat.user == user, (path, stat)
+        assert stat.group == group, (path, stat)

@@ -21,6 +21,7 @@ RUN dnf -y install \
         procps-ng \
         openssl \
         ca-certificates \
+        systemd \
     && dnf clean all
 
 # Copy the packaging assets verbatim. The helper script lives under
@@ -31,8 +32,9 @@ RUN install -d /usr/libexec/repovec
 COPY packaging/libexec/repovec-qdrant-api-key /usr/libexec/repovec/repovec-qdrant-api-key
 RUN chmod 0755 /usr/libexec/repovec/repovec-qdrant-api-key
 
-RUN install -d /usr/lib/sysusers.d /usr/lib/systemd/system
+RUN install -d /usr/lib/sysusers.d /usr/lib/tmpfiles.d /usr/lib/systemd/system
 COPY packaging/sysusers.d/repovec.conf /usr/lib/sysusers.d/repovec.conf
+COPY packaging/tmpfiles.d/repovec.conf /usr/lib/tmpfiles.d/repovec.conf
 COPY packaging/systemd/repovec-qdrant-api-key.service \
      /usr/lib/systemd/system/repovec-qdrant-api-key.service
 

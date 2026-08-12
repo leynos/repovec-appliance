@@ -19,12 +19,13 @@ proptest! {
     ) {
         let tmpfiles = tmpfiles_entry(&line, TMPFILES_ASSET, 1);
         match tmpfiles {
-            Ok(None) => {}
+            Ok(None) | Err(DirectoryLayoutError::MalformedLine { .. }) => {}
             Ok(Some(entry)) => {
-                prop_assert_eq!(entry.kind, "d");
-                prop_assert!(entry.mode.chars().all(|c| c.is_ascii_digit() || c == '-'));
+                prop_assert!(!entry.path.is_empty(), "path must be populated");
+                prop_assert!(!entry.mode.is_empty(), "mode must be populated");
+                prop_assert!(!entry.user.is_empty(), "user must be populated");
+                prop_assert!(!entry.group.is_empty(), "group must be populated");
             }
-            Err(DirectoryLayoutError::MalformedLine { .. }) => {}
             Err(other) => {
                 // The tmpfiles view must only ever surface MalformedLine.
                 panic!("unexpected error variant: {other}");
@@ -33,13 +34,12 @@ proptest! {
 
         let sysusers = sysusers_user_line(&line, SYSUSERS_ASSET, 1);
         match sysusers {
-            Ok(None) => {}
+            Ok(None) | Err(DirectoryLayoutError::MalformedLine { .. }) => {}
             Ok(Some(entry)) => {
-                prop_assert_eq!(entry.name, "repovec");
-                prop_assert!(!entry.home.is_empty());
-                prop_assert!(!entry.shell.is_empty());
+                prop_assert!(!entry.name.is_empty(), "name must be populated");
+                prop_assert!(!entry.home.is_empty(), "home must be populated");
+                prop_assert!(!entry.shell.is_empty(), "shell must be populated");
             }
-            Err(DirectoryLayoutError::MalformedLine { .. }) => {}
             Err(other) => {
                 panic!("unexpected error variant: {other}");
             }

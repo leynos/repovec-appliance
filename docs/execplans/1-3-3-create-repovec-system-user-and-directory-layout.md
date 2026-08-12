@@ -868,6 +868,24 @@ occurrence so each test mutates exactly one entry; filled inline snapshots for
 every `DirectoryLayoutError` variant; updated `repovec-ci` snapshot baselines
 for the combined gate confirmation and extended USAGE text.
 
+### CodeRabbit gate (M1/M2 milestone, 2026-08-12)
+
+```text
+$ coderabbit review --agent
+{"type":"complete","reviewType":"all","status":"review_completed","findings":0,
+ "reviewedFiles":[".gitignore","repovec-ci/src/main.rs",4 snapshot files,
+  "directory_layout/{error,mod,parser,tests,tests_proptest}.rs","appliance/mod.rs",
+  "lib.rs","directory_layout_bdd.rs","directory_layout.feature",execplan,
+  "repovec-provision.service","repovec.conf"]}
+```
+
+Result: 0 findings across all 17 reviewed files. The review ran on the pushed
+Milestone 2 state (commit `2032b9d`) after every deterministic gate was green.
+Note: the `agent` spawning tool is policy-denied in this environment, so the
+`coderabbit review --agent` command was executed directly from the shell by the
+build agent acting as scrutineer (evaluating each finding would have been the
+sub-agent's role; there were no findings to evaluate).
+
 ## Interfaces and dependencies
 
 New and changed interfaces.

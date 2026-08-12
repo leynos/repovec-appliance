@@ -206,7 +206,16 @@ they are not quality targets.
   proceed with implementation. R-3 confirmed: `ProtectSystem=full` and
   `ProtectHome=read-only` (grepai template lines 18-19); `/var/lib/repovec`
   remains writable to the indexer sandbox, so no conflict with this plan.
-- [ ] Milestone 1: red tests and feature specification (permissive stub).
+- [x] Milestone 1: red tests and feature specification (permissive stub).
+  Completed 2026-08-12. The `directory_layout` module skeleton, packaging
+  assets, BDD feature, rstest mutation table, and proptest robustness property
+  are committed. Red evidence re-captured against the permissive stub after
+  history cleanup:
+  `cargo test -p repovec-core directory_layout` → 7 passed / 1 failed (the
+  happy path passes; `directory_mutations_fail_with_typed_errors` fails its
+  `assert_eq!` expecting `Err(IncorrectMode ...)` but receiving `Ok(())`); the
+  BDD runner → 1 passed / 10 failed (all unhappy scenarios fail as designed).
+  Transcripts in `Artefacts and notes`.
 - [ ] Milestone 2: packaging assets and pure validator (green).
 - [ ] Milestone 3: end-to-end integration assertions.
 - [ ] Milestone 4: live-ownership pre-flight (fail-closed guard).
@@ -805,6 +814,24 @@ Quality method: the gate commands above, plus a clean `coderabbit review
 Transcripts (red, green, gate, live-preflight, and integration runs) and the
 Stage-A R-3 confirmation will be pasted here as concise codefenced excerpts as
 work proceeds.
+
+### Milestone 1 red evidence (2026-08-12, against the permissive stub)
+
+```text
+$ cargo test -p repovec-core directory_layout
+running 8 tests
+test appliance::directory_layout::tests::checked_in_assets_satisfy_the_directory_contract ... ok
+test ... mode_parsing_normalizes_octal_spellings::case_* ... ok
+test appliance::directory_layout::tests::directory_mutations_fail_with_typed_errors ... FAILED
+  left: Ok(())
+ right: Err(IncorrectMode { path: "/var/lib/repovec/worktrees", expected: Mode(448), actual: Mode(488) })
+test result: FAILED. 7 passed; 1 failed
+
+$ cargo test -p repovec-core --test directory_layout_bdd
+test result: FAILED. 1 passed; 10 failed
+# Every unhappy scenario fails as designed (mode, owner, group, missing/extra
+# entries, explicit-token, secrets-authority, malformed line, home, shell).
+```
 
 ## Interfaces and dependencies
 

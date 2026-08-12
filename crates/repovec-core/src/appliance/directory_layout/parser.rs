@@ -10,16 +10,15 @@
 //! asset uses and rejects anything else with [`MalformedLine`]. The tokenizer
 //! itself never panics and never returns a partially populated view.
 
-use crate::appliance::directory_layout::DirectoryLayoutError;
+use crate::appliance::directory_layout::{DirectoryLayoutError, Mode};
 
 /// Splits a trimmed, non-comment line into shell-style quoted-aware columns.
 fn tokenize(line: &str) -> Vec<String> {
     let mut columns = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
-    let mut chars = line.chars().peekable();
 
-    while let Some(ch) = chars.next() {
+    for ch in line.chars() {
         match ch {
             '"' => {
                 in_quotes = !in_quotes;
@@ -44,7 +43,6 @@ fn tokenize(line: &str) -> Vec<String> {
 
 /// A parsed `d` entry from the `tmpfiles.d` asset.
 pub(crate) struct TmpfilesEntry {
-    pub kind: String,
     pub path: String,
     pub mode: String,
     pub user: String,
@@ -63,7 +61,14 @@ pub(crate) fn tmpfiles_entry(
     }
 
     let columns = tokenize(trimmed);
-    if columns.len() != 6 || columns[0] != "d" {
+    let [kind, path, mode, user, group, _age] = columns.as_slice() else {
+        return Err(DirectoryLayoutError::MalformedLine {
+            asset,
+            line_number,
+            line: trimmed.to_owned(),
+        });
+    };
+    if kind != "d" {
         return Err(DirectoryLayoutError::MalformedLine {
             asset,
             line_number,
@@ -72,11 +77,10 @@ pub(crate) fn tmpfiles_entry(
     }
 
     Ok(Some(TmpfilesEntry {
-        kind: columns[0].clone(),
-        path: columns[1].clone(),
-        mode: columns[2].clone(),
-        user: columns[3].clone(),
-        group: columns[4].clone(),
+        path: path.clone(),
+        mode: mode.clone(),
+        user: user.clone(),
+        group: group.clone(),
     }))
 }
 
@@ -99,7 +103,14 @@ pub(crate) fn sysusers_user_line(
     }
 
     let columns = tokenize(trimmed);
-    if columns.len() != 6 || columns[0] != "u" {
+    let [kind, name, _uid, _gecos, home, shell] = columns.as_slice() else {
+        return Err(DirectoryLayoutError::MalformedLine {
+            asset,
+            line_number,
+            line: trimmed.to_owned(),
+        });
+    };
+    if kind != "u" {
         return Err(DirectoryLayoutError::MalformedLine {
             asset,
             line_number,
@@ -107,9 +118,18 @@ pub(crate) fn sysusers_user_line(
         });
     }
 
-    Ok(Some(SysusersUserLine {
-        name: columns[1].clone(),
-        home: columns[4].clone(),
-        shell: columns[5].clone(),
-    }))
+    Ok(Some(SysusersUserLine { name: name.clone(), home: home.clone(), shell: shell.clone() }))
+}
+
+/// Parses an explicit octal mode string (e.g. "0700").
+///
+/// Returns `None` for the `-` placeholder token (SI-5), which the validator
+/// rejects as [`DirectoryLayoutError::NonExplicitField`], and for any
+/// non-octal input.
+#[must_use]
+pub(crate) fn parse_mode(text: &str) -> Option<Mode> {
+    if text == "-" {
+        return None;
+    }
+    u16::from_str_radix(text, 8).ok().map(Mode)
 }

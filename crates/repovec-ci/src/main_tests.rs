@@ -189,13 +189,13 @@ fn systemd_gate_writes_success_confirmation() {
 /// Keep failed validation visible to callers without emitting misleading success output.
 #[test]
 fn systemd_gate_propagates_validation_error() {
-    use repovec_core::appliance::systemd_units::SystemdUnitError;
-
-    let injected =
-        SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" };
     let mut buffer = Vec::new();
 
-    let result = run_systemd_gate_with(&mut buffer, || Err(injected));
+    // The gate chains the systemd-unit and directory-layout validators behind an
+    // `io::Error` seam, so the injected failure models any link in that chain.
+    let result = run_systemd_gate_with(&mut buffer, || {
+        Err(io::Error::other("repovecd.service is missing [Service]"))
+    });
 
     assert!(result.is_err(), "validation failure must propagate as Err");
     assert!(buffer.is_empty(), "no output should be written on failure");

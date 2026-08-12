@@ -4,8 +4,9 @@
 //! Makefile targets and GitHub Actions. With no subcommand, or with
 //! `docs-gate`, it evaluates changed paths through the `repovec-ci` library and
 //! prints GitHub Actions-compatible key/value output. With `systemd-gate`, it
-//! calls [`repovec_core::appliance::systemd_units`] to validate the checked-in
-//! appliance unit files outside the test runner.
+//! calls [`repovec_core::appliance::systemd_units`] and
+//! [`repovec_core::appliance::directory_layout`] to validate the checked-in
+//! appliance unit files and directory-layout assets outside the test runner.
 //!
 //! The dispatcher keeps CI wiring in one binary while preserving narrow
 //! command handlers: argument parsing selects a [`Command`], docs-gate planning
@@ -23,7 +24,8 @@ const USAGE: &str = concat!(
     "       repovec-ci [docs-gate] --stdin\n",
     "       repovec-ci systemd-gate\n\n",
     "Reads a changed-file list and prints documentation-gate decisions in\n",
-    "GitHub Actions output format, or validates checked-in systemd units.\n"
+    "GitHub Actions output format, or validates checked-in systemd units and\n",
+    "the appliance directory-layout assets.\n"
 );
 
 fn main() {
@@ -113,10 +115,13 @@ fn run_docs_gate(out: &mut impl io::Write, input: Input) -> io::Result<()> {
 /// # Example
 /// Valid checked-in units produce the appliance-contract confirmation line.
 fn run_systemd_gate(out: &mut impl io::Write) -> io::Result<()> {
-    run_systemd_gate_with(
-        out,
-        repovec_core::appliance::systemd_units::validate_checked_in_systemd_units,
-    )
+    run_systemd_gate_with(out, || {
+        repovec_core::appliance::systemd_units::validate_checked_in_systemd_units()
+            .map_err(io::Error::other)?;
+        repovec_core::appliance::directory_layout::validate_checked_in_directory_layout()
+            .map_err(io::Error::other)?;
+        Ok(())
+    })
 }
 
 /// Runs the supplied validator before writing the systemd gate confirmation.
@@ -125,10 +130,10 @@ fn run_systemd_gate(out: &mut impl io::Write) -> io::Result<()> {
 /// A validator returning `Ok(())` writes the confirmation; an error writes none.
 fn run_systemd_gate_with<F>(out: &mut impl io::Write, validator: F) -> io::Result<()>
 where
-    F: FnOnce() -> Result<(), repovec_core::appliance::systemd_units::SystemdUnitError>,
+    F: FnOnce() -> io::Result<()>,
 {
-    validator().map_err(io::Error::other)?;
-    writeln!(out, "checked-in systemd units satisfy the appliance contract")?;
+    validator()?;
+    writeln!(out, "checked-in systemd units and directory layout satisfy the appliance contract")?;
     out.flush()
 }
 

@@ -216,7 +216,20 @@ they are not quality targets.
   `assert_eq!` expecting `Err(IncorrectMode ...)` but receiving `Ok(())`); the
   BDD runner → 1 passed / 10 failed (all unhappy scenarios fail as designed).
   Transcripts in `Artefacts and notes`.
-- [ ] Milestone 2: packaging assets and pure validator (green).
+- [x] Milestone 2: packaging assets and pure validator (green).
+  Completed 2026-08-12. `packaging/tmpfiles.d/repovec.conf`,
+  `packaging/systemd/repovec-provision.service`, and the pure
+  `appliance::directory_layout` validator (module + parser + typed error +
+  spec-table contract) are implemented and green:
+  `validate_directory_layout` enforces the bidirectional drift guard, SI-4
+  (single `/etc/repovec` authority), SI-5 (explicit modes), per-directory
+  mode/owner/group exact match, and the sysusers user/home/shell contract.
+  Inline insta snapshots capture each `DirectoryLayoutError` variant's
+  operator-facing `Display`. `repovec-ci systemd-gate` (D-10) now also calls
+  `validate_checked_in_directory_layout()` and prints a combined
+  confirmation; `make validate-systemd` exercises both. All gates green:
+  check-fmt, typecheck, lint, test (457 passed), validate-systemd,
+  markdownlint, nixie. Transcripts in `Artefacts and notes`.
 - [ ] Milestone 3: end-to-end integration assertions.
 - [ ] Milestone 4: live-ownership pre-flight (fail-closed guard).
 - [ ] Milestone 5: documentation (developers guide, users guide, ADR) and
@@ -832,6 +845,28 @@ test result: FAILED. 1 passed; 10 failed
 # Every unhappy scenario fails as designed (mode, owner, group, missing/extra
 # entries, explicit-token, secrets-authority, malformed line, home, shell).
 ```
+
+### Milestone 2 green evidence (2026-08-12)
+
+```text
+$ cargo test -p repovec-core directory_layout
+  unit tests (lib): 19 passed (incl. 11 inline-`Display` snapshot tests)
+  BDD runner:       11 passed (all scenarios)
+
+$ make validate-systemd
+  checked-in systemd units and directory layout satisfy the appliance contract
+
+$ make test
+  Summary [11.390s] 457 tests run: 457 passed, 4 skipped
+```
+
+Code-quality fixes made while landing M2 (from history cleanup + first lint):
+corrected the `NonExplicitField` line number to the real asset line; made the
+proptest robustness assertion type-agnostic (tokenizer only guarantees
+populated fields); converted `Mutation::apply` to replace only the first
+occurrence so each test mutates exactly one entry; filled inline snapshots for
+every `DirectoryLayoutError` variant; updated `repovec-ci` snapshot baselines
+for the combined gate confirmation and extended USAGE text.
 
 ## Interfaces and dependencies
 

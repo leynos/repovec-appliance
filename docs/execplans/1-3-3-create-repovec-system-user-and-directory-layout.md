@@ -1050,23 +1050,25 @@ using map_err for Result conversions; the two remaining ok_or_else uses are
 valid Option::ok_or_else on .to_str().
 
 Verified green on the real tree (all run via exec, exit=0):
-- cargo fmt --all -- --check
-- cargo clippy --workspace --all-targets --all-features -- -D warnings
-- RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
-- cargo test -p repovec-core (53 unit + 15 doctests passed)
-- make whitaker-lint (nightly-2026-05-28) — exit 0
-- make markdownlint — 0 errors
-- git diff origin/main --check — clean
 
-Files changed (commit 154fe68): daemon_startup.rs -> daemon_startup/mod.rs +
-tests.rs; directory_layout/live.rs (new live adapter); directory_layout/
-tests_live.rs (live fixture tests); directory_layout/mod.rs (module wiring);
-Cargo.toml (tempfile dev-dep); Cargo.lock.
+- `cargo fmt --all -- --check`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`
+- `cargo test -p repovec-core` (53 unit + 15 doctests passed)
+- `make whitaker-lint` (nightly-2026-05-28) — exit 0
+- `make markdownlint` — 0 errors
+- `git diff origin/main --check` — clean
+
+Files changed (commit `154fe68`):
+`daemon_startup.rs` -> `daemon_startup/mod.rs` + `tests.rs`;
+`directory_layout/live.rs` (new live adapter);
+`directory_layout/tests_live.rs` (live fixture tests);
+`directory_layout/mod.rs` (module wiring); `Cargo.toml` (tempfile dev-dep);
+`Cargo.lock`.
 
 This section supersedes and obviates any earlier M4 Scratch notes; those
-earlier notes existed only inside the session transcript as mis-rendered text and
-should be disregarded if found referenced elsewhere.
-
+earlier notes existed only inside the session transcript as intermittently
+garbled text and should be disregarded if found referenced elsewhere.
 
 ### CodeRabbit gate (M4 milestone, 2026-08-15)
 
@@ -1084,7 +1086,6 @@ therefore executed directly (review-only; no tracked files were edited),
 which is the same command the scrutineer would have run. Flags for the
 human/operator: if sub-agent reliability matters for later milestones,
 retry with a different orchestrator or report the infrably defect.
-
 
 ## Revision note
 

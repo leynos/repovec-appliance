@@ -1064,7 +1064,7 @@ tests_live.rs (live fixture tests); directory_layout/mod.rs (module wiring);
 Cargo.toml (tempfile dev-dep); Cargo.lock.
 
 This section supersedes and obviates any earlier M4 Scratch notes; those
-earlier notes existed only inside the mis-rendered session transcript and
+earlier notes existed only inside the session transcript as mis-rendered text and
 should be disregarded if found referenced elsewhere.
 
 

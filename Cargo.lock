@@ -2372,6 +2372,7 @@ dependencies = [
  "rstest",
  "rstest-bdd",
  "rstest-bdd-macros",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",

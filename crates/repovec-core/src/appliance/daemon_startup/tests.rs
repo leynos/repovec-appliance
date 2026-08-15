@@ -13,15 +13,15 @@ use super::{
     validate_qdrant_liveness_with_policy,
 };
 
-/// Protect the successful startup path through both injected systemd and Qdrant checks.
 #[test]
+/// Protect the successful startup path through both injected systemd and Qdrant checks.
 fn startup_succeeds_when_validation_passes() {
     validate_daemon_startup_contracts_with(|| Ok(()), || async { Ok(()) })
         .expect("startup contracts should pass");
 }
 
-/// Keep both successful startup checks observable in debug logs for operational diagnosis.
 #[test]
+/// Keep both successful startup checks observable in debug logs for operational diagnosis.
 fn startup_logs_successful_validation() -> Result<(), String> {
     let (result, logs) = repovec_test_helpers::capture_logs(|| {
         validate_daemon_startup_contracts_with(|| Ok(()), || async { Ok(()) })
@@ -42,9 +42,9 @@ fn startup_logs_successful_validation() -> Result<(), String> {
     )
 }
 
+#[test]
 /// Exercise the production unit validator while injecting Qdrant success to avoid an unrelated
 /// service dependency.
-#[test]
 fn startup_runs_real_systemd_validation() -> Result<(), String> {
     let (result, logs) = repovec_test_helpers::capture_logs(|| {
         validate_daemon_startup_contracts_with(
@@ -65,8 +65,8 @@ fn startup_runs_real_systemd_validation() -> Result<(), String> {
     )
 }
 
-/// Ensure failed systemd validation prevents invoking the Qdrant liveness callback.
 #[test]
+/// Ensure failed systemd validation prevents invoking the Qdrant liveness callback.
 fn startup_skips_qdrant_after_systemd_failure() {
     let qdrant_called = Cell::new(false);
     let injected_error =
@@ -86,17 +86,17 @@ fn startup_skips_qdrant_after_systemd_failure() {
     assert!(!qdrant_called.get());
 }
 
-/// Preserve the fixed failure exit status used by the appliance startup boundary.
 #[test]
+/// Preserve the fixed failure exit status used by the appliance startup boundary.
 fn startup_returns_exit_code_1_when_validation_fails() {
     let result = run_startup_with_systemd_error("repovecd.service");
 
     assert_eq!(result, Err(STARTUP_FAILURE_EXIT_CODE));
 }
 
+#[test]
 /// Retain the failing unit identity in error logs so operators can locate the broken service
 /// contract.
-#[test]
 fn startup_error_logging_preserves_systemd_unit_field() -> Result<(), String> {
     let (exit_code, logs) = repovec_test_helpers::capture_logs(|| {
         run_startup_with_systemd_error("repovec-mcpd.service")
@@ -114,8 +114,8 @@ fn startup_error_logging_preserves_systemd_unit_field() -> Result<(), String> {
     )
 }
 
-/// Keep readiness timeouts classified as typed Qdrant startup failures.
 #[test]
+/// Keep readiness timeouts classified as typed Qdrant startup failures.
 fn qdrant_liveness_timeout_maps_to_startup_error() {
     let result = validate_qdrant_liveness_with_policy(
         || async { Err(QdrantLivenessError::Timeout { timeout: Duration::from_millis(5) }) },
@@ -129,9 +129,9 @@ fn qdrant_liveness_timeout_maps_to_startup_error() {
     ));
 }
 
+#[test]
 /// Allow temporary unavailability to recover on the next probe instead of aborting startup
 /// immediately.
-#[test]
 fn qdrant_liveness_retries_transient_failures() {
     let attempts = Cell::new(0);
 

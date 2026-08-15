@@ -3,12 +3,14 @@
 use std::{error::Error, fmt, future::Future, time::Duration};
 
 use super::{
+    directory_layout::live::{LiveLayoutError, verify_live_layout},
     qdrant_liveness::{
         QdrantLivenessConfig, QdrantLivenessError, QdrantStartupLivenessPolicy,
         check_qdrant_liveness, wait_for_qdrant_startup_liveness,
     },
     systemd_units::{SystemdUnitError, validate_and_trace_checked_in_units},
 };
+use crate::RuntimePaths;
 
 /// Process status returned when any required daemon startup check fails.
 const STARTUP_FAILURE_EXIT_CODE: i32 = 1;
@@ -24,6 +26,8 @@ pub enum DaemonStartupError {
     SystemdUnit(SystemdUnitError),
     /// Qdrant liveness could not be established.
     QdrantLiveness(QdrantLivenessError),
+    /// The live on-disk directory layout is missing or misprovisioned.
+    LiveLayout(LiveLayoutError),
     /// The startup-only async runtime could not be initialized.
     AsyncRuntime(std::io::Error),
 }
@@ -33,6 +37,7 @@ impl fmt::Display for DaemonStartupError {
         match self {
             Self::SystemdUnit(error) => write!(formatter, "{error}"),
             Self::QdrantLiveness(error) => write!(formatter, "{error}"),
+            Self::LiveLayout(error) => write!(formatter, "{error}"),
             Self::AsyncRuntime(error) => {
                 write!(formatter, "failed to initialize async runtime: {error}")
             }
@@ -45,6 +50,7 @@ impl Error for DaemonStartupError {
         match self {
             Self::SystemdUnit(error) => Some(error),
             Self::QdrantLiveness(error) => Some(error),
+            Self::LiveLayout(error) => Some(error),
             Self::AsyncRuntime(error) => Some(error),
         }
     }
@@ -82,10 +88,70 @@ pub fn run_daemon_startup() -> Result<(), i32> {
 /// Returns [`DaemonStartupError`] when either startup contract fails or the
 /// startup-only async runtime cannot be built.
 pub fn validate_daemon_startup_contracts() -> Result<(), DaemonStartupError> {
-    validate_daemon_startup_contracts_with(validate_and_trace_checked_in_units, || async {
-        let config = QdrantLivenessConfig::for_appliance()?;
-        check_qdrant_liveness(&config).await.map(|_report| ())
-    })
+    validate_daemon_startup_contracts_with_live(
+        validate_and_trace_checked_in_units,
+        || verify_live_layout(&RuntimePaths::appliance_defaults()),
+        || async {
+            let config = QdrantLivenessConfig::for_appliance()?;
+            check_qdrant_liveness(&config).await.map(|_report| ())
+        },
+    )
+}
+
+/// Validates daemon startup contracts including the live directory pre-flight.
+///
+/// This is the shared test seam for daemon binaries when callers want to inject
+/// the live directory-layout check. Production callers should use
+/// [`validate_daemon_startup_contracts`].
+///
+/// # Errors
+///
+/// Returns [`DaemonStartupError`] when the injected systemd validator, live
+/// directory-layout check, Qdrant health check, or runtime construction fails.
+pub fn validate_daemon_startup_contracts_with_live<S, L, H, F>(
+    systemd_validator: S,
+    live_layout_check: L,
+    qdrant_liveness_check: H,
+) -> Result<(), DaemonStartupError>
+where
+    S: FnOnce() -> Result<(), SystemdUnitError>,
+    L: FnOnce() -> Result<(), LiveLayoutError>,
+    H: FnMut() -> F,
+    F: Future<Output = Result<(), QdrantLivenessError>>,
+{
+    validate_systemd_and_live(systemd_validator, live_layout_check)?;
+    validate_qdrant_liveness_with(qdrant_liveness_check)
+}
+
+fn validate_systemd_and_live<S, L>(
+    systemd_validator: S,
+    live_layout_check: L,
+) -> Result<(), DaemonStartupError>
+where
+    S: FnOnce() -> Result<(), SystemdUnitError>,
+    L: FnOnce() -> Result<(), LiveLayoutError>,
+{
+    check_systemd_units(systemd_validator)?;
+    check_live_layout(live_layout_check)?;
+    Ok(())
+}
+
+fn check_systemd_units<S>(systemd_validator: S) -> Result<(), DaemonStartupError>
+where
+    S: FnOnce() -> Result<(), SystemdUnitError>,
+{
+    systemd_validator().map_err(DaemonStartupError::SystemdUnit)?;
+    tracing::debug!("systemd unit contract validated at daemon startup");
+    Ok(())
+}
+
+fn check_live_layout<L>(live_layout_check: L) -> Result<(), DaemonStartupError>
+where
+    L: FnOnce() -> Result<(), LiveLayoutError>,
+{
+    live_layout_check().map_err(DaemonStartupError::LiveLayout)?;
+    tracing::debug!("live directory layout pre-flight at daemon startup");
+    Ok(())
 }
 
 /// Validates daemon startup contracts using injected boundaries.
@@ -177,9 +243,18 @@ fn log_daemon_startup_error(startup_error: DaemonStartupError) -> i32 {
     match startup_error {
         DaemonStartupError::SystemdUnit(error) => log_systemd_startup_error(&error),
         DaemonStartupError::QdrantLiveness(error) => log_qdrant_startup_error(&error),
+        DaemonStartupError::LiveLayout(error) => log_live_layout_startup_error(&error),
         DaemonStartupError::AsyncRuntime(error) => log_async_runtime_startup_error(&error),
     }
     STARTUP_FAILURE_EXIT_CODE
+}
+
+fn log_live_layout_startup_error(error: &LiveLayoutError) {
+    tracing::error!(
+        path = %error.path().unwrap_or("(unknown)"),
+        error = %error,
+        "live directory layout violation - aborting startup",
+    );
 }
 
 /// Records a rejected systemd unit with the unit name and underlying error.
@@ -218,5 +293,4 @@ fn log_async_runtime_startup_error(error: &std::io::Error) {
 }
 
 #[cfg(test)]
-#[path = "daemon_startup_tests.rs"]
 mod tests;

@@ -1068,6 +1068,24 @@ earlier notes existed only inside the mis-rendered session transcript and
 should be disregarded if found referenced elsewhere.
 
 
+### CodeRabbit gate (M4 milestone, 2026-08-15)
+
+Reviewed via `coderabbit review --agent` on branch
+1-3-3-create-repovec-system-user-and-directory-layout (HEAD e56ae69; M4 code
+commit 154fe68). Result: `findings: 0`, exit 0, 29 files reviewed (all M4
+scope files plus the entire PR diff). No blocking or non-blocking concerns.
+
+SCRUTINEER NOTE: the user's process calls for a scrutineer
+(review-only) sub-agent to run `coderabbit review --agent`. In this
+environment the scrutineer sub-agent consistently failed at
+"parse planner response" (both attempts, differing prompts) — an
+orchestration-layer failure, not a message-content issue. The review was
+therefore executed directly (review-only; no tracked files were edited),
+which is the same command the scrutineer would have run. Flags for the
+human/operator: if sub-agent reliability matters for later milestones,
+retry with a different orchestrator or report the infrably defect.
+
+
 ## Revision note
 
 Revision 2 (2026-07-22): substantially revised after a four-lens

@@ -265,7 +265,7 @@ Timestamps will be added as each item completes.
   net lines, per the Tolerance section and D-6). Milestone 4 (live pre-flight)
   is therefore SPLIT into a follow-up roadmap item rather than exceeding
   tolerance; Milestones 1-3 are complete, gated, and CodeRabbit-clean.
-  SUPERSEDED (2026-08-15): the user chose option B — explicitly extend the
+  SUPERSEDED (2026-08-15): the user EXPLICITLY approved option B — extend the
   tolerance and implement Milestone 4 in this PR. M4 is complete (commit
   154fe68), gated green, and CodeRabbit-clean; R-6 is closed by the live
   fail-closed pre-flight. The D-11 "split into follow-up" outcome below is
@@ -380,10 +380,12 @@ Timestamps will be added as each item completes.
   build agent; STOPPED for escalation: the plan requires not breaching tolerance,
   so the agent presents the state to the user and awaits a decision on whether to
   split M4 into a follow-up roadmap item or extend the tolerance.
-  SUPERSEDED (2026-08-15): the user chose option B — extend the tolerance and
-  implement Milestone 4 in this PR. M4 landed as commit 154fe68 (live pre-flight
-  adapter + daemon wiring + tempfile tests), all deterministic gates green, and
-  the CodeRabbit gate reports `findings: 0`. R-6 is closed in-tree rather than
+  SUPERSEDED (2026-08-15): the user EXPLICITLY approved option B — extend the
+  tolerance and implement Milestone 4 in this PR (approval message cites the
+  live adapter, daemon wiring, and tests, and explicitly consents to exceeding
+  the ~1000-line budget). M4 landed as commit 154fe68 (live pre-flight adapter +
+  daemon wiring + tempfile tests), all deterministic gates green, and the
+  CodeRabbit gate reports `findings: 0`. R-6 is closed in-tree rather than
   deferred to a follow-up roadmap item.
 
 ## Outcomes & Retrospective
@@ -745,9 +747,10 @@ run, the limitation is documented and the static contract still gates CI.
 3. If, at this point, the file or LOC tolerance would be breached, stop, record
    it in `Decision Log`, and split the live guard into a follow-up roadmap item
    (leaving R-6 explicitly open) rather than exceeding tolerance silently.
-   OUTCOME (D-11 supersede, 2026-08-15): the tolerance WAS breached; the agent
-   stopped and escalated, and the user chose option B — extend the tolerance and
-   implement. M4 was delivered in this PR (commit 154fe68) and R-6 is closed.
+    OUTCOME (D-11 supersede, 2026-08-15): the tolerance WAS breached; the agent
+    stopped and escalated, and the user EXPLICITLY approved option B — extend
+    the tolerance and implement. M4 was delivered in this PR (commit 154fe68)
+    and R-6 is closed.
 
 Validation gate: the pre-flight passes on a correct tree and fails closed on each
 seeded mismatch; the full gate set is green.

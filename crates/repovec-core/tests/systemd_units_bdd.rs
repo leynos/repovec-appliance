@@ -42,6 +42,13 @@ fn cloudflared_is_removed_from_the_target_wants_list(systemd_world: &mut Systemd
     systemd_world.target = systemd_world.target.replace(" cloudflared.service", "");
 }
 
+#[given("the provisioning oneshot is removed from the target wants list")]
+fn the_provisioning_oneshot_is_removed_from_the_target_wants_list(
+    systemd_world: &mut SystemdWorld,
+) {
+    systemd_world.target = systemd_world.target.replace(" repovec-provision.service", "");
+}
+
 #[given("the target install binding is removed")]
 fn the_target_install_binding_is_removed(systemd_world: &mut SystemdWorld) {
     systemd_world.target = systemd_world.target.replace("WantedBy=multi-user.target\n", "");
@@ -144,6 +151,21 @@ fn validation_fails_because_the_target_does_not_want_cloudflared(systemd_world: 
             section: "Unit",
             key: "Wants",
             dependency: "cloudflared.service",
+        },
+    );
+}
+
+#[then("validation fails because the target does not want the provisioning oneshot")]
+fn validation_fails_because_the_target_does_not_want_the_provisioning_oneshot(
+    systemd_world: &SystemdWorld,
+) {
+    assert_validation_result(
+        systemd_world,
+        SystemdUnitError::MissingDependency {
+            unit: "repovec.target",
+            section: "Unit",
+            key: "Wants",
+            dependency: "repovec-provision.service",
         },
     );
 }
@@ -286,6 +308,14 @@ fn checked_in_unit_set_satisfies_the_appliance_contract(systemd_world: SystemdWo
     name = "The target wants every appliance service"
 )]
 fn target_wants_every_appliance_service(systemd_world: SystemdWorld) {
+    assert_scenario_steps_ran(&systemd_world);
+}
+
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "The target pulls in provisioning before the appliance starts"
+)]
+fn target_pulls_in_provisioning_before_the_appliance_starts(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }
 

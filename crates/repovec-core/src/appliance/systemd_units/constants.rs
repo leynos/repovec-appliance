@@ -8,6 +8,8 @@ pub(super) const REPOVECD_UNIT: &str = "repovecd.service";
 pub(super) const REPOVEC_MCPD_UNIT: &str = "repovec-mcpd.service";
 /// Name of the templated grepai service unit.
 pub(super) const REPOVEC_GREPAI_TEMPLATE_UNIT: &str = "repovec-grepai@.service";
+/// Name of the provisioning oneshot that seeds the appliance accounts and directories.
+pub(super) const REPOVEC_PROVISION_SERVICE: &str = "repovec-provision.service";
 /// Systemd section containing unit metadata and dependencies.
 pub(super) const UNIT_SECTION: &str = "Unit";
 /// Systemd section containing service execution settings.
@@ -20,6 +22,15 @@ pub(super) const QDRANT_SERVICE: &str = "qdrant.service";
 pub(super) const QDRANT_CONTAINER: &str = "qdrant.container";
 /// Quadlet-generated service name rejected as a dependency.
 pub(super) const QDRANT_CONTAINER_SERVICE: &str = "qdrant.container.service";
+/// Oneshot that writes the Qdrant API key before the container starts.
+pub(super) const QDRANT_API_KEY_SERVICE: &str = "repovec-qdrant-api-key.service";
+/// Systemd's own account-management unit, ordered before provisioning runs.
+pub(super) const SYSUSERS_SERVICE: &str = "systemd-sysusers.service";
+/// Provisioning command that creates the `repovec` account and group.
+pub(super) const SYSUSERS_EXEC: &str = "/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf";
+/// Provisioning command that creates the appliance directory tree.
+pub(super) const TMPFILES_EXEC: &str =
+    "/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf";
 /// Account that owns the appliance services.
 pub(super) const SERVICE_USER: &str = "repovec";
 /// Group assigned to the appliance services.

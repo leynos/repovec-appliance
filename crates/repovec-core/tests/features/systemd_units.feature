@@ -12,6 +12,12 @@ Feature: repovec systemd unit contract
     When the systemd units are validated
     Then validation fails because the target does not want cloudflared
 
+  Scenario: The target pulls in provisioning before the appliance starts
+    Given the checked-in repovec systemd units
+    And the provisioning oneshot is removed from the target wants list
+    When the systemd units are validated
+    Then validation fails because the target does not want the provisioning oneshot
+
   Scenario: The target remains enableable
     Given the checked-in repovec systemd units
     And the target install binding is removed

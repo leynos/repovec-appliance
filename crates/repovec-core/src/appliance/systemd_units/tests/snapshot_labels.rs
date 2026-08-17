@@ -1,6 +1,6 @@
 //! Snapshot labels for systemd unit validator display diagnostics.
 
-use super::ValidationScenario;
+use super::scenarios::ValidationScenario;
 
 impl ValidationScenario {
     pub(super) fn snapshot_label(self) -> &'static str {
@@ -13,7 +13,16 @@ impl ValidationScenario {
             | Self::TargetUsesQdrantContainer
             | Self::MissingTargetWantsRepovecd
             | Self::MissingTargetWantsMcpd
-            | Self::MissingTargetWantsCloudflared => self.target_snapshot_label(),
+            | Self::MissingTargetWantsCloudflared
+            | Self::MissingTargetWantsProvision => self.target_snapshot_label(),
+            Self::MissingProvisionUnitSection
+            | Self::MissingProvisionServiceSection
+            | Self::MissingProvisionInstallSection
+            | Self::MissingProvisionWantedByTarget
+            | Self::MissingProvisionAfterSysusers
+            | Self::MissingProvisionBeforeRepovecd
+            | Self::WrongProvisionSysusersExecStart
+            | Self::MissingProvisionType => self.provision_snapshot_label(),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
@@ -67,7 +76,22 @@ impl ValidationScenario {
             Self::MissingTargetWantsRepovecd => "missing_target_wants_repovecd_display",
             Self::MissingTargetWantsMcpd => "missing_target_wants_mcpd_display",
             Self::MissingTargetWantsCloudflared => "missing_target_wants_cloudflared_display",
+            Self::MissingTargetWantsProvision => "missing_target_wants_provision_display",
             _ => panic!("target snapshot label called for non-target scenario"),
+        }
+    }
+
+    fn provision_snapshot_label(self) -> &'static str {
+        match self {
+            Self::MissingProvisionUnitSection => "missing_provision_unit_section_display",
+            Self::MissingProvisionServiceSection => "missing_provision_service_section_display",
+            Self::MissingProvisionInstallSection => "missing_provision_install_section_display",
+            Self::MissingProvisionWantedByTarget => "missing_provision_wanted_by_target_display",
+            Self::MissingProvisionAfterSysusers => "missing_provision_after_sysusers_display",
+            Self::MissingProvisionBeforeRepovecd => "missing_provision_before_repovecd_display",
+            Self::WrongProvisionSysusersExecStart => "wrong_provision_sysusers_exec_start_display",
+            Self::MissingProvisionType => "missing_provision_type_display",
+            _ => panic!("provision snapshot label called for non-provision scenario"),
         }
     }
 

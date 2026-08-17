@@ -150,6 +150,29 @@ impl ParsedUnit {
         })
     }
 
+    /// Requires at least one `ExecStart` value equal to `expected`.
+    ///
+    /// A provisioning oneshot may legitimately carry several `ExecStart` lines, so
+    /// the check accepts the expected command among them rather than demanding it
+    /// be the only one. For example, expected `/usr/bin/systemd-sysusers` succeeds
+    /// when the service also runs `systemd-tmpfiles`; a service without that
+    /// command yields [`SystemdUnitError::IncorrectExecStart`].
+    pub(super) fn require_any_exec_start(
+        &self,
+        expected: &'static str,
+    ) -> Result<(), SystemdUnitError> {
+        let values = self.values(SERVICE_SECTION, "ExecStart");
+        if values.iter().any(|actual| actual == expected) {
+            return Ok(());
+        }
+
+        Err(SystemdUnitError::IncorrectExecStart {
+            unit: self.unit,
+            expected,
+            actual: values.join(","),
+        })
+    }
+
     /// Requires one service directive with the exact expected value.
     ///
     /// For example, `User=repovec` satisfies a matching expectation; a different value yields

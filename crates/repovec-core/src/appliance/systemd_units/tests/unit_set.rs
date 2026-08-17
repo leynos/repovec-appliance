@@ -4,8 +4,8 @@ use rstest::fixture;
 
 use crate::appliance::systemd_units::{
     SystemdUnitError, checked_in_repovec_grepai_template, checked_in_repovec_mcpd_service,
-    checked_in_repovec_target, checked_in_repovecd_service,
-    validate_systemd_units_with_grepai_template,
+    checked_in_repovec_provision_service, checked_in_repovec_target, checked_in_repovecd_service,
+    validate_systemd_units_with_grepai_template_and_provision,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -14,6 +14,7 @@ pub(super) enum UnitFile {
     Repovecd,
     Mcpd,
     GrepaiTemplate,
+    Provision,
 }
 
 #[derive(Clone, Debug)]
@@ -22,6 +23,7 @@ pub(super) struct UnitSet {
     pub(super) repovecd: String,
     pub(super) mcpd: String,
     pub(super) grepai_template: String,
+    pub(super) provision: String,
 }
 
 impl UnitSet {
@@ -66,11 +68,12 @@ impl UnitSet {
     }
 
     pub(super) fn validate(&self) -> Result<(), SystemdUnitError> {
-        validate_systemd_units_with_grepai_template(
+        validate_systemd_units_with_grepai_template_and_provision(
             &self.target,
             &self.repovecd,
             &self.mcpd,
             &self.grepai_template,
+            &self.provision,
         )
     }
 
@@ -80,6 +83,7 @@ impl UnitSet {
             UnitFile::Repovecd => &mut self.repovecd,
             UnitFile::Mcpd => &mut self.mcpd,
             UnitFile::GrepaiTemplate => &mut self.grepai_template,
+            UnitFile::Provision => &mut self.provision,
         }
     }
 }
@@ -104,5 +108,6 @@ pub(super) fn checked_in_unit_set() -> UnitSet {
         repovecd: checked_in_repovecd_service().to_owned(),
         mcpd: checked_in_repovec_mcpd_service().to_owned(),
         grepai_template: checked_in_repovec_grepai_template().to_owned(),
+        provision: checked_in_repovec_provision_service().to_owned(),
     }
 }

@@ -1,0 +1,28 @@
+netsuke_version: "1.0.0"
+
+actions:
+  - name: check-fmt
+    description: Check Rust formatting across every workspace crate.
+    command: "cargo fmt --all -- --check"
+  - name: lint
+    description: Deny warnings through rustdoc, Clippy, and Whitaker.
+    command:
+      - "RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --workspace"
+      - "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+      - "RUSTFLAGS='-D warnings' whitaker --all -- --all-targets --all-features"
+  - name: test
+    description: Test every workspace target with every supported feature.
+    command: "RUSTFLAGS='-D warnings' cargo test --workspace --all-targets --all-features"
+  - name: package
+    description: Package the publishable core crate without publishing it.
+    command: "cargo package -p repovec-core --allow-dirty --no-verify"
+  - name: all
+    description: Run the selected release-admission gates in declaration order.
+    dependency_order: serial
+    deps: [check-fmt, lint, test, package]
+    # v0.1.0 requires a recipe for dependency-only actions; #572 removes this.
+    command: ":"
+
+defaults: [all]
+
+targets: []

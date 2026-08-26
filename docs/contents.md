@@ -9,6 +9,8 @@
   user-visible continuous integration (CI) and documentation-gate behaviour.
 - [Developers guide](developers-guide.md): maintainer workflow, quality gates,
   and repository automation policy.
+- [Netsuke release-admission canary](netsuke-release-canary.md): v0.1.0
+  downstream targets and intentional retained Makefile boundaries.
 
 ## Design and architecture
 

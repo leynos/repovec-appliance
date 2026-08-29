@@ -1,0 +1,29 @@
+[workspace]
+members = [
+    "repovec-secret-store",
+    "repovec-systemd-probe",
+    "repovec-unit-contract",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "ISC"
+publish = false
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+expect_used = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+unwrap_used = "deny"
+
+[workspace.lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+missing_crate_level_docs = "deny"

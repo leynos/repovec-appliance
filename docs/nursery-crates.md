@@ -42,13 +42,13 @@ _Table 1: Nursery crate responsibilities and intended consumers._
 
 ## `repovec-unit-contract`
 
-### Purpose
+### Contract-engine purpose
 
 `repovec-unit-contract` evaluates application rules over an ordered,
 parser-neutral view of unit directives. A parser adapter supplies occurrences;
 a product crate supplies rules; the engine returns diagnostics.
 
-### Principal interfaces
+### Contract-engine interfaces
 
 ```rust,no_run
 pub trait UnitView {
@@ -80,7 +80,7 @@ optional byte span. `Diagnostic` exposes a stable code, severity, message,
 artefact identity, location, and sensitivity. `ValidationReport` accumulates
 findings and is invalid when any finding has error severity.
 
-### Adoption constraints
+### Contract-engine adoption constraints
 
 - A native systemd adapter must preserve repeated occurrences, source order,
   empty reset assignments, and drop-in origin.
@@ -92,14 +92,14 @@ findings and is invalid when any finding has error severity.
 
 ## `repovec-systemd-probe`
 
-### Purpose
+### Probe purpose
 
 `repovec-systemd-probe` defines the boundary between deterministic policy tests
 and external consumer verification. It models source artefacts, generated
 units, raw tool evidence, diagnostics, and the ports implemented by Podman and
 systemd command adapters.
 
-### Principal interfaces
+### Probe interfaces
 
 ```rust,no_run
 pub trait QuadletGenerator {
@@ -125,7 +125,7 @@ pub trait SystemdVerifier {
 standard error. Its default `Debug` representation reveals buffer lengths only.
 Callers must opt in through explicit accessors before processing raw evidence.
 
-### Adoption constraints
+### Probe adoption constraints
 
 - Production adapters must invoke tools without a shell.
 - Temporary roots and search paths must be caller-controlled.
@@ -141,14 +141,14 @@ D-Bus client and define an application port only after that spike.
 
 ## `repovec-secret-store`
 
-### Purpose
+### Secret-store purpose
 
 `repovec-secret-store` composes a protection codec with a durable repository.
 The interface permits a `systemd-creds` codec, a test codec, a capability-based
 filesystem repository, and future credential backends without binding the core
 types to any one command or storage library.
 
-### Principal interfaces
+### Secret-store interfaces
 
 ```rust,no_run
 pub trait SecretCodec {
@@ -190,7 +190,7 @@ pub trait SecretRepository {
 Access to bytes requires an explicit `expose()` call. `CodecBackedSecretStore`
 provides the initial composition implementation.
 
-### Repository contract
+### Secret repository contract
 
 A filesystem implementation of `SecretRepository::replace` must document and
 test all of the following:

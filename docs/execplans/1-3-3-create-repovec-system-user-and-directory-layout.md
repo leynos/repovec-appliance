@@ -254,11 +254,29 @@ they are not quality targets.
   unit validation (`DaemonStartupError::LiveLayout`), unit-tested with a
   `tempfile` scratch tree. All deterministic gates green; CodeRabbit
   `findings: 0`.
-- [ ] Milestone 5: documentation (developers guide, users guide, ADR) and
-  roadmap update.
-- [ ] Milestone 6: commit, push, and mark roadmap item done.
-
-Timestamps will be added as each item completes.
+- [x] Milestone 5: documentation (developers guide, users guide, ADR) and
+  roadmap update. Completed 2026-08-24. `docs/developers-guide.md` gains §5.8
+  ("`directory_layout` validation surface") describing the public API, the
+  `Mode` newtype and typed error, the spec-table contract, the asset paths and
+  installed locations, the `repovec-provision.service` trigger, the
+  `systemd-gate` extension, the live pre-flight adapter, and the pure-versus-
+  live boundary. `docs/users-guide.md` gains a "Directory layout and ownership
+  contract" section (the `0700`/`0750` mode table, the single-authority
+  `/etc/repovec` note, the explicit instruction that operators must not loosen
+  modes, and the statement that daemons refuse startup on live ownership or
+  confidentiality failures) and documents `repovec-provision.service` in the
+  appliance target section. `docs/adr-001-repovec-directory-provisioning.md`
+  records the decision in Y-Statement format (tmpfiles+sysusers over an
+  imperative helper or unit `StateDirectory=`; the install-time
+  `repovec-provision.service` trigger and sysusers-before-tmpfiles ordering;
+  `0700` data tree; `qdrant-storage` `root:root` and its rootless dependency;
+  single authority for `/etc/repovec`; live pre-flight as runtime backstop).
+  `docs/repovec-appliance-technical-design.md` references the ADR from the
+  service-layout section, and roadmap item `1.3.3` is marked complete.
+- [x] Milestone 6: commit, push, and mark roadmap item done. Completed
+  2026-08-24: roadmap item `1.3.3` is `[x]`, all gates re-run green, the
+  opt-in integration suite ran green on a capable host, and the branch is
+  pushed. PR #78 description updated to reflect the completed milestones.
 
 - [x] SCOPE ESCALATION (2026-08-12): branch is at 17 non-snapshot code/asset
   files and ~1700 net lines vs the plan tolerance (24 files / roughly 1000
@@ -293,6 +311,13 @@ Timestamps will be added as each item completes.
   `integration-tests/provisioning/test_qdrant_api_key.py`.
   Impact: 1.3.3 keeps `/etc/repovec` helper-authoritative (SI-4) and does not
   re-provision it.
+- Observation: the `make markdownlint` gate glob `**/*.md` matches the local
+  tool-state directory `.vtcode/`, which contains a long-line task-tracker
+  file, so the gate failed (MD013) even though no tracked Markdown file
+  violated. Evidence: the M5 gate run reported only
+  `.vtcode/tasks/current_task.md:10:81`. Impact: `.markdownlint-cli2.jsonc`
+  gains a `.vtcode/**` ignore so transient, gitignored tool state cannot break
+  the deterministic commit gate.
 
 ## Decision Log
 
@@ -1109,6 +1134,47 @@ therefore executed directly (review-only; no tracked files were edited),
 which is the same command the scrutineer would have run. Flags for the
 human/operator: if sub-agent reliability matters for later milestones,
 retry with a different orchestrator or report the infrably defect.
+
+### Milestone 5 evidence (2026-08-24)
+
+```text
+$ make integration-test   # capable host: rootless podman + podman system service
+============================= test session starts ==============================
+platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0
+rootdir: .../integration-tests
+collected 13 items / 5 deselected / 8 selected
+
+provisioning/test_directory_layout.py ..                                 [ 25%]
+provisioning/test_qdrant_api_key.py ......                               [100%]
+
+================== 8 passed, 5 deselected in 91.47s (0:01:31) ==================
+```
+
+The opt-in integration gate ran green on a capable host for the first time in
+this PR: both `test_directory_layout.py` tests (ordered `systemd-sysusers`
+then `systemd-tmpfiles --create`, matching `repovec-provision.service`;
+ownership/mode assertions; idempotence) plus the six `test_qdrant_api_key.py`
+lifecycle tests passed. The host runs systemd as PID 1 but the session lacked
+root privileges to install the appliance units and start `qdrant.service`, so
+the `systemctl start repovec.target` / `qdrant.service` activeness and the
+authenticated loopback gRPC liveness probe remain the documented manual run on
+a privileged appliance host (matching the established 1.2.2/1.2.3 precedent);
+the static contracts, integration lifecycle, and the live pre-flight gate the
+behaviour in CI.
+
+### CodeRabbit gate (M5 milestone, pending)
+
+`coderabbit review --agent` is to be run on the pushed M5 documentation state
+after the deterministic gates are green; the result will be recorded here when
+available.
+
+### Milestone 6 evidence (2026-08-24)
+
+Roadmap item `1.3.3` is marked `[x]` complete with a status note. The
+documentation set (developers guide §5.8, users guide ownership contract, ADR-
+001, technical-design reference) is committed and pushed, all deterministic
+gates are green, and PR #78's description was updated to reflect the
+completed milestones and the capable-host integration result.
 
 ## Revision note
 

@@ -269,6 +269,7 @@ under `packaging/systemd/`:
 - `repovecd.service`
 - `repovec-mcpd.service`
 - `repovec-grepai@.service`
+- `repovec-provision.service`
 
 Install these files to `/etc/systemd/system/`, then reload systemd:
 
@@ -277,13 +278,17 @@ sudo install -m 0644 packaging/systemd/repovec.target /etc/systemd/system/repove
 sudo install -m 0644 packaging/systemd/repovecd.service /etc/systemd/system/repovecd.service
 sudo install -m 0644 packaging/systemd/repovec-mcpd.service /etc/systemd/system/repovec-mcpd.service
 sudo install -m 0644 packaging/systemd/repovec-grepai@.service /etc/systemd/system/repovec-grepai@.service
+sudo install -m 0644 packaging/systemd/repovec-provision.service /etc/systemd/system/repovec-provision.service
+sudo install -m 0644 packaging/tmpfiles.d/repovec.conf /usr/lib/tmpfiles.d/repovec.conf
+sudo install -m 0644 packaging/sysusers.d/repovec.conf /usr/lib/sysusers.d/repovec.conf
 sudo systemctl daemon-reload
 ```
 
 The target wants `qdrant.service`, `repovecd.service`, `repovec-mcpd.service`,
-and `cloudflared.service`. The Qdrant service name is the generated systemd
-unit from the installed `/etc/containers/systemd/qdrant.container` Quadlet;
-dependent services must use `qdrant.service`.
+`cloudflared.service`, and `repovec-provision.service`. The Qdrant service name
+is the generated systemd unit from the installed
+`/etc/containers/systemd/qdrant.container` Quadlet; dependent services must use
+`qdrant.service`.
 
 `repovec-grepai@.service` is the template used for future per-repository
 indexer instances. It runs `grepai watch` as the `repovec` user, sets
@@ -291,6 +296,17 @@ indexer instances. It runs `grepai watch` as the `repovec` user, sets
 stdout and stderr to journald. Later reconciliation work creates and manages
 concrete instances; operators should not expect installing the template alone
 to start indexers.
+
+`repovec-provision.service` is a oneshot that runs `systemd-sysusers` on
+`/usr/lib/sysusers.d/repovec.conf` and then `systemd-tmpfiles --create` on
+`/usr/lib/tmpfiles.d/repovec.conf`, so the `repovec` system user and the data
+directory tree exist before any dependent service starts — including on a
+freshly installed host that has not been rebooted. It is ordered before
+`repovec-qdrant-api-key.service`, `qdrant.service`, `repovecd.service`, and
+`repovec-mcpd.service`, and is activated by `repovec.target`.
+`systemd-sysusers` creates the account record but not the home directory; the
+`tmpfiles.d` asset creates the tree. Both tools are idempotent: re-running them
+converges from any state and never empties a populated directory.
 
 Enable and start the appliance service group with:
 
@@ -300,14 +316,16 @@ sudo systemctl start repovec.target
 ```
 
 > **Note:** `repovecd` and `repovec-mcpd` validate the checked-in systemd unit
-> contract and Qdrant liveness at startup before doing any other work. If
-> validation fails, the daemon exits immediately with a non-zero exit code.
+> contract, then the live directory-layout contract, then Qdrant liveness at
+> startup before doing any other work. If validation fails, the daemon exits
+> immediately with a non-zero exit code.
 > Inspect the journal with
 > `journalctl -u repovecd.service --no-pager | tail -20` or
 > `journalctl -u repovec-mcpd.service --no-pager | tail -20`; the error message
-> identifies the violated unit contract or Qdrant liveness condition. This
-> validation does not prove that the host has `/usr/bin/grepai`, concrete
-> worktrees, or a compatible systemd version.
+> identifies the violated unit contract, the directory-layout violation (with
+> the offending path), or the Qdrant liveness condition. This validation does
+> not prove that the host has `/usr/bin/grepai`, concrete worktrees, or a
+> compatible systemd version.
 
 Starting the target may fail until these prerequisites are present on the host:
 
@@ -322,11 +340,53 @@ Starting the target may fail until these prerequisites are present on the host:
 If any prerequisite is missing, the target fails closed instead of starting
 partially configured services.
 
+## Directory layout and ownership contract
+
+The appliance provisions a private on-disk tree owned by the `repovec` service
+account. `repovec-provision.service` creates and enforces these directories at
+target start, and both daemons verify them again at startup:
+
+| Path                              | Owner             | Mode   |
+| --------------------------------- | ----------------- | ------ |
+| `/var/lib/repovec`                | `repovec:repovec` | `0700` |
+| `/var/lib/repovec/git-mirrors`    | `repovec:repovec` | `0700` |
+| `/var/lib/repovec/worktrees`      | `repovec:repovec` | `0700` |
+| `/var/lib/repovec/.grepai`        | `repovec:repovec` | `0700` |
+| `/var/lib/repovec/qdrant-storage` | `root:root`       | `0700` |
+| `/etc/repovec`                    | `root:repovec`    | `0750` |
+
+The data tree holds private repository mirrors, worktrees, and derived indexes.
+These directories are intentionally **not** world- or group-readable: only the
+`repovec` service account (via owner access), root, and — for
+`qdrant-storage` — the rootful Podman Qdrant container may touch them.
+`qdrant-storage` stays `root:root` because Qdrant runs as uid 0 under rootful
+Podman and is the only filesystem accessor; the daemons reach Qdrant over
+loopback gRPC only.
+
+`/etc/repovec` holds secrets. It is `0750 root:repovec`: root owns the
+directory so the `repovec` user can read but cannot change directory
+permissions or replace secret files; the files themselves are
+`0400 repovec:repovec`. The directory is provisioned by the
+`repovec-qdrant-api-key` helper, not by the `tmpfiles.d` asset — `/etc/repovec`
+has exactly one provisioning authority.
+
+Operators must not loosen these modes or change the ownership or group. A
+loosened mode or a re-owned directory is a confidentiality violation, and the
+daemons refuse to start when the live ownership, group, or confidentiality
+check on any of these directories fails. Restore the documented mode and
+owner/group (or recreate the directory) and restart the target; see the startup
+logging section below for the diagnostic shape.
+
+The `repovec` system user itself is declared by the sysusers asset with home
+`/var/lib/repovec` and shell `/usr/sbin/nologin` (a locked, non-interactive
+shell). No numeric uid/gid is pinned; `systemd-sysusers` allocates the account.
+
 ### Startup validation logging
 
 Both `repovecd` and `repovec-mcpd` validate their checked-in systemd unit
-contracts at startup before starting any async work. The outcome is observable
-in the systemd journal:
+contracts, then the live directory-layout contract, then Qdrant liveness at
+startup before starting any async work. The outcomes are observable in the
+systemd journal:
 
 **Success** — a `TRACE`-level event followed by a `DEBUG`-level confirmation:
 
@@ -353,6 +413,21 @@ description of the contract violation. The Qdrant Quadlet validator emits
 events. The systemd unit validator emits `TRACE`, `DEBUG`, and `ERROR` events;
 use `RUST_LOG=repovec_core::systemd_units=trace` when startup ordering or
 unit-contract diagnostics require the lower-level trace.
+
+**Directory-layout failure** — an `ERROR`-level event with the violating path,
+followed by a non-zero process exit:
+
+```text
+ERROR live directory layout pre-flight at daemon startup
+  path=/var/lib/repovec/worktrees
+  error=/var/lib/repovec/worktrees must be owned by repovec: root
+```
+
+The `path` field names the directory whose ownership, group, mode, or presence
+violates the contract; the `error` field states the expected value. The live
+pre-flight runs after the static unit-contract validation and before the Qdrant
+liveness wait, so a misprovisioned host is rejected before any daemon-side
+network work begins.
 
 Concrete grepai indexer instances also start after and require both Qdrant and
 `repovecd`.

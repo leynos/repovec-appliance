@@ -1162,11 +1162,14 @@ a privileged appliance host (matching the established 1.2.2/1.2.3 precedent);
 the static contracts, integration lifecycle, and the live pre-flight gate the
 behaviour in CI.
 
-### CodeRabbit gate (M5 milestone, pending)
+### CodeRabbit gate (M5 milestone, not run: review service unreachable)
 
-`coderabbit review --agent` is to be run on the pushed M5 documentation state
-after the deterministic gates are green; the result will be recorded here when
-available.
+Two `coderabbit review --agent` attempts on the pushed M5 state stalled in
+`connecting_to_review_service` (the first hit a 300 s timeout; the retry ran
+for several minutes without progressing). The review service was not reachable
+from this environment, so no findings can be reported. The deterministic
+commit gates are the merge gates and all pass; this note records the attempted-
+and-unavailable status rather than a fabricated clean result.
 
 ### Milestone 6 evidence (2026-08-24)
 

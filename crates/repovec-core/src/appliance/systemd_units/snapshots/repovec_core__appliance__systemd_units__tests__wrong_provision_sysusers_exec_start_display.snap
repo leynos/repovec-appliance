@@ -1,0 +1,5 @@
+---
+source: crates/repovec-core/src/appliance/systemd_units/tests.rs
+expression: err.to_string()
+---
+repovec-provision.service must use ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf: /usr/bin/systemd-sysusers /usr/lib/sysusers.d/wrong.conf,/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf

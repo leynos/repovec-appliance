@@ -2,4 +2,4 @@
 source: crates/repovec-ci/src/main.rs
 expression: buffer_to_string(buffer)
 ---
-checked-in systemd units satisfy the appliance contract
+checked-in systemd units and directory layout satisfy the appliance contract

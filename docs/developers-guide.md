@@ -754,3 +754,83 @@ externally observable success criterion: it starts `oauth2-test-server`,
 completes a local device-flow exchange, stores the token through the
 encrypted-store boundary, reloads it, and verifies the same token secret is
 recovered.
+
+## 8. Environment access policy
+
+The workspace reads and writes no process environment variables outside a
+composition root. This is a testing and throughput rule before it is a style
+rule: a test that sets or removes a variable mutates state shared by every
+thread in the process, which forces the suite to serialize around it and wastes
+cores that the continuous-integration runner is paying for.
+
+### 8.1 The prohibition
+
+The root `clippy.toml` disallows six methods, and the workspace lint table in
+the root `Cargo.toml` denies `clippy::disallowed_methods`:
+
+| Method                 | Reason reported by Clippy       |
+| ---------------------- | ------------------------------- |
+| `std::env::var`        | inject an environment reader    |
+| `std::env::var_os`     | inject an environment reader    |
+| `std::env::vars`       | inject an environment reader    |
+| `std::env::vars_os`    | inject an environment reader    |
+| `std::env::set_var`    | use a stub environment in tests |
+| `std::env::remove_var` | use a stub environment in tests |
+
+Every member crate carries `[lints] workspace = true`, so the deny reaches
+every package. `make lint` runs Clippy with
+`--workspace --all-targets --all-features` and `-D warnings`, so test and
+benchmark code is covered as well as production code.
+
+Process arguments are outside this policy. `std::env::args` and
+`std::env::args_os` remain available at executable entry points.
+
+### 8.2 Choosing a seam
+
+Pick the smallest shape that serves the boundary. A seam that is wider than its
+call sites justify is as much a review finding as a direct read.
+
+- **Pass the resolved value.** One variable read by one caller becomes a
+  function parameter. The caller at the composition root resolves it; the logic
+  under test never learns where the value came from. Prefer this.
+- **Inject a narrow reader closure.** A small boundary that reads one
+  variable from more than one place takes an
+  `FnOnce(&str) -> Result<String, VarError>` (or the `OsString`-typed
+  equivalent) owned by the module that needs it. The closure stays private to
+  that module; it is not a general environment service.
+- **Introduce an environment trait.** Only when several variables or a
+  precedence ladder are read at one boundary, and enough tests need to vary
+  them, does a trait earn its keep. Capture the reading as data once, at the
+  boundary, rather than letting each downstream decision read the process
+  independently.
+
+### 8.3 Composition roots and subprocess environments
+
+A direct read is permitted only at a genuine executable composition root:
+`main`, or a function it calls solely to assemble the application. Annotate the
+item, not the module or the crate:
+
+```rust
+#[expect(
+    clippy::disallowed_methods,
+    reason = "composition root: the only read of REPOVEC_CONFIG"
+)]
+fn configured_path() -> Option<String> {
+    std::env::var("REPOVEC_CONFIG").ok()
+}
+```
+
+Use `expect` rather than `allow`. The annotation warns once the site grows a
+seam, so the exception list removes itself instead of rotting.
+
+Tests never mutate the parent process environment, and no shared guard or mutex
+makes that acceptable. A test that needs a child process to see a variable
+builds the child's environment explicitly with `Command::env_clear`,
+`Command::env`, and `Command::env_remove`. A test that needs in-process
+behaviour to depend on a value passes that value through the seam.
+
+This mirrors the policy in [`leynos/netsuke`][netsuke-adr-008], which this
+repository adopted so that contributors moving between the two find the same
+rule and the same diagnostics.
+
+[netsuke-adr-008]: https://github.com/leynos/netsuke/blob/main/docs/adr-008-environment-seam-taxonomy.md

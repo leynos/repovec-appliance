@@ -209,11 +209,17 @@ project:
 - Use `rstest` fixtures for shared setup.
 - Replace duplicated tests with `#[rstest(...)]` parameterized cases.
 - Prefer `mockall` for ad hoc mocks/stubs.
-- For testing of functionality depending upon environment variables, dependency
-  injection and the `mockable` crate are the preferred option.
-- If mockable cannot be used, env mutations in tests MUST be wrapped in shared
-  guards and mutexes placed in a shared `test_utils` or `test_helpers` crate.
-  Direct environment mutation is FORBIDDEN in tests.
+- For testing of functionality depending upon environment variables, inject the
+  value or a reader through a seam; never read the process environment inside
+  the code under test. `clippy.toml` disallows `std::env::var`, `var_os`,
+  `vars`, `vars_os`, `set_var`, and `remove_var`, and the workspace lint table
+  denies `clippy::disallowed_methods`.
+- Mutating the parent process environment in a test is FORBIDDEN, and no shared
+  guard or mutex makes it acceptable: it serializes the suite. Build a child
+  process's environment explicitly with `Command::env_clear`, `Command::env`,
+  and `Command::env_remove` instead.
+- See "Environment access policy" in `docs/developers-guide.md` for the
+  seam-selection rule and the composition-root exception.
 
 ### Dependency Management
 

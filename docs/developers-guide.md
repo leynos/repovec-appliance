@@ -52,45 +52,45 @@ make nixie 2>&1 | tee /tmp/repovec-make-nixie.log
 These Make targets are the source of truth for local validation and for CI. Do
 not duplicate or partially reimplement them in workflow YAML.
 
-### 1.1 Recipes must exit on the first rejection
+### 1.1 Gate sequencing lives in a script, not in a recipe
 
 A Make recipe is one shell invocation and runs without `set -e`, so its exit
 status is that of its *last* command. A recipe that chains commands with `;`
 reports only the last one, and a rejection from any earlier command is
 discarded.
 
-The `test` recipe chains the unit-test run and a conditional doctest run this
-way. Measured on 2026-09-07, with one deliberately failing unit test in the
-workspace, `make test` exited 0: nextest reported `1 failed`, and the doctest
-step that ran afterwards supplied the recipe's zero status. The CI `test` job
-would have passed with failing tests. Guarding each command with `|| exit 1`
-makes the recipe stop at the rejection; the same probe then exited 2.
+The `test` recipe used to chain the unit-test run and a conditional doctest run
+this way. Measured on 2026-09-07, with one deliberately failing unit test in
+the workspace, `make test` exited 0: nextest reported `1 failed`, and the
+doctest step that ran afterwards supplied the recipe's zero status. The CI
+`test` job would have passed with failing tests.
 
-So every gate command in a chained recipe ends with `|| exit 1`. A Cargo
-invocation inside an `if` condition is exempt, because a non-zero status there
-is an answer rather than a rejection. The same applies to a `for` loop in a
-recipe: without the guard, only the last iteration's status survives.
+Guarding each command with `|| exit 1` fixes the symptom. The rule, from
+[scripting standards](scripting-standards.md), fixes the cause: multi-command
+gate logic does not live as shell in a recipe. It lives in a Python script with
+a `uv` script block, Cyclopts parameters and Plumbum for the child processes,
+and the recipe invokes it as one command.
 
-`tests/workflow_contracts/makefile_gate_test.py` parses the recipe and fails if
-a gate command loses its guard. It is mutation-proven: removing the guard from
-the unit-test command fails that contract.
+So `make test` runs `scripts/run_rust_tests.py`, which decides whether nextest
+is available, asks `cargo metadata` whether any target declares doctests, runs
+the gates in order, and exits at the first rejection with the gate named and
+Cargo's own code propagated. With the same failing test the recipe now exits 2,
+reports `the unit tests gate rejected the workspace (exit code 100)`, and never
+reaches the doctest gate.
 
-The provisioning helper integration suite has its own opt-in targets that are
-deliberately kept out of `make test`:
+Because the logic is a script, it has unit tests. `make script-test` runs
+`scripts/tests/test_run_rust_tests.py`, which uses `cmd-mox` to supply `cargo`
+and covers a failing unit-test run, a failing doctest run and the all-pass
+case, asserting the recorded invocation sequence rather than only the exit
+code. It runs as a prerequisite of `make test`, so the runner is tested before
+it gates anything.
 
-- `make integration-command-test` runs the fast command-contract suite that
-  uses `cmd-mox` shims; it needs only the Python harness dependencies.
-- `make integration-test` runs the full lifecycle suite inside a privileged
-  Fedora container managed by `testcontainers-python`; it needs a
-  Docker-compatible runtime and the ability to launch privileged nested rootful
-  Podman.
-
-Both targets gate on phony prerequisite helpers (`_check-python`,
-`_check-integration-prereqs`, `_check-command-test-prereqs`) that exit non-zero
-when their checks fail, so missing prerequisites abort the chain with an
-actionable skip message rather than letting `pytest` produce a second
-misleading error on top. See [Section 6](#6-provisioning-integration-tests) for
-the full prerequisite and execution contract.
+Two contracts hold the shape. `tests/workflow_contracts/makefile_gate_test.py`
+fails if the `test` recipe grows a second command or stops invoking the runner,
+and fails if any recipe chains two gate commands in one shell invocation without
+`|| exit 1` on all but the last. A tool invoked inside an `if` condition is
+exempt, because a non-zero status there is an answer rather than a rejection.
+Both are mutation-proven.
 
 ## 2. GitHub Actions gate set
 

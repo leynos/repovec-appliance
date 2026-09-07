@@ -3,19 +3,34 @@
 A Make recipe is one shell invocation, run without ``set -e``, so its
 exit status is that of its *last* command. A recipe that chains several
 commands with ``;`` therefore reports only the last one, and a rejection
-from any earlier command is discarded. The ``test`` recipe chains the
-unit-test run and a conditional doctest run exactly this way.
+from any earlier command is discarded.
 
-That was not hypothetical here. Measured on 2026-09-07, with a
-deliberately failing unit test in the workspace, ``make test`` exited 0:
-nextest reported ``1 failed`` and the doctest step that ran afterwards
-supplied the recipe's zero status. CI's ``test`` job would have passed
-with failing tests. Guarding each command with ``|| exit 1`` makes the
-recipe exit at the first rejection; the same probe then exited 2.
+That was not hypothetical here. The ``test`` recipe used to chain a
+nextest run and a conditional doctest run. Measured on 2026-09-07, with
+a deliberately failing unit test in the workspace, ``make test`` exited
+0: nextest reported ``1 failed`` and the doctest step that ran
+afterwards supplied the recipe's zero status. CI's ``test`` job would
+have passed with failing tests.
 
-These tests pin that guard so the hole cannot reopen. They parse the
-recipe rather than searching the whole file, so a guarded command in
-some unrelated recipe cannot satisfy them.
+The remedy is not a guard on the shell but the removal of the shell.
+Per ``docs/scripting-standards.md``, multi-command gate logic belongs in
+a Python script where it is unit-tested, so the recipe now runs
+``scripts/run_rust_tests.py`` as a single command and the sequencing is
+covered by ``scripts/tests/test_run_rust_tests.py``.
+
+Two contracts follow. The first keeps that recipe a single command, so
+the logic cannot drift back into the Makefile. The second is the general
+rule for any recipe that still chains gate commands: every one but the
+last must carry ``|| exit 1``.
+
+Mutation proof, recorded 2026-09-07; each applied alone and reverted:
+
+- appending ``; echo done`` to the ``test`` recipe fails
+  ``test_the_recipe_runs_exactly_one_command``;
+- replacing the runner invocation with a direct ``cargo test`` fails
+  ``test_the_single_command_recipe_runs_the_tested_runner``;
+- joining the ``lint`` recipe's first two commands with ``;`` fails
+  ``test_every_chained_recipe_guards_its_gate_commands``.
 
 Run via ``make test-workflow-contracts``.
 """
@@ -35,35 +50,44 @@ pytestmark = pytest.mark.skipif(
     "mutmut's mutants/ sandbox)",
 )
 
-#: Recipes that chain more than one gate command inside a single shell
-#: invocation, and so need the guard. ``lint`` is deliberately absent:
-#: its commands are separate recipe lines, and Make checks each line's
-#: status itself. A recipe belongs here once it joins gate commands with
-#: ``;`` or a trailing backslash.
-GUARDED_RECIPES = ("test",)
+#: Recipes whose gate logic must stay out of the Makefile entirely.
+SINGLE_COMMAND_RECIPES = ("test",)
 
-#: Commands that carry a gate's verdict. A recipe may chain shell
-#: plumbing freely; it is the tool invocations that must not be dropped.
-GATE_COMMAND_RE = re.compile(r"\$\(CARGO\)\s")
+#: Make variables that expand to a tool whose rejection is a gate
+#: verdict. Extend this when a recipe starts running a new one; a tool
+#: missing from here is simply not checked.
+GATE_TOOLS = (
+    "$(CARGO)",
+    "$(WHITAKER)",
+    "$(MDLINT)",
+    "$(NIXIE)",
+    "$(RUST_TEST_RUNNER)",
+    "$(SCRIPT_PYTEST)",
+    "$(SPELLING_HELPER_PYTEST)",
+    "$(TYPOS_CONFIG_BUILDER)",
+)
 
-#: A statement that opens an ``if``. Cargo appearing in a condition is
-#: being asked a question, and a non-zero answer there is meaningful
-#: rather than a rejection, so those invocations are not gate commands.
-CONDITION_RE = re.compile(r"^@?(if|elif)\s")
+#: A statement that opens a condition. A tool named in an ``if`` is being
+#: asked a question, and a non-zero answer there is meaningful rather
+#: than a rejection, so those invocations are not gate commands.
+CONDITION_RE = re.compile(r"^@?(if|elif|while|until)\s")
+
+#: A target definition line, which ends the preceding recipe.
+TARGET_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.-]*)\s*:(?!=)")
 
 
-def _recipe(target: str) -> list[str]:
-    """Return the logical command lines of one Make recipe.
+def _logical_lines(target: str) -> list[str]:
+    """Return one Make recipe's lines, with continuations joined.
 
     Recipe lines are tab-indented and may be continued with a trailing
-    backslash. Continuations are joined so that a command split across
-    source lines is examined as the single shell command it becomes.
+    backslash. Each joined line is one shell invocation, which is the
+    unit Make takes a status from.
     """
     lines = MAKEFILE_PATH.read_text(encoding="utf-8").splitlines()
     start = next(
         index
         for index, line in enumerate(lines)
-        if re.match(rf"^{re.escape(target)}:", line)
+        if TARGET_RE.match(line) and TARGET_RE.match(line).group(1) == target
     )
 
     recipe: list[str] = []
@@ -82,46 +106,76 @@ def _recipe(target: str) -> list[str]:
     return recipe
 
 
-def _gate_commands(recipe: list[str]) -> list[str]:
-    """Return the statements in a recipe that invoke a gate tool.
+def _targets() -> list[str]:
+    """Return every target the Makefile defines, in file order."""
+    seen: list[str] = []
+    for line in MAKEFILE_PATH.read_text(encoding="utf-8").splitlines():
+        match = TARGET_RE.match(line)
+        if match and match.group(1) not in seen:
+            seen.append(match.group(1))
+    return seen
+
+
+def _gate_statements(logical_line: str) -> list[str]:
+    """Return the gate invocations in one shell invocation, in order.
 
     Statements are separated by ``;``; the split does not honour shell
-    quoting, which is sufficient for these recipes and would fail loudly
-    rather than silently if one grew a quoted semicolon. Invocations in
-    an ``if`` or ``elif`` condition are excluded, because their status is
-    an answer rather than a verdict.
+    quoting, which is sufficient for these recipes. Conditions are
+    excluded, because their status is an answer rather than a verdict.
     """
     return [
-        stripped
-        for line in recipe
-        for statement in line.split(";")
-        if GATE_COMMAND_RE.search(statement)
-        and not CONDITION_RE.match(stripped := statement.strip())
+        statement
+        for raw in logical_line.split(";")
+        if (statement := raw.strip())
+        and any(tool in statement for tool in GATE_TOOLS)
+        and not CONDITION_RE.match(statement)
     ]
 
 
-def test_the_makefile_declares_the_guarded_recipes() -> None:
-    """Scenario: a recipe is renamed or removed.
+@pytest.mark.parametrize("target", SINGLE_COMMAND_RECIPES)
+def test_the_recipe_runs_exactly_one_command(target: str) -> None:
+    """Scenario: gate sequencing drifts back into the Makefile.
 
-    Invariant: each guarded recipe still exists and runs a gate command,
-    so the assertions below cannot pass vacuously.
+    Invariant: the recipe is one shell invocation running one command,
+    so there is no second command whose status could mask the first.
     """
-    for target in GUARDED_RECIPES:
-        commands = _gate_commands(_recipe(target))
-        assert commands, f"the {target} recipe should invoke a gate tool"
+    recipe = _logical_lines(target)
+
+    assert len(recipe) == 1, (
+        f"the {target} recipe should be one command, found {len(recipe)}: {recipe}"
+    )
+    statements = [part for part in recipe[0].split(";") if part.strip()]
+    assert len(statements) == 1, (
+        f"the {target} recipe chains {len(statements)} commands; move the "
+        "sequencing into a tested script per docs/scripting-standards.md"
+    )
 
 
-def test_every_gate_command_exits_on_rejection() -> None:
-    """Scenario: a gate tool rejects part-way through a chained recipe.
+def test_the_single_command_recipe_runs_the_tested_runner() -> None:
+    """Scenario: the recipe stays one command but stops running the script.
 
-    Invariant: every gate command is guarded with ``|| exit 1``, so the
-    recipe fails at the rejection instead of reporting the status of
-    whatever command happens to run last.
+    Invariant: `make test` invokes the runner that carries the unit-tested
+    sequencing, so the single-command contract cannot be satisfied by an
+    untested one-liner.
     """
-    for target in GUARDED_RECIPES:
-        for command in _gate_commands(_recipe(target)):
-            assert command.endswith("|| exit 1"), (
-                f"the {target} recipe runs {command!r} unguarded; a "
-                "rejection here would be discarded by the command that "
-                "follows it"
-            )
+    assert "$(RUST_TEST_RUNNER)" in _logical_lines("test")[0], (
+        "the test recipe should invoke the Rust test-gate runner"
+    )
+
+
+def test_every_chained_recipe_guards_its_gate_commands() -> None:
+    """Scenario: a recipe chains two gate commands in one shell run.
+
+    Invariant: every gate command but the last carries ``|| exit 1``, so
+    a rejection ends the recipe instead of being replaced by the status
+    of whatever runs next.
+    """
+    for target in _targets():
+        for logical_line in _logical_lines(target):
+            statements = _gate_statements(logical_line)
+            for statement in statements[:-1]:
+                assert statement.endswith("|| exit 1"), (
+                    f"the {target} recipe runs {statement!r} before another "
+                    "gate command without a guard; a rejection here would be "
+                    "discarded"
+                )

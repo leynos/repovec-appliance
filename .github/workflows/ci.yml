@@ -134,6 +134,11 @@ jobs:
         run: |
           set -euo pipefail
           bun install --global markdownlint-cli2@0.22.0
+      - name: Setup uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          python-version: '3.13'
+          enable-cache: true
       - name: Test
         run: make test
 

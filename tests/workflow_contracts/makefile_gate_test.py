@@ -30,7 +30,15 @@ Mutation proof, recorded 2026-09-07; each applied alone and reverted:
 - replacing the runner invocation with a direct ``cargo test`` fails
   ``test_the_single_command_recipe_runs_the_tested_runner``;
 - joining the ``lint`` recipe's first two commands with ``;`` fails
-  ``test_every_chained_recipe_guards_its_gate_commands``.
+  ``test_every_chained_recipe_guards_its_gate_commands``;
+- appending ``|| true`` to the ``test`` recipe fails
+  ``test_the_recipe_runs_exactly_one_command``;
+- prefixing the ``test`` recipe or the ``lint`` recipe's Clippy command
+  with Make's ``-`` fails ``test_the_recipe_runs_exactly_one_command``
+  and ``test_no_gate_command_has_its_status_ignored`` respectively.
+
+Both of those last two leave the command in place and readable, which is
+why a contract that only looks for the command certifies nothing.
 
 Run via ``make test-workflow-contracts``.
 """
@@ -75,6 +83,19 @@ CONDITION_RE = re.compile(r"^@?(if|elif|while|until)\s")
 #: A target definition line, which ends the preceding recipe.
 TARGET_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.-]*)\s*:(?!=)")
 
+#: Make's line prefixes. ``-`` makes Make ignore the command's status
+#: entirely, which discards a gate verdict as surely as deleting the
+#: command, while leaving it in place and readable.
+RECIPE_PREFIXES = "@+-"
+
+#: Shell operators that make a command's status something other than its
+#: own. Enumerating the succeeding right-hand sides (``|| true``, ``|| :``,
+#: ``|| exit 0``) is the wrong shape: the next one written will not be on
+#: the list. A gate command is a bare invocation, so any disjunction or
+#: conjunction is rejected and ``|| exit 1`` is the sole exception, since
+#: it strengthens the status rather than discarding it.
+STATUS_ALTERING_OPERATORS = ("||", "&&")
+
 
 def _logical_lines(target: str) -> list[str]:
     """Return one Make recipe's lines, with continuations joined.
@@ -116,6 +137,16 @@ def _targets() -> list[str]:
     return seen
 
 
+def _strip_prefixes(statement: str) -> str:
+    """Return a recipe statement without Make's line prefixes."""
+    return statement.lstrip(RECIPE_PREFIXES).lstrip()
+
+
+def _ignores_errors(statement: str) -> bool:
+    """Report whether Make is told to ignore this command's status."""
+    return statement.lstrip("@+").startswith("-")
+
+
 def _gate_statements(logical_line: str) -> list[str]:
     """Return the gate invocations in one shell invocation, in order.
 
@@ -150,6 +181,18 @@ def test_the_recipe_runs_exactly_one_command(target: str) -> None:
         "sequencing into a tested script per docs/scripting-standards.md"
     )
 
+    command = statements[0].strip()
+    assert not _ignores_errors(command), (
+        f"the {target} recipe is prefixed with '-', so Make ignores its "
+        "status and the gate can never fail the build"
+    )
+    for operator in STATUS_ALTERING_OPERATORS:
+        assert operator not in _strip_prefixes(command), (
+            f"the {target} recipe joins its command with {operator!r}, so the "
+            "recipe's status is no longer the gate's verdict; a gate command "
+            "is a bare invocation"
+        )
+
 
 def test_the_single_command_recipe_runs_the_tested_runner() -> None:
     """Scenario: the recipe stays one command but stops running the script.
@@ -161,6 +204,22 @@ def test_the_single_command_recipe_runs_the_tested_runner() -> None:
     assert "$(RUST_TEST_RUNNER)" in _logical_lines("test")[0], (
         "the test recipe should invoke the Rust test-gate runner"
     )
+
+
+def test_no_gate_command_has_its_status_ignored() -> None:
+    """Scenario: a gate command is prefixed with Make's ``-``.
+
+    Invariant: no recipe tells Make to ignore a gate tool's status. The
+    prefix leaves the command in place and readable, so a contract that
+    only looks for the command cannot see it.
+    """
+    for target in _targets():
+        for logical_line in _logical_lines(target):
+            for statement in _gate_statements(logical_line):
+                assert not _ignores_errors(statement), (
+                    f"the {target} recipe runs {statement!r} with Make's "
+                    "ignore-errors prefix, so its rejection is discarded"
+                )
 
 
 def test_every_chained_recipe_guards_its_gate_commands() -> None:

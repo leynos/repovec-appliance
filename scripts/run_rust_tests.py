@@ -22,6 +22,11 @@ parsing ``cargo metadata`` rather than grepping its JSON for a substring.
 Gates run in order and the first rejection ends the run, with the gate
 named and Cargo's own exit code propagated so nextest's 100 is not
 flattened to 1.
+
+Child processes go through Plumbum because that is the runner
+``docs/scripting-standards.md`` names. The estate is moving to Cuprum,
+which this repository already uses for the integration harness in
+``integration-tests/lib/commands.py``; switch when the standard does.
 """
 
 from __future__ import annotations

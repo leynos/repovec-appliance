@@ -23,7 +23,7 @@ cap-std = { version = "4.0.3", features = ["fs_utf8"] }
 insta = { version = "1.47.2", features = ["yaml"] }
 oauth2 = { version = "5.0.0", default-features = false }
 oauth2-test-server = "0.2.2"
-monotony = "0.1.0"
+monotony = "1.0.0"
 proptest = "1.11.0"
 qdrant-client = { version = "1.18.0", default-features = false }
 rstest = "0.26.1"

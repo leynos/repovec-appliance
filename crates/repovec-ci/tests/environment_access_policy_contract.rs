@@ -24,9 +24,12 @@
 //! - dropping `crates/repovectl` from `MEMBER_MANIFESTS` fails
 //!   `contract_covers_every_declared_workspace_member`;
 //! - dropping `--all-targets` from the Makefile's `CARGO_FLAGS` fails
-//!   `lint_gate_covers_every_workspace_target_and_feature`;
-//! - changing the workflow's `run: make lint` step to `run: make
-//!   whitaker-lint` fails `continuous_integration_runs_the_lint_gate`.
+//!   `lint_gate_covers_every_workspace_target_and_feature`.
+//!
+//! The workflow side of this policy moved to
+//! `tests/workflow_contracts/ci_gate_workflow_test.py`, which parses the
+//! workflow instead of searching it: a line-matching check here stayed green
+//! when the Lint step was disabled with `if: false`.
 
 use std::collections::BTreeSet;
 
@@ -41,10 +44,6 @@ const WORKSPACE_MANIFEST: &str =
 
 /// Makefile that defines the local and continuous-integration lint gate.
 const MAKEFILE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Makefile"));
-
-/// Continuous-integration workflow that invokes the lint gate.
-const CI_WORKFLOW: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../.github/workflows/ci.yml"));
 
 /// Prohibited environment methods paired with the remedy Clippy reports.
 const REQUIRED_ENVIRONMENT_METHODS: [(&str, &str); 6] = [
@@ -217,16 +216,4 @@ fn lint_gate_covers_every_workspace_target_and_feature() {
     for line in REQUIRED_MAKEFILE_LINES {
         assert!(contains_line(MAKEFILE, line), "the Makefile must contain the line {line:?}");
     }
-}
-
-/// Scenario: continuous integration stops invoking the lint gate.
-///
-/// Invariant: the workflow runs the same `make lint` target contributors run,
-/// so the prohibition is enforced on every pull request.
-#[test]
-fn continuous_integration_runs_the_lint_gate() {
-    assert!(
-        contains_line(CI_WORKFLOW, "run: make lint"),
-        "the CI workflow must run the make lint gate"
-    );
 }

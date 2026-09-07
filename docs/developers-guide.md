@@ -52,6 +52,29 @@ make nixie 2>&1 | tee /tmp/repovec-make-nixie.log
 These Make targets are the source of truth for local validation and for CI. Do
 not duplicate or partially reimplement them in workflow YAML.
 
+### 1.1 Recipes must exit on the first rejection
+
+A Make recipe is one shell invocation and runs without `set -e`, so its exit
+status is that of its *last* command. A recipe that chains commands with `;`
+reports only the last one, and a rejection from any earlier command is
+discarded.
+
+The `test` recipe chains the unit-test run and a conditional doctest run this
+way. Measured on 2026-09-07, with one deliberately failing unit test in the
+workspace, `make test` exited 0: nextest reported `1 failed`, and the doctest
+step that ran afterwards supplied the recipe's zero status. The CI `test` job
+would have passed with failing tests. Guarding each command with `|| exit 1`
+makes the recipe stop at the rejection; the same probe then exited 2.
+
+So every gate command in a chained recipe ends with `|| exit 1`. A Cargo
+invocation inside an `if` condition is exempt, because a non-zero status there
+is an answer rather than a rejection. The same applies to a `for` loop in a
+recipe: without the guard, only the last iteration's status survives.
+
+`tests/workflow_contracts/makefile_gate_test.py` parses the recipe and fails if
+a gate command loses its guard. It is mutation-proven: removing the guard from
+the unit-test command fails that contract.
+
 The provisioning helper integration suite has its own opt-in targets that are
 deliberately kept out of `make test`:
 

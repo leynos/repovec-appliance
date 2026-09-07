@@ -64,9 +64,9 @@ test: ensure-cargo ## Run tests with warnings treated as errors
 	else \
 		TEST_CMD="test"; \
 	fi; \
-	RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(CARGO) $$TEST_CMD $(TEST_FLAGS) $(BUILD_JOBS); \
+	RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(CARGO) $$TEST_CMD $(TEST_FLAGS) $(BUILD_JOBS) || exit 1; \
 	if [ "$$TEST_CMD" != "test" ] && $(CARGO) metadata --no-deps --format-version 1 2>/dev/null | grep -q '"doctest":true'; then \
-		RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(CARGO) test --doc $(DOCTEST_FLAGS) $(BUILD_JOBS); \
+		RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(CARGO) test --doc $(DOCTEST_FLAGS) $(BUILD_JOBS) || exit 1; \
 	fi
 
 lint: ensure-cargo ## Run Clippy and the Whitaker Dylint suite with warnings denied

@@ -823,11 +823,15 @@ that allows a protected lint, because a crate-level
 `#![allow(clippy::disallowed_methods)]` disarms the policy for a whole crate
 while every other gate stays green: the workspace denies
 `clippy::allow_attributes`, but that lint does not fire on inner attributes.
-Naming the lint is not enough to protect it. Clippy places `disallowed_methods`
-in the `style` group, so `clippy::style`, `clippy::all` and `warnings` are
-guarded too, and a suppression nested in a `cfg_attr` is followed whatever its
-condition. Use an item-scoped `#[expect(...)]` at a composition root instead,
-which warns once the site no longer needs it.
+Naming the lint is not enough to protect it, in two directions. Upwards, Clippy
+places `disallowed_methods` in the `style` group, so `clippy::style`,
+`clippy::all` and `warnings` are guarded too. Sideways, `clippy::restriction`
+is guarded with the two `allow_attributes` lints it contains, because
+suppressing those silences the guard that makes the "`expect`, never `allow`"
+rule enforceable: under `#![allow(clippy::restriction)]` an outer allow of the
+policy lint produces no diagnostic at all. A suppression nested in a `cfg_attr`
+is followed whatever its condition. Use an item-scoped `#[expect(...)]` at a
+composition root instead, which warns once the site no longer needs it.
 
 ### 8.2 Choosing a seam
 

@@ -38,11 +38,14 @@
 //! - `#![cfg_attr(all(), allow(clippy::disallowed_methods))]` fails it;
 //! - `#![allow(clippy::all)]` spread over several lines fails it;
 //! - `#[allow(warnings)]` on an item fails it;
-//! - `#[allow(clippy::allow_attributes)]` must and does keep passing.
+//! - `#![allow(clippy::restriction)]`, which silences the guard lint
+//!   rather than the policy lint, fails it;
+//! - `#[allow(clippy::alloc_instead_of_core)]` must and does keep
+//!   passing.
 //!
-//! That last case is the one that keeps this contract honest. An earlier
-//! draft compared lint names by substring and would have reported it as
-//! suppressing `clippy::all`, whose name it contains.
+//! That last case is the one that keeps this contract honest. Its name
+//! begins with `clippy::all`, so an earlier draft comparing lint names
+//! by substring would have reported it. Names are compared as paths.
 
 use std::collections::VecDeque;
 
@@ -54,13 +57,33 @@ use syn::{
 
 /// Lints whose suppression disarms the environment-access policy.
 ///
-/// Naming the lint alone is not enough. Clippy places
-/// `disallowed_methods` in the `style` group, so `clippy::style` and the
-/// wider `clippy::all` each switch it off, and `warnings` takes down
-/// everything. All four were confirmed against Clippy before being
-/// listed; extend this if the lint's group ever changes.
-const PROTECTED_LINTS: [&str; 4] =
-    ["clippy::disallowed_methods", "clippy::style", "clippy::all", "warnings"];
+/// Naming the policy lint alone is not enough, in two directions.
+///
+/// Upwards, Clippy places `disallowed_methods` in the `style` group, so
+/// `clippy::style` and the wider `clippy::all` each switch it off, and
+/// `warnings` takes down everything.
+///
+/// Sideways, the guard lints matter too. `clippy::allow_attributes` is
+/// what makes the "`expect`, never `allow`" rule enforceable, and it
+/// lives in the `restriction` group. Measured against Clippy: an outer
+/// `#[allow(clippy::disallowed_methods)]` alone produces two
+/// `allow_attributes` diagnostics, but under a crate-level
+/// `#![allow(clippy::restriction)]` it produces none, and no
+/// disallowed-method diagnostic either. The suppression is invisible and
+/// so is the guard that would have reported it.
+///
+/// Every entry was confirmed against Clippy before being listed. Extend
+/// this if the policy lint's group changes, or if a new lint becomes
+/// load-bearing for the rule.
+const PROTECTED_LINTS: [&str; 7] = [
+    "clippy::disallowed_methods",
+    "clippy::style",
+    "clippy::all",
+    "warnings",
+    "clippy::allow_attributes",
+    "clippy::allow_attributes_without_reason",
+    "clippy::restriction",
+];
 
 /// Directories holding Rust sources the policy governs.
 const SOURCE_ROOTS: [&str; 1] = ["crates"];
@@ -366,14 +389,16 @@ fn attribute_shaped_text_in_a_string_is_not_an_offence() {
     assert!(suppressed_lints(literal).expect("fixture should parse").is_empty());
 }
 
-/// Scenario: a lint whose name merely contains a protected one.
+/// Scenario: a lint whose name merely begins with a protected one.
 ///
-/// Invariant: `clippy::allow_attributes` is not reported as suppressing
-/// `clippy::all`. A substring test would reject it, and the contributor
-/// would have no way to tell a real finding from a false one.
+/// Invariant: `clippy::alloc_instead_of_core` is not reported as
+/// suppressing `clippy::all`, whose full name is a prefix of it. Lint
+/// names are compared as paths, not as text. A substring test would
+/// reject this, and a contributor would have no way to tell a real
+/// finding from a false one.
 #[test]
-fn a_longer_lint_name_containing_a_protected_one_is_not_an_offence() {
-    let innocent = "#[allow(clippy::allow_attributes, clippy::alloc_instead_of_core)]\n\
+fn a_longer_lint_name_beginning_with_a_protected_one_is_not_an_offence() {
+    let innocent = "#[allow(clippy::alloc_instead_of_core)]\n\
          fn documented() {}\n";
 
     assert!(suppressed_lints(innocent).expect("fixture should parse").is_empty());

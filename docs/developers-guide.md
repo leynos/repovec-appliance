@@ -812,12 +812,33 @@ benchmark code is covered as well as production code.
 Process arguments are outside this policy. `std::env::args` and
 `std::env::args_os` remain available at executable entry points.
 
-Two tests in `repovec-ci` keep this from decaying.
+Three tests in `repovec-ci` keep this from decaying.
 `environment_access_policy_contract` reads the checked-in configuration and
 fails if an entry, the deny, a crate's lint inheritance, or the lint gate's
 scope is removed. `environment_policy_lint_ui` runs Clippy over a fixture
 package that calls all six methods and asserts each is reported with its
 remedy, so a configuration that parses but never fires is caught too.
+`environment_policy_source_scan` parses every workspace source and rejects any
+that allows a protected lint, because a crate-level
+`#![allow(clippy::disallowed_methods)]` disarms the policy for a whole crate
+while every other gate stays green: the workspace denies
+`clippy::allow_attributes`, but that lint does not fire on inner attributes.
+Naming the lint is not enough to protect it, in two directions. Upwards, Clippy
+places `disallowed_methods` in the `style` group, so `clippy::style`,
+`clippy::all` and `warnings` are guarded too. Sideways, `clippy::restriction`
+is guarded with the two `allow_attributes` lints it contains, because
+suppressing those silences the guard that makes the "`expect`, never `allow`"
+rule enforceable: under `#![allow(clippy::restriction)]` an outer allow of the
+policy lint produces no diagnostic at all. A suppression nested in a `cfg_attr`
+is followed whatever its condition, and macro token streams are walked as well
+as parsed attributes, because Clippy honours an `allow` emitted from a
+`macro_rules!` arm that the syntax tree never exposes. Use an item-scoped
+`#[expect(...)]` at a composition root instead, which warns once the site no
+longer needs it. Item-scoped is the operative word: a crate-scoped
+`#![expect(...)]` is fulfilled by any single call beneath it, so it neither
+reports that call nor warns that it went unfulfilled, and the scan treats it as
+a suppression. Raw spellings such as `r#allow` and `clippy::r#style` are
+normalized before comparison, because Clippy honours them too.
 
 ### 8.2 Choosing a seam
 

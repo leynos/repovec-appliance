@@ -20,36 +20,50 @@
 //! composition root precisely because it warns once the site grows a
 //! seam; `allow` is silent forever.
 //!
-//! Mutation proof, recorded 2026-09-08; each applied alone and reverted:
+//! The file is parsed rather than searched. Review found three shapes a
+//! text scan could not handle and two further routes around the policy,
+//! all confirmed against Clippy before being fixed: a suppression nested
+//! in `#![cfg_attr(all(), allow(...))]`, and a suppression naming the
+//! lint's group rather than the lint, since Clippy places
+//! `disallowed_methods` in `style`. Both suppress the lint with zero
+//! diagnostics.
+//!
+//! Mutation proof, recorded 2026-09-08; each applied alone to a real
+//! source file, run through the build, and reverted:
 //!
 //! - `#![allow(clippy::disallowed_methods)]` in a crate root fails
 //!   `no_source_file_allows_a_policy_lint`;
+//! - `#![allow(clippy::style)]`, naming the group rather than the lint,
+//!   fails it;
+//! - `#![cfg_attr(all(), allow(clippy::disallowed_methods))]` fails it;
+//! - `#![allow(clippy::all)]` spread over several lines fails it;
 //! - `#[allow(warnings)]` on an item fails it;
-//! - `#![allow(clippy::all)]` spread over several lines fails it, which
-//!   is why the scan reads an attribute to its closing parenthesis
-//!   rather than one line at a time.
+//! - `#[allow(clippy::allow_attributes)]` must and does keep passing.
 //!
-//! The lint list is tokenised rather than searched, after the first
-//! draft would have reported `#[allow(clippy::allow_attributes)]` as
+//! That last case is the one that keeps this contract honest. An earlier
+//! draft compared lint names by substring and would have reported it as
 //! suppressing `clippy::all`, whose name it contains.
 
 use std::collections::VecDeque;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use cap_std::{ambient_authority, fs_utf8::Dir};
+use syn::{
+    AttrStyle, Attribute, Meta, MetaList, Path, Token, punctuated::Punctuated, visit::Visit,
+};
 
-/// Lints whose suppression disarms the environment-access policy, and
-/// the blanket suppressions that take it down with everything else.
+/// Lints whose suppression disarms the environment-access policy.
 ///
-/// Extend this when a lint becomes load-bearing for a repository policy.
-const PROTECTED_LINTS: [&str; 3] = ["clippy::disallowed_methods", "warnings", "clippy::all"];
+/// Naming the lint alone is not enough. Clippy places
+/// `disallowed_methods` in the `style` group, so `clippy::style` and the
+/// wider `clippy::all` each switch it off, and `warnings` takes down
+/// everything. All four were confirmed against Clippy before being
+/// listed; extend this if the lint's group ever changes.
+const PROTECTED_LINTS: [&str; 4] =
+    ["clippy::disallowed_methods", "clippy::style", "clippy::all", "warnings"];
 
 /// Directories holding Rust sources the policy governs.
 const SOURCE_ROOTS: [&str; 1] = ["crates"];
-
-/// Attribute openers. Only `allow` is rejected: `expect` is the
-/// sanctioned form, because it warns once its site no longer needs it.
-const ALLOW_OPENERS: [&str; 2] = ["#[allow(", "#![allow("];
 
 /// Return the repository root, from this crate's manifest directory.
 fn repository_root() -> Utf8PathBuf {
@@ -91,73 +105,148 @@ fn rust_sources(root: &Utf8Path, relative: &str) -> Result<Vec<(Utf8PathBuf, Str
     Ok(sources)
 }
 
-/// Return the attribute beginning at `line`, joined to its closing
-/// parenthesis.
+/// Collect every attribute in a parsed file, wherever it sits.
 ///
-/// An attribute is recognised only where a line begins with one, so a
-/// mention inside a doc comment, a string literal or a macro body is not
-/// mistaken for one. Reading on to the balancing parenthesis is what
-/// catches an attribute split over several lines.
-fn attribute_from(lines: &[&str], start: usize) -> Option<String> {
-    let first = lines.get(start)?.trim_start();
-    if !ALLOW_OPENERS.iter().any(|opener| first.starts_with(opener)) {
-        return None;
-    }
-
-    let mut attribute = String::new();
-    let mut depth = 0_i32;
-    for line in lines.iter().skip(start) {
-        attribute.push_str(line);
-        attribute.push(' ');
-        depth += i32::try_from(line.matches('(').count()).unwrap_or(0);
-        depth -= i32::try_from(line.matches(')').count()).unwrap_or(0);
-        if depth <= 0 {
-            break;
-        }
-    }
-    Some(attribute)
+/// A visitor is used rather than a hand-rolled walk so that attributes
+/// on nested items, on function-local items and on expressions are all
+/// reached.
+#[derive(Default)]
+struct AttributeCollector {
+    attributes: Vec<Attribute>,
 }
 
-/// Return the lint names an attribute suppresses.
+impl<'ast> Visit<'ast> for AttributeCollector {
+    fn visit_attribute(&mut self, attribute: &'ast Attribute) {
+        self.attributes.push(attribute.clone());
+    }
+}
+
+/// Render a lint path as it is written in an attribute.
 ///
-/// The list is tokenised rather than searched, because a protected name
-/// can be a prefix of an innocent one: `clippy::all` sits inside
-/// `clippy::allow_attributes`, so a substring test would report a crate
-/// that suppresses nothing of the sort. Key-value arguments such as
-/// `reason = "..."` are not lint names and are dropped.
-fn lint_names(attribute: &str) -> Vec<String> {
-    let normalised = attribute.replace(char::is_whitespace, "");
-    let Some(open) = normalised.find('(') else {
+/// # Examples
+///
+/// The path in `#[allow(clippy::all)]` renders as `clippy::all`, and the
+/// path in `#[allow(warnings)]` as `warnings`.
+fn render_path(path: &Path) -> String {
+    path.segments.iter().map(|segment| segment.ident.to_string()).collect::<Vec<_>>().join("::")
+}
+
+/// Return the lint names an `allow` meta-list suppresses.
+///
+/// Key-value arguments such as `reason = "..."` are not lint names and
+/// are skipped.
+///
+/// # Examples
+///
+/// Given `allow(clippy::all, reason = "x")` this returns
+/// `["clippy::all"]`; given `allow(warnings, dead_code)` it returns both
+/// names.
+fn allowed_lints(list: &MetaList) -> Vec<String> {
+    let Ok(nested) = list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated) else {
         return Vec::new();
     };
-    let Some(close) = normalised.rfind(')') else {
-        return Vec::new();
-    };
-    let Some(inner) = normalised.get(open.saturating_add(1)..close) else {
-        return Vec::new();
-    };
-    inner
-        .split(',')
-        .filter(|token| !token.is_empty() && !token.contains('='))
-        .map(str::to_owned)
+    nested
+        .iter()
+        .filter_map(|meta| match meta {
+            Meta::Path(path) => Some(render_path(path)),
+            Meta::List(_) | Meta::NameValue(_) => None,
+        })
         .collect()
 }
 
-/// Return every protected lint suppressed by an `allow` in one file.
-fn suppressed_lints(contents: &str) -> Vec<(String, String)> {
-    let lines: Vec<&str> = contents.lines().collect();
+/// Return the lint names one attribute suppresses, following `cfg_attr`.
+///
+/// A `cfg_attr` is followed whatever its condition. A suppression that
+/// applies under some configuration is still a suppression, and deciding
+/// which configurations are reachable is not this contract's job.
+///
+/// # Examples
+///
+/// `#[allow(warnings)]` yields `["warnings"]`.
+/// `#[cfg_attr(unix, allow(clippy::all))]` also yields `["clippy::all"]`,
+/// because the nested attribute is followed.
+/// `#[expect(clippy::disallowed_methods, reason = "...")]` yields nothing,
+/// because `expect` is the sanctioned form.
+fn suppressed_by(attribute: &Attribute) -> Vec<String> {
+    let Ok(list) = attribute.meta.require_list() else {
+        return Vec::new();
+    };
+    match render_path(attribute.path()).as_str() {
+        "allow" => allowed_lints(list),
+        "cfg_attr" => suppressed_by_cfg_attr(list),
+        _ => Vec::new(),
+    }
+}
+
+/// Return the lint names nested inside a `cfg_attr`.
+///
+/// # Examples
+///
+/// For `cfg_attr(all(), allow(clippy::style))` this returns
+/// `["clippy::style"]`. The leading element is the condition and is
+/// skipped; a nested `cfg_attr` is followed in turn.
+fn suppressed_by_cfg_attr(list: &MetaList) -> Vec<String> {
+    let Ok(nested) = list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated) else {
+        return Vec::new();
+    };
+    nested
+        .iter()
+        .skip(1)
+        .filter_map(|meta| match meta {
+            Meta::List(inner) => Some(match render_path(&inner.path).as_str() {
+                "allow" => allowed_lints(inner),
+                "cfg_attr" => suppressed_by_cfg_attr(inner),
+                _ => Vec::new(),
+            }),
+            Meta::Path(_) | Meta::NameValue(_) => None,
+        })
+        .flatten()
+        .collect()
+}
+
+/// Render an attribute roughly as written, for a failure message.
+///
+/// # Examples
+///
+/// An inner `allow` of `clippy::all` renders as `#![allow(clippy::all)]`,
+/// and the outer form without the `!`.
+fn render_attribute(attribute: &Attribute) -> String {
+    let bang = match attribute.style {
+        AttrStyle::Inner(_) => "!",
+        AttrStyle::Outer => "",
+    };
+    let path = render_path(attribute.path());
+    attribute.meta.require_list().map_or_else(
+        |_| format!("#{bang}[{path}]"),
+        |list| format!("#{bang}[{path}({})]", list.tokens),
+    )
+}
+
+/// Return every protected lint suppressed in one source file.
+///
+/// The source is parsed rather than searched. A text scan cannot tell an
+/// attribute from attribute-shaped text in a string literal, cannot
+/// follow `cfg_attr`, and breaks on a parenthesis inside a `reason`.
+///
+/// # Examples
+///
+/// A file containing `#![allow(clippy::style)]` yields one offence
+/// naming `clippy::style`. A file whose only mention is inside a string
+/// literal or a doc comment yields none.
+fn suppressed_lints(contents: &str) -> Result<Vec<(String, String)>, String> {
+    let parsed = syn::parse_file(contents).map_err(|error| format!("parse: {error}"))?;
+    let mut collector = AttributeCollector::default();
+    collector.visit_file(&parsed);
+
     let mut found = Vec::new();
-    for start in 0..lines.len() {
-        let Some(attribute) = attribute_from(&lines, start) else {
-            continue;
-        };
-        for name in lint_names(&attribute) {
-            if PROTECTED_LINTS.contains(&name.as_str()) {
-                found.push((name, attribute.trim().to_owned()));
+    for attribute in &collector.attributes {
+        for lint in suppressed_by(attribute) {
+            if PROTECTED_LINTS.contains(&lint.as_str()) {
+                found.push((lint, render_attribute(attribute)));
             }
         }
     }
-    found
+    Ok(found)
 }
 
 /// Scenario: a source file switches the policy lint off for itself.
@@ -175,7 +264,9 @@ fn no_source_file_allows_a_policy_lint() {
             .expect("workspace sources should be readable");
         assert!(!sources.is_empty(), "{source_root} should contain Rust sources to scan");
         for (path, contents) in sources {
-            for (lint, attribute) in suppressed_lints(&contents) {
+            let offending = suppressed_lints(&contents)
+                .unwrap_or_else(|error| panic!("{path} should parse as Rust: {error}"));
+            for (lint, attribute) in offending {
                 offences.push(format!("{path} allows {lint} via {attribute}"));
             }
         }
@@ -220,7 +311,59 @@ fn a_sanctioned_expect_is_not_an_offence() {
     let sanctioned = "#[expect(clippy::disallowed_methods, reason = \"composition root\")]\n\
          fn read() -> Option<String> { std::env::var(\"HOME\").ok() }\n";
 
-    assert!(suppressed_lints(sanctioned).is_empty());
+    assert!(suppressed_lints(sanctioned).expect("fixture should parse").is_empty());
+}
+
+/// Scenario: the suppression is nested inside an active `cfg_attr`.
+///
+/// Invariant: it is reported. Clippy honours the nested `allow`, and
+/// `clippy::allow_attributes` does not report it either, so a scan that
+/// only looked for a line beginning `#![allow(` would miss it entirely.
+/// The condition is not evaluated: a suppression that applies under some
+/// configuration is still a suppression.
+#[test]
+fn a_suppression_nested_in_cfg_attr_is_an_offence() {
+    let nested = "#![cfg_attr(all(), allow(clippy::disallowed_methods, reason = \"x\"))]\n";
+
+    let found = suppressed_lints(nested).expect("fixture should parse");
+    assert_eq!(found.len(), 1, "found {found:?}");
+}
+
+/// Scenario: the suppression names the lint's group rather than the lint.
+///
+/// Invariant: it is reported. Clippy places `disallowed_methods` in the
+/// `style` group, so `#![allow(clippy::style)]` switches the policy off
+/// while never naming it.
+#[test]
+fn a_suppression_of_the_lints_group_is_an_offence() {
+    let group = "#![allow(clippy::style)]\n";
+
+    let found = suppressed_lints(group).expect("fixture should parse");
+    assert_eq!(found.len(), 1, "found {found:?}");
+}
+
+/// Scenario: spacing and a parenthesis inside the reason string.
+///
+/// Invariant: both are handled. A scan matching a fixed opener would
+/// miss the spaced form, and one counting raw parentheses would end the
+/// attribute early at the parenthesis inside the string.
+#[test]
+fn spacing_and_a_parenthesis_in_the_reason_do_not_hide_a_suppression() {
+    let awkward = "#![allow (warnings, reason = \"see the note (below)\")]\n";
+
+    let found = suppressed_lints(awkward).expect("fixture should parse");
+    assert_eq!(found.len(), 1, "found {found:?}");
+}
+
+/// Scenario: attribute-shaped text inside a string literal.
+///
+/// Invariant: it is not an offence. This is the false positive a text
+/// scan cannot avoid, and a contract that reports one gets disabled.
+#[test]
+fn attribute_shaped_text_in_a_string_is_not_an_offence() {
+    let literal = "const EXAMPLE: &str = \"\n#![allow(warnings)]\n\";\n";
+
+    assert!(suppressed_lints(literal).expect("fixture should parse").is_empty());
 }
 
 /// Scenario: a lint whose name merely contains a protected one.
@@ -230,21 +373,21 @@ fn a_sanctioned_expect_is_not_an_offence() {
 /// would have no way to tell a real finding from a false one.
 #[test]
 fn a_longer_lint_name_containing_a_protected_one_is_not_an_offence() {
-    let innocent = "#[allow(clippy::allow_attributes, clippy::alloc_instead_of_core)]\n";
+    let innocent = "#[allow(clippy::allow_attributes, clippy::alloc_instead_of_core)]\n\
+         fn documented() {}\n";
 
-    assert!(suppressed_lints(innocent).is_empty());
+    assert!(suppressed_lints(innocent).expect("fixture should parse").is_empty());
 }
 
-/// Scenario: a doc comment or string mentions the attribute.
+/// Scenario: a doc comment mentions the attribute.
 ///
-/// Invariant: only a line that begins with an attribute counts, so prose
-/// describing the policy is not reported as breaking it. This file and
-/// its sibling contracts both quote the attribute in their own
-/// documentation.
+/// Invariant: prose describing the policy is not reported as breaking
+/// it. This file and its sibling contracts all quote the attribute in
+/// their own documentation.
 #[test]
-fn a_mention_that_does_not_begin_a_line_is_not_an_attribute() {
+fn a_mention_in_prose_is_not_an_attribute() {
     let prose = "//! Never write #![allow(clippy::disallowed_methods)] in a crate root.\n\
          const EXAMPLE: &str = \"#[allow(warnings)]\";\n";
 
-    assert!(suppressed_lints(prose).is_empty());
+    assert!(suppressed_lints(prose).expect("fixture should parse").is_empty());
 }

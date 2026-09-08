@@ -830,8 +830,11 @@ is guarded with the two `allow_attributes` lints it contains, because
 suppressing those silences the guard that makes the "`expect`, never `allow`"
 rule enforceable: under `#![allow(clippy::restriction)]` an outer allow of the
 policy lint produces no diagnostic at all. A suppression nested in a `cfg_attr`
-is followed whatever its condition. Use an item-scoped `#[expect(...)]` at a
-composition root instead, which warns once the site no longer needs it.
+is followed whatever its condition, and macro token streams are walked as well
+as parsed attributes, because Clippy honours an `allow` emitted from a
+`macro_rules!` arm that the syntax tree never exposes. Use an item-scoped
+`#[expect(...)]` at a composition root instead, which warns once the site no
+longer needs it.
 
 ### 8.2 Choosing a seam
 

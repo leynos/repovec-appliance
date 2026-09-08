@@ -2348,6 +2348,7 @@ dependencies = [
  "camino",
  "cap-std 4.0.3",
  "insta",
+ "proc-macro2",
  "repovec-core",
  "rstest",
  "rstest-bdd",

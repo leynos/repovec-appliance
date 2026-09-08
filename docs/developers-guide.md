@@ -834,7 +834,11 @@ is followed whatever its condition, and macro token streams are walked as well
 as parsed attributes, because Clippy honours an `allow` emitted from a
 `macro_rules!` arm that the syntax tree never exposes. Use an item-scoped
 `#[expect(...)]` at a composition root instead, which warns once the site no
-longer needs it.
+longer needs it. Item-scoped is the operative word: a crate-scoped
+`#![expect(...)]` is fulfilled by any single call beneath it, so it neither
+reports that call nor warns that it went unfulfilled, and the scan treats it as
+a suppression. Raw spellings such as `r#allow` and `clippy::r#style` are
+normalized before comparison, because Clippy honours them too.
 
 ### 8.2 Choosing a seam
 

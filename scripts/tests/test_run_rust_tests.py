@@ -15,7 +15,6 @@ differ only in what ran.
 
 from __future__ import annotations
 
-import json
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -25,21 +24,10 @@ import pytest
 from plumbum import local
 
 import run_rust_tests
-from run_rust_tests import Gate, main, plan_gates
+from run_rust_tests import Gate, GateOptions, main, plan_gates
 
-#: Metadata for a workspace whose library target declares doctests.
-METADATA_WITH_DOCTESTS = json.dumps(
-    {"packages": [{"targets": [{"name": "demo", "doctest": True}]}]}
-)
-
-#: Metadata for a workspace where no target declares doctests.
-METADATA_WITHOUT_DOCTESTS = json.dumps(
-    {"packages": [{"targets": [{"name": "demo", "doctest": False}]}]}
-)
-
-#: The two questions the runner asks before planning any gate.
+#: The only question the runner asks before planning any gate.
 NEXTEST_PROBE = ["nextest", "--version"]
-METADATA_QUERY = ["metadata", "--no-deps", "--format-version", "1"]
 
 
 @dataclass
@@ -54,8 +42,6 @@ class CargoScript:
     ----------
     nextest_available
         Whether the nextest probe succeeds.
-    metadata
-        Standard output returned for the metadata query.
     unit_exit
         Exit code for the unit-test gate.
     doctest_exit
@@ -63,7 +49,6 @@ class CargoScript:
     """
 
     nextest_available: bool = True
-    metadata: str = METADATA_WITH_DOCTESTS
     unit_exit: int = 0
     doctest_exit: int = 0
 
@@ -72,8 +57,6 @@ class CargoScript:
         match invocation.args:
             case ["nextest", "--version"]:
                 return ("", "", 0 if self.nextest_available else 1)
-            case ["metadata", *_]:
-                return (self.metadata, "", 0)
             case ["nextest", "run", *_]:
                 return ("", "", self.unit_exit)
             case ["test", "--doc", *_]:
@@ -126,7 +109,6 @@ def test_a_failing_unit_test_run_stops_the_runner(cmd_mox) -> None:
     assert exit_info.value.code == 100
     assert invocations(cargo) == [
         NEXTEST_PROBE,
-        METADATA_QUERY,
         ["nextest", "run", "--no-tests", "pass"],
     ]
 
@@ -159,7 +141,6 @@ def test_all_gates_passing_exits_cleanly(cmd_mox) -> None:
 
     assert invocations(cargo) == [
         NEXTEST_PROBE,
-        METADATA_QUERY,
         ["nextest", "run", "--no-tests", "pass"],
         ["test", "--doc"],
     ]
@@ -175,12 +156,14 @@ def test_flags_reach_the_gate_they_belong_to(cmd_mox) -> None:
 
     with replaying(cmd_mox):
         main(
-            test_flags="--all-targets --all-features",
-            doctest_flags="--workspace --all-features",
-            build_jobs="-j2",
+            options=GateOptions(
+                test_flags="--all-targets --all-features",
+                doctest_flags="--workspace --all-features",
+                build_jobs="-j2",
+            )
         )
 
-    assert invocations(cargo)[2:] == [
+    assert invocations(cargo)[1:] == [
         [
             "nextest",
             "run",
@@ -203,7 +186,7 @@ def test_rust_flags_are_exported_to_the_gates(cmd_mox) -> None:
     cargo = stage_cargo(cmd_mox, CargoScript())
 
     with replaying(cmd_mox):
-        main(rust_flags="-D warnings")
+        main(options=GateOptions(rust_flags="-D warnings"))
 
     gate_runs = [
         invocation
@@ -215,60 +198,51 @@ def test_rust_flags_are_exported_to_the_gates(cmd_mox) -> None:
         assert invocation.env.get("RUSTFLAGS") == "-D warnings"
 
 
-def test_without_nextest_a_single_gate_runs_the_whole_suite(cmd_mox) -> None:
+def test_without_nextest_the_doctest_gate_still_runs(cmd_mox) -> None:
     """Scenario: cargo-nextest is not installed.
 
-    Invariant: one ``cargo test`` gate is planned, because it already
-    runs doctests, so no separate doctest gate is added and the metadata
-    question is never asked.
+    Invariant: the unit tests fall back to ``cargo test``, and the
+    doctest gate still runs under its own flags. It used to be skipped on
+    this path on the assumption that ``cargo test`` covers doctests,
+    which ``--all-targets`` makes false; that assumption is why this
+    repository's CI ran no doctests at all.
     """
     cargo = stage_cargo(cmd_mox, CargoScript(nextest_available=False))
 
     with replaying(cmd_mox):
         gates = plan_gates(
-            local["cargo"], test_flags=[], doctest_flags=[], build_jobs=[]
+            local["cargo"],
+            test_flags=["--all-targets"],
+            doctest_flags=["--workspace"],
+            build_jobs=[],
         )
 
-    assert gates == [Gate("unit tests", ["test"])]
+    assert gates == [
+        Gate("unit tests", ["test", "--all-targets"]),
+        Gate("doctests", ["test", "--doc", "--workspace"]),
+    ]
     assert invocations(cargo) == [NEXTEST_PROBE]
 
 
-def test_metadata_without_doctests_plans_no_doctest_gate(cmd_mox) -> None:
-    """Scenario: no workspace target declares doctests.
+def test_the_doctest_gate_is_planned_without_consulting_metadata(cmd_mox) -> None:
+    """Scenario: the workspace manifest cannot be read or parsed.
 
-    Invariant: the doctest gate is omitted rather than run against a
-    workspace that has none.
+    Invariant: the doctest gate is still planned, and no metadata query
+    is made at all. The runner used to ask ``cargo metadata`` whether any
+    target declared doctests and treat an unreadable answer as "no",
+    which let a broken manifest silently remove a gate.
     """
-    stage_cargo(cmd_mox, CargoScript(metadata=METADATA_WITHOUT_DOCTESTS))
+    cargo = stage_cargo(cmd_mox, CargoScript())
 
     with replaying(cmd_mox):
         gates = plan_gates(
             local["cargo"], test_flags=[], doctest_flags=[], build_jobs=[]
         )
 
-    assert [gate.name for gate in gates] == ["unit tests"]
-
-
-@pytest.mark.parametrize(
-    "metadata",
-    ["not json at all", json.dumps({"packages": []})],
-    ids=["unparseable", "no-packages"],
-)
-def test_unusable_metadata_keeps_the_unit_test_gate(cmd_mox, metadata: str) -> None:
-    """Scenario: ``cargo metadata`` returns something unusable.
-
-    Invariant: the unit-test gate still runs. The doctest gate is an
-    addition, so an unanswerable question must never remove the gate that
-    carries the suite.
-    """
-    stage_cargo(cmd_mox, CargoScript(metadata=metadata))
-
-    with replaying(cmd_mox):
-        gates = plan_gates(
-            local["cargo"], test_flags=[], doctest_flags=[], build_jobs=[]
-        )
-
-    assert [gate.name for gate in gates] == ["unit tests"]
+    assert [gate.name for gate in gates] == ["unit tests", "doctests"]
+    assert invocations(cargo) == [NEXTEST_PROBE], (
+        "planning should ask only whether nextest is installed"
+    )
 
 
 @pytest.mark.parametrize("flags", ["", None], ids=["empty-string", "unset"])

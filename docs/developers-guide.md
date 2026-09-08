@@ -72,9 +72,13 @@ a `uv` script block, Cyclopts parameters and Plumbum for the child processes,
 and the recipe invokes it as one command.
 
 So `make test` runs `scripts/run_rust_tests.py`, which decides whether nextest
-is available, asks `cargo metadata` whether any target declares doctests, runs
-the gates in order, and exits at the first rejection with the gate named and
-Cargo's own code propagated. With the same failing test the recipe now exits 2,
+is available, runs the gates in order, and exits at the first rejection with
+the gate named and Cargo's own code propagated. Only the unit-test runner
+varies. The doctest gate is unconditional and runs under its own flags on both
+paths, because every condition the recipe applied to it could remove it
+silently: an unreadable manifest answered "no target declares doctests", and the
+`cargo test` path assumed its unit-test run covered doctests, which
+`--all-targets` makes false. With the same failing test the recipe now exits 2,
 reports `the unit tests gate rejected the workspace (exit code 100)`, and never
 reaches the doctest gate.
 

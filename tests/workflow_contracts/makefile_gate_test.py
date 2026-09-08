@@ -40,12 +40,28 @@ Mutation proof, recorded 2026-09-07; each applied alone and reverted:
 Both of those last two leave the command in place and readable, which is
 why a contract that only looks for the command certifies nothing.
 
+Added 2026-09-08, after review found the guard rule too narrow:
+
+- appending ``; echo done`` to the ``lint`` recipe's Clippy command fails
+  ``test_no_gate_command_is_followed_by_an_unguarded_command``, and the
+  same line with ``|| exit 1`` before the ``echo`` passes, so the rule
+  rejects the masking rather than the sequencing;
+- the same trailing ``echo`` inside the ``whitaker-lint`` ``then``
+  branch fails it too;
+- ``|| true`` on the Whitaker command fails
+  ``test_no_gate_command_alters_its_own_status``.
+
+The earlier rule compared each gate command only against *later gate*
+commands, so ``$(CARGO) test; echo done`` was checked against an empty
+list and the successful ``echo`` supplied the recipe's status.
+
 Run via ``make test-workflow-contracts``.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -79,6 +95,20 @@ GATE_TOOLS = (
 #: asked a question, and a non-zero answer there is meaningful rather
 #: than a rejection, so those invocations are not gate commands.
 CONDITION_RE = re.compile(r"^@?(if|elif|while|until)\s")
+
+#: Statements that close a block. They carry the status of whatever the
+#: taken branch last ran, so a gate command followed only by these is
+#: still the statement the recipe reports.
+BLOCK_CLOSERS_RE = re.compile(r"^(fi|done|esac|;;)\b")
+
+#: Statements that open an alternative branch. Everything from here to
+#: the matching closer runs only when the gate's own branch did not, so
+#: it cannot mask the gate's status.
+ALTERNATIVE_RE = re.compile(r"^(else|elif)\b")
+
+#: The one disjunction a gate command may carry: it turns a rejection
+#: into an immediate exit rather than discarding it.
+APPROVED_GUARD = "|| exit 1"
 
 #: A target definition line, which ends the preceding recipe.
 TARGET_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.-]*)\s*:(?!=)")
@@ -147,20 +177,57 @@ def _ignores_errors(statement: str) -> bool:
     return statement.lstrip("@+").startswith("-")
 
 
-def _gate_statements(logical_line: str) -> list[str]:
-    """Return the gate invocations in one shell invocation, in order.
+def _statements(logical_line: str) -> list[str]:
+    """Return every non-empty statement in one shell invocation.
 
     Statements are separated by ``;``; the split does not honour shell
-    quoting, which is sufficient for these recipes. Conditions are
-    excluded, because their status is an answer rather than a verdict.
+    quoting, which is sufficient for these recipes.
     """
+    return [part.strip() for part in logical_line.split(";") if part.strip()]
+
+
+def _is_gate_command(statement: str) -> bool:
+    """Report whether a statement runs a gate tool as a command.
+
+    A tool named in a condition is being asked a question, and a non-zero
+    answer there is meaningful rather than a rejection, so it is not a
+    gate command.
+    """
+    if CONDITION_RE.match(statement):
+        return False
+    return any(tool in statement for tool in GATE_TOOLS)
+
+
+def _gate_statements(logical_line: str) -> list[str]:
+    """Return the gate invocations in one shell invocation, in order."""
     return [
         statement
-        for raw in logical_line.split(";")
-        if (statement := raw.strip())
-        and any(tool in statement for tool in GATE_TOOLS)
-        and not CONDITION_RE.match(statement)
+        for statement in _statements(logical_line)
+        if _is_gate_command(statement)
     ]
+
+
+def _gate_commands_in(
+    target: str, logical_line: str
+) -> Iterator[tuple[str, list[str], int]]:
+    """Yield the gate commands in one shell invocation."""
+    statements = _statements(logical_line)
+    for index, statement in enumerate(statements):
+        if _is_gate_command(statement):
+            yield target, statements, index
+
+
+def _gate_commands() -> Iterator[tuple[str, list[str], int]]:
+    """Yield every gate command in the Makefile with its position.
+
+    Each item is the recipe's target, the statements of the one shell
+    invocation the command sits in, and its index among them. Tests then
+    hold a single loop rather than three, which keeps the rule they
+    assert legible.
+    """
+    for target in _targets():
+        for logical_line in _logical_lines(target):
+            yield from _gate_commands_in(target, logical_line)
 
 
 @pytest.mark.parametrize("target", SINGLE_COMMAND_RECIPES)
@@ -213,28 +280,71 @@ def test_no_gate_command_has_its_status_ignored() -> None:
     prefix leaves the command in place and readable, so a contract that
     only looks for the command cannot see it.
     """
-    for target in _targets():
-        for logical_line in _logical_lines(target):
-            for statement in _gate_statements(logical_line):
-                assert not _ignores_errors(statement), (
-                    f"the {target} recipe runs {statement!r} with Make's "
-                    "ignore-errors prefix, so its rejection is discarded"
-                )
+    for target, statements, index in _gate_commands():
+        statement = statements[index]
+        assert not _ignores_errors(statement), (
+            f"the {target} recipe runs {statement!r} with Make's "
+            "ignore-errors prefix, so its rejection is discarded"
+        )
 
 
-def test_every_chained_recipe_guards_its_gate_commands() -> None:
-    """Scenario: a recipe chains two gate commands in one shell run.
+def _masking_followers(statements: list[str], index: int) -> list[str]:
+    """Return statements after *index* that could supply the exit status.
 
-    Invariant: every gate command but the last carries ``|| exit 1``, so
-    a rejection ends the recipe instead of being replaced by the status
-    of whatever runs next.
+    A block closer carries the taken branch's status rather than setting
+    its own. An alternative branch runs only when the gate's branch did
+    not, so everything from ``else`` to its closer is skipped. Whatever
+    remains is a command that runs after the gate and replaces its
+    status.
     """
-    for target in _targets():
-        for logical_line in _logical_lines(target):
-            statements = _gate_statements(logical_line)
-            for statement in statements[:-1]:
-                assert statement.endswith("|| exit 1"), (
-                    f"the {target} recipe runs {statement!r} before another "
-                    "gate command without a guard; a rejection here would be "
-                    "discarded"
-                )
+    masking: list[str] = []
+    skipping = False
+    for statement in statements[index + 1 :]:
+        if BLOCK_CLOSERS_RE.match(statement):
+            skipping = False
+            continue
+        if ALTERNATIVE_RE.match(statement):
+            skipping = True
+            continue
+        if skipping:
+            continue
+        masking.append(statement)
+    return masking
+
+
+def test_no_gate_command_is_followed_by_an_unguarded_command() -> None:
+    """Scenario: any command follows a gate command in one shell run.
+
+    Invariant: a gate command is either the last thing that runs in its
+    shell invocation or carries ``|| exit 1``. Checking only for a later
+    *gate* command was too narrow: ``$(CARGO) test; echo done`` has one
+    gate statement, so nothing was checked, and the successful ``echo``
+    supplied the recipe's status.
+    """
+    for target, statements, index in _gate_commands():
+        statement = statements[index]
+        followers = _masking_followers(statements, index)
+        if followers:
+            assert statement.endswith(APPROVED_GUARD), (
+                f"the {target} recipe runs {statement!r} followed by "
+                f"{followers!r}; without {APPROVED_GUARD!r} the recipe "
+                "reports the follower's status, not the gate's"
+            )
+
+
+def test_no_gate_command_alters_its_own_status() -> None:
+    """Scenario: a gate command is joined to another with ``||`` or ``&&``.
+
+    Invariant: a gate command is a bare invocation, apart from the
+    approved ``|| exit 1`` guard. Enumerating the succeeding right-hand
+    sides would hold only until someone writes the next one.
+    """
+    for target, statements, index in _gate_commands():
+        statement = statements[index]
+        remainder = statement.removesuffix(APPROVED_GUARD)
+        for operator in STATUS_ALTERING_OPERATORS:
+            assert operator not in remainder, (
+                f"the {target} recipe joins {statement!r} with {operator!r}; "
+                f"a gate command is a bare invocation, apart from "
+                f"{APPROVED_GUARD!r}"
+            )

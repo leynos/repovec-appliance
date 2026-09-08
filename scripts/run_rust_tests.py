@@ -12,12 +12,10 @@ the doctest step that ran after it, and ``make test`` reported success
 with failing tests. Rather than sprinkle ``|| exit 1`` through a growing
 shell chain, the sequencing lives here, where it is unit-tested.
 
-Two decisions the recipe made with shell are made properly here. Whether
-``cargo nextest`` is installed decides which runner is used, and whether
-any package declares doctests decides whether the doctest gate runs at
-all; ``cargo test`` already runs doctests itself, so the extra gate
-applies only to the nextest path. The doctest question is answered by
-parsing ``cargo metadata`` rather than grepping its JSON for a substring.
+One decision the recipe made with shell is made here: whether
+``cargo nextest`` is installed, which selects the unit-test runner. The
+doctest gate is not conditional on anything, because every condition the
+recipe applied to it could remove it silently.
 
 Gates run in order and the first rejection ends the run, with the gate
 named and Cargo's own exit code propagated so nextest's 100 is not
@@ -31,14 +29,13 @@ which this repository already uses for the integration harness in
 
 from __future__ import annotations
 
-import json
 import shlex
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 
 import cyclopts
-from cyclopts import App
+from cyclopts import App, Parameter
 from plumbum import local
 from plumbum.commands.base import BaseCommand
 
@@ -61,6 +58,32 @@ class Gate:
     argv: list[str]
 
 
+@Parameter(name="*")
+@dataclass(frozen=True)
+class GateOptions:
+    """Configuration the caller supplies, one field per flag.
+
+    Attributes
+    ----------
+    cargo
+        Cargo executable, by name or absolute path.
+    rust_flags
+        Value exported as ``RUSTFLAGS`` for the gate runs.
+    test_flags
+        Flags for the unit-test run, as one shell-quoted string.
+    doctest_flags
+        Flags for the doctest run, as one shell-quoted string.
+    build_jobs
+        Optional job-count flag applied to every gate.
+    """
+
+    cargo: str = "cargo"
+    rust_flags: str = "-D warnings"
+    test_flags: str = ""
+    doctest_flags: str = ""
+    build_jobs: str = ""
+
+
 def split_flags(flags: str | None) -> list[str]:
     """Split a Make-supplied flag string into arguments.
 
@@ -77,31 +100,6 @@ def _nextest_available(cargo: BaseCommand) -> bool:
     return code == 0
 
 
-def _declares_doctests(cargo: BaseCommand) -> bool:
-    """Report whether any workspace target declares doctests.
-
-    The metadata is parsed rather than pattern-matched, so a target named
-    in a path or a feature string cannot be mistaken for a doctest
-    declaration. Metadata that cannot be read or parsed answers no,
-    matching the previous behaviour: the doctest gate is an addition to
-    the unit-test gate, never the only one.
-    """
-    code, out, _ = cargo["metadata", "--no-deps", "--format-version", "1"].run(
-        retcode=None
-    )
-    if code != 0:
-        return False
-    try:
-        metadata = json.loads(out)
-    except json.JSONDecodeError:
-        return False
-    return any(
-        target.get("doctest", False)
-        for package in metadata.get("packages", [])
-        for target in package.get("targets", [])
-    )
-
-
 def plan_gates(
     cargo: BaseCommand,
     *,
@@ -111,22 +109,33 @@ def plan_gates(
 ) -> list[Gate]:
     """Return the ordered gates for the installed toolchain.
 
-    With nextest present the unit tests run through it, and doctests need
-    a separate gate because nextest does not run them. Without nextest,
-    ``cargo test`` covers both, so one gate is the whole suite.
-    """
-    if not _nextest_available(cargo):
-        return [Gate("unit tests", ["test", *test_flags, *build_jobs])]
+    Only the unit-test runner varies: nextest when it is installed,
+    ``cargo test`` otherwise. The doctest gate is unconditional, and runs
+    under its own flags on both paths.
 
-    gates = [
-        Gate(
-            "unit tests",
-            ["nextest", "run", "--no-tests", "pass", *test_flags, *build_jobs],
-        )
+    It used to be conditional, scheduled only on the nextest path and
+    only when ``cargo metadata`` said some target declared doctests. Both
+    conditions were wrong. Metadata that could not be read or parsed
+    answered "no", so an unreadable manifest silently removed a gate.
+    And on the ``cargo test`` path the doctests were assumed covered by
+    the unit-test run, which holds only until the caller passes
+    ``--all-targets``; that flag excludes the doc target, so this
+    repository's continuous integration ran no doctests at all
+    (repovec-appliance #107).
+
+    Running the gate unconditionally costs one extra compilation on a
+    workspace with no doctests, where it reports zero tests and passes.
+    That is the right trade against silently skipping it.
+    """
+    unit_test_argv = (
+        ["nextest", "run", "--no-tests", "pass", *test_flags, *build_jobs]
+        if _nextest_available(cargo)
+        else ["test", *test_flags, *build_jobs]
+    )
+    return [
+        Gate("unit tests", unit_test_argv),
+        Gate("doctests", ["test", "--doc", *doctest_flags, *build_jobs]),
     ]
-    if _declares_doctests(cargo):
-        gates.append(Gate("doctests", ["test", "--doc", *doctest_flags, *build_jobs]))
-    return gates
 
 
 def _run_gates(cargo: BaseCommand, gates: list[Gate]) -> Iterator[tuple[Gate, int]]:
@@ -143,37 +152,23 @@ def _run_gates(cargo: BaseCommand, gates: list[Gate]) -> Iterator[tuple[Gate, in
 
 
 @app.default
-def main(
-    *,
-    cargo: str = "cargo",
-    rust_flags: str = "-D warnings",
-    test_flags: str = "",
-    doctest_flags: str = "",
-    build_jobs: str = "",
-) -> None:
+def main(*, options: GateOptions = GateOptions()) -> None:
     """Run every Rust test gate, exiting at the first rejection.
 
     Parameters
     ----------
-    cargo
-        Cargo executable, by name or absolute path.
-    rust_flags
-        Value exported as ``RUSTFLAGS`` for the gate runs.
-    test_flags
-        Flags for the unit-test run, as one shell-quoted string.
-    doctest_flags
-        Flags for the doctest run, as one shell-quoted string.
-    build_jobs
-        Optional job-count flag applied to every gate.
+    options
+        Runner configuration. ``Parameter(name="*")`` flattens it, so
+        each field is still spelled as its own command-line flag.
     """
-    command = local[cargo]
+    command = local[options.cargo]
     gates = plan_gates(
         command,
-        test_flags=split_flags(test_flags),
-        doctest_flags=split_flags(doctest_flags),
-        build_jobs=split_flags(build_jobs),
+        test_flags=split_flags(options.test_flags),
+        doctest_flags=split_flags(options.doctest_flags),
+        build_jobs=split_flags(options.build_jobs),
     )
-    with local.env(RUSTFLAGS=rust_flags):
+    with local.env(RUSTFLAGS=options.rust_flags):
         for gate, code in _run_gates(command, gates):
             if code != 0:
                 print(

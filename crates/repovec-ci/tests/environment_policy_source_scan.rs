@@ -20,6 +20,15 @@
 //! composition root precisely because it warns once the site grows a
 //! seam; `allow` is silent forever.
 //!
+//! A macro arm is the one place parsing is not enough. `syn` keeps a
+//! `macro_rules!` body as opaque tokens, so an `allow` emitted from an
+//! arm never reaches `visit_attribute` while Clippy expands and honours
+//! it; measured on this branch, such an arm over a `std::env::var` call
+//! produced no diagnostic. Macro token streams are therefore walked
+//! alongside the parsed attributes, under the same judgement. A string
+//! literal is a single token, so the property that made parsing worth
+//! having survives the drop to tokens.
+//!
 //! The file is parsed rather than searched. Review found three shapes a
 //! text scan could not handle and two further routes around the policy,
 //! all confirmed against Clippy before being fixed: a suppression nested
@@ -40,8 +49,10 @@
 //! - `#[allow(warnings)]` on an item fails it;
 //! - `#![allow(clippy::restriction)]`, which silences the guard lint
 //!   rather than the policy lint, fails it;
+//! - an `allow` emitted from a `macro_rules!` arm fails it, and so does
+//!   one two macro definitions deep;
 //! - `#[allow(clippy::alloc_instead_of_core)]` must and does keep
-//!   passing.
+//!   passing, as does attribute-shaped text inside a macro argument.
 //!
 //! That last case is the one that keeps this contract honest. Its name
 //! begins with `clippy::all`, so an earlier draft comparing lint names
@@ -51,8 +62,9 @@ use std::collections::VecDeque;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use cap_std::{ambient_authority, fs_utf8::Dir};
+use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::{
-    AttrStyle, Attribute, Meta, MetaList, Path, Token, punctuated::Punctuated, visit::Visit,
+    AttrStyle, Attribute, Macro, Meta, MetaList, Path, Token, punctuated::Punctuated, visit::Visit,
 };
 
 /// Lints whose suppression disarms the environment-access policy.
@@ -136,11 +148,16 @@ fn rust_sources(root: &Utf8Path, relative: &str) -> Result<Vec<(Utf8PathBuf, Str
 #[derive(Default)]
 struct AttributeCollector {
     attributes: Vec<Attribute>,
+    from_macros: Vec<(String, String)>,
 }
 
 impl<'ast> Visit<'ast> for AttributeCollector {
     fn visit_attribute(&mut self, attribute: &'ast Attribute) {
         self.attributes.push(attribute.clone());
+    }
+
+    fn visit_macro(&mut self, mac: &'ast Macro) {
+        self.from_macros.extend(suppressions_in_tokens(&mac.tokens));
     }
 }
 
@@ -190,15 +207,102 @@ fn allowed_lints(list: &MetaList) -> Vec<String> {
 /// because the nested attribute is followed.
 /// `#[expect(clippy::disallowed_methods, reason = "...")]` yields nothing,
 /// because `expect` is the sanctioned form.
-fn suppressed_by(attribute: &Attribute) -> Vec<String> {
-    let Ok(list) = attribute.meta.require_list() else {
+fn suppressed_by(attribute: &Attribute) -> Vec<String> { suppressed_by_meta(&attribute.meta) }
+
+/// Return the lint names one attribute's meta suppresses.
+///
+/// This is the single judgement applied to an attribute however it was
+/// found: parsed from the syntax tree, or recovered from a macro's token
+/// stream. Keeping one function means the two routes cannot drift.
+///
+/// # Examples
+///
+/// The meta of `allow(warnings)` yields `["warnings"]`; that of
+/// `expect(clippy::all)` yields nothing.
+fn suppressed_by_meta(meta: &Meta) -> Vec<String> {
+    let Meta::List(list) = meta else {
         return Vec::new();
     };
-    match render_path(attribute.path()).as_str() {
+    match render_path(&list.path).as_str() {
         "allow" => allowed_lints(list),
         "cfg_attr" => suppressed_by_cfg_attr(list),
         _ => Vec::new(),
     }
+}
+
+/// Return the protected lints suppressed by attributes inside a macro's
+/// token stream.
+///
+/// `macro_rules!` arms are opaque to the syntax tree: `syn` keeps the
+/// body as tokens, so an `allow` emitted from an arm never reaches
+/// `visit_attribute`, while Clippy expands and honours it. Measured on
+/// this branch: an arm emitting
+/// `#[allow(clippy::disallowed_methods)]` over a `std::env::var` call
+/// produced no disallowed-method diagnostic at all.
+///
+/// The walk looks for `#` optionally followed by `!` and then a bracket
+/// group, parses that group as a `Meta`, and applies the same judgement
+/// as a parsed attribute. Every group is recursed into, so an arm that
+/// defines another macro is covered too.
+///
+/// A string literal is a single token, so text that looks like an
+/// attribute inside one is never mistaken for a suppression. That is the
+/// same property parsing gave us, kept rather than given back.
+///
+/// # Examples
+///
+/// Tokens for `{ () => { #[allow(warnings)] fn f() {} }; }` yield
+/// `warnings`; tokens for `{ "#[allow(warnings)]" }` yield nothing.
+fn suppressions_in_tokens(tokens: &TokenStream) -> Vec<(String, String)> {
+    let trees: Vec<TokenTree> = tokens.clone().into_iter().collect();
+    let mut found = Vec::new();
+
+    for (index, tree) in trees.iter().enumerate() {
+        if let TokenTree::Group(group) = tree {
+            found.extend(suppressions_in_tokens(&group.stream()));
+        }
+        let Some(attribute) = attribute_at(&trees, index) else {
+            continue;
+        };
+        found.extend(attribute.1);
+    }
+    found
+}
+
+/// Return the rendered attribute and its suppressed lints at `index`.
+///
+/// # Examples
+///
+/// At the `#` of `#[allow(warnings)]` this returns the rendered
+/// attribute and `["warnings"]`; anywhere else it returns nothing.
+fn attribute_at(trees: &[TokenTree], index: usize) -> Option<(String, Vec<(String, String)>)> {
+    match trees.get(index) {
+        Some(TokenTree::Punct(punct)) if punct.as_char() == '#' => {}
+        _ => return None,
+    }
+
+    let mut next = index.checked_add(1)?;
+    let mut bang = "";
+    if matches!(trees.get(next), Some(TokenTree::Punct(punct)) if punct.as_char() == '!') {
+        bang = "!";
+        next = next.checked_add(1)?;
+    }
+
+    let Some(TokenTree::Group(group)) = trees.get(next) else {
+        return None;
+    };
+    if group.delimiter() != Delimiter::Bracket {
+        return None;
+    }
+
+    let meta = syn::parse2::<Meta>(group.stream()).ok()?;
+    let rendered = format!("#{bang}[{}]", group.stream());
+    let lints = suppressed_by_meta(&meta)
+        .into_iter()
+        .filter(|lint| PROTECTED_LINTS.contains(&lint.as_str()))
+        .map(|lint| (lint, rendered.clone()))
+        .collect();
+    Some((rendered, lints))
 }
 
 /// Return the lint names nested inside a `cfg_attr`.
@@ -212,19 +316,7 @@ fn suppressed_by_cfg_attr(list: &MetaList) -> Vec<String> {
     let Ok(nested) = list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated) else {
         return Vec::new();
     };
-    nested
-        .iter()
-        .skip(1)
-        .filter_map(|meta| match meta {
-            Meta::List(inner) => Some(match render_path(&inner.path).as_str() {
-                "allow" => allowed_lints(inner),
-                "cfg_attr" => suppressed_by_cfg_attr(inner),
-                _ => Vec::new(),
-            }),
-            Meta::Path(_) | Meta::NameValue(_) => None,
-        })
-        .flatten()
-        .collect()
+    nested.iter().skip(1).flat_map(suppressed_by_meta).collect()
 }
 
 /// Render an attribute roughly as written, for a failure message.
@@ -269,6 +361,7 @@ fn suppressed_lints(contents: &str) -> Result<Vec<(String, String)>, String> {
             }
         }
     }
+    found.extend(collector.from_macros);
     Ok(found)
 }
 
@@ -387,6 +480,60 @@ fn attribute_shaped_text_in_a_string_is_not_an_offence() {
     let literal = "const EXAMPLE: &str = \"\n#![allow(warnings)]\n\";\n";
 
     assert!(suppressed_lints(literal).expect("fixture should parse").is_empty());
+}
+
+/// Scenario: the suppression is emitted from a `macro_rules!` arm.
+///
+/// Invariant: it is reported. Clippy expands the arm and honours the
+/// attribute, but `syn` keeps the arm's body an opaque token stream, so
+/// the attribute never reaches `visit_attribute`. Measured on this
+/// branch: an arm emitting this over a `std::env::var` call produced no
+/// disallowed-method diagnostic.
+#[test]
+fn a_suppression_emitted_from_a_macro_arm_is_an_offence() {
+    let source = "macro_rules! probe {\n\
+         () => {\n\
+         #[allow(clippy::disallowed_methods, reason = \"x\")]\n\
+         pub fn probe() -> Option<String> { std::env::var(\"HOME\").ok() }\n\
+         };\n\
+         }\n";
+
+    let found = suppressed_lints(source).expect("fixture should parse");
+    assert_eq!(found.len(), 1, "found {found:?}");
+}
+
+/// Scenario: the suppression is two macro definitions deep.
+///
+/// Invariant: it is reported. Every token group is recursed into, so an
+/// arm that defines another macro does not hide the attribute its inner
+/// arm emits.
+#[test]
+fn a_suppression_two_macro_arms_deep_is_an_offence() {
+    let source = "macro_rules! outer {\n\
+         () => {\n\
+         macro_rules! inner {\n\
+         () => {\n\
+         #![allow(clippy::style)]\n\
+         };\n\
+         }\n\
+         };\n\
+         }\n";
+
+    let found = suppressed_lints(source).expect("fixture should parse");
+    assert_eq!(found.len(), 1, "found {found:?}");
+}
+
+/// Scenario: attribute-shaped text inside a macro's arguments.
+///
+/// Invariant: it is not an offence. A string literal is a single token,
+/// so the walk cannot mistake its contents for an attribute. This is the
+/// property parsing gave us, kept rather than handed back when the walk
+/// dropped to tokens.
+#[test]
+fn attribute_shaped_text_inside_a_macro_argument_is_not_an_offence() {
+    let source = "fn describe() { println!(\"never write #![allow(warnings)] here\"); }\n";
+
+    assert!(suppressed_lints(source).expect("fixture should parse").is_empty());
 }
 
 /// Scenario: a lint whose name merely begins with a protected one.

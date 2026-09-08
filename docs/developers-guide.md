@@ -812,12 +812,18 @@ benchmark code is covered as well as production code.
 Process arguments are outside this policy. `std::env::args` and
 `std::env::args_os` remain available at executable entry points.
 
-Two tests in `repovec-ci` keep this from decaying.
+Three tests in `repovec-ci` keep this from decaying.
 `environment_access_policy_contract` reads the checked-in configuration and
 fails if an entry, the deny, a crate's lint inheritance, or the lint gate's
 scope is removed. `environment_policy_lint_ui` runs Clippy over a fixture
 package that calls all six methods and asserts each is reported with its
 remedy, so a configuration that parses but never fires is caught too.
+`environment_policy_source_scan` rejects any source that allows a protected
+lint, because a crate-level `#![allow(clippy::disallowed_methods)]` disarms the
+policy for a whole crate while every other gate stays green: the workspace
+denies `clippy::allow_attributes`, but that lint does not fire on inner
+attributes. Use an item-scoped `#[expect(...)]` at a composition root instead,
+which warns once the site no longer needs it.
 
 ### 8.2 Choosing a seam
 

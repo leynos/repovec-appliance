@@ -16,9 +16,14 @@
 //! configuration contract passed all five tests, the Clippy fixture test
 //! passed, and the workflow contracts passed all fifteen.
 //!
-//! `expect` is untouched by this scan. It is the sanctioned form for a
-//! composition root precisely because it warns once the site grows a
-//! seam; `allow` is silent forever.
+//! `expect` is judged by scope, not exempted outright. An item-scoped
+//! `#[expect(..., reason = "...")]` is the sanctioned form, and it is
+//! safe because it warns as soon as its one item stops needing it. A
+//! crate-scoped `#![expect(...)]` has no such property: any single call
+//! beneath it fulfils it, so it neither reports the call nor warns that
+//! it went unfulfilled. Measured on this branch, it produced no
+//! diagnostic of either kind. At crate scope `expect` is an `allow` that
+//! looks responsible.
 //!
 //! A macro arm is the one place parsing is not enough. `syn` keeps a
 //! `macro_rules!` body as opaque tokens, so an `allow` emitted from an
@@ -51,6 +56,12 @@
 //!   rather than the policy lint, fails it;
 //! - an `allow` emitted from a `macro_rules!` arm fails it, and so does
 //!   one two macro definitions deep;
+//! - a crate-scoped `#![expect(clippy::disallowed_methods)]` fails it,
+//!   as does the same reached through an inner `cfg_attr`;
+//! - the raw spellings `#![r#allow(...)]` and `clippy::r#style` fail it,
+//!   both being spellings Clippy honours;
+//! - an item-scoped `#[expect(..., reason = "...")]` must and does keep
+//!   passing, since it is the form the taxonomy sanctions;
 //! - `#[allow(clippy::alloc_instead_of_core)]` must and does keep
 //!   passing, as does attribute-shaped text inside a macro argument.
 //!
@@ -64,7 +75,8 @@ use camino::{Utf8Path, Utf8PathBuf};
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::{
-    AttrStyle, Attribute, Macro, Meta, MetaList, Path, Token, punctuated::Punctuated, visit::Visit,
+    AttrStyle, Attribute, Macro, Meta, MetaList, Path, Token, ext::IdentExt,
+    punctuated::Punctuated, visit::Visit,
 };
 
 /// Lints whose suppression disarms the environment-access policy.
@@ -166,9 +178,16 @@ impl<'ast> Visit<'ast> for AttributeCollector {
 /// # Examples
 ///
 /// The path in `#[allow(clippy::all)]` renders as `clippy::all`, and the
-/// path in `#[allow(warnings)]` as `warnings`.
+/// path in `#[allow(warnings)]` as `warnings`. Raw identifiers are
+/// unwrapped, so `r#allow` renders as `allow` and `clippy::r#style` as
+/// `clippy::style`. Clippy honours both spellings, so they must not be
+/// two different things here.
 fn render_path(path: &Path) -> String {
-    path.segments.iter().map(|segment| segment.ident.to_string()).collect::<Vec<_>>().join("::")
+    path.segments
+        .iter()
+        .map(|segment| segment.ident.unraw().to_string())
+        .collect::<Vec<_>>()
+        .join("::")
 }
 
 /// Return the lint names an `allow` meta-list suppresses.
@@ -207,7 +226,9 @@ fn allowed_lints(list: &MetaList) -> Vec<String> {
 /// because the nested attribute is followed.
 /// `#[expect(clippy::disallowed_methods, reason = "...")]` yields nothing,
 /// because `expect` is the sanctioned form.
-fn suppressed_by(attribute: &Attribute) -> Vec<String> { suppressed_by_meta(&attribute.meta) }
+fn suppressed_by(attribute: &Attribute) -> Vec<String> {
+    suppressed_by_meta(&attribute.meta, Scope::of(attribute))
+}
 
 /// Return the lint names one attribute's meta suppresses.
 ///
@@ -217,16 +238,52 @@ fn suppressed_by(attribute: &Attribute) -> Vec<String> { suppressed_by_meta(&att
 ///
 /// # Examples
 ///
-/// The meta of `allow(warnings)` yields `["warnings"]`; that of
-/// `expect(clippy::all)` yields nothing.
-fn suppressed_by_meta(meta: &Meta) -> Vec<String> {
+/// The meta of `allow(warnings)` yields `["warnings"]` at either scope.
+/// That of `expect(clippy::all)` yields nothing at `Scope::Item`, the
+/// sanctioned form, and `["clippy::all"]` at `Scope::Crate`, where the
+/// warning that makes `expect` self-removing never fires.
+fn suppressed_by_meta(meta: &Meta, scope: Scope) -> Vec<String> {
     let Meta::List(list) = meta else {
         return Vec::new();
     };
     match render_path(&list.path).as_str() {
         "allow" => allowed_lints(list),
-        "cfg_attr" => suppressed_by_cfg_attr(list),
+        "expect" if scope == Scope::Crate => allowed_lints(list),
+        "cfg_attr" => suppressed_by_cfg_attr(list, scope),
         _ => Vec::new(),
+    }
+}
+
+/// Whether an attribute applies to the item it precedes, or to
+/// everything inside the module or crate that carries it.
+///
+/// The distinction is what makes `expect` safe at one scope and not the
+/// other. An item-scoped `#[expect(...)]` warns once its item no longer
+/// needs it, which is why the taxonomy sanctions it. A crate-scoped
+/// `#![expect(...)]` is fulfilled by any single call anywhere beneath
+/// it, so it neither reports nor goes unfulfilled. Measured on this
+/// branch: `#![expect(clippy::disallowed_methods, reason = "probe")]`
+/// over a `std::env::var` call produced no diagnostic of either kind. At
+/// that scope `expect` is an `allow` that looks responsible.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Scope {
+    /// An inner attribute, applying to everything beneath it.
+    Crate,
+    /// An outer attribute, applying to the item that follows it.
+    Item,
+}
+
+impl Scope {
+    /// Return the scope an attribute applies at.
+    ///
+    /// # Examples
+    ///
+    /// `#![allow(warnings)]` is `Crate`; `#[allow(warnings)]` is `Item`.
+    const fn of(attribute: &Attribute) -> Self {
+        match attribute.style {
+            AttrStyle::Inner(_) => Self::Crate,
+            AttrStyle::Outer => Self::Item,
+        }
     }
 }
 
@@ -296,8 +353,9 @@ fn attribute_at(trees: &[TokenTree], index: usize) -> Option<(String, Vec<(Strin
     }
 
     let meta = syn::parse2::<Meta>(group.stream()).ok()?;
+    let scope = if bang.is_empty() { Scope::Item } else { Scope::Crate };
     let rendered = format!("#{bang}[{}]", group.stream());
-    let lints = suppressed_by_meta(&meta)
+    let lints = suppressed_by_meta(&meta, scope)
         .into_iter()
         .filter(|lint| PROTECTED_LINTS.contains(&lint.as_str()))
         .map(|lint| (lint, rendered.clone()))
@@ -311,12 +369,14 @@ fn attribute_at(trees: &[TokenTree], index: usize) -> Option<(String, Vec<(Strin
 ///
 /// For `cfg_attr(all(), allow(clippy::style))` this returns
 /// `["clippy::style"]`. The leading element is the condition and is
-/// skipped; a nested `cfg_attr` is followed in turn.
-fn suppressed_by_cfg_attr(list: &MetaList) -> Vec<String> {
+/// skipped; a nested `cfg_attr` is followed in turn. The outermost
+/// attribute's scope is carried down, so an inner `cfg_attr` wrapping an
+/// `expect` is judged as the crate-scoped suppression it becomes.
+fn suppressed_by_cfg_attr(list: &MetaList, scope: Scope) -> Vec<String> {
     let Ok(nested) = list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated) else {
         return Vec::new();
     };
-    nested.iter().skip(1).flat_map(suppressed_by_meta).collect()
+    nested.iter().skip(1).flat_map(|meta| suppressed_by_meta(meta, scope)).collect()
 }
 
 /// Render an attribute roughly as written, for a failure message.
@@ -417,11 +477,13 @@ fn the_scan_reads_the_workspace_sources() {
     );
 }
 
-/// Scenario: an `expect` at a sanctioned composition root.
+/// Scenario: an item-scoped `expect` at a sanctioned composition root.
 ///
-/// Invariant: the scan does not reject it. Rejecting `expect` would push
-/// contributors towards `allow`, which is the attribute that never
-/// warns, so the scan must leave the sanctioned form alone.
+/// Invariant: the scan does not reject it. This is the sanctioned form,
+/// and it is safe for the reason the crate-scoped one is not: it is
+/// attached to one item, so it warns as soon as that item stops needing
+/// it. Rejecting it would push contributors towards `allow`, which never
+/// warns at any scope.
 #[test]
 fn a_sanctioned_expect_is_not_an_offence() {
     let sanctioned = "#[expect(clippy::disallowed_methods, reason = \"composition root\")]\n\
@@ -534,6 +596,49 @@ fn attribute_shaped_text_inside_a_macro_argument_is_not_an_offence() {
     let source = "fn describe() { println!(\"never write #![allow(warnings)] here\"); }\n";
 
     assert!(suppressed_lints(source).expect("fixture should parse").is_empty());
+}
+
+/// Scenario: a crate-scoped `expect` of the policy lint.
+///
+/// Invariant: it is an offence. At crate scope `expect` behaves as an
+/// `allow`: any single call beneath it fulfils it, so it neither reports
+/// the call nor warns that it went unfulfilled. Measured on this branch,
+/// it produced no diagnostic of either kind.
+#[test]
+fn a_crate_scoped_expect_is_an_offence() {
+    let source = "#![expect(clippy::disallowed_methods, reason = \"x\")]\n";
+
+    let found = suppressed_lints(source).expect("fixture should parse");
+    assert_eq!(found.len(), 1, "found {found:?}");
+}
+
+/// Scenario: a crate-scoped `expect` reached through a `cfg_attr`.
+///
+/// Invariant: it is an offence. The scope belongs to the outermost
+/// attribute, so wrapping the `expect` in an inner `cfg_attr` does not
+/// make it item-scoped.
+#[test]
+fn a_crate_scoped_expect_inside_cfg_attr_is_an_offence() {
+    let source = "#![cfg_attr(all(), expect(clippy::disallowed_methods, reason = \"x\"))]\n";
+
+    let found = suppressed_lints(source).expect("fixture should parse");
+    assert_eq!(found.len(), 1, "found {found:?}");
+}
+
+/// Scenario: the attribute or the lint is spelled with a raw identifier.
+///
+/// Invariant: both are reported. Clippy honours `#![r#allow(...)]` and
+/// `clippy::r#style` exactly as it honours the plain spellings, so a
+/// comparison that did not unwrap them would let either through.
+#[test]
+fn raw_identifiers_do_not_hide_a_suppression() {
+    let raw_attribute = "#![r#allow(clippy::disallowed_methods)]\n";
+    let raw_lint = "#![allow(clippy::r#style)]\n";
+
+    for source in [raw_attribute, raw_lint] {
+        let found = suppressed_lints(source).expect("fixture should parse");
+        assert_eq!(found.len(), 1, "{source:?} found {found:?}");
+    }
 }
 
 /// Scenario: a lint whose name merely begins with a protected one.

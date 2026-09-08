@@ -1,0 +1,13 @@
+# Lint fixture, deliberately its own workspace root so the repository's
+# workspace never builds it. `environment_policy_lint_ui` is the only thing
+# that compiles this package, and it expects the compilation to fail.
+[workspace]
+
+[package]
+name = "environment-policy-violation"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"

@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie spelling spelling-config spelling-phrase-check spelling-helper-test validate-systemd integration-test integration-command-test test-workflow-contracts _check-python _check-integration-prereqs _check-command-test-prereqs
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie spelling spelling-config spelling-phrase-check spelling-helper-test validate-systemd integration-test integration-command-test test-workflow-contracts script-test _check-python _check-integration-prereqs _check-command-test-prereqs
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
@@ -38,6 +38,22 @@ SPELLING_HELPER_PYTEST = PYTHONPATH=scripts $(UV_ENV) $(UV) run --no-project \
 	--python 3.14 --with pathspec==$(PATHSPEC_VERSION) \
 	--with pytest==$(PYTEST_VERSION) --with pytest-cov==$(PYTEST_COV_VERSION) \
 	python -m pytest
+CMD_MOX_VERSION ?= 0.2.0
+CYCLOPTS_VERSION ?= 4.25.0
+PLUMBUM_VERSION ?= 2.0.2
+SCRIPT_PY_SRCS := scripts/run_rust_tests.py scripts/tests/test_run_rust_tests.py
+SCRIPT_COVERAGE_ARGS := --cov=run_rust_tests --cov-fail-under=90
+# The runner's own dependencies travel in its uv script block; they are
+# repeated here because the test process imports it as a module rather
+# than launching it as a script.
+SCRIPT_PYTEST = PYTHONPATH=scripts $(UV_ENV) $(UV) run --no-project \
+	--python 3.13 --with cmd-mox==$(CMD_MOX_VERSION) \
+	--with cyclopts==$(CYCLOPTS_VERSION) --with plumbum==$(PLUMBUM_VERSION) \
+	--with pytest==$(PYTEST_VERSION) --with pytest-cov==$(PYTEST_COV_VERSION) \
+	python -m pytest
+# One command, so no gate status can be discarded by a later one. The
+# sequencing and its failure handling live in the script, under test.
+RUST_TEST_RUNNER = $(UV_ENV) $(UV) run --python 3.13 scripts/run_rust_tests.py
 
 ensure-cargo: ## Validate cargo toolchain is available for Rust targets
 	@if { command -v "$(CARGO)" >/dev/null 2>&1 || test -x "$(CARGO)"; } then \
@@ -58,16 +74,8 @@ all: check-fmt lint test spelling ## Perform a comprehensive check of code and p
 clean: ensure-cargo ## Remove build artefacts
 	$(CARGO) clean
 
-test: ensure-cargo ## Run tests with warnings treated as errors
-	@if $(CARGO) nextest --version >/dev/null 2>&1; then \
-		TEST_CMD="nextest run --no-tests pass"; \
-	else \
-		TEST_CMD="test"; \
-	fi; \
-	RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(CARGO) $$TEST_CMD $(TEST_FLAGS) $(BUILD_JOBS); \
-	if [ "$$TEST_CMD" != "test" ] && $(CARGO) metadata --no-deps --format-version 1 2>/dev/null | grep -q '"doctest":true'; then \
-		RUSTFLAGS="$(EFFECTIVE_RUST_FLAGS)" $(CARGO) test --doc $(DOCTEST_FLAGS) $(BUILD_JOBS); \
-	fi
+test: ensure-cargo script-test ## Run tests with warnings treated as errors
+	$(RUST_TEST_RUNNER) --cargo="$(CARGO)" --rust-flags="$(EFFECTIVE_RUST_FLAGS)" --test-flags="$(TEST_FLAGS)" --doctest-flags="$(DOCTEST_FLAGS)" --build-jobs="$(BUILD_JOBS)"
 
 lint: ensure-cargo ## Run Clippy and the Whitaker Dylint suite with warnings denied
 	RUSTDOCFLAGS="$(EFFECTIVE_RUSTDOC_FLAGS)" $(CARGO) doc --no-deps --workspace
@@ -150,6 +158,11 @@ integration-test: _check-integration-prereqs ## Run testcontainers-based provisi
 
 integration-command-test: _check-command-test-prereqs ## Run cmd-mox-based command-contract tests
 	cd $(INTEGRATION_TESTS_DIR) && "$(PYTHON)" -m pytest -m cmd_mox provisioning $(PYTEST_FLAGS)
+
+script-test: ## Validate the Rust test-gate runner script
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated --target-version py313 --check $(SCRIPT_PY_SRCS)
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated --target-version py313 $(SCRIPT_PY_SRCS)
+	@$(SCRIPT_PYTEST) scripts/tests/test_run_rust_tests.py -c /dev/null --rootdir=. -p no:cacheprovider -p cmd_mox.pytest_plugin --no-cmd-mox-auto-lifecycle $(SCRIPT_COVERAGE_ARGS)
 
 test-workflow-contracts: ## Validate the mutation-testing caller contract
 	uv run --with 'pytest>=8' --with 'pyyaml>=6' pytest tests/workflow_contracts -q

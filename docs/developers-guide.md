@@ -52,22 +52,49 @@ make nixie 2>&1 | tee /tmp/repovec-make-nixie.log
 These Make targets are the source of truth for local validation and for CI. Do
 not duplicate or partially reimplement them in workflow YAML.
 
-The provisioning helper integration suite has its own opt-in targets that are
-deliberately kept out of `make test`:
+### 1.1 Gate sequencing lives in a script, not in a recipe
 
-- `make integration-command-test` runs the fast command-contract suite that
-  uses `cmd-mox` shims; it needs only the Python harness dependencies.
-- `make integration-test` runs the full lifecycle suite inside a privileged
-  Fedora container managed by `testcontainers-python`; it needs a
-  Docker-compatible runtime and the ability to launch privileged nested rootful
-  Podman.
+A Make recipe is one shell invocation and runs without `set -e`, so its exit
+status is that of its *last* command. A recipe that chains commands with `;`
+reports only the last one, and a rejection from any earlier command is
+discarded.
 
-Both targets gate on phony prerequisite helpers (`_check-python`,
-`_check-integration-prereqs`, `_check-command-test-prereqs`) that exit non-zero
-when their checks fail, so missing prerequisites abort the chain with an
-actionable skip message rather than letting `pytest` produce a second
-misleading error on top. See [Section 6](#6-provisioning-integration-tests) for
-the full prerequisite and execution contract.
+The `test` recipe used to chain the unit-test run and a conditional doctest run
+this way. Measured on 2026-09-07, with one deliberately failing unit test in
+the workspace, `make test` exited 0: nextest reported `1 failed`, and the
+doctest step that ran afterwards supplied the recipe's zero status. The CI
+`test` job would have passed with failing tests.
+
+Guarding each command with `|| exit 1` fixes the symptom. The rule, from
+[scripting standards](scripting-standards.md), fixes the cause: multi-command
+gate logic does not live as shell in a recipe. It lives in a Python script with
+a `uv` script block, Cyclopts parameters and Plumbum for the child processes,
+and the recipe invokes it as one command.
+
+So `make test` runs `scripts/run_rust_tests.py`, which decides whether nextest
+is available, runs the gates in order, and exits at the first rejection with
+the gate named and Cargo's own code propagated. Only the unit-test runner
+varies. The doctest gate is unconditional and runs under its own flags on both
+paths, because every condition the recipe applied to it could remove it
+silently: an unreadable manifest answered "no target declares doctests", and the
+`cargo test` path assumed its unit-test run covered doctests, which
+`--all-targets` makes false. With the same failing test the recipe now exits 2,
+reports `the unit tests gate rejected the workspace (exit code 100)`, and never
+reaches the doctest gate.
+
+Because the logic is a script, it has unit tests. `make script-test` runs
+`scripts/tests/test_run_rust_tests.py`, which uses `cmd-mox` to supply `cargo`
+and covers a failing unit-test run, a failing doctest run and the all-pass
+case, asserting the recorded invocation sequence rather than only the exit
+code. It runs as a prerequisite of `make test`, so the runner is tested before
+it gates anything.
+
+Two contracts hold the shape. `tests/workflow_contracts/makefile_gate_test.py`
+fails if the `test` recipe grows a second command or stops invoking the runner,
+and fails if any recipe chains two gate commands in one shell invocation without
+`|| exit 1` on all but the last. A tool invoked inside an `if` condition is
+exempt, because a non-zero status there is an answer rather than a rejection.
+Both are mutation-proven.
 
 ## 2. GitHub Actions gate set
 
@@ -754,3 +781,90 @@ externally observable success criterion: it starts `oauth2-test-server`,
 completes a local device-flow exchange, stores the token through the
 encrypted-store boundary, reloads it, and verifies the same token secret is
 recovered.
+
+## 8. Environment access policy
+
+The workspace reads and writes no process environment variables outside a
+composition root. This is a testing and throughput rule before it is a style
+rule: a test that sets or removes a variable mutates state shared by every
+thread in the process, which forces the suite to serialize around it and wastes
+cores that the continuous-integration runner is paying for.
+
+### 8.1 The prohibition
+
+The root `clippy.toml` disallows six methods, and the workspace lint table in
+the root `Cargo.toml` denies `clippy::disallowed_methods`:
+
+| Method                 | Reason reported by Clippy       |
+| ---------------------- | ------------------------------- |
+| `std::env::var`        | inject an environment reader    |
+| `std::env::var_os`     | inject an environment reader    |
+| `std::env::vars`       | inject an environment reader    |
+| `std::env::vars_os`    | inject an environment reader    |
+| `std::env::set_var`    | use a stub environment in tests |
+| `std::env::remove_var` | use a stub environment in tests |
+
+Every member crate carries `[lints] workspace = true`, so the deny reaches
+every package. `make lint` runs Clippy with
+`--workspace --all-targets --all-features` and `-D warnings`, so test and
+benchmark code is covered as well as production code.
+
+Process arguments are outside this policy. `std::env::args` and
+`std::env::args_os` remain available at executable entry points.
+
+Two tests in `repovec-ci` keep this from decaying.
+`environment_access_policy_contract` reads the checked-in configuration and
+fails if an entry, the deny, a crate's lint inheritance, or the lint gate's
+scope is removed. `environment_policy_lint_ui` runs Clippy over a fixture
+package that calls all six methods and asserts each is reported with its
+remedy, so a configuration that parses but never fires is caught too.
+
+### 8.2 Choosing a seam
+
+Pick the smallest shape that serves the boundary. A seam that is wider than its
+call sites justify is as much a review finding as a direct read.
+
+- **Pass the resolved value.** One variable read by one caller becomes a
+  function parameter. The caller at the composition root resolves it; the logic
+  under test never learns where the value came from. Prefer this.
+- **Inject a narrow reader closure.** A small boundary that reads one
+  variable from more than one place takes an
+  `FnOnce(&str) -> Result<String, VarError>` (or the `OsString`-typed
+  equivalent) owned by the module that needs it. The closure stays private to
+  that module; it is not a general environment service.
+- **Introduce an environment trait.** Only when several variables or a
+  precedence ladder are read at one boundary, and enough tests need to vary
+  them, does a trait earn its keep. Capture the reading as data once, at the
+  boundary, rather than letting each downstream decision read the process
+  independently.
+
+### 8.3 Composition roots and subprocess environments
+
+A direct read is permitted only at a genuine executable composition root:
+`main`, or a function it calls solely to assemble the application. Annotate the
+item, not the module or the crate:
+
+```rust
+#[expect(
+    clippy::disallowed_methods,
+    reason = "composition root: the only read of REPOVEC_CONFIG"
+)]
+fn configured_path() -> Option<String> {
+    std::env::var("REPOVEC_CONFIG").ok()
+}
+```
+
+Use `expect` rather than `allow`. The annotation warns once the site grows a
+seam, so the exception list removes itself instead of rotting.
+
+Tests never mutate the parent process environment, and no shared guard or mutex
+makes that acceptable. A test that needs a child process to see a variable
+builds the child's environment explicitly with `Command::env_clear`,
+`Command::env`, and `Command::env_remove`. A test that needs in-process
+behaviour to depend on a value passes that value through the seam.
+
+This mirrors the policy in [`leynos/netsuke`][netsuke-adr-008], which this
+repository adopted so that contributors moving between the two find the same
+rule and the same diagnostics.
+
+[netsuke-adr-008]: https://github.com/leynos/netsuke/blob/main/docs/adr-008-environment-seam-taxonomy.md

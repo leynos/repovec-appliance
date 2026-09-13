@@ -12,6 +12,7 @@ The harness ships two test suites with different runtime requirements:
 | --------------------------------------------- | ------------- | --------------------------------------------------------------------- |
 | `provisioning/test_qdrant_api_key_cmd_mox.py` | `cmd_mox`     | None beyond Python and the pinned dependencies.                       |
 | `provisioning/test_qdrant_api_key.py`         | `integration` | A Docker-compatible runtime able to host privileged Podman-in-Podman. |
+| `provisioning/test_directory_layout.py`       | `integration` | A Docker-compatible runtime able to host privileged Podman-in-Podman. |
 
 The `cmd_mox` suite exists to make the helper's command orchestration cheap to
 test in isolation. The `integration` suite owns the lifecycle truths that only
@@ -126,6 +127,19 @@ podman run --rm --privileged repovec-integration-tests \
 | `test_preserves_existing_key_file_on_rerun`                          | A valid existing key file is left untouched on rerun.                        |
 | `test_regenerates_key_file_when_absent_and_refreshes_secret`         | A missing key is regenerated and the secret refreshed.                       |
 | `test_creates_etc_repovec_with_mode_0750_and_ownership_root_repovec` | `/etc/repovec` ends up as `0750 root:repovec`.                               |
+
+### `integration` suite (`test_directory_layout.py`)
+
+| Test | Asserts |
+| --- | --- |
+| `test_provisions_repovec_user_and_private_directory_tree` | `systemd-sysusers` + `systemd-tmpfiles --create` materialize the `repovec` user and the private `0700` data tree (`qdrant-storage` `root:root`). |
+| `test_repovec_provisioning_is_idempotent` | Re-running the sysusers-then-tmpfiles pair leaves tree ownership and modes unchanged. |
+
+This suite runs the exact sysusers-before-tmpfiles pair that
+`repovec-provision.service` runs. The container does **not** run systemd as
+PID 1, so `systemctl start repovec.target` and `qdrant.service` activeness
+cannot be asserted here; the static contracts and this lifecycle pairing are
+the CI proxy, matching the 1.2.2 precedent.
 
 ## Troubleshooting
 

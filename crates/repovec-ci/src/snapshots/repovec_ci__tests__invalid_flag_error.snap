@@ -1,5 +1,6 @@
 ---
 source: crates/repovec-ci/src/main.rs
+assertion_line: 263
 expression: error.to_string()
 ---
 unsupported argument: --unknown
@@ -9,4 +10,5 @@ Usage: repovec-ci [docs-gate] [--changed-file <path> [--changed-file <path>]...]
        repovec-ci systemd-gate
 
 Reads a changed-file list and prints documentation-gate decisions in
-GitHub Actions output format, or validates checked-in systemd units.
+GitHub Actions output format, or validates checked-in systemd units and
+the appliance directory-layout assets.

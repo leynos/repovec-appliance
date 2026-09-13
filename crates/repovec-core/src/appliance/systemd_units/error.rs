@@ -169,6 +169,12 @@ mod tests {
                 expected: "repovec",
                 actual: "root".to_owned(),
             },
+            SystemdUnitError::MissingDependency {
+                unit: "repovec-provision.service",
+                section: "Unit",
+                key: "Before",
+                dependency: "repovecd.service",
+            },
         ];
 
         let observed_units = cases.map(|error| error.unit().to_owned());
@@ -183,6 +189,7 @@ mod tests {
                 "repovecd.service",
                 "repovecd.service",
                 "repovec-mcpd.service",
+                "repovec-provision.service",
             ],
         );
     }

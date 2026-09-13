@@ -7,7 +7,7 @@
 //!
 //! ## Validation Entry Points
 //!
-//! - [`validate_checked_in_systemd_units`] validates the four embedded unit
+//! - [`validate_checked_in_systemd_units`] validates the five embedded unit
 //!   assets shipped in the repository.
 //! - [`validate_and_trace_checked_in_units`] validates the checked-in unit set
 //!   and emits the daemon startup success trace.
@@ -38,6 +38,9 @@
 //!   `qdrant.container` and `qdrant.container.service`.
 //! - `ExecStart=` executable paths for `repovecd`, `repovec-mcpd`, and
 //!   `grepai watch`.
+//! - The provisioning oneshot contract: `repovec-provision.service` is wanted
+//!   by `repovec.target`, runs `systemd-sysusers` then `systemd-tmpfiles`, and
+//!   is ordered before the Qdrant API-key oneshot, Qdrant, and both daemons.
 //! - `[Service]` identity and runtime-directory directives: `User=`, `Group=`,
 //!   `WorkingDirectory=`, and `Environment=HOME=`.
 //! - Grepai template directives that bind future instances to
@@ -57,6 +60,7 @@
 mod error;
 mod parsed;
 mod startup;
+mod validate;
 
 #[cfg(test)]
 mod tests;
@@ -64,6 +68,10 @@ mod tests;
 pub use error::SystemdUnitError;
 use parsed::ParsedUnit;
 pub use startup::{run_startup_validation, validate_and_trace_checked_in_units};
+use validate::{
+    validate_grepai_template, validate_mcpd, validate_provision_service, validate_repovecd,
+    validate_target,
+};
 
 const CHECKED_IN_REPOVEC_TARGET: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovec.target"));
@@ -78,6 +86,10 @@ const CHECKED_IN_REPOVEC_GREPAI_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../packaging/systemd/repovec-grepai@.service"
 ));
+const CHECKED_IN_REPOVEC_PROVISION_SERVICE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packaging/systemd/repovec-provision.service"
+));
 /// The repository path of the checked-in `repovec.target` unit.
 pub const CHECKED_IN_REPOVEC_TARGET_PATH: &str = "packaging/systemd/repovec.target";
 /// The repository path of the checked-in `repovecd.service` unit.
@@ -88,16 +100,24 @@ pub const CHECKED_IN_REPOVEC_MCPD_SERVICE_PATH: &str = "packaging/systemd/repove
 /// The repository path of the checked-in `repovec-grepai@.service` template.
 pub const CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH: &str =
     "packaging/systemd/repovec-grepai@.service";
+/// The repository path of the checked-in `repovec-provision.service` unit.
+pub const CHECKED_IN_REPOVEC_PROVISION_SERVICE_PATH: &str =
+    "packaging/systemd/repovec-provision.service";
 const TARGET_UNIT: &str = "repovec.target";
 const REPOVECD_UNIT: &str = "repovecd.service";
 const REPOVEC_MCPD_UNIT: &str = "repovec-mcpd.service";
 const REPOVEC_GREPAI_TEMPLATE_UNIT: &str = "repovec-grepai@.service";
+const REPOVEC_PROVISION_SERVICE: &str = "repovec-provision.service";
 const UNIT_SECTION: &str = "Unit";
 const SERVICE_SECTION: &str = "Service";
 const INSTALL_SECTION: &str = "Install";
 const QDRANT_SERVICE: &str = "qdrant.service";
 const QDRANT_CONTAINER: &str = "qdrant.container";
 const QDRANT_CONTAINER_SERVICE: &str = "qdrant.container.service";
+const QDRANT_API_KEY_SERVICE: &str = "repovec-qdrant-api-key.service";
+const SYSUSERS_SERVICE: &str = "systemd-sysusers.service";
+const SYSUSERS_EXEC: &str = "/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf";
+const TMPFILES_EXEC: &str = "/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf";
 const SERVICE_USER: &str = "repovec";
 const SERVICE_GROUP: &str = "repovec";
 const SERVICE_WORKING_DIRECTORY: &str = "/var/lib/repovec";
@@ -174,6 +194,20 @@ pub const fn checked_in_repovec_grepai_template() -> &'static str {
     CHECKED_IN_REPOVEC_GREPAI_TEMPLATE
 }
 
+/// Returns the repository's checked-in `repovec-provision.service` source.
+///
+/// # Examples
+///
+/// ```
+/// use repovec_core::appliance::systemd_units::checked_in_repovec_provision_service;
+///
+/// assert!(checked_in_repovec_provision_service().contains("ExecStart=/usr/bin/systemd-sysusers"));
+/// ```
+#[must_use]
+pub const fn checked_in_repovec_provision_service() -> &'static str {
+    CHECKED_IN_REPOVEC_PROVISION_SERVICE
+}
+
 /// Validates the repository's checked-in repovec systemd unit definitions.
 ///
 /// This checks the embedded appliance target, daemon services, and grepai
@@ -192,11 +226,12 @@ pub const fn checked_in_repovec_grepai_template() -> &'static str {
 /// validate_checked_in_systemd_units().expect("the checked-in units remain valid");
 /// ```
 pub fn validate_checked_in_systemd_units() -> Result<(), SystemdUnitError> {
-    validate_systemd_units_with_grepai_template(
+    validate_systemd_units_with_grepai_template_and_provision(
         checked_in_repovec_target(),
         checked_in_repovecd_service(),
         checked_in_repovec_mcpd_service(),
         checked_in_repovec_grepai_template(),
+        checked_in_repovec_provision_service(),
     )
 }
 
@@ -213,7 +248,7 @@ pub fn validate_checked_in_systemd_units() -> Result<(), SystemdUnitError> {
 ///
 /// let target = "\
 /// [Unit]
-/// Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service
+/// Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service repovec-provision.service
 ///
 /// [Install]
 /// WantedBy=multi-user.target
@@ -278,7 +313,7 @@ pub fn validate_systemd_units(
 ///
 /// let target = "\
 /// [Unit]
-/// Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service
+/// Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service repovec-provision.service
 ///
 /// [Install]
 /// WantedBy=multi-user.target
@@ -322,76 +357,43 @@ pub fn validate_systemd_units_with_grepai_template(
     repovec_mcpd_service: &str,
     repovec_grepai_template: &str,
 ) -> Result<(), SystemdUnitError> {
+    validate_systemd_units_with_grepai_template_and_provision(
+        repovec_target,
+        repovecd_service,
+        repovec_mcpd_service,
+        repovec_grepai_template,
+        checked_in_repovec_provision_service(),
+    )
+}
+
+/// Validates arbitrary repovec systemd units, including the grepai template and
+/// the provisioning oneshot.
+///
+/// This is a crate-private test seam: the public entry points validate the
+/// provisioning oneshot from the checked-in asset, while the mutation-test
+/// fixture needs to supply a mutated provision unit. Keep it out of the public
+/// API surface.
+///
+/// # Errors
+///
+/// Returns [`SystemdUnitError`] describing the first contract violation.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "crate-private test seam: the mutation-test fixture supplies \
+              five independent unit texts (target, repovecd, mcpd, grepai, provision)"
+)]
+pub(crate) fn validate_systemd_units_with_grepai_template_and_provision(
+    repovec_target: &str,
+    repovecd_service: &str,
+    repovec_mcpd_service: &str,
+    repovec_grepai_template: &str,
+    repovec_provision_service: &str,
+) -> Result<(), SystemdUnitError> {
     validate_systemd_units(repovec_target, repovecd_service, repovec_mcpd_service)?;
     let template = ParsedUnit::parse(REPOVEC_GREPAI_TEMPLATE_UNIT, repovec_grepai_template)?;
 
-    validate_grepai_template(&template)
-}
-fn validate_target(target: &ParsedUnit) -> Result<(), SystemdUnitError> {
-    target.require_section(UNIT_SECTION)?;
-    target.require_section(INSTALL_SECTION)?;
-    target.require_dependency(INSTALL_SECTION, "WantedBy", "multi-user.target")?;
-    target.require_dependency(UNIT_SECTION, "Wants", QDRANT_SERVICE)?;
-    target.require_dependency(UNIT_SECTION, "Wants", REPOVECD_UNIT)?;
-    target.require_dependency(UNIT_SECTION, "Wants", REPOVEC_MCPD_UNIT)?;
-    target.require_dependency(UNIT_SECTION, "Wants", "cloudflared.service")
-}
+    validate_grepai_template(&template)?;
+    let provision = ParsedUnit::parse(REPOVEC_PROVISION_SERVICE, repovec_provision_service)?;
 
-fn validate_repovecd(repovecd: &ParsedUnit) -> Result<(), SystemdUnitError> {
-    repovecd.require_section(UNIT_SECTION)?;
-    repovecd.require_section(SERVICE_SECTION)?;
-    repovecd.require_dependency(UNIT_SECTION, "Requires", QDRANT_SERVICE)?;
-    repovecd.require_dependency(UNIT_SECTION, "After", QDRANT_SERVICE)?;
-    repovecd.require_exec_start("/usr/bin/repovecd")?;
-    repovecd.require_service_directive("User", SERVICE_USER)?;
-    repovecd.require_service_directive("Group", SERVICE_GROUP)?;
-    repovecd.require_service_directive("WorkingDirectory", SERVICE_WORKING_DIRECTORY)?;
-    repovecd.require_service_environment(SERVICE_HOME_ENVIRONMENT)
-}
-
-fn validate_mcpd(mcpd: &ParsedUnit) -> Result<(), SystemdUnitError> {
-    mcpd.require_section(UNIT_SECTION)?;
-    mcpd.require_section(SERVICE_SECTION)?;
-    mcpd.require_dependency(UNIT_SECTION, "Requires", QDRANT_SERVICE)?;
-    mcpd.require_dependency(UNIT_SECTION, "Requires", REPOVECD_UNIT)?;
-    mcpd.require_dependency(UNIT_SECTION, "After", QDRANT_SERVICE)?;
-    mcpd.require_dependency(UNIT_SECTION, "After", REPOVECD_UNIT)?;
-    mcpd.require_exec_start("/usr/bin/repovec-mcpd")?;
-    mcpd.require_service_directive("User", SERVICE_USER)?;
-    mcpd.require_service_directive("Group", SERVICE_GROUP)?;
-    mcpd.require_service_directive("WorkingDirectory", SERVICE_WORKING_DIRECTORY)?;
-    mcpd.require_service_environment(SERVICE_HOME_ENVIRONMENT)
-}
-
-fn validate_grepai_template(template: &ParsedUnit) -> Result<(), SystemdUnitError> {
-    template.require_section(UNIT_SECTION)?;
-    template.require_section(SERVICE_SECTION)?;
-    template.require_section(INSTALL_SECTION)?;
-    template.require_dependency(UNIT_SECTION, "Requires", QDRANT_SERVICE)?;
-    template.require_dependency(UNIT_SECTION, "Requires", REPOVECD_UNIT)?;
-    template.require_dependency(UNIT_SECTION, "After", QDRANT_SERVICE)?;
-    template.require_dependency(UNIT_SECTION, "After", REPOVECD_UNIT)?;
-    template.require_dependency(UNIT_SECTION, "PartOf", TARGET_UNIT)?;
-    template.require_dependency(INSTALL_SECTION, "WantedBy", TARGET_UNIT)?;
-    template.require_service_directive("Type", "exec")?;
-    template.require_service_directive("User", SERVICE_USER)?;
-    template.require_service_directive("Group", SERVICE_GROUP)?;
-    template.require_service_directive("WorkingDirectory", GREPAI_WORKING_DIRECTORY)?;
-    template.require_service_environment(SERVICE_HOME_ENVIRONMENT)?;
-    template.require_exec_start("/usr/bin/grepai watch")?;
-    template.require_service_directive("Restart", "on-failure")?;
-    template.require_service_directive("RestartSec", "5s")?;
-    validate_grepai_template_hardening(template)?;
-    template.require_service_directive("StandardOutput", "journal")?;
-    template.require_service_directive("StandardError", "journal")
-}
-
-fn validate_grepai_template_hardening(template: &ParsedUnit) -> Result<(), SystemdUnitError> {
-    for (key, expected) in GREPAI_HARDENING_DIRECTIVES {
-        template.require_service_directive(key, expected)?;
-    }
-    for (key, expected) in GREPAI_BOOLEAN_HARDENING_DIRECTIVES {
-        template.require_service_directive(key, expected)?;
-    }
-    template.require_service_directive("RestrictAddressFamilies", GREPAI_RESTRICT_ADDRESS_FAMILIES)
+    validate_provision_service(&provision)
 }

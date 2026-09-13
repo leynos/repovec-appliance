@@ -25,6 +25,7 @@
 //! orchestration layer, and [`qdrant_liveness`] covers runtime readiness.
 
 pub mod daemon_startup;
+pub mod directory_layout;
 pub mod qdrant_liveness;
 pub mod qdrant_quadlet;
 pub mod systemd_units;

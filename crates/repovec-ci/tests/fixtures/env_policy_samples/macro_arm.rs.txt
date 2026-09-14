@@ -1,0 +1,6 @@
+macro_rules! probe {
+    () => {
+        #[allow(clippy::disallowed_methods, reason = "x")]
+        pub fn probe() -> Option<String> { std::env::var("HOME").ok() }
+    };
+}

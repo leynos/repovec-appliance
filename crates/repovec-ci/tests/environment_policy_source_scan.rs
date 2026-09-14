@@ -69,6 +69,54 @@
 //! begins with `clippy::all`, so an earlier draft comparing lint names
 //! by substring would have reported it. Names are compared as paths.
 //!
+//! Two further routes were found in review and measured on 2026-09-14, each on
+//! a probe crate with the policy configured.
+//!
+//! An attribute whose body is a macro metavariable is decided by the call
+//! site. A `macro_rules!` arm writing `#[$attr]` over a `std::env::var` call,
+//! invoked as `forward!(allow(clippy::disallowed_methods))`, silenced that
+//! call: Clippy reported the unforwarded call beside it and nothing about the
+//! forwarded one, and `clippy::allow_attributes` said nothing about either.
+//! `#[$attr]` does not parse as a `Meta` and the invocation carries no `#`, so
+//! neither half is visible alone. The construction is refused rather than
+//! resolved, and only where it could bear on the policy: a body beginning with
+//! `$`, or with `allow`, `expect` or `cfg_attr`.
+//!
+//! `include!` resolves a path, not a module, and rustc parses the target as
+//! Rust whatever its extension. `include!("policy.rs.txt")` compiled an
+//! `#[allow(clippy::disallowed_methods, reason = "..")]` inside the target,
+//! which silenced a `std::env::var` call there, while an enclosing
+//! `#[expect(clippy::allow_attributes, reason = "..")]` kept the guard quiet.
+//! The scan reads `.rs` files, so it never saw the target. An `include!` is
+//! now a finding unless its target is a literal `.rs` path.
+//!
+//! Only a `macro_rules!` transcriber is walked, never an invocation's
+//! arguments and never a matcher. `consume!(#[allow(clippy::style)])` hands an
+//! attribute to a macro that discards it, and reporting that would be a false
+//! positive. This does not reopen the route above: an attribute passed in as
+//! an argument and then emitted must pass through a `#[$meta]` in the
+//! definition, which is refused. An attribute synthesized by a procedural
+//! macro remains out of reach, as it always was.
+//!
+//! Those three rules were mutation-proved in both directions on 2026-09-14,
+//! each applied alone to `scan.rs` and run through the build:
+//!
+//! - naming an unprotected lint in the forwarded finding fails
+//!   `a_suppression_is_an_offence::case_10_forwarded_from_a_macro_argument`;
+//! - widening `is_forwarded` to every unparsable attribute body fails
+//!   `a_construction_that_only_resembles_a_route_is_not_an_offence::
+//!   case_2_forwarded_doc_and_derive`;
+//! - treating every `include!` target as scanned fails
+//!   `a_suppression_is_an_offence::case_11_included_from_an_unscanned_file`;
+//! - walking every macro's whole token stream, as this contract did before,
+//!   fails the consumed-argument and matcher-only cases;
+//! - walking a `macro_rules!` matcher as well as its transcriber fails the
+//!   matcher-only case.
+//!
+//! The last three are the ones worth keeping. A contract that reports a false
+//! positive gets switched off, so each rule is proved narrow as well as
+//! sufficient.
+//!
 //! Each of those routes is a place the enforcement mechanism could not
 //! see, and a table of samples cannot say what the scan does with a lint
 //! name, a nesting depth or a reason string nobody wrote down.
@@ -78,9 +126,12 @@
 //! further mutations, each applied alone to `scan.rs` and run through
 //! the build, are recorded there.
 //!
-//! The contract is five files, to stay inside the 400-line limit.
+//! The contract is six files, to stay inside the 400-line limit that
+//! Whitaker's `module_max_lines` enforces as well as the repository guide.
 //! `environment_policy_scan/sources.rs` decides which files are read,
 //! `environment_policy_scan/scan.rs` decides what they mean,
+//! `environment_policy_scan/tokens.rs` recovers attributes from macro token
+//! streams and holds the rules that keep that walk narrow,
 //! `environment_policy_scan/workspace.rs` holds the contracts over this
 //! repository's own sources and over the scan's error paths,
 //! `environment_policy_scan/properties.rs` holds the properties, and the
@@ -101,6 +152,8 @@ mod properties;
 mod scan;
 #[path = "environment_policy_scan/sources.rs"]
 mod sources;
+#[path = "environment_policy_scan/tokens.rs"]
+mod tokens;
 #[path = "environment_policy_scan/workspace.rs"]
 mod workspace;
 
@@ -119,10 +172,18 @@ fn ensure_that(condition: bool, message: String) -> Result<(), Failure> {
     if condition { Ok(()) } else { Err(message.into()) }
 }
 
-/// Return `Ok` when `source` yields exactly one finding.
-fn one_offence(source: &str) -> Result<(), Failure> {
+/// Return `Ok` when `source` yields exactly one finding, naming `expected`.
+///
+/// The name is checked as well as the count, because a count alone accepts a
+/// finding that reports the wrong lint, and these sample-based cases are where
+/// a wrong name would otherwise go unnoticed.
+fn one_offence(source: &str, expected: &str) -> Result<(), Failure> {
     let found = suppressed_lints(source)?;
-    ensure_that(found.len() == 1, format!("{source:?} must yield one finding, got {found:?}"))
+    let names: Vec<&str> = found.iter().map(|(lint, _)| lint.as_str()).collect();
+    ensure_that(
+        names == [expected],
+        format!("{source:?} must yield one finding naming {expected:?}, got {found:?}"),
+    )
 }
 
 /// Return `Ok` when `source` yields no finding.
@@ -148,7 +209,7 @@ fn no_offence(source: &str) -> Result<(), Failure> {
 #[case::guard_lint_without_reason("clippy::allow_attributes_without_reason")]
 #[case::guard_lints_group("clippy::restriction")]
 fn every_protected_lint_is_reported(#[case] lint: &str) -> Result<(), Failure> {
-    one_offence(&format!("#![allow({lint}, reason = \"probe\")]\n"))
+    one_offence(&format!("#![allow({lint}, reason = \"probe\")]\n"), lint)
 }
 
 /// Scenario: the same suppression written every way Clippy honours.
@@ -176,25 +237,55 @@ fn every_protected_lint_is_reported(#[case] lint: &str) -> Result<(), Failure> {
 ///   fulfils it, and the scope belongs to the outermost attribute.
 /// - `raw_attribute` and `raw_lint`: Clippy honours `r#allow` and
 ///   `clippy::r#style` exactly as it honours the plain spellings.
+/// - `forwarded_from_a_macro_argument`: `#[$attr]` names no lint and does not
+///   parse as a `Meta`, while the invocation carries no `#`, so neither half is
+///   visible on its own. The finding names no lint either, because none is
+///   written.
+/// - `included_from_an_unscanned_file`: `include!` resolves a path, not a
+///   module, and rustc parses the target as Rust whatever its extension, so a
+///   suppression can sit in a file the scan never reads.
 #[rstest]
 #[case::nested_in_cfg_attr(
-    "#![cfg_attr(all(), allow(clippy::disallowed_methods, reason = \"x\"))]\n"
+    "#![cfg_attr(all(), allow(clippy::disallowed_methods, reason = \"x\"))]\n",
+    "clippy::disallowed_methods"
 )]
-#[case::lint_group("#![allow(clippy::style)]\n")]
-#[case::spacing_and_a_parenthesis("#![allow (warnings, reason = \"see the note (below)\")]\n")]
-#[case::from_a_macro_arm(include_str!("fixtures/env_policy_samples/macro_arm.rs.txt"))]
-#[case::two_macro_arms_deep(include_str!(
-    "fixtures/env_policy_samples/two_macro_arms_deep.rs.txt"
-))]
-#[case::crate_scoped_expect("#![expect(clippy::disallowed_methods, reason = \"x\")]\n")]
+#[case::lint_group("#![allow(clippy::style)]\n", "clippy::style")]
+#[case::spacing_and_a_parenthesis(
+    "#![allow (warnings, reason = \"see the note (below)\")]\n",
+    "warnings"
+)]
+#[case::from_a_macro_arm(
+    include_str!("fixtures/env_policy_samples/macro_arm.rs.txt"),
+    "clippy::disallowed_methods"
+)]
+#[case::two_macro_arms_deep(
+    include_str!("fixtures/env_policy_samples/two_macro_arms_deep.rs.txt"),
+    "clippy::style"
+)]
+#[case::crate_scoped_expect(
+    "#![expect(clippy::disallowed_methods, reason = \"x\")]\n",
+    "clippy::disallowed_methods"
+)]
 #[case::crate_scoped_expect_in_cfg_attr(
-    "#![cfg_attr(all(), expect(clippy::disallowed_methods, reason = \"x\"))]\n"
+    "#![cfg_attr(all(), expect(clippy::disallowed_methods, reason = \"x\"))]\n",
+    "clippy::disallowed_methods"
 )]
-#[case::raw_attribute("#![r#allow(clippy::disallowed_methods)]\n")]
-#[case::raw_lint("#![allow(clippy::r#style)]\n")]
-fn a_suppression_is_an_offence(#[case] source: &str) -> Result<(), Failure> {
-    // One invariant, nine spellings; the case labels say which is which.
-    one_offence(source)
+#[case::raw_attribute("#![r#allow(clippy::disallowed_methods)]\n", "clippy::disallowed_methods")]
+#[case::raw_lint("#![allow(clippy::r#style)]\n", "clippy::style")]
+#[case::forwarded_from_a_macro_argument(
+    include_str!("fixtures/env_policy_samples/forwarded_attribute.rs.txt"),
+    "whatever the call site passes"
+)]
+#[case::included_from_an_unscanned_file(
+    include_str!("fixtures/env_policy_samples/included_unscanned_file.rs.txt"),
+    "code from a file the scan does not read"
+)]
+fn a_suppression_is_an_offence(
+    #[case] source: &str,
+    #[case] expected: &str,
+) -> Result<(), Failure> {
+    // One invariant, eleven spellings; the case labels say which is which.
+    one_offence(source, expected)
 }
 
 /// Scenario: an item-scoped `expect` at a sanctioned composition root.
@@ -224,6 +315,43 @@ fn a_sanctioned_expect_is_not_an_offence() -> Result<(), Failure> {
 ))]
 #[case::prose(include_str!("fixtures/env_policy_samples/text_in_prose.rs.txt"))]
 fn attribute_shaped_text_is_not_an_attribute(#[case] source: &str) -> Result<(), Failure> {
+    no_offence(source)
+}
+
+/// Scenario: constructions that resemble a route without being one.
+///
+/// Invariant: none is a finding. Each is the false positive the corresponding
+/// rule would produce if it were drawn one step wider, and a contract that
+/// reports a false positive gets switched off.
+///
+/// - `consumed_macro_argument`: `consume!(#[allow(clippy::style)])` hands an
+///   attribute to a macro that discards it. Only a `macro_rules!` transcriber
+///   is scanned, never an invocation's arguments and never a matcher, because
+///   nothing in either is necessarily written out.
+/// - `forwarded_doc_and_derive`: `#[doc = $doc]` and `#[derive($trait)]` fail to
+///   parse as a `Meta` exactly as `#[$attr]` does, and forwarding attributes is
+///   ordinary in code-generating macros.
+/// - `included_scanned_file`: an `include!` of a literal `.rs` path names a file
+///   the scan already reads.
+/// - `matcher_only_attribute`: a `macro_rules!` arm matches
+///   `#[allow(clippy::style)]` and its transcriber emits only `$item`, so the
+///   attribute is consumed rather than written out.
+#[rstest]
+#[case::consumed_macro_argument(include_str!(
+    "fixtures/env_policy_samples/consumed_macro_argument.rs.txt"
+))]
+#[case::forwarded_doc_and_derive(include_str!(
+    "fixtures/env_policy_samples/forwarded_doc_and_derive.rs.txt"
+))]
+#[case::included_scanned_file(include_str!(
+    "fixtures/env_policy_samples/included_scanned_file.rs.txt"
+))]
+#[case::matcher_only_attribute(include_str!(
+    "fixtures/env_policy_samples/matcher_only_attribute.rs.txt"
+))]
+fn a_construction_that_only_resembles_a_route_is_not_an_offence(
+    #[case] source: &str,
+) -> Result<(), Failure> {
     no_offence(source)
 }
 

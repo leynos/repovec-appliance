@@ -1,0 +1,5 @@
+macro_rules! matcher_only {
+    (#[allow(clippy::style)] $item:item) => {
+        $item
+    };
+}

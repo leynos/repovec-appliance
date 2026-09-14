@@ -840,6 +840,27 @@ reports that call nor warns that it went unfulfilled, and the scan treats it as
 a suppression. Raw spellings such as `r#allow` and `clippy::r#style` are
 normalized before comparison, because Clippy honours them too.
 
+An attribute whose body is a macro metavariable is refused rather than
+resolved. A `macro_rules!` arm writing `#[$attr]`, invoked as
+`forward!(allow(clippy::disallowed_methods))`, silences the policy lint with no
+diagnostic of any kind, and neither half is visible to a scan: `#[$attr]` does
+not parse as an attribute body, and the invocation carries no `#`. Only the
+shapes that could bear on the policy are refused, those whose body begins with
+`$`, or with `allow`, `expect` or `cfg_attr`; `#[doc = $doc]` and
+`#[derive($trait)]` are left alone. Write the lint into the attribute rather
+than passing it in.
+
+`include!` is a finding unless its target is a literal `.rs` path. It resolves
+a path rather than a module, and rustc parses the target as Rust whatever its
+extension, so `include!("policy.rs.txt")` brings in code the scan never reads.
+A computed target, such as the `concat!(env!("OUT_DIR"), "/generated.rs")`
+build-script idiom, cannot be resolved by the scan and is reported too:
+generated code has to be brought under the policy deliberately rather than by
+an extension nobody checks.
+
+Only a `macro_rules!` transcriber is walked, never an invocation's arguments
+and never a matcher, since nothing in either is necessarily written out.
+
 Each of those routes was a place the enforcement mechanism could not see: inner
 attributes are invisible to `allow_attributes`, groups to a name check,
 `cfg_attr` to a line scan, macro bodies to a syntax tree. Sample-based tests
@@ -848,9 +869,11 @@ what the scan reports is decided by the lint named and by the scope the
 attribute takes and by nothing else, over generated lint names, forms, macro
 nesting depths and reason strings.
 
-The contract spans five files, to keep each inside the 400-line limit.
+The contract spans six files, to keep each inside the 400-line limit.
 `environment_policy_scan/sources.rs` decides which files are read,
 `environment_policy_scan/scan.rs` decides what they mean,
+`environment_policy_scan/tokens.rs` recovers attributes from macro token
+streams,
 `environment_policy_scan/workspace.rs` holds the contracts over the
 repository's own sources and the scan's error paths,
 `environment_policy_scan/properties.rs` holds the properties, and

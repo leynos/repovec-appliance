@@ -6,11 +6,12 @@
 //! policy protects. The test root records the routes that made each of those
 //! decisions necessary, and the mutations that prove them.
 
-use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::{
     AttrStyle, Attribute, Macro, Meta, MetaList, Path, Token, ext::IdentExt,
     punctuated::Punctuated, visit::Visit,
 };
+
+use crate::tokens::{includes_a_scanned_path, suppressions_in_tokens, transcriber_arms};
 
 /// Lints whose suppression disarms the environment-access policy.
 ///
@@ -42,6 +43,31 @@ pub const PROTECTED_LINTS: [&str; 7] = [
     "clippy::restriction",
 ];
 
+/// Stands in for the lint name when an attribute's body is decided elsewhere.
+///
+/// An attribute written `#[$attr]` in a `macro_rules!` arm names no lint: the
+/// call site supplies one. Measured with Clippy on a probe crate,
+/// `forward!(allow(clippy::disallowed_methods))` over a `std::env::var` call
+/// silences it, the unforwarded call beside it is still reported, and
+/// `clippy::allow_attributes` says nothing about either. Neither half of that
+/// construction is visible on its own, so it is refused rather than resolved.
+pub const FORWARDED_ATTRIBUTE: &str = "whatever the call site passes";
+
+/// Stands in for the lint name when a source pulls in code the scan cannot see.
+///
+/// `include!` resolves a path, not a module, and rustc parses the target as
+/// Rust whatever its extension. Measured with Clippy on a probe crate:
+/// `include!("policy.rs.txt")` compiled an `#[allow(clippy::disallowed_methods,
+/// reason = "..")]` inside the target, which silenced a `std::env::var` call
+/// there, while an enclosing `#[expect(clippy::allow_attributes, reason = "..")]`
+/// kept the guard quiet. The scan reads `.rs` files, so it never saw the target.
+pub const INCLUDED_SOURCE: &str = "code from a file the scan does not read";
+
+/// Whether a finding is one this contract reports.
+fn is_reportable(lint: &str) -> bool {
+    PROTECTED_LINTS.contains(&lint) || lint == FORWARDED_ATTRIBUTE || lint == INCLUDED_SOURCE
+}
+
 /// Collect every attribute in a parsed file, wherever it sits.
 ///
 /// A visitor is used rather than a hand-rolled walk so that attributes
@@ -59,7 +85,18 @@ impl<'ast> Visit<'ast> for AttributeCollector {
     }
 
     fn visit_macro(&mut self, mac: &'ast Macro) {
-        self.from_macros.extend(suppressions_in_tokens(&mac.tokens));
+        match render_path(&mac.path).as_str() {
+            "macro_rules" => {
+                for transcriber in transcriber_arms(&mac.tokens) {
+                    self.from_macros.extend(suppressions_in_tokens(&transcriber));
+                }
+            }
+            "include" if !includes_a_scanned_path(&mac.tokens) => {
+                let rendered = format!("include!({})", mac.tokens);
+                self.from_macros.push((INCLUDED_SOURCE.to_owned(), rendered));
+            }
+            _ => {}
+        }
     }
 }
 
@@ -132,7 +169,7 @@ fn suppressed_by(attribute: &Attribute) -> Vec<String> {
 /// That of `expect(clippy::all)` yields nothing at `Scope::Item`, the
 /// sanctioned form, and `["clippy::all"]` at `Scope::Crate`, where the
 /// warning that makes `expect` self-removing never fires.
-fn suppressed_by_meta(meta: &Meta, scope: Scope) -> Vec<String> {
+pub fn suppressed_by_meta(meta: &Meta, scope: Scope) -> Vec<String> {
     let Meta::List(list) = meta else {
         return Vec::new();
     };
@@ -156,7 +193,7 @@ fn suppressed_by_meta(meta: &Meta, scope: Scope) -> Vec<String> {
 /// over a `std::env::var` call produced no diagnostic of either kind. At
 /// that scope `expect` is an `allow` that looks responsible.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Scope {
+pub enum Scope {
     /// An inner attribute, applying to everything beneath it.
     Crate,
     /// An outer attribute, applying to the item that follows it.
@@ -164,6 +201,19 @@ enum Scope {
 }
 
 impl Scope {
+    /// Render the `!` that distinguishes an inner attribute, for a message.
+    ///
+    /// # Examples
+    ///
+    /// `Scope::Crate` renders `"!"`, so an attribute reads `#![allow(..)]`;
+    /// `Scope::Item` renders the empty string.
+    pub const fn bang(self) -> &'static str {
+        match self {
+            Self::Crate => "!",
+            Self::Item => "",
+        }
+    }
+
     /// Return the scope an attribute applies at.
     ///
     /// # Examples
@@ -175,85 +225,6 @@ impl Scope {
             AttrStyle::Outer => Self::Item,
         }
     }
-}
-
-/// Return the protected lints suppressed by attributes inside a macro's
-/// token stream.
-///
-/// `macro_rules!` arms are opaque to the syntax tree: `syn` keeps the
-/// body as tokens, so an `allow` emitted from an arm never reaches
-/// `visit_attribute`, while Clippy expands and honours it. Measured on
-/// this branch: an arm emitting
-/// `#[allow(clippy::disallowed_methods)]` over a `std::env::var` call
-/// produced no disallowed-method diagnostic at all.
-///
-/// The walk looks for `#` optionally followed by `!` and then a bracket
-/// group, parses that group as a `Meta`, and applies the same judgement
-/// as a parsed attribute. Every group is recursed into, so an arm that
-/// defines another macro is covered too.
-///
-/// A string literal is a single token, so text that looks like an
-/// attribute inside one is never mistaken for a suppression. That is the
-/// same property parsing gave us, kept rather than given back.
-///
-/// # Examples
-///
-/// Tokens for `{ () => { #[allow(warnings)] fn f() {} }; }` yield
-/// `warnings`; tokens for `{ "#[allow(warnings)]" }` yield nothing.
-fn suppressions_in_tokens(tokens: &TokenStream) -> Vec<(String, String)> {
-    let trees: Vec<TokenTree> = tokens.clone().into_iter().collect();
-    let mut found = Vec::new();
-
-    for (index, tree) in trees.iter().enumerate() {
-        if let TokenTree::Group(group) = tree {
-            found.extend(suppressions_in_tokens(&group.stream()));
-        }
-        let Some(lints) = attribute_at(&trees, index) else {
-            continue;
-        };
-        found.extend(lints);
-    }
-    found
-}
-
-/// Return the lints an attribute beginning at `index` suppresses, each
-/// paired with the attribute as written.
-///
-/// The names are returned unfiltered. Deciding which of them the policy
-/// protects belongs to [`suppressed_lints`], which applies that filter
-/// once over the parsed and the token-recovered findings together, so a
-/// rule added to one route cannot go missing from the other.
-///
-/// # Examples
-///
-/// At the `#` of `#[allow(warnings)]` this returns one pair naming
-/// `warnings`; anywhere else it returns nothing.
-fn attribute_at(trees: &[TokenTree], index: usize) -> Option<Vec<(String, String)>> {
-    match trees.get(index) {
-        Some(TokenTree::Punct(punct)) if punct.as_char() == '#' => {}
-        _ => return None,
-    }
-
-    let mut next = index.checked_add(1)?;
-    let mut bang = "";
-    if matches!(trees.get(next), Some(TokenTree::Punct(punct)) if punct.as_char() == '!') {
-        bang = "!";
-        next = next.checked_add(1)?;
-    }
-
-    let Some(TokenTree::Group(group)) = trees.get(next) else {
-        return None;
-    };
-    if group.delimiter() != Delimiter::Bracket {
-        return None;
-    }
-
-    let meta = syn::parse2::<Meta>(group.stream()).ok()?;
-    let scope = if bang.is_empty() { Scope::Item } else { Scope::Crate };
-    let rendered = format!("#{bang}[{}]", group.stream());
-    Some(
-        suppressed_by_meta(&meta, scope).into_iter().map(|lint| (lint, rendered.clone())).collect(),
-    )
 }
 
 /// Return the lint names nested inside a `cfg_attr`.
@@ -316,6 +287,6 @@ pub fn suppressed_lints(contents: &str) -> Result<Vec<(String, String)>, String>
         }
     }
     found.extend(collector.from_macros);
-    found.retain(|(lint, _)| PROTECTED_LINTS.contains(&lint.as_str()));
+    found.retain(|(lint, _)| is_reportable(lint));
     Ok(found)
 }

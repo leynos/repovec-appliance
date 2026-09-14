@@ -123,6 +123,22 @@ impl ParsedUnit {
         })
     }
 
+    pub(super) fn require_any_exec_start(
+        &self,
+        expected: &'static str,
+    ) -> Result<(), SystemdUnitError> {
+        let values = self.values(SERVICE_SECTION, "ExecStart");
+        if values.iter().any(|actual| actual == expected) {
+            return Ok(());
+        }
+
+        Err(SystemdUnitError::IncorrectExecStart {
+            unit: self.unit,
+            expected,
+            actual: values.join(","),
+        })
+    }
+
     pub(super) fn require_service_directive(
         &self,
         key: &'static str,

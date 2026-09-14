@@ -195,6 +195,23 @@ impl RuntimePaths {
     /// ```
     #[must_use]
     pub fn grepai_root(&self) -> Utf8PathBuf { self.data_child(".grepai") }
+
+    /// Returns Qdrant's persistent storage directory.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use repovec_core::RuntimePaths;
+    ///
+    /// let paths = RuntimePaths::appliance_defaults();
+    ///
+    /// assert_eq!(
+    ///     paths.qdrant_storage_root().as_str(),
+    ///     "/var/lib/repovec/qdrant-storage",
+    /// );
+    /// ```
+    #[must_use]
+    pub fn qdrant_storage_root(&self) -> Utf8PathBuf { self.data_child("qdrant-storage") }
 }
 
 #[cfg(test)]
@@ -223,6 +240,7 @@ mod tests {
         assert_eq!(paths.git_mirrors_root().as_str(), "/srv/repovec/git-mirrors");
         assert_eq!(paths.worktrees_root().as_str(), "/srv/repovec/worktrees");
         assert_eq!(paths.grepai_root().as_str(), "/srv/repovec/.grepai");
+        assert_eq!(paths.qdrant_storage_root().as_str(), "/srv/repovec/qdrant-storage");
         assert_eq!(
             paths.github_oauth_token_credential().as_str(),
             "/tmp/config/github-oauth-token.cred",

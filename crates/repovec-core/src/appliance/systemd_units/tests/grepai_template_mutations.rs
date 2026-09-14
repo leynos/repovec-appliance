@@ -1,6 +1,9 @@
 //! Grepai template mutation helpers for systemd unit validator tests.
 
-use super::{UnitFile, UnitSet, ValidationScenario};
+use super::{
+    scenarios::ValidationScenario,
+    unit_set::{UnitFile, UnitSet},
+};
 
 impl ValidationScenario {
     pub(super) fn mutate_grepai_template_unit_section(self, units: &mut UnitSet) {

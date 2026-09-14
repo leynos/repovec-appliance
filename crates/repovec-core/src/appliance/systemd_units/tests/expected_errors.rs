@@ -1,8 +1,8 @@
 //! Typed expected-error mapping for systemd unit validator tests.
 
 use super::{
-    ValidationScenario,
     error_builders::{exec_start, missing, missing_install, quadlet_source, service_directive},
+    scenarios::ValidationScenario,
 };
 use crate::appliance::systemd_units::SystemdUnitError;
 
@@ -17,7 +17,16 @@ impl ValidationScenario {
             | Self::TargetUsesQdrantContainer
             | Self::MissingTargetWantsRepovecd
             | Self::MissingTargetWantsMcpd
-            | Self::MissingTargetWantsCloudflared => self.expected_target_error(),
+            | Self::MissingTargetWantsCloudflared
+            | Self::MissingTargetWantsProvision => self.expected_target_error(),
+            Self::MissingProvisionUnitSection
+            | Self::MissingProvisionServiceSection
+            | Self::MissingProvisionInstallSection
+            | Self::MissingProvisionWantedByTarget
+            | Self::MissingProvisionAfterSysusers
+            | Self::MissingProvisionBeforeRepovecd
+            | Self::WrongProvisionSysusersExecStart
+            | Self::MissingProvisionType => self.expected_provision_error(),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
@@ -88,7 +97,48 @@ impl ValidationScenario {
             Self::MissingTargetWantsCloudflared => {
                 missing("repovec.target", "Wants", "cloudflared.service")
             }
+            Self::MissingTargetWantsProvision => {
+                missing("repovec.target", "Wants", "repovec-provision.service")
+            }
             _ => panic!("target error called for non-target scenario"),
+        }
+    }
+
+    fn expected_provision_error(self) -> SystemdUnitError {
+        match self {
+            Self::MissingProvisionUnitSection => SystemdUnitError::MissingSection {
+                unit: "repovec-provision.service",
+                section: "Unit",
+            },
+            Self::MissingProvisionServiceSection => SystemdUnitError::MissingSection {
+                unit: "repovec-provision.service",
+                section: "Service",
+            },
+            Self::MissingProvisionInstallSection => SystemdUnitError::MissingSection {
+                unit: "repovec-provision.service",
+                section: "Install",
+            },
+            Self::MissingProvisionWantedByTarget => {
+                missing_install("repovec-provision.service", "repovec.target")
+            }
+            Self::MissingProvisionAfterSysusers => {
+                missing("repovec-provision.service", "After", "systemd-sysusers.service")
+            }
+            Self::MissingProvisionBeforeRepovecd => {
+                missing("repovec-provision.service", "Before", "repovecd.service")
+            }
+            Self::WrongProvisionSysusersExecStart => exec_start(
+                "repovec-provision.service",
+                "/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf",
+                "/usr/bin/systemd-sysusers /usr/lib/sysusers.d/wrong.conf,/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf",
+            ),
+            Self::MissingProvisionType => SystemdUnitError::IncorrectServiceDirective {
+                unit: "repovec-provision.service",
+                key: "Type",
+                expected: "oneshot",
+                actual: String::new(),
+            },
+            _ => panic!("provision error called for non-provision scenario"),
         }
     }
 

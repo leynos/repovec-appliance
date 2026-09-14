@@ -346,17 +346,23 @@ Systemd manages the appliance lifecycle via a dedicated target:
 
 - `repovec.target`
   - wants: `qdrant.service` (Podman), `repovecd.service`,
-    `repovec-mcpd.service`, `cloudflared.service`
+    `repovec-mcpd.service`, `cloudflared.service`,
+    `repovec-provision.service`
   - wants: concrete per-repository indexer instances when later
     reconciliation work enables them
 
 Roadmap items `1.3.1` and `1.3.2` ship the static source files for the base
-target, daemon services, and grepai indexer template under `packaging/systemd/`:
+target, daemon services, and grepai indexer template under
+`packaging/systemd/`; roadmap item `1.3.3` ships the provisioning oneshot and
+the directory-layout assets:
 
 - `packaging/systemd/repovec.target`
 - `packaging/systemd/repovecd.service`
 - `packaging/systemd/repovec-mcpd.service`
 - `packaging/systemd/repovec-grepai@.service`
+- `packaging/systemd/repovec-provision.service`
+- `packaging/tmpfiles.d/repovec.conf`
+- `packaging/sysusers.d/repovec.conf`
 
 On an appliance host, install these units to `/etc/systemd/system/`. The
 existing Qdrant Quadlet remains installed to
@@ -366,6 +372,15 @@ uses. `repovecd.service` declares both `Requires=qdrant.service` and
 `After=qdrant.service`. `repovec-mcpd.service` declares
 `Requires=qdrant.service repovecd.service` and
 `After=qdrant.service repovecd.service`.
+
+`repovec-provision.service` is a target-start oneshot that runs
+`systemd-sysusers` on `/usr/lib/sysusers.d/repovec.conf` and then
+`systemd-tmpfiles --create` on `/usr/lib/tmpfiles.d/repovec.conf`, so the
+`repovec` system user and the `/var/lib/repovec` data tree exist before any
+dependent service starts — including on a freshly installed host that has not
+been rebooted. The contract, alternatives, and the `qdrant-storage`
+root-ownership dependency are recorded in
+[ADR-001: Provision the `repovec` system user and private directory tree](adr-001-repovec-directory-provisioning.md).
 
 `repovec-grepai@.service` is a systemd template for future concrete indexer
 instances. Each instance runs `/usr/bin/grepai watch` as the `repovec` user and

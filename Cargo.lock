@@ -2349,6 +2349,7 @@ dependencies = [
  "cap-std 4.0.3",
  "insta",
  "proc-macro2",
+ "proptest",
  "repovec-core",
  "rstest",
  "rstest-bdd",

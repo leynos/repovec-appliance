@@ -840,6 +840,25 @@ reports that call nor warns that it went unfulfilled, and the scan treats it as
 a suppression. Raw spellings such as `r#allow` and `clippy::r#style` are
 normalized before comparison, because Clippy honours them too.
 
+Each of those routes was a place the enforcement mechanism could not see: inner
+attributes are invisible to `allow_attributes`, groups to a name check,
+`cfg_attr` to a line scan, macro bodies to a syntax tree. Sample-based tests
+pin the routes that were found; property tests state the claim itself, that
+what the scan reports is decided by the lint named and by the scope the
+attribute takes and by nothing else, over generated lint names, forms, macro
+nesting depths and reason strings.
+
+The contract spans five files, to keep each inside the 400-line limit.
+`environment_policy_scan/sources.rs` decides which files are read,
+`environment_policy_scan/scan.rs` decides what they mean,
+`environment_policy_scan/workspace.rs` holds the contracts over the
+repository's own sources and the scan's error paths,
+`environment_policy_scan/properties.rs` holds the properties, and
+`environment_policy_source_scan.rs` holds the judgements over samples. The
+samples live in `crates/repovec-ci/tests/fixtures/env_policy_samples` as
+`.rs.txt` files, since a `.rs` file there would be read by the workspace scan
+itself and reported as an offence.
+
 ### 8.2 Choosing a seam
 
 Pick the smallest shape that serves the boundary. A seam that is wider than its

@@ -5,6 +5,9 @@
 //! different question: does the scan actually read this repository, and does it
 //! say something useful when it cannot.
 
+#[cfg(unix)]
+use cap_std::{ambient_authority, fs_utf8::Dir};
+
 use crate::{
     scan::suppressed_lints,
     sources::{SOURCE_ROOTS, repository_root, rust_sources},
@@ -88,4 +91,51 @@ fn a_source_that_is_not_rust_is_an_error() {
         .expect_err("unparsable input must not read as a clean file");
 
     assert!(error.starts_with("parse: "), "the error should name the parse failure, got {error:?}");
+}
+
+/// Scenario: a source root holds a symlink, spelled as a directory and as a
+/// file.
+///
+/// Invariant: the walk returns an error naming the link rather than stepping
+/// over it. Containment in [`crate::tokens::includes_a_scanned_path`] accepts
+/// an `include!` target without resolving it, resting on every `.rs` file
+/// beneath a root being read. This walk does not follow a symlink, so one
+/// skipped in silence would leave a source reached through it unscanned while
+/// every gate stayed green, which is the shape of every route this policy has
+/// had to close.
+///
+/// Both targets are relative, and the file one points inside the tree. That
+/// is what makes the cases discriminate rather than merely pass. `cap_std`
+/// refuses to read through a link that is absolute or that leaves the
+/// sandbox, so a file case spelled either way errors whether or not this walk
+/// refuses anything, and proves nothing. An in-tree relative link is read
+/// happily without the refusal below.
+#[cfg(unix)]
+#[rstest::rstest]
+#[case::a_directory_symlink("linkdir", "../outside")]
+#[case::a_file_symlink("linked.rs", "inner/lib.rs")]
+fn a_symlink_under_a_source_root_is_an_error(#[case] link: &str, #[case] target: &str) {
+    let temporary = tempfile::tempdir().expect("a temporary directory should be available");
+    let base =
+        camino::Utf8Path::from_path(temporary.path()).expect("the temporary path should be UTF-8");
+    let tree = Dir::open_ambient_dir(base, ambient_authority())
+        .expect("the temporary directory should open");
+
+    tree.create_dir_all("outside").expect("the outside directory should be created");
+    tree.write("outside/policy.rs", "// outside\n").expect("the outside source should be written");
+    tree.create_dir_all("crates/inner").expect("the crate directory should be created");
+    tree.write("crates/inner/lib.rs", "// inner\n").expect("the scanned source should be written");
+
+    // The link is made with `std`, not through the `Dir` handle, because the
+    // capability API will not create one whose target leaves the sandbox, and
+    // an escaping target is the case under test. Writing it from outside is
+    // what lets the fixture pose the question the walk has to answer.
+    std::os::unix::fs::symlink(target, base.join("crates").join(link))
+        .expect("the symlink should be created");
+
+    let root = base.join("crates");
+    let error =
+        rust_sources(&root, "crates").expect_err("a symlink must not be stepped over in silence");
+
+    assert!(error.contains(link), "the error should name the link, got {error:?}");
 }

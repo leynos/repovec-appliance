@@ -875,6 +875,13 @@ file beneath that root is read, so membership follows without resolving it.
 Put generated code under a source root and include it by a relative path, or
 bring it under the policy deliberately.
 
+That second premise needs a guard. The walk does not follow a symlink, so a
+link skipped in silence would leave a target reached through it unscanned
+while every gate stayed green. The walk therefore refuses a symlink under a
+source root outright, naming it, rather than stepping over it. If a source
+tree ever needs one, the scan has to learn to resolve targets before the link
+can be allowed.
+
 Only a `macro_rules!` transcriber is walked, never an invocation's arguments
 and never a matcher, since nothing in either is necessarily written out.
 

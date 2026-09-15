@@ -89,6 +89,8 @@
 //! `#[expect(clippy::allow_attributes, reason = "..")]` kept the guard quiet.
 //! The scan reads `.rs` files, so it never saw the target. An `include!` is
 //! now a finding unless its target is a literal `.rs` path.
+//! That target is parsed as one `syn::LitStr` and its decoded value judged,
+//! never its spelling, which `r"support.rs"` and `"support\x2Ers"` show apart.
 //!
 //! Only a `macro_rules!` transcriber is walked, never an invocation's
 //! arguments and never a matcher. `consume!(#[allow(clippy::style)])` hands an
@@ -107,7 +109,8 @@
 //!   `a_construction_that_only_resembles_a_route_is_not_an_offence::
 //!   case_2_forwarded_doc_and_derive`;
 //! - treating every `include!` target as scanned fails
-//!   `a_suppression_is_an_offence::case_11_included_from_an_unscanned_file`;
+//!   `a_suppression_is_an_offence::case_11_included_from_an_unscanned_file`
+//!   and `case_12_included_from_a_computed_path`;
 //! - walking every macro's whole token stream, as this contract did before,
 //!   fails the consumed-argument and matcher-only cases;
 //! - walking a `macro_rules!` matcher as well as its transcriber fails the
@@ -116,6 +119,11 @@
 //! The last three are the ones worth keeping. A contract that reports a false
 //! positive gets switched off, so each rule is proved narrow as well as
 //! sufficient.
+//!
+//! The `include!` rule was proved again on 2026-09-15, after review found that
+//! judging a target's source spelling reported valid targets; those two
+//! mutations are recorded on the rule itself in
+//! `environment_policy_scan/tokens.rs`.
 //!
 //! Each of those routes is a place the enforcement mechanism could not
 //! see, and a table of samples cannot say what the scan does with a lint
@@ -244,6 +252,9 @@ fn every_protected_lint_is_reported(#[case] lint: &str) -> Result<(), Failure> {
 /// - `included_from_an_unscanned_file`: `include!` resolves a path, not a
 ///   module, and rustc parses the target as Rust whatever its extension, so a
 ///   suppression can sit in a file the scan never reads.
+/// - `included_from_a_computed_path`: a target assembled by `concat!` and `env!`
+///   cannot be resolved here. Only one string literal is accepted, and this is
+///   the case that says so.
 #[rstest]
 #[case::nested_in_cfg_attr(
     "#![cfg_attr(all(), allow(clippy::disallowed_methods, reason = \"x\"))]\n",
@@ -280,11 +291,15 @@ fn every_protected_lint_is_reported(#[case] lint: &str) -> Result<(), Failure> {
     include_str!("fixtures/env_policy_samples/included_unscanned_file.rs.txt"),
     "code from a file the scan does not read"
 )]
+#[case::included_from_a_computed_path(
+    include_str!("fixtures/env_policy_samples/included_from_a_computed_path.rs.txt"),
+    "code from a file the scan does not read"
+)]
 fn a_suppression_is_an_offence(
     #[case] source: &str,
     #[case] expected: &str,
 ) -> Result<(), Failure> {
-    // One invariant, eleven spellings; the case labels say which is which.
+    // One invariant, twelve spellings; the case labels say which is which.
     one_offence(source, expected)
 }
 
@@ -331,8 +346,11 @@ fn attribute_shaped_text_is_not_an_attribute(#[case] source: &str) -> Result<(),
 /// - `forwarded_doc_and_derive`: `#[doc = $doc]` and `#[derive($trait)]` fail to
 ///   parse as a `Meta` exactly as `#[$attr]` does, and forwarding attributes is
 ///   ordinary in code-generating macros.
-/// - `included_scanned_file`: an `include!` of a literal `.rs` path names a file
-///   the scan already reads.
+/// - `included_scanned_file`, `included_scanned_raw_literal` and
+///   `included_scanned_escaped_literal`: each names a literal `.rs` path the
+///   scan already reads. The last two are spelled `r"support.rs"` and
+///   `"support\x2Ers"`, whose decoded value ends in `.rs` while their spelling
+///   does not.
 /// - `matcher_only_attribute`: a `macro_rules!` arm matches
 ///   `#[allow(clippy::style)]` and its transcriber emits only `$item`, so the
 ///   attribute is consumed rather than written out.
@@ -345,6 +363,12 @@ fn attribute_shaped_text_is_not_an_attribute(#[case] source: &str) -> Result<(),
 ))]
 #[case::included_scanned_file(include_str!(
     "fixtures/env_policy_samples/included_scanned_file.rs.txt"
+))]
+#[case::included_scanned_raw_literal(include_str!(
+    "fixtures/env_policy_samples/included_scanned_raw_literal.rs.txt"
+))]
+#[case::included_scanned_escaped_literal(include_str!(
+    "fixtures/env_policy_samples/included_scanned_escaped_literal.rs.txt"
 ))]
 #[case::matcher_only_attribute(include_str!(
     "fixtures/env_policy_samples/matcher_only_attribute.rs.txt"

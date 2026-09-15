@@ -11,7 +11,7 @@
 //! the two routes cannot drift apart.
 
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
-use syn::{Meta, ext::IdentExt};
+use syn::{LitStr, Meta, ext::IdentExt};
 
 use crate::scan::{FORWARDED_ATTRIBUTE, Scope, suppressed_by_meta};
 
@@ -43,13 +43,33 @@ fn is_forwarded(body: &TokenStream) -> bool {
 /// `concat!(env!("OUT_DIR"), "/generated.rs")` build-script idiom, cannot be
 /// resolved here and is reported, so that generated code has to be brought
 /// under the policy deliberately rather than by an extension nobody checks.
+///
+/// The target is parsed as a string literal and its decoded value tested, not
+/// its source spelling. `Literal::to_string` renders a literal as it was
+/// written, so `r"support.rs"` and `"support\x2Ers"` both name a file the scan
+/// reads while neither is spelled `"..\.rs"`; judging the spelling reported
+/// them, and a contract that reports a false positive gets switched off.
+/// Parsing keeps the strictness that matters: a stream that is not exactly one
+/// string literal does not parse, so a computed target is still refused.
+///
+/// Mutation proof, recorded 2026-09-15; each applied alone here and run through
+/// the build:
+///
+/// - reading the rendered literal for a `"` opener and a `.rs"` close, as this
+///   contract did before, fails the raw-literal and escaped-literal cases of
+///   `a_construction_that_only_resembles_a_route_is_not_an_offence`;
+/// - accepting a target containing a `.rs` literal anywhere, rather than one
+///   that is exactly a `.rs` literal, fails
+///   `a_suppression_is_an_offence::case_12_included_from_a_computed_path`
+///   alone, which earns that case its line;
+/// - returning `true` for every target fails both of that test's `include!`
+///   cases.
+///
+/// A widening that reached only the last top-level token left every case green.
+/// A fixture that survives the mutation it was written for discriminates
+/// nothing, so that widening is recorded rather than the fixture kept for it.
 pub fn includes_a_scanned_path(tokens: &TokenStream) -> bool {
-    let mut trees = tokens.clone().into_iter();
-    let (Some(TokenTree::Literal(literal)), None) = (trees.next(), trees.next()) else {
-        return false;
-    };
-    let rendered = literal.to_string();
-    rendered.starts_with('"') && rendered.ends_with(".rs\"")
+    syn::parse2::<LitStr>(tokens.clone()).is_ok_and(|path| path.value().ends_with(".rs"))
 }
 
 /// Return the transcriber of each arm of a `macro_rules!` body.

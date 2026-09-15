@@ -10,10 +10,14 @@
 //! tokens is handed to the same function as one parsed from the syntax tree, so
 //! the two routes cannot drift apart.
 
+use camino::Utf8Path;
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::{LitStr, Meta, ext::IdentExt};
 
-use crate::scan::{FORWARDED_ATTRIBUTE, Scope, suppressed_by_meta};
+use crate::{
+    scan::{FORWARDED_ATTRIBUTE, Scope, suppressed_by_meta},
+    sources::SOURCE_EXTENSION,
+};
 
 /// Whether an unparsable attribute body is one the call site decides.
 ///
@@ -52,8 +56,12 @@ fn is_forwarded(body: &TokenStream) -> bool {
 /// Parsing keeps the strictness that matters: a stream that is not exactly one
 /// string literal does not parse, so a computed target is still refused.
 ///
-/// Mutation proof, recorded 2026-09-15; each applied alone here and run through
-/// the build:
+/// The decoded value is tested with the same extension comparison
+/// [`crate::sources::rust_sources`] selects files by, and against the same
+/// constant, so "a path the scan reads" cannot come to mean two things.
+///
+/// Mutation proof, recorded 2026-09-15 and re-run against the shared extension
+/// comparison; each applied alone here and run through the build:
 ///
 /// - reading the rendered literal for a `"` opener and a `.rs"` close, as this
 ///   contract did before, fails the raw-literal and escaped-literal cases of
@@ -69,7 +77,8 @@ fn is_forwarded(body: &TokenStream) -> bool {
 /// A fixture that survives the mutation it was written for discriminates
 /// nothing, so that widening is recorded rather than the fixture kept for it.
 pub fn includes_a_scanned_path(tokens: &TokenStream) -> bool {
-    syn::parse2::<LitStr>(tokens.clone()).is_ok_and(|path| path.value().ends_with(".rs"))
+    syn::parse2::<LitStr>(tokens.clone())
+        .is_ok_and(|path| Utf8Path::new(&path.value()).extension() == Some(SOURCE_EXTENSION))
 }
 
 /// Return the transcriber of each arm of a `macro_rules!` body.

@@ -84,7 +84,11 @@ fn is_forwarded(body: &TokenStream) -> bool {
 /// which rules out a parent component and any root or prefix. A relative path
 /// without `..` cannot leave the root its including file sits under, and
 /// `rust_sources` reads every `.rs` beneath that root, so membership of the
-/// discovered set follows rather than needing to be checked. A backslash is
+/// discovered set follows rather than needing to be checked. That second
+/// premise is only true because [`crate::sources::rust_sources`] refuses a
+/// symlink rather than stepping over one: a target under a symlinked
+/// directory would otherwise be contained, accepted and never scanned. A
+/// backslash is
 /// refused outright, since it separates components on the platform where
 /// rustc would resolve it and is an ordinary filename character here.
 ///

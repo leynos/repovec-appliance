@@ -78,71 +78,48 @@
 //! call: Clippy reported the unforwarded call beside it and nothing about the
 //! forwarded one, and `clippy::allow_attributes` said nothing about either.
 //! `#[$attr]` does not parse as a `Meta` and the invocation carries no `#`, so
-//! neither half is visible alone. The construction is refused rather than
-//! resolved, and only where it could bear on the policy: a body beginning with
-//! `$`, or with `allow`, `expect` or `cfg_attr`.
+//! neither half is visible alone. It is refused rather than resolved, and only
+//! where it could bear on the policy: a body beginning with `$`, or with
+//! `allow`, `expect` or `cfg_attr`.
 //!
 //! `include!` resolves a path, not a module, and rustc parses the target as
 //! Rust whatever its extension. `include!("policy.rs.txt")` compiled an
 //! `#[allow(clippy::disallowed_methods, reason = "..")]` inside the target,
 //! which silenced a `std::env::var` call there, while an enclosing
 //! `#[expect(clippy::allow_attributes, reason = "..")]` kept the guard quiet.
-//! The scan reads `.rs` files, so it never saw the target. An `include!` is
-//! now a finding unless its target is a literal `.rs` path.
-//! That target is parsed as one `syn::LitStr` and its decoded value judged,
-//! never its spelling, which `r"support.rs"` and `"support\x2Ers"` show apart.
+//! The scan reads `.rs` files under the source roots, so it never saw the
+//! target. An `include!` is now a finding unless its target is a literal path
+//! that the scan already reads; what that means, and the mutations proving it,
+//! are on the rule in `environment_policy_scan/tokens.rs`.
 //!
 //! Only a `macro_rules!` transcriber is walked, never an invocation's
 //! arguments and never a matcher. `consume!(#[allow(clippy::style)])` hands an
 //! attribute to a macro that discards it, and reporting that would be a false
-//! positive. This does not reopen the route above: an attribute passed in as
-//! an argument and then emitted must pass through a `#[$meta]` in the
-//! definition, which is refused. An attribute synthesized by a procedural
-//! macro remains out of reach, as it always was.
+//! positive. This does not reopen the route above: an attribute passed in and
+//! then emitted must pass through a `#[$meta]`, which is refused. One
+//! synthesized by a procedural macro remains out of reach, as it always was.
 //!
 //! Those three rules were mutation-proved in both directions on 2026-09-14,
-//! each applied alone to `scan.rs` and run through the build:
+//! each applied alone to `scan.rs` or `tokens.rs`; the mutations are recorded
+//! beside the rules they prove, in `environment_policy_scan/tokens.rs`. Each
+//! is proved narrow as well as sufficient, because a contract that reports a
+//! false positive gets switched off.
 //!
-//! - naming an unprotected lint in the forwarded finding fails
-//!   `a_suppression_is_an_offence::case_10_forwarded_from_a_macro_argument`;
-//! - widening `is_forwarded` to every unparsable attribute body fails
-//!   `a_construction_that_only_resembles_a_route_is_not_an_offence::
-//!   case_2_forwarded_doc_and_derive`;
-//! - treating every `include!` target as scanned fails
-//!   `a_suppression_is_an_offence::case_11_included_from_an_unscanned_file`
-//!   and `case_12_included_from_a_computed_path`;
-//! - walking every macro's whole token stream, as this contract did before,
-//!   fails the consumed-argument and matcher-only cases;
-//! - walking a `macro_rules!` matcher as well as its transcriber fails the
-//!   matcher-only case.
-//!
-//! The last three are the ones worth keeping. A contract that reports a false
-//! positive gets switched off, so each rule is proved narrow as well as
-//! sufficient.
-//!
-//! The `include!` rule was proved again on 2026-09-15, after review found that
-//! judging a target's source spelling reported valid targets; those two
-//! mutations are recorded on the rule itself in
-//! `environment_policy_scan/tokens.rs`.
-//!
-//! Each of those routes is a place the enforcement mechanism could not
-//! see, and a table of samples cannot say what the scan does with a lint
-//! name, a nesting depth or a reason string nobody wrote down.
+//! Each of those routes is a place the enforcement mechanism could not see,
+//! and a table of samples cannot say what the scan does with a lint name, a
+//! nesting depth or a reason string nobody wrote down.
 //! `environment_policy_scan/properties.rs` states the claim itself over
-//! generated inputs: what the scan reports is decided by the lint named
-//! and by the scope the attribute takes, and by nothing else. Three
-//! further mutations, each applied alone to `scan.rs` and run through
-//! the build, are recorded there.
+//! generated inputs: what the scan reports is decided by the lint named and by
+//! the scope the attribute takes, and by nothing else. Three further
+//! mutations, each applied alone to `scan.rs`, are recorded there.
 //!
 //! The contract is six files, to stay inside the 400-line limit that
 //! Whitaker's `module_max_lines` enforces as well as the repository guide.
 //! `environment_policy_scan/sources.rs` decides which files are read,
-//! `environment_policy_scan/scan.rs` decides what they mean,
-//! `environment_policy_scan/tokens.rs` recovers attributes from macro token
-//! streams and holds the rules that keep that walk narrow,
-//! `environment_policy_scan/workspace.rs` holds the contracts over this
-//! repository's own sources and over the scan's error paths,
-//! `environment_policy_scan/properties.rs` holds the properties, and the
+//! `scan.rs` decides what they mean, `tokens.rs` recovers attributes from
+//! macro token streams and holds the rules that keep that walk narrow,
+//! `workspace.rs` holds the contracts over this repository's own sources and
+//! over the scan's error paths, `properties.rs` holds the properties, and the
 //! judgements over samples stay here. The samples live in
 //! `tests/fixtures/env_policy_samples` as `.rs.txt` files: a `.rs` file
 //! there would be read by the workspace scan itself and reported as an
@@ -255,6 +232,13 @@ fn every_protected_lint_is_reported(#[case] lint: &str) -> Result<(), Failure> {
 /// - `included_from_a_computed_path`: a target assembled by `concat!` and `env!`
 ///   cannot be resolved here. Only one string literal is accepted, and this is
 ///   the case that says so.
+/// - `included_outside_the_scanned_tree` and `included_from_an_absolute_path`:
+///   `include!` resolves relative to the including file, and the scan walks
+///   only the source roots, so a parent component or a root escapes it while
+///   still ending in `.rs`.
+/// - `included_from_a_concatenated_path`: every literal in it names a path the
+///   scan would read, so only the rule that requires the target to be one
+///   literal refuses it.
 #[rstest]
 #[case::nested_in_cfg_attr(
     "#![cfg_attr(all(), allow(clippy::disallowed_methods, reason = \"x\"))]\n",
@@ -295,11 +279,23 @@ fn every_protected_lint_is_reported(#[case] lint: &str) -> Result<(), Failure> {
     include_str!("fixtures/env_policy_samples/included_from_a_computed_path.rs.txt"),
     "code from a file the scan does not read"
 )]
+#[case::included_outside_the_scanned_tree(
+    include_str!("fixtures/env_policy_samples/included_outside_the_scanned_tree.rs.txt"),
+    "code from a file the scan does not read"
+)]
+#[case::included_from_an_absolute_path(
+    include_str!("fixtures/env_policy_samples/included_from_an_absolute_path.rs.txt"),
+    "code from a file the scan does not read"
+)]
+#[case::included_from_a_concatenated_path(
+    include_str!("fixtures/env_policy_samples/included_from_a_concatenated_path.rs.txt"),
+    "code from a file the scan does not read"
+)]
 fn a_suppression_is_an_offence(
     #[case] source: &str,
     #[case] expected: &str,
 ) -> Result<(), Failure> {
-    // One invariant, twelve spellings; the case labels say which is which.
+    // One invariant, fifteen spellings; the case labels say which is which.
     one_offence(source, expected)
 }
 
@@ -348,9 +344,10 @@ fn attribute_shaped_text_is_not_an_attribute(#[case] source: &str) -> Result<(),
 ///   ordinary in code-generating macros.
 /// - `included_scanned_file`, `included_scanned_raw_literal` and
 ///   `included_scanned_escaped_literal`: each names a literal `.rs` path the
-///   scan already reads. The last two are spelled `r"support.rs"` and
-///   `"support\x2Ers"`, whose decoded value ends in `.rs` while their spelling
-///   does not.
+///   scan already reads. Two are spelled `r"support.rs"` and `"support\x2Ers"`,
+///   whose decoded value ends in `.rs` while their spelling does not, and
+///   `included_scanned_subdirectory` descends without escaping, which keeps the
+///   escape rule from rejecting every path that has a separator in it.
 /// - `matcher_only_attribute`: a `macro_rules!` arm matches
 ///   `#[allow(clippy::style)]` and its transcriber emits only `$item`, so the
 ///   attribute is consumed rather than written out.
@@ -369,6 +366,9 @@ fn attribute_shaped_text_is_not_an_attribute(#[case] source: &str) -> Result<(),
 ))]
 #[case::included_scanned_escaped_literal(include_str!(
     "fixtures/env_policy_samples/included_scanned_escaped_literal.rs.txt"
+))]
+#[case::included_scanned_subdirectory(include_str!(
+    "fixtures/env_policy_samples/included_scanned_subdirectory.rs.txt"
 ))]
 #[case::matcher_only_attribute(include_str!(
     "fixtures/env_policy_samples/matcher_only_attribute.rs.txt"

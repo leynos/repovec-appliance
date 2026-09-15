@@ -9,8 +9,24 @@
 //! The judgement itself stays in [`crate::scan`]: a `Meta` recovered from
 //! tokens is handed to the same function as one parsed from the syntax tree, so
 //! the two routes cannot drift apart.
+//!
+//! Mutation record for the rules in this module, proved in both directions on
+//! 2026-09-14 and re-run since, each applied alone and run through the build:
+//!
+//! - naming an unprotected lint in the forwarded finding fails
+//!   `a_suppression_is_an_offence::case_10_forwarded_from_a_macro_argument`;
+//! - widening `is_forwarded` to every unparsable attribute body fails
+//!   `a_construction_that_only_resembles_a_route_is_not_an_offence::
+//!   case_2_forwarded_doc_and_derive`;
+//! - walking every macro's whole token stream, as this contract did before,
+//!   fails the consumed-argument and matcher-only cases;
+//! - walking a `macro_rules!` matcher as well as its transcriber fails the
+//!   matcher-only case.
+//!
+//! The `include!` rule keeps its own record on
+//! [`includes_a_scanned_path`], which is where its three mutations live.
 
-use camino::Utf8Path;
+use camino::{Utf8Component, Utf8Path};
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::{LitStr, Meta, ext::IdentExt};
 
@@ -60,25 +76,75 @@ fn is_forwarded(body: &TokenStream) -> bool {
 /// [`crate::sources::rust_sources`] selects files by, and against the same
 /// constant, so "a path the scan reads" cannot come to mean two things.
 ///
+/// The extension alone is not enough, because `include!` resolves its target
+/// relative to the including file and the scan walks only the source roots.
+/// `include!("../../outside/policy.rs")` names a `.rs` file the scan never
+/// reads, so a suppression there would be invisible. The target must therefore
+/// stay inside the tree it is included from: every component normal or `.`,
+/// which rules out a parent component and any root or prefix. A relative path
+/// without `..` cannot leave the root its including file sits under, and
+/// `rust_sources` reads every `.rs` beneath that root, so membership of the
+/// discovered set follows rather than needing to be checked. A backslash is
+/// refused outright, since it separates components on the platform where
+/// rustc would resolve it and is an ordinary filename character here.
+///
 /// Mutation proof, recorded 2026-09-15 and re-run against the shared extension
 /// comparison; each applied alone here and run through the build:
 ///
 /// - reading the rendered literal for a `"` opener and a `.rs"` close, as this
 ///   contract did before, fails the raw-literal and escaped-literal cases of
 ///   `a_construction_that_only_resembles_a_route_is_not_an_offence`;
-/// - accepting a target containing a `.rs` literal anywhere, rather than one
-///   that is exactly a `.rs` literal, fails
-///   `a_suppression_is_an_offence::case_12_included_from_a_computed_path`
+/// - accepting a target containing a scanned-looking literal anywhere, rather
+///   than one that is exactly such a literal, fails
+///   `a_suppression_is_an_offence::case_15_included_from_a_concatenated_path`
 ///   alone, which earns that case its line;
-/// - returning `true` for every target fails both of that test's `include!`
-///   cases.
+/// - returning `true` for every target fails every `include!` case of that
+///   test;
+/// - dropping the containment test, so the extension alone decides, fails
+///   `case_13_included_outside_the_scanned_tree` and
+///   `case_14_included_from_an_absolute_path`, which is the escape route
+///   review found;
+/// - refusing any target with a separator in it, a containment test drawn one
+///   step too wide, fails
+///   `a_construction_that_only_resembles_a_route_is_not_an_offence::
+///   case_6_included_scanned_subdirectory`.
 ///
-/// A widening that reached only the last top-level token left every case green.
-/// A fixture that survives the mutation it was written for discriminates
-/// nothing, so that widening is recorded rather than the fixture kept for it.
+/// Two widenings are recorded without a fixture, because no fixture
+/// distinguishes them and one that survives its own mutation proves nothing.
+/// Reaching only the last top-level token left every case green, since
+/// `concat!` nests its literals in a group.
+///
+/// The concatenated case had to be added when containment landed. Until then
+/// the computed-path case carried the "exactly one literal" rule, but its
+/// inner literal is `/generated.rs`, which containment now refuses on its own,
+/// so the widening stopped failing anything. Every literal in the concatenated
+/// case names a path the scan would read, which is what restores the
+/// distinction. A rule's mutations are only as good as the last mechanism
+/// change they were re-run against.
 pub fn includes_a_scanned_path(tokens: &TokenStream) -> bool {
-    syn::parse2::<LitStr>(tokens.clone())
-        .is_ok_and(|path| Utf8Path::new(&path.value()).extension() == Some(SOURCE_EXTENSION))
+    syn::parse2::<LitStr>(tokens.clone()).is_ok_and(|literal| is_scanned_path(&literal.value()))
+}
+
+/// Whether a decoded `include!` target names a file the scan reads.
+///
+/// # Examples
+///
+/// `support.rs` and `gen/support.rs` qualify; `../outside.rs`,
+/// `/etc/policy.rs`, `..\outside.rs` and `support.rs.txt` do not.
+fn is_scanned_path(value: &str) -> bool {
+    let path = Utf8Path::new(value);
+    path.extension() == Some(SOURCE_EXTENSION) && !value.contains('\\') && stays_inside(path)
+}
+
+/// Whether a relative path can only descend from where it starts.
+///
+/// # Examples
+///
+/// `gen/support.rs` and `./support.rs` stay inside; `../support.rs` and
+/// `/support.rs` do not.
+fn stays_inside(path: &Utf8Path) -> bool {
+    path.components()
+        .all(|component| matches!(component, Utf8Component::Normal(_) | Utf8Component::CurDir))
 }
 
 /// Return the transcriber of each arm of a `macro_rules!` body.

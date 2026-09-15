@@ -864,6 +864,17 @@ the same extension comparison the scan selects files by, so `r"support.rs"` and
 `"support\x2Ers"` are accepted as readily as `"support.rs"`; any spelling of the
 same literal path is the same path.
 
+The extension alone is not enough. `include!` resolves relative to the
+including file and the scan walks only the source roots, so
+`include!("../../outside/policy.rs")` names a `.rs` file nothing reads. A
+target is accepted only when it stays inside the tree it is included from:
+every component normal or `.`, which refuses a parent component, a root and
+any prefix, and a backslash is refused outright. A relative target without
+`..` cannot leave the root its including file sits under, and every `.rs`
+file beneath that root is read, so membership follows without resolving it.
+Put generated code under a source root and include it by a relative path, or
+bring it under the policy deliberately.
+
 Only a `macro_rules!` transcriber is walked, never an invocation's arguments
 and never a matcher, since nothing in either is necessarily written out.
 

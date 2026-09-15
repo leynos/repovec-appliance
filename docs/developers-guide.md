@@ -856,9 +856,10 @@ extension, so `include!("policy.rs.txt")` brings in code the scan never reads.
 A computed target, such as the `concat!(env!("OUT_DIR"), "/generated.rs")`
 build-script idiom, cannot be resolved by the scan and is reported too:
 generated code has to be brought under the policy deliberately rather than by
-an extension nobody checks. The target is judged by its decoded value, so
-`r"support.rs"` and `"support\x2Ers"` are accepted as readily as
-`"support.rs"`; any spelling of the same literal path is the same path.
+an extension nobody checks. The target is judged by its decoded value, under
+the same extension comparison the scan selects files by, so `r"support.rs"` and
+`"support\x2Ers"` are accepted as readily as `"support.rs"`; any spelling of the
+same literal path is the same path.
 
 Only a `macro_rules!` transcriber is walked, never an invocation's arguments
 and never a matcher, since nothing in either is necessarily written out.

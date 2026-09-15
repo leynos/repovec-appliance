@@ -12,6 +12,13 @@ use cap_std::{ambient_authority, fs_utf8::Dir};
 /// Directories holding Rust sources the policy governs.
 pub const SOURCE_ROOTS: [&str; 1] = ["crates"];
 
+/// The extension of a file this scan reads.
+///
+/// Named once because [`crate::tokens::includes_a_scanned_path`] decides
+/// whether an `include!` target is already scanned, and it has to ask the same
+/// question this module answers.
+pub const SOURCE_EXTENSION: &str = "rs";
+
 /// Return the repository root, from this crate's manifest directory.
 pub fn repository_root() -> Utf8PathBuf {
     Utf8PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
@@ -41,7 +48,7 @@ pub fn rust_sources(root: &Utf8Path, relative: &str) -> Result<Vec<(Utf8PathBuf,
                 let child =
                     current.open_dir(&name).map_err(|error| format!("open {path}: {error}"))?;
                 pending.push_back((child, path));
-            } else if path.extension() == Some("rs") {
+            } else if path.extension() == Some(SOURCE_EXTENSION) {
                 let contents = current
                     .read_to_string(&name)
                     .map_err(|error| format!("read {path}: {error}"))?;

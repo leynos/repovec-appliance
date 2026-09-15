@@ -1,0 +1,1 @@
+fn describe() { println!("never write #![allow(warnings)] here"); }

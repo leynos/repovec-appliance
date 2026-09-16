@@ -163,25 +163,34 @@ def _runner_value(definition: dict[str, object]) -> object | None:
     return definition.get("runs-on")
 
 
-def _labels_in_use() -> set[str]:
-    """Return every label any lane in the repository can select.
+def _runner_declarations(definition: dict[str, object]) -> list[object]:
+    """Return a job's ``runs-on`` declarations, which may be a list of labels."""
+    value = _runner_value(definition)
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def _declaration_labels(declaration: object) -> set[str]:
+    """Return every label one ``runs-on`` declaration can select.
 
     Both arms of an expression count. A label reachable only on the fork
     branch is as much in use as one reachable on the other.
     """
-    labels: set[str] = set()
-    for definition in _jobs().values():
-        value = _runner_value(definition)
-        if value is None:
-            continue
-        declarations = value if isinstance(value, list) else [value]
-        for declaration in declarations:
-            text = str(declaration)
-            if "${{" in text:
-                labels.update(EXPRESSION_LITERAL.findall(text))
-            else:
-                labels.add(text.strip())
-    return labels
+    text = str(declaration)
+    if "${{" in text:
+        return set(EXPRESSION_LITERAL.findall(text))
+    return {text.strip()}
+
+
+def _labels_in_use() -> set[str]:
+    """Return every label any lane in the repository can select."""
+    return {
+        label
+        for definition in _jobs().values()
+        for declaration in _runner_declarations(definition)
+        for label in _declaration_labels(declaration)
+    }
 
 
 def _registered_labels() -> set[str]:

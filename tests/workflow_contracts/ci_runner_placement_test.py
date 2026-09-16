@@ -55,7 +55,14 @@ the failures observed rather than the ones intended:
 - removing ``ubicloud-standard-2`` from ``.github/actionlint.yaml`` fails
   ``test_the_actionlint_registry_matches_the_labels_in_use``; adding an
   unused ``ubicloud-standard-8`` to it fails the same test, so the registry
-  is proved in both directions and not only against omission.
+  is proved in both directions and not only against omission;
+- adding ``.github/workflows/zz-probe.yaml``, one job on an unregistered
+  ``ubicloud-standard-8``, fails ``test_every_job_is_pinned_by_coordinate``
+  and ``test_the_actionlint_registry_matches_the_labels_in_use``. Narrowing
+  ``WORKFLOW_FILE_PATTERNS`` back to ``("*.yml",)`` with that file still in
+  place turns the whole suite green again, which is the hole this reader
+  closes: GitHub runs a workflow written either way, so reading one spelling
+  leaves the other outside every assertion here.
 
 Run via ``make test-workflow-contracts``.
 """
@@ -78,6 +85,10 @@ pytestmark = pytest.mark.skipif(
     reason="workflow files not present in this working copy (e.g. inside "
     "mutmut's mutants/ sandbox, which does not copy .github/)",
 )
+
+#: Both spellings GitHub accepts for a workflow file's extension. Reading one
+#: of them would let a lane in the other sit outside every check here.
+WORKFLOW_FILE_PATTERNS: typ.Final = ("*.yml", "*.yaml")
 
 UBICLOUD_LABEL: typ.Final = "ubicloud-standard-2"
 FORK_FALLBACK_LABEL: typ.Final = "ubuntu-latest"
@@ -139,11 +150,26 @@ def _case_id(value: object) -> str:
     return str(value)
 
 
+def _workflow_paths() -> list[Path]:
+    """Return every workflow document's path, in a stable order.
+
+    GitHub accepts both spellings of the extension and runs a workflow
+    written either way. Reading only one of them would leave a lane in
+    ``.github/workflows/*.yaml`` outside every assertion below, including
+    the coordinate comparison that exists to make the coverage total.
+    """
+    return sorted(
+        path
+        for pattern in WORKFLOW_FILE_PATTERNS
+        for path in WORKFLOW_DIR.glob(pattern)
+    )
+
+
 def _workflows() -> dict[str, dict[str, object]]:
     """Parse every workflow document, keyed by file name."""
     documents = {
         path.name: yaml.safe_load(path.read_text(encoding="utf-8"))
-        for path in sorted(WORKFLOW_DIR.glob("*.yml"))
+        for path in _workflow_paths()
     }
     assert documents, "the repository should define at least one workflow"
     return documents

@@ -13,9 +13,8 @@ accepted = ["ratatui"]
 
 [patterns]
 ignore = [
-  # Official documentation and product names across line wrapping.
-  'Azure Architecture\s+Center\s+\|\s+Microsoft Learn',
-  'GitHub\s+Flavored\s+Markdown',
+  # Inline code spans are masked; the shared dictionary does not mask them yet.
+  '`[^`\n]+`',
 ]
 
 [files]

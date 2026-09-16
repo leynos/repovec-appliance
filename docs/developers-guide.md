@@ -6,13 +6,16 @@ describes the repository-level build, test, lint, and continuous integration
 
 ## Spelling policy
 
-Run `make spelling` to enforce en-GB-oxendict prose spelling. The generated
-`typos.toml` starts from the shared Oxford dictionary and applies the narrow
-repository policy in `typos.local.toml`. Edit the local policy, then run
-`make spelling-config` rather than changing generated entries by hand. The
-focused shared config builder refreshes its untracked dictionary cache only
-when the authoritative copy is newer. The consumer checker enforces exact
-phrase corrections that the token-based Typos scanner cannot represent.
+Run `make spelling` to enforce en-GB-oxendict prose spelling. Every run
+regenerates `typos.toml` from the live shared dictionary and the
+`typos.local.toml` overlay, then checks the tracked Markdown. Never edit
+generated entries by hand; add narrow repository-specific entries to
+`typos.local.toml` instead. Because the dictionary is live, `typos.toml` must
+never be drift checked in continuous integration. The builder refreshes its
+untracked dictionary cache only when the authoritative copy is newer, and a
+valid cache remains usable when the network is unavailable. The gate also
+enforces the exact phrase corrections that the token-based Typos scanner cannot
+represent.
 
 ## Normative references
 

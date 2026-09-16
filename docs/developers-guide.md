@@ -183,9 +183,10 @@ as a test assertion on the SHA string.
 
 ### 2.2 Runner placement and job ceilings
 
-All seven `ci.yml` jobs run on `ubicloud-standard-2`, except on a pull request
-from a fork, which cannot obtain an Ubicloud runner and falls back to a
-GitHub-hosted one:
+Every `ci.yml` job runs on Ubicloud, except on a pull request from a fork,
+which cannot obtain an Ubicloud runner and falls back to a GitHub-hosted one.
+Six jobs use `ubicloud-standard-2`; `lint` uses `ubicloud-standard-4`, for the
+reason given under "Right-sizing `lint`" below:
 
 ```yaml
 runs-on: >-
@@ -203,9 +204,12 @@ are thin callers of reusable workflows, so this repository declares no runner
 for them; scheduled and administrative lanes also keep free public-repository
 minutes on GitHub-hosted runners.
 
-`.github/actionlint.yaml` registers `ubicloud-standard-2`, because actionlint
+`.github/actionlint.yaml` registers both Ubicloud labels, because actionlint
 validates `runs-on` against GitHub's own label set and would otherwise report
-every migrated lane as an unknown runner.
+every migrated lane as an unknown runner. The contract compares the registry
+against the labels in use in both directions, so adding a shape without
+registering it fails, and so does leaving a registered shape behind after a
+lane stops using it.
 
 #### Why the lanes moved
 
@@ -223,8 +227,8 @@ GitHub-hosted runner beside the seconds it then ran for:
 | check-fmt    | 2601          | 37    | 552           | 35    |
 | systemd-gate | 2702          | 46    | 1687          | 35    |
 
-*Table 1: Seconds queued and seconds run per CI job, two samples taken about
-six hours apart on 2026-09-16.*
+*Table 1: Seconds queued and seconds run per CI job on GitHub-hosted runners,
+two samples taken about six hours apart on 2026-09-16.*
 
 Summed across the seven jobs, execution totalled 547 s and 610 s while queueing
 totalled 11 827 s and 9 115 s, a wait of twenty-two and fifteen times the work.
@@ -251,6 +255,23 @@ it. The values are a generous multiple of the measured maximum:
 | lint         | 244 s                | 30 min  |
 
 *Table 2: Longest measured run per CI job against its reviewed ceiling.*
+
+#### Right-sizing `lint`
+
+`lint` is the critical path. On `ubicloud-standard-2` it ran for 613 s while no
+other job exceeded 325 s, and its time is work a compilation cache cannot
+avoid: linking, and the analysis passes of Clippy, `cargo doc` and the Whitaker
+dylint suite. sccache was healthy in that run, with 2584 compile requests, 2175
+hits, 26 misses and no cache errors, so the cost is cores rather than cache.
+
+`lint` therefore runs on `ubicloud-standard-4`. Four vCPU bills at twice the
+per-minute rate, so if the work roughly halves the change is about cost-neutral
+and buys back the wall-clock time. The before figure is 613 s; the after figure
+belongs in the pull request that makes the change, measured rather than
+predicted.
+
+No other job earns a larger shape: the next slowest is `test` at 325 s, and the
+rest finish inside two minutes.
 
 `lint` and `docs-gate` carry the widest margins because each has an install
 path neither sample exercised. `lint` falls back to building

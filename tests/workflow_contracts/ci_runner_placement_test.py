@@ -46,8 +46,17 @@ the failures observed rather than the ones intended:
   ``test_the_runner_expression_is_exactly_the_reviewed_one`` for that job
   alone and nothing else, which is what makes the check narrow rather than
   merely sufficient;
-- removing the ``docs-gate`` entry from ``UBICLOUD_CEILING_MINUTES`` fails
+- removing the ``docs-gate`` entry from ``UBICLOUD_PLACEMENT`` fails
   ``test_every_job_is_pinned_by_coordinate`` alone;
+- changing ``lint``'s pinned label from ``ubicloud-standard-4`` back to
+  ``ubicloud-standard-2`` fails
+  ``test_the_runner_expression_is_exactly_the_reviewed_one`` for ``lint``
+  alone, so a right-sized shape cannot be quietly reverted;
+- removing ``ubicloud-standard-4`` from the registry fails
+  ``test_the_actionlint_registry_matches_the_labels_in_use``. This one was
+  not contrived: the registry check failed the moment ``lint`` moved to four
+  vCPU and before the registry was updated, which is the contract doing its
+  job unprompted;
 - deleting ``timeout-minutes`` from the ``lint`` job fails
   ``test_the_job_declares_its_reviewed_ceiling`` for that job and
   ``test_every_ubicloud_job_has_a_ceiling``, which is both halves of the
@@ -90,7 +99,9 @@ pytestmark = pytest.mark.skipif(
 #: of them would let a lane in the other sit outside every check here.
 WORKFLOW_FILE_PATTERNS: typ.Final = ("*.yml", "*.yaml")
 
-UBICLOUD_LABEL: typ.Final = "ubicloud-standard-2"
+#: Every Ubicloud label starts with this. Used where the question is "is this
+#: lane on Ubicloud at all", which must stay true as shapes are right-sized.
+UBICLOUD_LABEL_PREFIX: typ.Final = "ubicloud-"
 FORK_FALLBACK_LABEL: typ.Final = "ubuntu-latest"
 
 #: The one guard the fork fallback may key on. Compared by equality, because a
@@ -98,18 +109,21 @@ FORK_FALLBACK_LABEL: typ.Final = "ubuntu-latest"
 #: the same shape that selects the wrong runner on every fork pull request.
 FORK_GUARD: typ.Final = "github.event.pull_request.head.repo.fork"
 
-#: Ceilings sized from two measured runs and recorded, with the measurements,
-#: in docs/developers-guide.md under "Continuous integration". The values are
-#: pinned rather than merely bounded, because a ceiling can drift to a number
-#: nobody chose while every inequality still holds.
-UBICLOUD_CEILING_MINUTES: typ.Final = {
-    ("ci.yml", "spelling"): 10,
-    ("ci.yml", "build"): 15,
-    ("ci.yml", "check-fmt"): 15,
-    ("ci.yml", "test"): 25,
-    ("ci.yml", "lint"): 30,
-    ("ci.yml", "docs-gate"): 30,
-    ("ci.yml", "systemd-gate"): 15,
+#: Every Ubicloud job, with the reviewed label and the reviewed ceiling it
+#: must carry. Both are pinned per coordinate rather than assumed uniform:
+#: `lint` was right-sized to four vCPU on measurement, and a shape that is
+#: merely "some Ubicloud label" is not a reviewed decision. Ceilings are
+#: pinned by value rather than bounded, because a ceiling can drift to a
+#: number nobody chose while every inequality still holds. The measurements
+#: behind both are in docs/developers-guide.md, section 2.2.
+UBICLOUD_PLACEMENT: typ.Final = {
+    ("ci.yml", "spelling"): ("ubicloud-standard-2", 10),
+    ("ci.yml", "build"): ("ubicloud-standard-2", 15),
+    ("ci.yml", "check-fmt"): ("ubicloud-standard-2", 15),
+    ("ci.yml", "test"): ("ubicloud-standard-2", 25),
+    ("ci.yml", "lint"): ("ubicloud-standard-4", 30),
+    ("ci.yml", "docs-gate"): ("ubicloud-standard-2", 30),
+    ("ci.yml", "systemd-gate"): ("ubicloud-standard-2", 15),
 }
 
 #: Jobs this repository does not place: thin callers of reusable workflows,
@@ -209,13 +223,19 @@ def _declaration_labels(declaration: object) -> set[str]:
     return {text.strip()}
 
 
+def _job_labels(definition: dict[str, object]) -> set[str]:
+    """Return every label one job can select, across all its declarations."""
+    return {
+        label
+        for declaration in _runner_declarations(definition)
+        for label in _declaration_labels(declaration)
+    }
+
+
 def _labels_in_use() -> set[str]:
     """Return every label any lane in the repository can select."""
     return {
-        label
-        for definition in _jobs().values()
-        for declaration in _runner_declarations(definition)
-        for label in _declaration_labels(declaration)
+        label for definition in _jobs().values() for label in _job_labels(definition)
     }
 
 
@@ -238,7 +258,7 @@ def test_every_job_is_pinned_by_coordinate() -> None:
     other assertion here.
     """
     observed = set(_jobs())
-    expected = set(UBICLOUD_CEILING_MINUTES) | DELEGATED_JOBS
+    expected = set(UBICLOUD_PLACEMENT) | DELEGATED_JOBS
     assert observed == expected, (
         "runner placement is pinned per job; unpinned jobs "
         f"{sorted(observed - expected)} and stale pins "
@@ -246,7 +266,7 @@ def test_every_job_is_pinned_by_coordinate() -> None:
     )
 
 
-@pytest.mark.parametrize("coordinate", sorted(UBICLOUD_CEILING_MINUTES), ids=_case_id)
+@pytest.mark.parametrize("coordinate", sorted(UBICLOUD_PLACEMENT), ids=_case_id)
 def test_the_runner_expression_parses_to_one_line(
     coordinate: tuple[str, str],
 ) -> None:
@@ -269,9 +289,13 @@ def test_the_runner_expression_parses_to_one_line(
     )
 
 
-@pytest.mark.parametrize("coordinate", sorted(UBICLOUD_CEILING_MINUTES), ids=_case_id)
+@pytest.mark.parametrize(
+    ("coordinate", "label"),
+    sorted((key, value[0]) for key, value in UBICLOUD_PLACEMENT.items()),
+    ids=_case_id,
+)
 def test_the_runner_expression_is_exactly_the_reviewed_one(
-    coordinate: tuple[str, str],
+    coordinate: tuple[str, str], label: str
 ) -> None:
     """Scenario: the fork guard is swapped for a plausible sibling field.
 
@@ -296,15 +320,15 @@ def test_the_runner_expression_is_exactly_the_reviewed_one(
         f"{match['fork_arm']!r}; a fork cannot obtain an Ubicloud runner, so "
         f"the fork arm must be {FORK_FALLBACK_LABEL!r}"
     )
-    assert match["default_arm"] == UBICLOUD_LABEL, (
+    assert match["default_arm"] == label, (
         f"{coordinate[0]}:{coordinate[1]} runs non-fork events on "
-        f"{match['default_arm']!r}, not the reviewed {UBICLOUD_LABEL!r}"
+        f"{match['default_arm']!r}, not the reviewed {label!r}"
     )
 
 
 @pytest.mark.parametrize(
     ("coordinate", "minutes"),
-    sorted(UBICLOUD_CEILING_MINUTES.items()),
+    sorted((key, value[1]) for key, value in UBICLOUD_PLACEMENT.items()),
     ids=_case_id,
 )
 def test_the_job_declares_its_reviewed_ceiling(
@@ -335,7 +359,9 @@ def test_every_ubicloud_job_has_a_ceiling() -> None:
     unbounded = [
         coordinate
         for coordinate, definition in _jobs().items()
-        if UBICLOUD_LABEL in str(_runner_value(definition) or "")
+        if any(
+            label.startswith(UBICLOUD_LABEL_PREFIX) for label in _job_labels(definition)
+        )
         and definition.get("timeout-minutes") is None
     ]
     assert not unbounded, (

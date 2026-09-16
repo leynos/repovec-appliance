@@ -101,9 +101,16 @@ jobs:
 
   lint:
     name: lint
+    # Right-sized on measurement, not by default. `lint` is the critical
+    # path: 613 s on `ubicloud-standard-2` against 76 s to 325 s for every
+    # other job. Its time is work sccache cannot avoid (linking, and the
+    # analysis passes of Clippy, `cargo doc` and the Whitaker dylint
+    # suite), so it scales with cores rather than with cache. Four vCPU
+    # costs twice per minute, which is roughly cost-neutral if the work
+    # halves, and buys back the wall-clock time.
     runs-on: >-
       ${{ github.event.pull_request.head.repo.fork
-      && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+      && 'ubuntu-latest' || 'ubicloud-standard-4' }}
     timeout-minutes: 30
     permissions:
       contents: read

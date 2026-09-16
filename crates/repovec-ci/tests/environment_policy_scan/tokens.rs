@@ -80,17 +80,17 @@ fn is_forwarded(body: &TokenStream) -> bool {
 /// relative to the including file and the scan walks only the source roots.
 /// `include!("../../outside/policy.rs")` names a `.rs` file the scan never
 /// reads, so a suppression there would be invisible. The target must therefore
-/// stay inside the tree it is included from: every component normal or `.`,
-/// which rules out a parent component and any root or prefix. A relative path
-/// without `..` cannot leave the root its including file sits under, and
-/// `rust_sources` reads every `.rs` beneath that root, so membership of the
-/// discovered set follows rather than needing to be checked. That second
-/// premise is only true because [`crate::sources::rust_sources`] refuses a
-/// symlink rather than stepping over one: a target under a symlinked
-/// directory would otherwise be contained, accepted and never scanned. A
-/// backslash is
-/// refused outright, since it separates components on the platform where
-/// rustc would resolve it and is an ordinary filename character here.
+/// stay inside the tree it is included from: each component is either normal
+/// or `.`, which rules out a parent component and any root or prefix. A
+/// relative path without `..` cannot leave the root its including file sits
+/// under, and `rust_sources` reads every `.rs` beneath that root, so
+/// membership of the discovered set follows rather than needing to be
+/// checked. That second premise is only true because
+/// [`crate::sources::rust_sources`] refuses a symlink rather than stepping
+/// over one: a target under a symlinked directory would otherwise be
+/// contained, accepted and never scanned. A backslash is refused outright,
+/// since it separates components on the platform where rustc would resolve it
+/// and is an ordinary filename character here.
 ///
 /// Mutation proof, recorded 2026-09-15 and re-run against the shared extension
 /// comparison; each applied alone here and run through the build:

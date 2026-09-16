@@ -68,8 +68,11 @@ pub fn rust_sources(root: &Utf8Path, relative: &str) -> Result<Vec<(Utf8PathBuf,
                 entry.file_type().map_err(|error| format!("type of {path}: {error}"))?;
             if file_type.is_symlink() {
                 return Err(format!(
-                    "{path} is a symlink; the scan does not follow one, so a \
-                     source reached through it would not be read"
+                    concat!(
+                        "{path} is a symlink; the scan does not follow one, so ",
+                        "a source reached through it would not be read"
+                    ),
+                    path = path
                 ));
             }
             if file_type.is_dir() {

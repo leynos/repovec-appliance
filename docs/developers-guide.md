@@ -868,12 +868,12 @@ The extension alone is not enough. `include!` resolves relative to the
 including file and the scan walks only the source roots, so
 `include!("../../outside/policy.rs")` names a `.rs` file nothing reads. A
 target is accepted only when it stays inside the tree it is included from:
-every component normal or `.`, which refuses a parent component, a root and
-any prefix, and a backslash is refused outright. A relative target without
-`..` cannot leave the root its including file sits under, and every `.rs`
-file beneath that root is read, so membership follows without resolving it.
-Put generated code under a source root and include it by a relative path, or
-bring it under the policy deliberately.
+each component is either normal or `.`, which refuses a parent component, a
+root and any prefix, and a backslash is refused outright. A relative target
+without `..` cannot leave the root its including file sits under, and every
+`.rs` file beneath that root is read, so membership follows without resolving
+it. Put generated code under a source root and include it by a relative path,
+or bring it under the policy deliberately.
 
 That second premise needs a guard. The walk does not follow a symlink, so a
 link skipped in silence would leave a target reached through it unscanned

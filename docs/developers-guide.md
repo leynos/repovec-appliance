@@ -265,13 +265,15 @@ dylint suite. sccache was healthy in that run, with 2584 compile requests, 2175
 hits, 26 misses and no cache errors, so the cost is cores rather than cache.
 
 `lint` therefore runs on `ubicloud-standard-4`. Four vCPU bills at twice the
-per-minute rate, so if the work roughly halves the change is about cost-neutral
-and buys back the wall-clock time. The before figure is 613 s; the after figure
-belongs in the pull request that makes the change, measured rather than
-predicted.
+per-minute rate, so the change pays if the work roughly halves. Measured, it
+does: 613 s became 338 s, which is 0.55 of the time at twice the rate, so about
+1.1 times the cost for 275 s less wall clock. The cache stayed healthy at the
+larger shape, 98.73 per cent of 2584 compile requests.
 
-No other job earns a larger shape: the next slowest is `test` at 325 s, and the
-rest finish inside two minutes.
+No other job earns a larger shape, and `lint` has stopped earning more. At 338
+s it is level with `test` at 333 s, so it is no longer the critical path on its
+own and enlarging it further alone would buy almost nothing. Every other job
+finishes inside two minutes.
 
 `lint` and `docs-gate` carry the widest margins because each has an install
 path neither sample exercised. `lint` falls back to building

@@ -861,26 +861,26 @@ build-script idiom, cannot be resolved by the scan and is reported too:
 generated code has to be brought under the policy deliberately rather than by
 an extension nobody checks. The target is judged by its decoded value, under
 the same extension comparison the scan selects files by, so `r"support.rs"` and
-`"support\x2Ers"` are accepted as readily as `"support.rs"`; any spelling of the
-same literal path is the same path.
+`"support\x2Ers"` are accepted as readily as `"support.rs"`; any spelling of
+the same literal path is the same path.
 
 The extension alone is not enough. `include!` resolves relative to the
 including file and the scan walks only the source roots, so
 `include!("../../outside/policy.rs")` names a `.rs` file nothing reads. A
-target is accepted only when it stays inside the tree it is included from:
-each component is either normal or `.`, which refuses a parent component, a
-root and any prefix, and a backslash is refused outright. A relative target
-without `..` cannot leave the root its including file sits under, and every
-`.rs` file beneath that root is read, so membership follows without resolving
-it. Put generated code under a source root and include it by a relative path,
-or bring it under the policy deliberately.
+target is accepted only when it stays inside the tree it is included from: each
+component is either normal or `.`, which refuses a parent component, a root and
+any prefix, and a backslash is refused outright. A relative target without `..`
+cannot leave the root its including file sits under, and every `.rs` file
+beneath that root is read, so membership follows without resolving it. Put
+generated code under a source root and include it by a relative path, or bring
+it under the policy deliberately.
 
 That second premise needs a guard. The walk does not follow a symlink, so a
-link skipped in silence would leave a target reached through it unscanned
-while every gate stayed green. The walk therefore refuses a symlink under a
-source root outright, naming it, rather than stepping over it. If a source
-tree ever needs one, the scan has to learn to resolve targets before the link
-can be allowed.
+link skipped in silence would leave a target reached through it unscanned while
+every gate stayed green. The walk therefore refuses a symlink under a source
+root outright, naming it, rather than stepping over it. If a source tree ever
+needs one, the scan has to learn to resolve targets before the link can be
+allowed.
 
 Only a `macro_rules!` transcriber is walked, never an invocation's arguments
 and never a matcher, since nothing in either is necessarily written out.
@@ -897,8 +897,7 @@ The contract spans six files, to keep each inside the 400-line limit.
 `environment_policy_scan/sources.rs` decides which files are read,
 `environment_policy_scan/scan.rs` decides what they mean,
 `environment_policy_scan/tokens.rs` recovers attributes from macro token
-streams,
-`environment_policy_scan/workspace.rs` holds the contracts over the
+streams, `environment_policy_scan/workspace.rs` holds the contracts over the
 repository's own sources and the scan's error paths,
 `environment_policy_scan/properties.rs` holds the properties, and
 `environment_policy_source_scan.rs` holds the judgements over samples. The

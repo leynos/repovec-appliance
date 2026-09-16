@@ -815,12 +815,95 @@ benchmark code is covered as well as production code.
 Process arguments are outside this policy. `std::env::args` and
 `std::env::args_os` remain available at executable entry points.
 
-Two tests in `repovec-ci` keep this from decaying.
+Three tests in `repovec-ci` keep this from decaying.
 `environment_access_policy_contract` reads the checked-in configuration and
 fails if an entry, the deny, a crate's lint inheritance, or the lint gate's
 scope is removed. `environment_policy_lint_ui` runs Clippy over a fixture
 package that calls all six methods and asserts each is reported with its
 remedy, so a configuration that parses but never fires is caught too.
+`environment_policy_source_scan` parses every workspace source and rejects any
+that allows a protected lint, because a crate-level
+`#![allow(clippy::disallowed_methods)]` disarms the policy for a whole crate
+while every other gate stays green: the workspace denies
+`clippy::allow_attributes`, but that lint does not fire on inner attributes.
+Naming the lint is not enough to protect it, in two directions. Upwards, Clippy
+places `disallowed_methods` in the `style` group, so `clippy::style`,
+`clippy::all` and `warnings` are guarded too. Sideways, `clippy::restriction`
+is guarded with the two `allow_attributes` lints it contains, because
+suppressing those silences the guard that makes the "`expect`, never `allow`"
+rule enforceable: under `#![allow(clippy::restriction)]` an outer allow of the
+policy lint produces no diagnostic at all. A suppression nested in a `cfg_attr`
+is followed whatever its condition, and macro token streams are walked as well
+as parsed attributes, because Clippy honours an `allow` emitted from a
+`macro_rules!` arm that the syntax tree never exposes. Use an item-scoped
+`#[expect(...)]` at a composition root instead, which warns once the site no
+longer needs it. Item-scoped is the operative word: a crate-scoped
+`#![expect(...)]` is fulfilled by any single call beneath it, so it neither
+reports that call nor warns that it went unfulfilled, and the scan treats it as
+a suppression. Raw spellings such as `r#allow` and `clippy::r#style` are
+normalized before comparison, because Clippy honours them too.
+
+An attribute whose body is a macro metavariable is refused rather than
+resolved. A `macro_rules!` arm writing `#[$attr]`, invoked as
+`forward!(allow(clippy::disallowed_methods))`, silences the policy lint with no
+diagnostic of any kind, and neither half is visible to a scan: `#[$attr]` does
+not parse as an attribute body, and the invocation carries no `#`. Only the
+shapes that could bear on the policy are refused, those whose body begins with
+`$`, or with `allow`, `expect` or `cfg_attr`; `#[doc = $doc]` and
+`#[derive($trait)]` are left alone. Write the lint into the attribute rather
+than passing it in.
+
+`include!` is a finding unless its target is a literal `.rs` path. It resolves
+a path rather than a module, and rustc parses the target as Rust whatever its
+extension, so `include!("policy.rs.txt")` brings in code the scan never reads.
+A computed target, such as the `concat!(env!("OUT_DIR"), "/generated.rs")`
+build-script idiom, cannot be resolved by the scan and is reported too:
+generated code has to be brought under the policy deliberately rather than by
+an extension nobody checks. The target is judged by its decoded value, under
+the same extension comparison the scan selects files by, so `r"support.rs"` and
+`"support\x2Ers"` are accepted as readily as `"support.rs"`; any spelling of
+the same literal path is the same path.
+
+The extension alone is not enough. `include!` resolves relative to the
+including file and the scan walks only the source roots, so
+`include!("../../outside/policy.rs")` names a `.rs` file nothing reads. A
+target is accepted only when it stays inside the tree it is included from: each
+component is either normal or `.`, which refuses a parent component, a root and
+any prefix, and a backslash is refused outright. A relative target without `..`
+cannot leave the root its including file sits under, and every `.rs` file
+beneath that root is read, so membership follows without resolving it. Put
+generated code under a source root and include it by a relative path, or bring
+it under the policy deliberately.
+
+That second premise needs a guard. The walk does not follow a symlink, so a
+link skipped in silence would leave a target reached through it unscanned while
+every gate stayed green. The walk therefore refuses a symlink under a source
+root outright, naming it, rather than stepping over it. If a source tree ever
+needs one, the scan has to learn to resolve targets before the link can be
+allowed.
+
+Only a `macro_rules!` transcriber is walked, never an invocation's arguments
+and never a matcher, since nothing in either is necessarily written out.
+
+Each of those routes was a place the enforcement mechanism could not see: inner
+attributes are invisible to `allow_attributes`, groups to a name check,
+`cfg_attr` to a line scan, macro bodies to a syntax tree. Sample-based tests
+pin the routes that were found; property tests state the claim itself, that
+what the scan reports is decided by the lint named and by the scope the
+attribute takes and by nothing else, over generated lint names, forms, macro
+nesting depths and reason strings.
+
+The contract spans six files, to keep each inside the 400-line limit.
+`environment_policy_scan/sources.rs` decides which files are read,
+`environment_policy_scan/scan.rs` decides what they mean,
+`environment_policy_scan/tokens.rs` recovers attributes from macro token
+streams, `environment_policy_scan/workspace.rs` holds the contracts over the
+repository's own sources and the scan's error paths,
+`environment_policy_scan/properties.rs` holds the properties, and
+`environment_policy_source_scan.rs` holds the judgements over samples. The
+samples live in `crates/repovec-ci/tests/fixtures/env_policy_samples` as
+`.rs.txt` files, since a `.rs` file there would be read by the workspace scan
+itself and reported as an offence.
 
 ### 8.2 Choosing a seam
 

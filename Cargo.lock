@@ -2348,10 +2348,13 @@ dependencies = [
  "camino",
  "cap-std 4.0.3",
  "insta",
+ "proc-macro2",
+ "proptest",
  "repovec-core",
  "rstest",
  "rstest-bdd",
  "rstest-bdd-macros",
+ "syn 3.0.3",
  "tempfile",
  "toml 1.1.5+spec-1.1.0",
 ]

@@ -38,14 +38,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@95e90ba9e33eaeb3c8b4bf6ed1dbe1d7184ee710
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: "1.3.12"
-      - name: Install markdownlint-cli2
-        shell: bash
-        run: |
-          set -euo pipefail
-          bun install --global markdownlint-cli2@0.22.0
       - name: Build
         run: make build
 
@@ -58,16 +50,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@95e90ba9e33eaeb3c8b4bf6ed1dbe1d7184ee710
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Install mdtablefix
+        # `make check-fmt` runs `mdtablefix --check --git`; 0.6.0 is the
+        # first release with `--check` and `--git`.
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@c5a54701c8603a0fa756a6b34c49bc2af75a6c11
         with:
-          bun-version: "1.3.12"
-      - name: Install markdownlint-cli2
-        shell: bash
-        run: |
-          set -euo pipefail
-          bun install --global markdownlint-cli2@0.22.0
+          version: "0.6.0"
+
       - name: Check formatting
         run: make check-fmt
+
+      - name: Lint Markdown
+        # The upstream action rather than an installation of our own: its
+        # release carries the linter's whole dependency graph, so nothing is
+        # resolved from the registry at run time, and Dependabot manages the
+        # pin alongside the other actions. It reads .markdownlint-cli2.jsonc
+        # from the workspace, so the rules and ignores match `make markdownlint`.
+        uses: DavidAnson/markdownlint-cli2-action@4580e1612f6407034edd6c0e4e316d725920867b  # v24.2.0
+        with:
+          globs: '**/*.md'
 
   lint:
     name: lint
@@ -78,14 +79,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@95e90ba9e33eaeb3c8b4bf6ed1dbe1d7184ee710
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: "1.3.12"
-      - name: Install markdownlint-cli2
-        shell: bash
-        run: |
-          set -euo pipefail
-          bun install --global markdownlint-cli2@0.22.0
       - name: Cache Whitaker installer
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -126,14 +119,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@95e90ba9e33eaeb3c8b4bf6ed1dbe1d7184ee710
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: "1.3.12"
-      - name: Install markdownlint-cli2
-        shell: bash
-        run: |
-          set -euo pipefail
-          bun install --global markdownlint-cli2@0.22.0
       - name: Setup uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
@@ -201,19 +186,16 @@ jobs:
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
           python-version: '3.14'
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        if: steps.docs_gate_plan.outputs.docs_gate_required == 'true'
-        with:
-          bun-version: "1.3.12"
-      - name: Install markdownlint-cli2
-        if: steps.docs_gate_plan.outputs.docs_gate_required == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          bun install --global markdownlint-cli2@0.22.0
       - name: Markdown lint
+        # The upstream action rather than an installation of our own: its
+        # release carries the linter's whole dependency graph, so nothing is
+        # resolved from the registry at run time, and Dependabot manages the
+        # pin alongside the other actions. It reads .markdownlint-cli2.jsonc
+        # from the workspace, so the rules and ignores match `make markdownlint`.
         if: steps.docs_gate_plan.outputs.docs_gate_required == 'true'
-        run: make markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@4580e1612f6407034edd6c0e4e316d725920867b  # v24.2.0
+        with:
+          globs: '**/*.md'
       - name: Install Mermaid validation tools
         if: steps.docs_gate_plan.outputs.nixie_required == 'true'
         shell: bash

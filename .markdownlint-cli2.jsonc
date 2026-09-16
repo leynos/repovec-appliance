@@ -16,6 +16,10 @@
     "**/node_modules/**",
     "**/target/**",
     ".uv-cache/**",
-    ".git/**"
+    ".git/**",
+    ".vtcode/**",
+    ".terraform/**",
+    "memories/**",
+    "CRUSH.md"
   ]
 }

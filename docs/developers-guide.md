@@ -223,6 +223,9 @@ GitHub-hosted runner beside the seconds it then ran for:
 | check-fmt    | 2601          | 37    | 552           | 35    |
 | systemd-gate | 2702          | 46    | 1687          | 35    |
 
+*Table 1: Seconds queued and seconds run per CI job, two samples taken about
+six hours apart on 2026-09-16.*
+
 Summed across the seven jobs, execution totalled 547 s and 610 s while queueing
 totalled 11 827 s and 9 115 s, a wait of twenty-two and fifteen times the work.
 (The sums are per job, not wall clock: the jobs queue in parallel.) Both runs
@@ -246,6 +249,8 @@ it. The values are a generous multiple of the measured maximum:
 | docs-gate    | 81 s                 | 30 min  |
 | test         | 169 s                | 25 min  |
 | lint         | 244 s                | 30 min  |
+
+*Table 2: Longest measured run per CI job against its reviewed ceiling.*
 
 `lint` and `docs-gate` carry the widest margins because each has an install
 path neither sample exercised. `lint` falls back to building

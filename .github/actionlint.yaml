@@ -1,0 +1,14 @@
+# Runner labels actionlint cannot know about.
+#
+# actionlint validates `runs-on` against GitHub's own label set and reports
+# anything else as an unknown runner. Ubicloud's labels are not in that set,
+# so every migrated lane would be a finding without this registry.
+#
+# The registry is held to the labels actually in use, in both directions, by
+# tests/workflow_contracts/ci_runner_placement_test.py: a label registered
+# here and used nowhere is as much a defect as a label used and not
+# registered. A stale entry is what lets a lane move to a runner family
+# nobody reviewed while actionlint stays quiet about it.
+self-hosted-runner:
+  labels:
+    - ubicloud-standard-2

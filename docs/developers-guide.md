@@ -181,6 +181,126 @@ If a workflow's behaviour genuinely depends on a feature only present from a
 particular commit onwards, express that as a comment or a changelog note, not
 as a test assertion on the SHA string.
 
+### 2.2 Runner placement and job ceilings
+
+Every `ci.yml` job runs on Ubicloud, except on a pull request from a fork,
+which cannot obtain an Ubicloud runner and falls back to a GitHub-hosted one.
+Six jobs use `ubicloud-standard-2`; `lint` uses `ubicloud-standard-4`, for the
+reason given under "Right-sizing `lint`" below:
+
+```yaml
+runs-on: >-
+  ${{ github.event.pull_request.head.repo.fork
+  && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+```
+
+The continuation line sits at the same indent as the line above it. A
+more-indented continuation in a folded scalar keeps its line break, putting a
+newline inside the expression. GitHub evaluates the broken value and the job
+runs, so a green run is not evidence that the scalar is well formed.
+
+`mutation-testing.yml` and `dependabot-automerge.yml` stay where they are. Both
+are thin callers of reusable workflows, so this repository declares no runner
+for them; scheduled and administrative lanes also keep free public-repository
+minutes on GitHub-hosted runners.
+
+`.github/actionlint.yaml` registers both Ubicloud labels, because actionlint
+validates `runs-on` against GitHub's own label set and would otherwise report
+every migrated lane as an unknown runner. The contract compares the registry
+against the labels in use in both directions, so adding a shape without
+registering it fails, and so does leaving a registered shape behind after a
+lane stops using it.
+
+#### Why the lanes moved
+
+Queueing, not execution, was the cost. Two samples from `ci.yml`, taken about
+six hours apart on 2026-09-16, with the seconds each job spent waiting for a
+GitHub-hosted runner beside the seconds it then ran for:
+
+| Job          | Queue (run 1) | Run 1 | Queue (run 2) | Run 2 |
+| ------------ | ------------- | ----- | ------------- | ----- |
+| spelling     | 41            | 13    | 1348          | 9     |
+| docs-gate    | 1094          | 42    | 1217          | 81    |
+| lint         | 1117          | 215   | 1541          | 244   |
+| test         | 1686          | 157   | 1009          | 169   |
+| build        | 2586          | 37    | 1761          | 37    |
+| check-fmt    | 2601          | 37    | 552           | 35    |
+| systemd-gate | 2702          | 46    | 1687          | 35    |
+
+*Table 1: Seconds queued and seconds run per CI job on GitHub-hosted runners,
+two samples taken about six hours apart on 2026-09-16.*
+
+Summed across the seven jobs, execution totalled 547 s and 610 s while queueing
+totalled 11 827 s and 9 115 s, a wait of twenty-two and fifteen times the work.
+(The sums are per job, not wall clock: the jobs queue in parallel.) Both runs
+put the longest single job under four and a half minutes, which is why
+`ubicloud-standard-2` is the reviewed shape and not a larger one.
+
+#### Ceilings
+
+Every job declares `timeout-minutes`. A per-minute runner bills until something
+stops it, so GitHub's six-hour default is the expensive failure mode; a ceiling
+close to the measured work is the other one, because it cancels the run at the
+moment an overrun becomes interesting and discards the log that would explain
+it. The values are a generous multiple of the measured maximum:
+
+| Job          | Longest measured run | Ceiling |
+| ------------ | -------------------- | ------- |
+| spelling     | 13 s                 | 10 min  |
+| check-fmt    | 37 s                 | 15 min  |
+| build        | 37 s                 | 15 min  |
+| systemd-gate | 46 s                 | 15 min  |
+| docs-gate    | 81 s                 | 30 min  |
+| test         | 169 s                | 25 min  |
+| lint         | 244 s                | 30 min  |
+
+*Table 2: Longest measured run per CI job against its reviewed ceiling.*
+
+#### Right-sizing `lint`
+
+`lint` is the critical path. On `ubicloud-standard-2` it ran for 613 s while no
+other job exceeded 325 s, and its time is work a compilation cache cannot
+avoid: linking, and the analysis passes of Clippy, `cargo doc` and the Whitaker
+dylint suite. sccache was healthy in that run, with 2584 compile requests, 2175
+hits, 26 misses and no cache errors, so the cost is cores rather than cache.
+
+`lint` therefore runs on `ubicloud-standard-4`. Four vCPU bills at twice the
+per-minute rate, so the change pays if the work roughly halves. Measured, it
+does: 613 s became 338 s, which is 0.55 of the time at twice the rate, so about
+1.1 times the cost for 275 s less wall clock. The cache stayed healthy at the
+larger shape, 98.73 per cent of 2584 compile requests.
+
+No other job earns a larger shape, and `lint` has stopped earning more. At 338
+s it is level with `test` at 333 s, so it is no longer the critical path on its
+own and enlarging it further alone would buy almost nothing. Every other job
+finishes inside two minutes.
+
+`lint` and `docs-gate` carry the widest margins because each has an install
+path neither sample exercised. `lint` falls back to building
+`whitaker-installer` from crates.io when its cache misses and `cargo binstall`
+is unavailable, and `docs-gate` runs `cargo install merman-cli` when a changed
+Markdown file contains a Mermaid diagram. Both are source builds, so the
+ceiling covers work that has not been timed here.
+
+#### The contract
+
+`tests/workflow_contracts/ci_runner_placement_test.py` holds all of the above,
+and runs in the `lint` job through `make test-workflow-contracts`. It reads
+every job's `runs-on` from the parsed document, so an embedded line break is a
+failure rather than something only GitHub sees. It compares the guard
+expression and both arms against exact strings, so a sibling field such as
+`head.repo.private` cannot stand in for `head.repo.fork`. It pins placement by
+`(workflow, job id)` coordinate and compares the pinned set against the tree's
+jobs in both directions, so a new lane cannot appear unplaced. It requires a
+ceiling on every job that can select an Ubicloud label, whether or not that job
+is in the pinned table. It asserts that the two reusable callers declare no
+runner. Finally, it compares the actionlint registry against the labels
+actually in use in both directions, because a stale entry silently permits a
+runner family nobody reviewed, for whatever lane adopts it next.
+
+The module docstring records the mutation that proves each of those, with the
+failures observed rather than intended.
+
 ## 3. CI policy helper
 
 ### 3.1 Public API

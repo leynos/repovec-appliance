@@ -12,9 +12,32 @@ env:
   WHITAKER_INSTALLER_VERSION: '0.2.6'
 
 jobs:
+  # Every job below runs on `ubicloud-standard-2`, except on a pull request
+  # from a fork, which cannot obtain an Ubicloud runner and falls back to a
+  # GitHub-hosted one. The shape is written once here rather than explained
+  # seven times.
+  #
+  # The continuation line sits at the SAME indent as the line above it. A
+  # more-indented continuation in a folded scalar keeps its line break, which
+  # puts a newline inside the expression; GitHub evaluates the broken value
+  # regardless, so a green run is not evidence that the scalar is well
+  # formed. `ci_runner_placement_test.py` reads the parsed value and fails on
+  # an embedded line break.
+  #
+  # `timeout-minutes` is per job, sized from measured runs at a generous
+  # multiple and recorded with its evidence in docs/developers-guide.md. A
+  # per-minute runner bills until something stops it, so the six-hour default
+  # is the expensive failure mode; a ceiling near the work is the other one,
+  # because it cancels at the moment the overrun becomes interesting and
+  # discards the log that would explain it.
+  #
+  # The Ubicloud label is registered for actionlint in .github/actionlint.yaml.
   spelling:
     name: spelling
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ github.event.pull_request.head.repo.fork
+      && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -31,7 +54,10 @@ jobs:
 
   build:
     name: build
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ github.event.pull_request.head.repo.fork
+      && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -43,7 +69,10 @@ jobs:
 
   check-fmt:
     name: check-fmt
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ github.event.pull_request.head.repo.fork
+      && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -72,7 +101,17 @@ jobs:
 
   lint:
     name: lint
-    runs-on: ubuntu-latest
+    # Right-sized on measurement, not by default. `lint` is the critical
+    # path: 613 s on `ubicloud-standard-2` against 76 s to 325 s for every
+    # other job. Its time is work sccache cannot avoid (linking, and the
+    # analysis passes of Clippy, `cargo doc` and the Whitaker dylint
+    # suite), so it scales with cores rather than with cache. Four vCPU
+    # costs twice per minute, which is roughly cost-neutral if the work
+    # halves, and buys back the wall-clock time.
+    runs-on: >-
+      ${{ github.event.pull_request.head.repo.fork
+      && 'ubuntu-latest' || 'ubicloud-standard-4' }}
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -112,7 +151,10 @@ jobs:
 
   test:
     name: test
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ github.event.pull_request.head.repo.fork
+      && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -129,7 +171,10 @@ jobs:
 
   docs-gate:
     name: docs-gate
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ github.event.pull_request.head.repo.fork
+      && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -212,7 +257,10 @@ jobs:
 
   systemd-gate:
     name: systemd-gate
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ github.event.pull_request.head.repo.fork
+      && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:

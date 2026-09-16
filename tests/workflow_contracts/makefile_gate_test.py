@@ -84,6 +84,7 @@ GATE_TOOLS = (
     "$(CARGO)",
     "$(WHITAKER)",
     "$(MDLINT)",
+    "$(MDTABLEFIX)",
     "$(NIXIE)",
     "$(RUST_TEST_RUNNER)",
     "$(SCRIPT_PYTEST)",

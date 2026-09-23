@@ -7,6 +7,10 @@ name: CI
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
   WHITAKER_INSTALLER_VERSION: '0.2.6'

@@ -301,6 +301,43 @@ runner family nobody reviewed, for whatever lane adopts it next.
 The module docstring records the mutation that proves each of those, with the
 failures observed rather than intended.
 
+### 2.3 Cancelling superseded pull-request runs
+
+A push to a pull request starts a fresh run of every job above, and the run
+already in flight is answering a question about a commit nobody will merge.
+Left alone it holds its runners until it finishes, so the branch pays twice for
+one answer. `ci.yml` therefore declares:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+The group keys on the pull request, so one branch never cancels another's run,
+and a group built from `github.run_id` would match no predecessor and cancel
+nothing. Cancellation is conditioned on the event rather than set to a literal
+`true`, so a push to `main` is never cancelled by the next merge: it is the
+only check of the merged tree and the run that writes the caches pull requests
+read. On `main` the group still holds one pending run, which a newer push
+replaces; it never overlaps or cancels a running one. A cancelled pull-request
+run leaves its required checks to the newer run on the newer head, which
+reports every one of them. `dependabot-automerge.yml` runs on
+`pull_request_target` and merges, so it is out of scope.
+
+`tests/workflow_contracts/pr_concurrency_test.py` holds the rule for every
+workflow declaring a `pull_request` trigger. It reads `on:` as a mapping, a
+list or a bare name under both the quoted key and PyYAML's boolean `True`, and
+refuses a workflow declaring both. It keeps a floor of `ci.yml` so discovery
+cannot empty into a vacuous pass, and requires a group that no run-unique
+expression builds and that names a per-pull-request expression, and exactly the
+event-conditioned `cancel-in-progress` expression. It reads the files through a
+loader that refuses a duplicated mapping key, because PyYAML keeps the last of
+two `concurrency:` blocks and says nothing. Each clause was proved by mutation:
+the cancel line removed, a literal `true`, a `run_id` group, a constant group,
+the block removed, the trigger renamed to `pull_request_target`, a duplicated
+block, and an unquoted `on:` beside the quoted one each fail it.
+
 ## 3. CI policy helper
 
 ### 3.1 Public API

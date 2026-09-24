@@ -60,9 +60,10 @@ def test_the_group_rules_accept_and_refuse_the_known_shapes(
     [
         "${{ format('{0}', github.ref) }}",
         "${{ github.ref || format('{0}', github.sha) }}",
+        "pr-${{ github.event_name == 'pull_request' }}",
         "pr-${{ github.ref",
     ],
-    ids=["function", "unmodelled-right-operand", "unclosed"],
+    ids=["function", "unmodelled-right-operand", "comparison", "unclosed"],
 )
 def test_an_unmodelled_group_expression_is_refused(template: str) -> None:
     """A function call, a comparison or an unclosed opener fails loudly."""

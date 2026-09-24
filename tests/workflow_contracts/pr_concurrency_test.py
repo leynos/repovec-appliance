@@ -343,6 +343,32 @@ def test_no_two_workflows_share_a_group_for_one_pull_request() -> None:
     )
 
 
+#: Two workflow names that must never share a group on one pull request.
+OTHER_WORKFLOW_NAMES: tuple[str, str] = ("CI", "Release dry run")
+
+
+@pytest.mark.parametrize("workflow", PULL_REQUEST_WORKFLOWS, ids=WORKFLOW_IDS)
+def test_each_group_is_keyed_on_the_workflow(workflow: Path) -> None:
+    """A group renders differently under two workflow names.
+
+    With one pull-request workflow in the repository, the cross-workflow test
+    above compares a single group with itself and cannot fail. This renders
+    each group for one pull request under two synthetic workflow names, so a
+    group that drops ``github.workflow`` fails today rather than on the day a
+    second pull-request workflow lands and starts cancelling the first.
+    """
+    group = str(_concurrency(workflow).get("group", ""))
+    rendered = {
+        render_group(group, {**FIRST_PUSH, "github.workflow": name})
+        for name in OTHER_WORKFLOW_NAMES
+    }
+    assert len(rendered) == len(OTHER_WORKFLOW_NAMES), (
+        f"{workflow.name}'s group {group!r} renders {rendered} for workflows "
+        f"named {OTHER_WORKFLOW_NAMES}; without github.workflow in the group, "
+        "two pull-request workflows would cancel each other"
+    )
+
+
 @pytest.mark.parametrize("workflow", PULL_REQUEST_WORKFLOWS, ids=WORKFLOW_IDS)
 def test_cancellation_is_conditioned_on_the_event(workflow: Path) -> None:
     """Cancellation applies to pull requests only, not to pushes or schedules.

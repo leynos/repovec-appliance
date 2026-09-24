@@ -14,9 +14,26 @@
 
 - [repovec-appliance technical design](repovec-appliance-technical-design.md):
   system architecture, constraints, and design rationale for the appliance.
+- [Nursery crates](nursery-crates.md): experimental crate interfaces,
+  dependency boundaries, adoption constraints, and graduation evidence.
 - [Complexity antipatterns and refactoring strategies](complexity-antipatterns-and-refactoring-strategies.md):
   maintainability and refactoring reference for contributors working in the
   codebase.
+
+## Architecture decision records
+
+- [ADR 001: Retire the custom OAuth device flow](adr-001-retire-custom-oauth-device-flow.md):
+  delegates RFC 8628 protocol mechanics to the `oauth2` crate.
+- [ADR 002: Rationalize systemd and Quadlet analysis](adr-002-rationalize-systemd-and-quadlet-analysis.md):
+  separates parser adapters, appliance policy, official-tool verification, and
+  live systemd control.
+- [ADR 003: Centralize unit contract policy](adr-003-centralize-unit-contract-policy.md):
+  defines parser-neutral rules and structured diagnostics.
+- [ADR 004: Manage extraction candidates in a nursery](adr-004-manage-extraction-candidates-in-a-nursery.md):
+  establishes the in-repository incubation and graduation model.
+- [ADR 005: Rationalize secret persistence](adr-005-rationalize-secret-persistence.md):
+  separates systemd credential delivery, protection codecs, durable storage,
+  and Podman secret synchronization.
 
 ## Plans and execution
 
@@ -52,6 +69,5 @@
   guidance for keeping Rust documentation examples maintainable.
 - [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md):
   unit and integration testing reference for fixture-based Rust tests.
-
 - [Scripting standards](scripting-standards.md): repository guidance for shell
   and CI glue scripts.

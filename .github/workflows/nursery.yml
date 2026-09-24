@@ -1,0 +1,69 @@
+name: Nursery crates
+
+'on':
+  push:
+    branches: [main]
+    paths:
+      - 'crates/nursery/**'
+      - '.github/workflows/nursery.yml'
+  pull_request:
+    paths:
+      - 'crates/nursery/**'
+      - '.github/workflows/nursery.yml'
+  workflow_dispatch:
+
+jobs:
+  nursery:
+    name: nursery
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
+        with:
+          install-binstall: false
+          use-sccache: false
+      - name: Check nursery formatting
+        run: cargo fmt --manifest-path crates/nursery/Cargo.toml --all -- --check
+      - name: Check nursery interfaces
+        run: >-
+          cargo check --manifest-path crates/nursery/Cargo.toml --workspace
+          --all-targets
+      - name: Lint nursery interfaces
+        run: >-
+          cargo clippy --manifest-path crates/nursery/Cargo.toml --workspace
+          --all-targets -- -D warnings
+      - name: Test nursery interfaces
+        run: >-
+          cargo test --manifest-path crates/nursery/Cargo.toml --workspace
+          --all-targets
+      - name: Build nursery documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: >-
+          cargo doc --manifest-path crates/nursery/Cargo.toml --workspace
+          --no-deps
+
+  nursery-msrv:
+    name: nursery-msrv
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Setup minimum supported Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
+        with:
+          install-binstall: false
+          toolchain: '1.85.0'
+          use-sccache: false
+      - name: Check nursery interfaces on the minimum supported Rust
+        run: >-
+          cargo check --manifest-path crates/nursery/Cargo.toml --workspace
+          --all-targets

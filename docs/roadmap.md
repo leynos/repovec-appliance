@@ -92,6 +92,9 @@ with API-key authentication, and survives host reboots.
   - Add `proptest` as a workspace dev-dependency.
   - Implement property tests covering parser invariants, duplicate-entry
     rejection, and port loopback enforcement.
+  - Retain the corpus as differential adoption evidence for roadmap item 1.4.3;
+    do not expand the private parser where a selected upstream adapter can own
+    the syntax.
   - Closes `#17`.
 
 ### 1.3. Systemd service layout
@@ -114,11 +117,98 @@ correct ordering and dependency declarations.
     `rstest` unit tests, and `rstest-bdd` behavioural scenarios. Concrete
     indexer instance reconciliation remains in 3.2.1.
 - [ ] 1.3.3. Create `repovec` system user and directory layout
-  - Create system user `repovec` with home `/var/lib/repovec`.
+  - Create the `repovec` account declaratively through the packaged
+    `sysusers.d` definition; service helpers must not invoke `useradd`.
+  - Create shared package directories through `tmpfiles.d`, and use
+    `StateDirectory=` or `ConfigurationDirectory=` for service-owned paths
+    where their lifetime and ownership semantics fit.
   - Create directories: `git-mirrors/`, `worktrees/`, and `.grepai/`.
   - Create `/etc/repovec/` with restricted permissions for secrets.
   - Success criteria: `systemctl start repovec.target` succeeds and Qdrant
-    becomes reachable.
+    becomes reachable from a clean image without imperative account creation.
+  - Requires 1.4.8 and ADR 005.
+
+### 1.4. Architecture rationalization and nursery incubation
+
+Objective: eliminate duplicated protocol and parser implementations, establish
+independent systemd and Podman verification, and incubate only the reusable
+interfaces supported by production evidence.
+
+- [x] 1.4.1. Record NIH retirement and nursery boundaries
+  - Add ADRs covering OAuth retirement, systemd and Quadlet analysis, shared
+    unit contracts, nursery governance, and secret persistence.
+  - Add the isolated `crates/nursery/` workspace with compile-checked interfaces
+    for unit contracts, external consumer probes, and protected secret storage.
+  - Document one source of truth for decisions, target architecture, nursery
+    interfaces, and delivery status.
+- [ ] 1.4.2. Replace custom OAuth device-flow protocol machinery
+  - Delegate device authorization, token polling, RFC 8628 error handling, and
+    wire parsing to `oauth2`.
+  - Preserve GitHub endpoint configuration, prompt presentation, deterministic
+    timing tests, telemetry, redaction, and token persistence.
+  - Delete duplicate protocol types and the handwritten polling state machine
+    after scenario parity is demonstrated.
+  - Governed by ADR 001.
+- [ ] 1.4.3. Run native systemd-unit and Quadlet parser adoption spikes
+  - Evaluate `systemd-unit-edit` for native units and `quadlet-lens` for
+    Quadlets against every checked-in asset, mutation fixture, and generated
+    property-test case.
+  - Record source-order, continuation, reset, repeated-section, span, redaction,
+    minimum Rust version, licence, and maintenance evidence.
+  - Propose narrowly scoped upstream changes before extending a private parser.
+  - Governed by ADR 002.
+- [ ] 1.4.4. Add official Podman and systemd consumer verification
+  - Run the Podman Quadlet generator in a controlled temporary root.
+  - Verify native and generated units with `systemd-analyze verify` across the
+    supported systemd and Podman version matrix.
+  - Retain program, arguments, versions, status, standard output, and standard
+    error as redaction-safe evidence through `repovec-systemd-probe`.
+  - Governed by ADR 002 and ADR 004.
+- [ ] 1.4.5. Migrate unit policy to the parser-neutral contract engine
+  - Adapt one native unit and the Qdrant Quadlet to
+    `repovec-unit-contract::UnitView` before migrating the remaining policies.
+  - Return accumulated structured diagnostics with stable codes, source spans,
+    and sensitivity instead of callback-per-finding observer methods.
+  - Delete the duplicate private parsers and query helpers only after the
+    selected adapters pass differential and official-consumer verification.
+  - Governed by ADR 003 and ADR 004.
+- [ ] 1.4.6. Rationalize build-time and runtime unit validation
+  - Move repository asset checks to build and packaging gates.
+  - Decide whether runtime diagnosis inspects installed or effective units and
+    drop-ins through the live manager.
+  - Remove daemon-startup validation of embedded source text once one of those
+    honest boundaries replaces it.
+  - Governed by ADR 002.
+- [ ] 1.4.7. Spike D-Bus systemd manager clients before indexer lifecycle work
+  - Evaluate maintained Rust D-Bus clients against start, stop, enable,
+    disable, status, and template-instance requirements.
+  - Define a narrow application port over the selected client and deterministic
+    fakes for reconciliation tests.
+  - Do not invoke `systemctl` and parse human-oriented output in production.
+  - Blocks 3.2.1, 3.2.2, and 3.2.3; governed by ADR 002.
+- [ ] 1.4.8. Rationalize service accounts and directory provisioning
+  - Make `sysusers.d` the sole account-creation mechanism.
+  - Allocate shared paths through `tmpfiles.d` and service-owned paths through
+    systemd directory directives where appropriate.
+  - Remove the `useradd` fallback from the Qdrant API-key helper and test clean
+    image failure behaviour when packaging prerequisites are absent.
+  - Governed by ADR 005.
+- [ ] 1.4.9. Migrate credential persistence and service delivery
+  - Evaluate existing Rust systemd credential readers and `cap-tempfile`
+    replacement semantics.
+  - Deliver the encrypted GitHub token through systemd service credentials and
+    move write and rotation paths behind `repovec-secret-store` adapters.
+  - Preserve restrictive creation mode, same-directory replacement, file
+    synchronization, parent-directory synchronization, and redacted errors.
+  - Keep rootful Qdrant Podman-secret synchronization appliance-specific.
+  - Governed by ADR 005 and ADR 004.
+- [ ] 1.4.10. Review nursery graduation evidence
+  - Record production consumers, interchangeable adapters, critical invariant
+    tests, security and licence review, and public API review for each nursery
+    crate.
+  - Graduate, consolidate, or delete each crate; repository residence alone is
+    not evidence of generality.
+  - Governed by ADR 004.
 
 ## 2. Repository lifecycle
 
@@ -139,6 +229,8 @@ flow without requiring a browser on the VM.
   - Store the access token encrypted at rest in `/etc/repovec/`.
   - Success criteria: a test binary completes the device flow and retrieves
     a valid token.
+  - Status: operator capability is complete. Roadmap item 1.4.2 retires the
+    duplicate RFC 8628 and wire implementation while preserving this behaviour.
 - [ ] 2.1.2. Implement token refresh and expiry handling
   - Detect token expiry and re-initiate the device flow when refresh is not
     available.
@@ -257,19 +349,21 @@ systemd unit, started and stopped in response to reconciliation.
 
 - [ ] 3.2.1. Implement indexer unit instantiation
   - When a branch becomes active, instantiate
-    `repovec-grepai@{owner}-{repo}-{branch}.service` via systemd.
+    `repovec-grepai@{owner}-{repo}-{branch}.service` through the selected
+    systemd D-Bus adapter.
   - Configure the unit to run `grepai watch` against the branch worktree
-    directory. Requires 1.3.2.
+    directory. Requires 1.3.2 and 1.4.7.
 - [ ] 3.2.2. Implement indexer unit teardown
-  - When a branch is deactivated, stop and disable the corresponding
-    systemd unit.
+  - When a branch is deactivated, stop and disable the corresponding unit
+    through the selected systemd D-Bus adapter.
   - Optionally retain index data for a configurable grace period before
-    purging.
+    purging. Requires 1.4.7.
 - [ ] 3.2.3. Implement indexer health monitoring
-  - Poll indexer unit status via systemd and surface failures.
+  - Query indexer unit state through the selected systemd D-Bus adapter and
+    surface failures without parsing `systemctl` output.
   - Automatically restart failed indexers with exponential back-off.
   - Expose indexer status per repo and branch for the TUI (via the
-    repovecd local Unix socket API).
+    repovecd local Unix socket API). Requires 1.4.7.
 
 ### 3.3. Reconciliation loop integration
 
@@ -506,7 +600,9 @@ Objective: cloud-init brings a fresh VM from bare OS to a running
 `repovec.target` without manual intervention.
 
 - [ ] 6.3.1. Write cloud-init configuration
-  - Create the `repovec` system user and directory layout (as in 1.3.3).
+  - Install and execute the packaged `sysusers.d` and `tmpfiles.d` definitions
+    and systemd directory directives from 1.3.3 and 1.4.8; cloud-init must not
+    carry a second imperative account and directory implementation.
     See repovec-appliance-technical-design.md, "Bootstrap of the VM
     appliance".
   - Install Podman, cloudflared, grepai, and repovec binaries.

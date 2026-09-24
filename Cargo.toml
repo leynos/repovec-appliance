@@ -8,6 +8,7 @@ members = [
     "crates/repovecd",
     "crates/repovectl",
 ]
+exclude = ["crates/nursery"]
 resolver = "3"
 
 [workspace.package]

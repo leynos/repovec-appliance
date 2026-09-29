@@ -13,9 +13,11 @@ import pytest
 from pr_concurrency_groups import (
     FIRST_PUSH,
     UnmodelledGroupError,
+    fallback_problems,
     keeps_runs_together_and_apart,
     render_group,
     shared_groups,
+    split_pairs,
 )
 
 #: The group every workflow here uses.
@@ -97,3 +99,59 @@ def test_workflow_groups_are_compared_without_case(
         f"shared_groups({rendered!r}) returned {shared_groups(rendered)!r}, "
         f"expected {expected!r}"
     )
+
+
+@pytest.mark.parametrize(
+    ("template", "expected_problems"),
+    [
+        (ESTATE_GROUP, 0),
+        ("${{ github.workflow }}-${{ github.ref }}", 1),
+        (ESTATE_GROUP + "-${{ github.event.pull_request.number || github.run_id }}", 1),
+        ("${{ github.workflow }}-${{ github.run_id || github.event.pull_request.number }}", 2),
+        ("${{ github.workflow }}-${{ github.run_id }}", 2),
+        ("${{ github.workflow }}-${{ github.run_number }}", 2),
+        ("${{ github.workflow }}-${{ github.run_attempt }}", 2),
+        ("${{ github.workflow }}-${{ github.sha }}", 2),
+        (ESTATE_GROUP + "-${{ github.sha }}", 1),
+    ],
+    ids=[
+        "estate",
+        "fallback-missing",
+        "fallback-repeated",
+        "operands-reversed",
+        "run-id-alone",
+        "run-number-alone",
+        "run-attempt-alone",
+        "sha-alone",
+        "sha-beside-fallback",
+    ],
+)
+def test_the_fallback_rule_names_each_broken_clause(
+    template: str, expected_problems: int
+) -> None:
+    """The fallback appears exactly once, and no run-unique value elsewhere.
+
+    The file-driven contract only ever passes the repository's valid group,
+    so a rule that returned nothing would pass it. These cases drive each
+    clause: the fallback missing, repeated or reversed, and each run-unique
+    value outside it, alone or beside a correct fallback.
+    """
+    problems = fallback_problems(template)
+    assert len(problems) == expected_problems, (
+        f"fallback_problems({template!r}) returned {problems}, expected "
+        f"{expected_problems} problem(s)"
+    )
+
+
+def test_a_pair_rendering_only_in_different_case_shares_a_group() -> None:
+    """Two pushes whose groups differ only in case are not split.
+
+    GitHub compares group names case-insensitively, so ``Patch-1`` and
+    ``patch-1`` are one group and the newer run cancels the older. A raw
+    comparison would report the pair as split and refuse a valid group.
+    """
+    upper = {**FIRST_PUSH, "github.head_ref": "Patch-1"}
+    lower = {**FIRST_PUSH, "github.head_ref": "patch-1"}
+    split = split_pairs("${{ github.head_ref }}", ((upper, lower),))
+    assert split == [], f"a case-only difference was reported as split: {split}"
+

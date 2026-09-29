@@ -319,3 +319,39 @@ def shared_groups(rendered: dict[str, str]) -> dict[str, list[str]]:
     for name, group in rendered.items():
         owners.setdefault(group.casefold(), []).append(name)
     return {group: names for group, names in owners.items() if len(names) > 1}
+
+
+def split_pairs(
+    template: str,
+    pairs: tuple[tuple[dict[str, str], dict[str, str]], ...] = MUST_SHARE,
+) -> list[tuple[str, str]]:
+    """Return the pairs of runs a group renders into different groups.
+
+    Compared casefolded, because GitHub treats group names that way: two
+    renderings differing only in case are one group.
+
+    Parameters
+    ----------
+    template
+        The group as written in the workflow.
+    pairs
+        Runs that must share a group; `MUST_SHARE` by default.
+
+    Returns
+    -------
+    list of tuple of str
+        The two renderings of each pair that does not share a group.
+
+    Examples
+    --------
+    >>> split_pairs("${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}")
+    []
+    >>> split_pairs("${{ github.run_id }}")
+    [('101', '102')]
+    """
+    rendered = [
+        (render_group(template, first), render_group(template, second))
+        for first, second in pairs
+    ]
+    return [pair for pair in rendered if pair[0].casefold() != pair[1].casefold()]
+

@@ -37,6 +37,14 @@ class DuplicateKeyError(yaml.constructor.ConstructorError):
     """A mapping declared the same key twice."""
 
 
+class NotAMappingError(yaml.YAMLError):
+    """A workflow document's root is not a mapping.
+
+    A scalar, list or empty root would otherwise read as a workflow with no
+    triggers, drop out of every trigger-scoped contract, and pass them all.
+    """
+
+
 class StrictLoader(yaml.SafeLoader):
     """A ``SafeLoader`` that refuses duplicate mapping keys.
 
@@ -75,13 +83,14 @@ def load_workflow(text: str) -> Document:
     Returns
     -------
     Document
-        The parsed document, or an empty mapping when the source holds no
-        mapping at all.
+        The parsed document.
 
     Raises
     ------
     DuplicateKeyError
         When any mapping in the document declares a key twice.
+    NotAMappingError
+        When the document's root is a scalar, a list or empty.
 
     Examples
     --------
@@ -89,7 +98,10 @@ def load_workflow(text: str) -> Document:
     {True: 'push', 'jobs': {}}
     """
     document = yaml.load(text, Loader=StrictLoader)
-    return document if isinstance(document, dict) else {}
+    if not isinstance(document, dict):
+        message = f"a workflow's root must be a mapping, found {type(document).__name__}"
+        raise NotAMappingError(message)
+    return document
 
 
 def read_workflows(directory: Path) -> dict[str, Document]:

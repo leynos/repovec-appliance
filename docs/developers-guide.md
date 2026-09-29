@@ -353,11 +353,15 @@ also rendered under two synthetic workflow names and must differ. Groups are
 compared casefolded, because GitHub treats group names case-insensitively. It
 reads the files at test setup, not at import, through `workflow_loader.py`,
 which refuses a duplicated mapping key because PyYAML keeps the last of two
-`concurrency:` blocks and says nothing; a file that cannot be read fails the
-tests that need it, with the reason, and a test drives the scope decision over
-a constructed directory. Each clause was proved by mutation: the cancel line
-removed, a literal `true`, a `ref` fallback, the run identifier ahead of the
-number, a constant group, a `head_ref` group, a `format()` group, the block
+`concurrency:` blocks and says nothing, and refuses a document whose root is
+not a mapping, which would otherwise read as a workflow with no triggers and
+drop out of every contract; a file that cannot be read fails the tests that
+need it, with the reason, and a test drives the scope decision over a
+constructed directory. `pr_concurrency_groups_test.py` drives
+`fallback_problems` over each broken clause, and `workflow_loader_test.py`
+drives the non-mapping refusal. Each clause was proved by mutation: the cancel
+line removed, a literal `true`, a `ref` fallback, the run identifier ahead of
+the number, a constant group, a `head_ref` group, a `format()` group, the block
 removed, the trigger renamed to `pull_request_target`, a duplicated block, an
 unquoted `on:` beside the quoted one, and the `github.workflow` prefix dropped
 each fail it. So do a second pull-request workflow named `ci` beside `CI`, and

@@ -45,6 +45,7 @@ from pr_concurrency_groups import (
     fallback_problems,
     render_group,
     shared_groups,
+    split_pairs,
 )
 from pr_concurrency_triggers import pull_request_workflows, trigger_names
 from workflow_loader import (
@@ -250,15 +251,6 @@ def test_every_pull_request_workflow_declares_a_concurrency_group(
     )
 
 
-def _split_pairs(group: str) -> list[tuple[str, str]]:
-    """Return the `MUST_SHARE` pairs a group renders differently."""
-    return [
-        (render_group(group, first), render_group(group, second))
-        for first, second in MUST_SHARE
-        if render_group(group, first) != render_group(group, second)
-    ]
-
-
 def test_two_pushes_to_one_pull_request_share_a_group(
     pr_workflows: Workflows,
 ) -> None:
@@ -271,7 +263,7 @@ def test_two_pushes_to_one_pull_request_share_a_group(
     split = {
         name: pairs
         for name, pairs in (
-            (name, _split_pairs(_group(document)))
+            (name, split_pairs(_group(document)))
             for name, document in pr_workflows.items()
         )
         if pairs

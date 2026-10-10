@@ -17,6 +17,10 @@ valid cache remains usable when the network is unavailable. The gate also
 enforces the exact phrase corrections that the token-based Typos scanner cannot
 represent.
 
+`TYPOS_CONFIG_BUILDER_VERSION` in the `Makefile` pins the
+`typos-config-builder` release the gate runs (currently `v0.1.3`). Raise it
+together with the regenerated `typos.toml`, never on its own.
+
 ## Normative references
 
 - [Documentation contents](contents.md) if present

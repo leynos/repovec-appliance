@@ -88,7 +88,6 @@ GATE_TOOLS = (
     "$(NIXIE)",
     "$(RUST_TEST_RUNNER)",
     "$(SCRIPT_PYTEST)",
-    "$(SPELLING_HELPER_PYTEST)",
     "$(TYPOS_CONFIG_BUILDER)",
 )
 

@@ -23,4 +23,6 @@ ignore = [
 ]
 
 [files]
-exclude = []
+# Authored negative spelling examples; tests materialize them as ordinary,
+# unexcluded tracked source and prose in isolated Git repositories.
+exclude = ["tests/workflow_contracts/fixtures/spelling_precision_cases.json"]

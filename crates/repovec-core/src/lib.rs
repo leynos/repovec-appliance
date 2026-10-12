@@ -55,7 +55,9 @@ impl AsRef<str> for ServiceKind {
 /// Canonical filesystem roots used by appliance components.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimePaths {
+    /// Root for service configuration and authentication credential paths.
     config_root: Utf8PathBuf,
+    /// Root for persistent mirrors, indexes, and other appliance data.
     data_root: Utf8PathBuf,
 }
 

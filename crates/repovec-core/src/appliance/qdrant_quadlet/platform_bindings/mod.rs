@@ -25,15 +25,23 @@ pub(super) const REQUIRED_AUTO_UPDATE_POLICY: &str = "registry";
 /// The `SELinux` relabel option required for the host storage mount.
 pub(super) const REQUIRED_SELINUX_OPTION: &str = "Z";
 
+/// Expected host binding and missing-port error for one container port.
 struct RequiredPortBinding {
+    /// The port exposed inside the Qdrant container.
     container_port: u16,
+    /// The exact loopback host-to-container mapping required by the appliance.
     required_binding: &'static str,
+    /// The domain error reported when no matching container port is published.
     missing_error: QdrantQuadletError,
 }
 
+/// Classification of the container's `AutoUpdate` directives.
 enum AutoUpdateValues<'a> {
+    /// No directive is present.
     Empty,
+    /// Exactly one directive is present.
     Single(&'a String),
+    /// Multiple directives were joined for a diagnostic.
     Duplicates(String),
 }
 
@@ -64,6 +72,10 @@ pub(super) fn validate_platform_bindings(
     validate_auto_update(parsed, observer)
 }
 
+/// Verifies that a container port is published through its required loopback binding.
+///
+/// The binding supplies the target port, expected text, and missing-value
+/// error. For example, `127.0.0.1:6333:6333` satisfies the REST binding.
 fn validate_required_port(
     parsed: &ParsedQuadlet,
     binding: RequiredPortBinding,
@@ -99,6 +111,10 @@ fn validate_required_port(
     Ok(())
 }
 
+/// Extracts the container port from a three-part host publication value.
+///
+/// `127.0.0.1:6333:6333` returns `Some(6333)`; malformed or non-numeric
+/// values return `None`.
 fn published_container_port(publish_port: &str) -> Option<u16> {
     let parts: Vec<_> = publish_port.split(':').collect();
     if parts.len() != 3 {
@@ -108,6 +124,11 @@ fn published_container_port(publish_port: &str) -> Option<u16> {
     parts.get(2)?.parse::<u16>().ok()
 }
 
+/// Verifies the required persistent storage source, target, and `SELinux` option.
+///
+/// The parsed volume entries are checked in order, and the observer receives
+/// the final contract violation. A valid example is
+/// `/var/lib/repovec/qdrant-storage:/qdrant/storage:Z`.
 fn validate_storage_mount(
     parsed: &ParsedQuadlet,
     observer: &dyn QdrantQuadletObserver,
@@ -153,6 +174,10 @@ fn validate_storage_mount(
     Err(error)
 }
 
+/// Sends the specific storage validation error to the observer.
+///
+/// The error and any incomplete candidate volume determine which observer
+/// event is emitted; a missing candidate reports the general missing-mount event.
 fn observe_storage_mount_error(
     observer: &dyn QdrantQuadletObserver,
     error: &QdrantQuadletError,
@@ -179,6 +204,10 @@ fn observe_storage_mount_error(
     }
 }
 
+/// Reports whether any comma-separated volume option contains the required relabel flag.
+///
+/// The groups are trimmed before comparison, so `ro,Z` satisfies the required
+/// `Z` option while `z` does not.
 fn has_required_selinux_relabel_option(options: &[&str]) -> bool {
     options
         .iter()
@@ -187,6 +216,10 @@ fn has_required_selinux_relabel_option(options: &[&str]) -> bool {
         .any(|option| option == REQUIRED_SELINUX_OPTION)
 }
 
+/// Splits a volume entry when its source or target resembles the required mount.
+///
+/// A matching source or target returns the original entry with colon-separated
+/// parts; an unrelated volume returns `None`.
 fn storage_mount_candidate(volume: &str) -> Option<(&str, Vec<&str>)> {
     let parts = volume.split(':').collect::<Vec<_>>();
     let has_required_source =
@@ -196,6 +229,10 @@ fn storage_mount_candidate(volume: &str) -> Option<(&str, Vec<&str>)> {
     (has_required_source || has_required_target).then_some((volume, parts))
 }
 
+/// Requires exactly one `AutoUpdate` directive with the appliance's registry policy.
+///
+/// Missing, repeated, or unexpected values are reported through the observer
+/// and returned as domain errors. `AutoUpdate=registry` passes.
 fn validate_auto_update(
     parsed: &ParsedQuadlet,
     observer: &dyn QdrantQuadletObserver,
@@ -224,6 +261,10 @@ fn validate_auto_update(
     Ok(())
 }
 
+/// Classifies auto-update values and joins duplicates for an error message.
+///
+/// An empty slice yields `Empty`, one value yields `Single`, and multiple
+/// values yield `Duplicates`.
 fn classify_auto_update_values(auto_updates: &[String]) -> AutoUpdateValues<'_> {
     match auto_updates {
         [] => AutoUpdateValues::Empty,

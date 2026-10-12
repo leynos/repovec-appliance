@@ -46,6 +46,11 @@ pub(super) fn validate_api_key_provisioning_dependency(
     validate_unit_dependency(parsed, "After", observer)
 }
 
+/// Checks one systemd dependency directive for the API-key provisioning service.
+///
+/// The parsed Quadlet and directive name are inspected, and violations are
+/// reported to the observer before returning a domain error. For example, a
+/// `Requires` value containing `repovec-qdrant-api-key.service` passes.
 fn validate_unit_dependency(
     parsed: &ParsedQuadlet,
     directive: &'static str,
@@ -118,6 +123,11 @@ pub(super) fn validate_api_key_secret(
     Err(QdrantQuadletError::IncorrectApiKeySecret { secret })
 }
 
+/// Reports whether a `Secret=` value names the expected secret and environment target.
+///
+/// The comma-separated value must contain the required secret name,
+/// `type=env`, and the API-key target. For example,
+/// `repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY` passes.
 fn is_required_api_key_secret(secret: &str) -> bool {
     let mut parts = secret.split(',');
     if parts.next() != Some(QDRANT_API_KEY_SECRET) {
@@ -201,6 +211,11 @@ pub(super) fn validate_no_inline_api_key_environment(
     Ok(())
 }
 
+/// Replaces an environment assignment's value with a redaction marker.
+///
+/// The assignment is returned with its key retained; for example,
+/// `QDRANT__SERVICE__API_KEY=secret` becomes
+/// `QDRANT__SERVICE__API_KEY=<redacted>`. Text without `=` is returned unchanged.
 pub(super) fn redact_api_key_environment_assignment(assignment: &str) -> String {
     match assignment.split_once('=') {
         Some((key, _)) => format!("{key}=<redacted>"),
@@ -208,6 +223,11 @@ pub(super) fn redact_api_key_environment_assignment(assignment: &str) -> String 
     }
 }
 
+/// Splits environment assignments on whitespace outside quoted values.
+///
+/// The input is preserved as assignment strings, including quote and escape
+/// characters. For example, `A="one two" B=three` produces two entries,
+/// keeping the first value together.
 pub(super) fn split_environment_assignments(environment: &str) -> Vec<String> {
     let mut assignments = Vec::new();
     let mut assignment = String::new();
@@ -255,6 +275,11 @@ pub(super) fn split_environment_assignments(environment: &str) -> Vec<String> {
     assignments
 }
 
+/// Reports whether an assignment targets the Qdrant API-key environment variable.
+///
+/// Both the bare name and a `NAME=value` form are accepted. For example,
+/// `QDRANT__SERVICE__API_KEY=secret` returns `true`, while another key returns
+/// `false`.
 pub(super) fn is_api_key_environment_assignment(assignment: &str) -> bool {
     assignment == QDRANT_API_KEY_ENVIRONMENT_VARIABLE
         || assignment

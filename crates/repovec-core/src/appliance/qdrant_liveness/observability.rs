@@ -4,6 +4,8 @@ use tracing::Span;
 
 use super::{QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport};
 
+/// Creates the tracing span shared by one runtime liveness check.
+/// For example, the span records the endpoint and configured timeout for the check.
 pub(super) fn qdrant_liveness_span(config: &QdrantLivenessConfig) -> Span {
     tracing::info_span!(
         "qdrant_liveness_check",
@@ -12,6 +14,8 @@ pub(super) fn qdrant_liveness_span(config: &QdrantLivenessConfig) -> Span {
     )
 }
 
+/// Records the success or failure outcome of one runtime liveness check.
+/// For example, a report records success fields and a liveness error records its stable category.
 pub(super) fn record_qdrant_liveness_result(
     span: &Span,
     config: &QdrantLivenessConfig,
@@ -23,6 +27,8 @@ pub(super) fn record_qdrant_liveness_result(
     }
 }
 
+/// Records the successful check through its log and metric events.
+/// For example, a successful report produces the success log and emits the success event.
 fn record_qdrant_liveness_success(
     span: &Span,
     config: &QdrantLivenessConfig,
@@ -32,6 +38,8 @@ fn record_qdrant_liveness_success(
     record_qdrant_liveness_success_metric(span);
 }
 
+/// Emits the debug event for a successful Qdrant check.
+/// For example, the event includes the endpoint, timeout, and returned server version.
 fn record_qdrant_liveness_success_log(
     span: &Span,
     config: &QdrantLivenessConfig,
@@ -49,6 +57,8 @@ fn record_qdrant_liveness_success_log(
     );
 }
 
+/// Emits the success metric event within the liveness span.
+/// For example, each successful check emits `metric.qdrant_liveness_success_total`.
 fn record_qdrant_liveness_success_metric(span: &Span) {
     tracing::info!(
         parent: span,
@@ -56,6 +66,8 @@ fn record_qdrant_liveness_success_metric(span: &Span) {
     );
 }
 
+/// Records a failed check through its log and metric events.
+/// For example, the error is logged with its stable category and represented by the failure event.
 fn record_qdrant_liveness_failure(
     span: &Span,
     config: &QdrantLivenessConfig,
@@ -65,6 +77,8 @@ fn record_qdrant_liveness_failure(
     record_qdrant_liveness_failure_metric(span, error);
 }
 
+/// Emits the debug event for a failed Qdrant check.
+/// For example, the event includes endpoint, timeout, error category, and error details.
 fn record_qdrant_liveness_failure_log(
     span: &Span,
     config: &QdrantLivenessConfig,
@@ -83,6 +97,8 @@ fn record_qdrant_liveness_failure_log(
     );
 }
 
+/// Emits the failure metric event with a stable error category.
+/// For example, a timeout is labelled `timeout` through `qdrant_liveness_error_category`.
 fn record_qdrant_liveness_failure_metric(span: &Span, error: &QdrantLivenessError) {
     let error_category = qdrant_liveness_error_category(error);
     tracing::info!(

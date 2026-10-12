@@ -51,6 +51,7 @@ pub use observer::{QdrantQuadletObserver, TracingQdrantQuadletObserver};
 use parser::ParsedQuadlet;
 use platform_bindings::validate_platform_bindings;
 
+/// The repository's embedded Qdrant Quadlet definition used for startup validation.
 const CHECKED_IN_QDRANT_QUADLET: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/qdrant.container"));
 
@@ -60,13 +61,18 @@ pub const CHECKED_IN_QDRANT_QUADLET_PATH: &str = "packaging/systemd/qdrant.conta
 /// The installation path for the rootful system Quadlet.
 pub const INSTALLED_QDRANT_QUADLET_PATH: &str = "/etc/containers/systemd/qdrant.container";
 
+/// The systemd unit that provisions the Qdrant API key.
 const QDRANT_API_KEY_SERVICE: &str = "repovec-qdrant-api-key.service";
 
+/// The Podman secret name that supplies the Qdrant API key.
 const QDRANT_API_KEY_SECRET: &str = "repovec-qdrant-api-key";
 
+/// The container environment variable populated from the API-key secret.
 const QDRANT_API_KEY_ENVIRONMENT_VARIABLE: &str = "QDRANT__SERVICE__API_KEY";
 
+/// The systemd section containing service dependency directives.
 const UNIT_SECTION: &str = "Unit";
+/// The Quadlet section containing container configuration directives.
 const CONTAINER_SECTION: &str = "Container";
 
 // Domain invariants.
@@ -78,6 +84,7 @@ const REQUIRED_REST_PORT: u16 = 6333;
 const REQUIRED_GRPC_PORT: u16 = 6334;
 /// The in-container path where Qdrant stores persistent data.
 const REQUIRED_STORAGE_TARGET: &str = "/qdrant/storage";
+/// Stable tracing target used to group Quadlet contract validation events.
 pub(super) const LOG_TARGET: &str = "repovec_core::qdrant_quadlet";
 
 /// Returns the repository's checked-in Qdrant Quadlet source.
@@ -182,6 +189,11 @@ pub fn validate_qdrant_quadlet(
     Ok(())
 }
 
+/// Checks that exactly one container image is present and matches the appliance image.
+///
+/// The parsed Quadlet supplies the directives, and the observer receives any
+/// violation. For example, the pinned `docker.io/qdrant/qdrant:v1` image
+/// passes, while a `:latest` tag is rejected.
 fn validate_required_image(
     parsed: &ParsedQuadlet,
     observer: &dyn QdrantQuadletObserver,
@@ -212,6 +224,10 @@ fn validate_required_image(
     Ok(())
 }
 
+/// Reports whether an image reference has a registry-qualified, non-`latest` tag.
+///
+/// The image reference is inspected without modification. For example,
+/// `docker.io/qdrant/qdrant:v1` passes, while `qdrant/qdrant:latest` does not.
 fn is_fully_qualified_and_pinned(image: &str) -> bool {
     let Some((repository, tag)) = image.rsplit_once(':') else {
         return false;
@@ -223,12 +239,20 @@ fn is_fully_qualified_and_pinned(image: &str) -> bool {
     registry.contains('.') && !tag.is_empty() && tag != "latest"
 }
 
+/// Describes whether a Quadlet directive is absent, unique, or repeated.
 enum DirectiveValues<'a> {
+    /// No value was supplied for the directive.
     Missing,
+    /// Exactly one value was supplied.
     Single(&'a str),
+    /// Multiple values were joined for a diagnostic.
     Duplicate(String),
 }
 
+/// Classifies directive values while retaining a borrow for a unique value.
+///
+/// An empty slice yields `Missing`, one entry yields `Single`, and two or more
+/// entries yield `Duplicate` with their values comma-separated.
 fn classify_directive_values(values: &[String]) -> DirectiveValues<'_> {
     match values {
         [] => DirectiveValues::Missing,

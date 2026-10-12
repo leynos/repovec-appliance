@@ -1,0 +1,100 @@
+[
+  {
+    "case_id": "external-crate",
+    "filename": "probe.md",
+    "text": "Use the `ratatui` crate.\n",
+    "expected_exit": 0,
+    "diagnostic": null
+  },
+  {
+    "case_id": "bare-crate",
+    "filename": "probe.md",
+    "text": "Use ratatui in ordinary prose.\n",
+    "expected_exit": 2,
+    "diagnostic": "ratatui"
+  },
+  {
+    "case_id": "inline-typo",
+    "filename": "probe.md",
+    "text": "The value is `teh`.\n",
+    "expected_exit": 2,
+    "diagnostic": "teh"
+  },
+  {
+    "case_id": "intentional-example",
+    "filename": "probe.md",
+    "text": "Use `var.iamge_id` instead of `var.image_id`.\n",
+    "expected_exit": 0,
+    "diagnostic": null
+  },
+  {
+    "case_id": "bare-source-typo",
+    "filename": "probe.tf",
+    "text": "image_id = var.iamge_id\n",
+    "expected_exit": 2,
+    "diagnostic": "iamge"
+  },
+  {
+    "case_id": "external-cargo-env",
+    "filename": "probe.rs",
+    "text": "command.env(\"CARGO_TERM_COLOR\", \"never\");\n",
+    "expected_exit": 0,
+    "diagnostic": null
+  },
+  {
+    "case_id": "external-force-env",
+    "filename": "probe.sh",
+    "text": "unset FORCE_COLOR\n",
+    "expected_exit": 0,
+    "diagnostic": null
+  },
+  {
+    "case_id": "near-miss-cargo-env",
+    "filename": "probe.rs",
+    "text": "command.env(\"CARGO_TERM_COLOR_EXTRA\", \"never\");\n",
+    "expected_exit": 2,
+    "diagnostic": "COLOR"
+  },
+  {
+    "case_id": "near-miss-force-env",
+    "filename": "probe.sh",
+    "text": "unset FORCE_COLOR_EXTRA\n",
+    "expected_exit": 2,
+    "diagnostic": "COLOR"
+  },
+  {
+    "case_id": "ordinary-colour-prose",
+    "filename": "probe.md",
+    "text": "Use color in ordinary prose.\n",
+    "expected_exit": 2,
+    "diagnostic": "color"
+  },
+  {
+    "case_id": "ordinary-colour-source",
+    "filename": "probe.rs",
+    "text": "let color = 1;\n",
+    "expected_exit": 2,
+    "diagnostic": "color"
+  },
+  {
+    "case_id": "external-event-schema",
+    "filename": "probe.yml",
+    "text": "    types: [opened, reopened, synchronize, labeled, ready_for_review]\n",
+    "expected_exit": 0,
+    "diagnostic": null
+  },
+  {
+    "case_id": "ordinary-label-prose",
+    "filename": "probe.md",
+    "text": "The item was labeled incorrectly.\n",
+    "expected_exit": 2,
+    "diagnostic": "labeled"
+  },
+  {
+    "case_id": "mutated-event-schema",
+    "filename": "probe.yml",
+    "text": "    types: [openned, reopened, synchronize, labeled, ready_for_review]\n",
+    "expected_exit": 2,
+    "diagnostic": "labeled"
+  }
+]

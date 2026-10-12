@@ -6,16 +6,16 @@ describes the repository-level build, test, lint, and continuous integration
 
 ## Spelling policy
 
-Run `make spelling` to enforce en-GB-oxendict prose spelling. Every run
-regenerates `typos.toml` from the live shared dictionary and the
-`typos.local.toml` overlay, then checks the tracked Markdown. Never edit
-generated entries by hand; add narrow repository-specific entries to
-`typos.local.toml` instead. Because the dictionary is live, `typos.toml` must
-never be drift checked in continuous integration. The builder refreshes its
-untracked dictionary cache only when the authoritative copy is newer, and a
-valid cache remains usable when the network is unavailable. The gate also
-enforces the exact phrase corrections that the token-based Typos scanner cannot
-represent.
+Run `make spelling` to enforce en-GB-oxendict spelling. Every run regenerates
+`typos.toml` from the live shared dictionary and the `typos.local.toml`
+overlay, then uses `--scope all` to check tracked repository files, including
+source, configuration and Markdown. Never edit generated entries by hand; add
+narrow repository-specific entries to `typos.local.toml` instead. Because the
+dictionary is live, `typos.toml` must never be drift checked in continuous
+integration. The builder refreshes its untracked dictionary cache only when the
+authoritative copy is newer, and a valid cache remains usable when the network
+is unavailable. The gate also enforces the exact phrase corrections that the
+token-based Typos scanner cannot represent.
 
 `TYPOS_CONFIG_BUILDER_VERSION` in the `Makefile` pins the
 `typos-config-builder` release the gate runs (currently `v0.1.3`). Raise it

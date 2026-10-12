@@ -21,6 +21,7 @@ extend-exclude = [
     "package-lock.json",
     "pnpm-lock.yaml",
     "target",
+    "tests/workflow_contracts/fixtures/spelling_precision_cases.json",
     "typos.local.toml",
     "typos.toml",
     "uv.lock",

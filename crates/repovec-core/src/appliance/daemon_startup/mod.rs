@@ -104,6 +104,46 @@ pub fn validate_daemon_startup_contracts() -> Result<(), DaemonStartupError> {
 /// the live directory-layout check. Production callers should use
 /// [`validate_daemon_startup_contracts`].
 ///
+/// # Examples
+///
+/// A passing layout lets startup continue:
+///
+/// ```
+/// use repovec_core::appliance::daemon_startup::validate_daemon_startup_contracts_with_live;
+///
+/// validate_daemon_startup_contracts_with_live(|| Ok(()), || Ok(()), || async { Ok(()) })
+///     .expect("a correctly provisioned host starts");
+/// ```
+///
+/// A violating layout aborts startup, and the typed error keeps the offending
+/// path available for the operator log:
+///
+/// ```no_run
+/// use repovec_core::RuntimePaths;
+/// use repovec_core::appliance::daemon_startup::{
+///     DaemonStartupError, validate_daemon_startup_contracts_with_live,
+/// };
+/// use repovec_core::appliance::directory_layout::live::{LiveLayoutIds, verify_layout_for_ids};
+///
+/// let paths = RuntimePaths::appliance_defaults();
+/// let ids = LiveLayoutIds {
+///     repovec_uid: 1,
+///     repovec_gid: 1,
+///     privileged_uid: 1,
+///     privileged_gid: 1,
+/// };
+///
+/// let result = validate_daemon_startup_contracts_with_live(
+///     || Ok(()),
+///     || verify_layout_for_ids(&paths, ids),
+///     || async { Ok(()) },
+/// );
+///
+/// if let Err(DaemonStartupError::LiveLayout(error)) = &result {
+///     eprintln!("live directory layout violation - aborting startup: {error}");
+/// }
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`DaemonStartupError`] when the injected systemd validator, live

@@ -16,10 +16,23 @@ use cap_std::{
 };
 use tempfile::TempDir;
 
-use super::live::{LiveLayoutError, LiveLayoutIds, LiveLayoutViolation, verify_layout_for_ids};
+use super::{
+    group::find_group_gid,
+    live::{
+        LiveLayoutError, LiveLayoutIds, LiveLayoutViolation, find_repovec_uid,
+        verify_layout_for_ids,
+    },
+};
 use crate::RuntimePaths;
 
 const DATA_CHILDREN: [&str; 5] = ["", "git-mirrors", "worktrees", ".grepai", "qdrant-storage"];
+
+/// A sentinel id that can never equal `id`.
+///
+/// `wrapping_add` is deliberate: a `saturating_sub(1).max(1)` sentinel collapses
+/// onto the real id whenever the tree owner is uid or gid 1, which silently
+/// turns the assertion into a no-op on such a host.
+fn mismatched_id(id: u32) -> u32 { id.wrapping_add(1) }
 
 struct LiveTree {
     temp: TempDir,
@@ -122,8 +135,8 @@ fn over_permissive_data_directory_is_reported() {
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
 
-    let Err(LiveLayoutError::InsecureMode { violation }) = result else {
-        panic!("expected InsecureMode, got {result:?}");
+    let Err(LiveLayoutError::IncorrectMode { violation }) = result else {
+        panic!("expected IncorrectMode, got {result:?}");
     };
     assert_eq!(
         violation.path,
@@ -131,6 +144,46 @@ fn over_permissive_data_directory_is_reported() {
             expected_absolute(&tree, "var/lib/repovec/git-mirrors").expect("utf8 path")
         )
     );
+    assert_eq!(violation.expected, "0700");
+    assert_eq!(violation.actual, "0750");
+}
+
+#[test]
+fn over_restrictive_data_directory_is_reported() {
+    let tree = LiveTree::new().expect("fixture tree");
+    let (uid, gid) = current_ids(&tree).expect("data root ids");
+    // The mode comparison is exact, not one-directional: a directory more
+    // restrictive than the contract is as unusable to the daemon as one that is
+    // too permissive, so both are rejected.
+    tree.chmod("var/lib/repovec/git-mirrors", 0o500).expect("chmod");
+
+    let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
+
+    let Err(LiveLayoutError::IncorrectMode { violation }) = result else {
+        panic!("expected IncorrectMode, got {result:?}");
+    };
+    assert_eq!(violation.expected, "0700");
+    assert_eq!(violation.actual, "0500");
+}
+
+#[test]
+fn regular_file_in_place_of_a_directory_is_reported() {
+    let tree = LiveTree::new().expect("fixture tree");
+    let (uid, gid) = current_ids(&tree).expect("data root ids");
+    let replaced = expected_absolute(&tree, "var/lib/repovec/worktrees").expect("utf8 path");
+    tree.root.remove_dir_all("var/lib/repovec/worktrees").expect("remove worktrees");
+    // A file carrying the contract owner, group, and mode would satisfy every
+    // id-and-mode check while leaving the documented directory unusable, so the
+    // pre-flight must reject it on type alone.
+    tree.root.write("var/lib/repovec/worktrees", b"not a directory").expect("write file");
+    tree.chmod("var/lib/repovec/worktrees", 0o700).expect("chmod");
+
+    let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
+
+    let Err(LiveLayoutError::NotADirectory { path }) = result else {
+        panic!("expected NotADirectory, got {result:?}");
+    };
+    assert_eq!(path, Utf8PathBuf::from(replaced));
 }
 
 #[test]
@@ -138,7 +191,7 @@ fn wrong_data_owner_is_reported() {
     let tree = LiveTree::new().expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     // A sentinel uid that cannot match the tree owner proves the owner check.
-    let wrong_uid = uid.saturating_sub(1).max(1);
+    let wrong_uid = mismatched_id(uid);
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(wrong_uid, gid));
 
@@ -155,7 +208,7 @@ fn wrong_data_owner_is_reported() {
 fn wrong_data_group_is_reported() {
     let tree = LiveTree::new().expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
-    let wrong_gid = gid.saturating_sub(1).max(1);
+    let wrong_gid = mismatched_id(gid);
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(uid, wrong_gid));
 
@@ -176,40 +229,77 @@ fn over_permissive_secrets_directory_is_reported() {
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
 
-    let Err(LiveLayoutError::InsecureMode { violation }) = result else {
-        panic!("expected InsecureMode, got {result:?}");
+    let Err(LiveLayoutError::IncorrectMode { violation }) = result else {
+        panic!("expected IncorrectMode, got {result:?}");
     };
     assert_eq!(
         violation.path,
         Utf8PathBuf::from(expected_absolute(&tree, "etc/repovec").expect("utf8 path"))
     );
+    assert_eq!(violation.expected, "0750");
+    assert_eq!(violation.actual, "0777");
 }
 
 #[test]
-fn find_repovec_ids_parses_passwd_entry() {
+fn find_repovec_uid_parses_passwd_entry() {
     let sample = "root:x:0:0:root:/root:/bin/bash\nrepovec:x:998:996:repovec appliance service user:/var/lib/repovec:/usr/sbin/nologin\n";
-    let ids = super::live::find_repovec_ids(sample);
 
-    assert_eq!(ids, Some((998, 996)));
+    assert_eq!(find_repovec_uid(sample), Some(998));
 }
 
 #[test]
-fn find_repovec_ids_returns_none_when_absent() {
+fn find_repovec_uid_returns_none_when_absent() {
     let sample = "root:x:0:0:root:/root:/bin/bash\n";
-    let ids = super::live::find_repovec_ids(sample);
 
-    assert_eq!(ids, None);
+    assert_eq!(find_repovec_uid(sample), None);
+}
+
+#[test]
+fn find_group_gid_parses_group_entry() {
+    let sample = "root:x:0:\nwheel:x:10:leynos\nrepovec:x:996:\n";
+
+    assert_eq!(find_group_gid(sample, "repovec"), Some(996));
+}
+
+#[test]
+fn find_group_gid_is_independent_of_row_order() {
+    let sample = "repovec:x:996:\nroot:x:0:\n";
+
+    assert_eq!(find_group_gid(sample, "repovec"), Some(996));
+}
+
+#[test]
+fn find_group_gid_returns_none_when_absent() {
+    let sample = "root:x:0:\nwheel:x:10:leynos\n";
+
+    assert_eq!(find_group_gid(sample, "repovec"), None);
+}
+
+#[test]
+fn find_group_gid_ignores_a_prefix_match_on_the_name() {
+    // `repovec-backup` contains `repovec` as a prefix; the lookup compares the
+    // whole name column so the second group cannot be mistaken for the first.
+    let sample = "repovec-backup:x:997:\nrepovec:x:996:\n";
+
+    assert_eq!(find_group_gid(sample, "repovec"), Some(996));
 }
 
 #[test]
 fn error_display_and_path_are_operator_facing() {
     let violation = LiveLayoutViolation {
         path: Utf8PathBuf::from("/var/lib/repovec"),
-        expected: "uid 1000 (repovec)".to_owned(),
+        expected: "repovec (uid 1000)".to_owned(),
         actual: "uid 0".to_owned(),
     };
     let error = LiveLayoutError::IncorrectOwner { violation };
 
-    assert_eq!(error.to_string(), "/var/lib/repovec must be owned by uid 1000 (repovec)");
+    assert_eq!(error.to_string(), "/var/lib/repovec must be owned by repovec (uid 1000)");
     assert_eq!(error.path(), Some("/var/lib/repovec"));
+}
+
+#[test]
+fn group_lookup_error_display_names_the_database() {
+    let error = super::group::GroupLookupError::NotFound;
+
+    assert_eq!(error.to_string(), "the repovec system group does not exist");
 }

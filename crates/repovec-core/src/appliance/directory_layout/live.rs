@@ -9,23 +9,28 @@
 //! The contract checked here mirrors the spec table in `mod.rs`:
 //!
 //! - the data tree (`/var/lib/repovec` and its `git-mirrors/`, `worktrees/`,
-//!   `.grepai/` children) must be owned by the `repovec` user and group with
-//!   no group or other access (`mode & 0o077 == 0`, SI-1);
-//! - `qdrant-storage` must be owned `root:root` with `mode & 0o077 == 0`
+//!   `.grepai/` children) must be directories owned by the `repovec` user and
+//!   group with mode `0700` (SI-1);
+//! - `qdrant-storage` must be a directory owned `root:root` with mode `0700`
 //!   (SI-2);
-//! - `/etc/repovec` must be owned `root`, group `repovec`, non-world and
-//!   non-group-write (`mode & 0o027 == 0`, SI-3).
-
-#![allow(
-    clippy::similar_names,
-    reason = "the uid/gid pair field names are inherently similar by contract"
-)]
+//! - `/etc/repovec` must be a directory owned `root`, group `repovec`, with
+//!   mode `0750` (SI-3).
+//!
+//! Both account names are resolved through their own databases: the uid from
+//! `/etc/passwd` and the gid from `/etc/group`. `systemd-tmpfiles` resolves its
+//! group column through the group database, so deriving the expected group from
+//! the user's primary GID would reject correctly provisioned trees on hosts
+//! where the `repovec` user and group do not share a numeric id.
 
 use std::io;
 
 use camino::Utf8PathBuf;
-use cap_std::{ambient_authority, fs::MetadataExt, fs_utf8::Dir};
+use cap_std::{ambient_authority, fs_utf8::Dir};
 
+use super::{
+    directory_contract::{DirectoryContract, verify_directory},
+    group::{GROUP_DATABASE_PATH, GroupLookupError, lookup_repovec_gid},
+};
 use crate::RuntimePaths;
 
 /// A directory that failed the live layout pre-flight.
@@ -40,34 +45,55 @@ pub struct LiveLayoutViolation {
 }
 
 /// Failures detected by the live directory-layout pre-flight.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum LiveLayoutError {
     /// The `repovec` account is not present in `/etc/passwd`, so ownership
     /// cannot be resolved by name.
+    #[error("the repovec system user does not exist")]
     RepovecUserNotFound,
+    /// The `repovec` group is not present in `/etc/group`, so ownership
+    /// cannot be resolved by name.
+    #[error("the repovec system group does not exist")]
+    RepovecGroupNotFound,
     /// A required directory is missing from the live tree.
+    #[error("missing directory {path}")]
     MissingPath {
         /// The missing required directory.
         path: Utf8PathBuf,
     },
     /// A required directory could not be inspected.
+    #[error("cannot inspect {path}")]
     UnreadablePath {
         /// A required directory that could not be inspected.
         path: Utf8PathBuf,
         /// The underlying filesystem error.
+        #[source]
         source: io::Error,
     },
-    /// A directory exposes more access than its contract allows.
-    InsecureMode {
-        /// The directory and expectation that were violated.
+    /// A required path exists but is not a directory.
+    #[error("{path} must be a directory")]
+    NotADirectory {
+        /// The path that is not a directory.
+        path: Utf8PathBuf,
+    },
+    /// A directory has a mode that differs from its contract expectation.
+    ///
+    /// The comparison is exact rather than one-directional: a directory that is
+    /// more tightly restricted than the contract is just as unusable to the
+    /// daemon as one that is too permissive, so both are reported.
+    #[error("{} must have mode {}: {}", .violation.path, .violation.expected, .violation.actual)]
+    IncorrectMode {
+        /// The directory and mode that were violated.
         violation: LiveLayoutViolation,
     },
     /// A directory is owned by a different user than its contract requires.
+    #[error("{} must be owned by {}", .violation.path, .violation.expected)]
     IncorrectOwner {
         /// The directory and expectation that were violated.
         violation: LiveLayoutViolation,
     },
     /// A directory belongs to a different group than its contract requires.
+    #[error("{} must be in group {}", .violation.path, .violation.expected)]
     IncorrectGroup {
         /// The directory and expectation that were violated.
         violation: LiveLayoutViolation,
@@ -79,43 +105,15 @@ impl LiveLayoutError {
     #[must_use]
     pub fn path(&self) -> Option<&str> {
         match self {
-            Self::RepovecUserNotFound => None,
-            Self::MissingPath { path } | Self::UnreadablePath { path, .. } => Some(path.as_str()),
-            Self::InsecureMode { violation }
-            | Self::IncorrectOwner { violation }
-            | Self::IncorrectGroup { violation } => Some(violation.path.as_str()),
-        }
-    }
-}
-
-impl std::fmt::Display for LiveLayoutError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::RepovecUserNotFound => {
-                write!(f, "the repovec system user does not exist")
+            Self::RepovecUserNotFound | Self::RepovecGroupNotFound => None,
+            Self::MissingPath { path }
+            | Self::UnreadablePath { path, .. }
+            | Self::NotADirectory { path }
+            | Self::IncorrectMode { violation: LiveLayoutViolation { path, .. } }
+            | Self::IncorrectOwner { violation: LiveLayoutViolation { path, .. } }
+            | Self::IncorrectGroup { violation: LiveLayoutViolation { path, .. } } => {
+                Some(path.as_str())
             }
-            Self::MissingPath { path } => write!(f, "missing directory {path}"),
-            Self::UnreadablePath { path, source } => {
-                write!(f, "cannot inspect {path}: {source}")
-            }
-            Self::InsecureMode { violation } => {
-                write!(f, "{} must not exceed permissions {}", violation.path, violation.expected)
-            }
-            Self::IncorrectOwner { violation } => {
-                write!(f, "{} must be owned by {}", violation.path, violation.expected)
-            }
-            Self::IncorrectGroup { violation } => {
-                write!(f, "{} must be in group {}", violation.path, violation.expected)
-            }
-        }
-    }
-}
-
-impl std::error::Error for LiveLayoutError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::UnreadablePath { source, .. } => Some(source),
-            _ => None,
         }
     }
 }
@@ -123,9 +121,10 @@ impl std::error::Error for LiveLayoutError {
 /// Expected account ids for a live layout pre-flight.
 ///
 /// The production path resolves the `repovec` ids by name from `/etc/passwd`
-/// and pins the storage and secrets owner to root (uid 0, gid 0). The testable
-/// seam [`verify_layout_for_ids`] takes the ids explicitly because a scratch
-/// tree owned by an unprivileged test process cannot be granted to root.
+/// and `/etc/group` and pins the storage and secrets owner to root (uid 0,
+/// gid 0). The testable seam [`verify_layout_for_ids`] takes the ids explicitly
+/// because a scratch tree owned by an unprivileged test process cannot be
+/// granted to root.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LiveLayoutIds {
     /// The `repovec` account uid; owner of the private data tree (SI-1).
@@ -138,11 +137,19 @@ pub struct LiveLayoutIds {
     pub privileged_gid: u32,
 }
 
+/// The root ids assumed for the privileged directories.
+///
+/// `qdrant-storage` and `/etc/repovec` are root-owned on a real host (SI-2,
+/// SI-3). Tests inject different ids because a scratch tree cannot be chowned
+/// to root without privileges.
+const PRIVILEGED_UID: u32 = 0;
+const PRIVILEGED_GID: u32 = 0;
+
 /// Verifies the live on-disk layout for the standard appliance paths.
 ///
-/// Resolves the `repovec` account ids from `/etc/passwd` and requires every
-/// directory in the layout contract to exist with the documented mode and
-/// ownership.
+/// Resolves the `repovec` account ids from `/etc/passwd` and `/etc/group` and
+/// requires every directory in the layout contract to exist with the documented
+/// mode and ownership.
 ///
 /// # Examples
 ///
@@ -156,20 +163,10 @@ pub struct LiveLayoutIds {
 /// # Errors
 ///
 /// Returns [`LiveLayoutError`] when the `repovec` account cannot be resolved
-/// or any required directory is missing, unreadable, over-permissive, or
-/// misowned.
+/// or any required directory is missing, not a directory, unreadable,
+/// mis-moded, or misowned.
 pub fn verify_live_layout(paths: &RuntimePaths) -> Result<(), LiveLayoutError> {
-    let (expected_owner_uid, expected_owner_gid) = resolve_repovec_ids()?;
-    let ids = LiveLayoutIds {
-        repovec_uid: expected_owner_uid,
-        repovec_gid: expected_owner_gid,
-        // The storage and secrets directories are root-owned (SI-2, SI-3);
-        // uid/gid 0 is the production expectation. Tests inject explicit ids
-        // because a temp tree cannot be chowned to root without privileges.
-        privileged_uid: 0,
-        privileged_gid: 0,
-    };
-    verify_layout_for_ids(paths, ids)
+    verify_layout_for_ids(paths, ResolvedRepovec::resolve()?.into_ids())
 }
 
 /// Verifies the live layout against explicitly supplied account ids.
@@ -178,198 +175,120 @@ pub fn verify_live_layout(paths: &RuntimePaths) -> Result<(), LiveLayoutError> {
 /// tests running under an unprivileged account) provide the expected
 /// `repovec` uid/gid directly.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use repovec_core::RuntimePaths;
+/// use repovec_core::appliance::directory_layout::live::{LiveLayoutIds, verify_layout_for_ids};
+///
+/// let ids = LiveLayoutIds {
+///     repovec_uid: 998,
+///     repovec_gid: 996,
+///     privileged_uid: 0,
+///     privileged_gid: 0,
+/// };
+///
+/// verify_layout_for_ids(&RuntimePaths::appliance_defaults(), ids)
+///     .expect("the host is provisioned");
+/// ```
+///
 /// # Errors
 ///
-/// Returns [`LiveLayoutError`] when a required directory is missing,
-/// unreadable, over-permissive, or misowned.
+/// Returns [`LiveLayoutError`] when a required directory is missing, not a
+/// directory, unreadable, mis-moded, or misowned.
 pub fn verify_layout_for_ids(
     paths: &RuntimePaths,
     ids: LiveLayoutIds,
 ) -> Result<(), LiveLayoutError> {
-    let data_root = paths.data_root();
-    verify_data_directory(data_root, ids.repovec_uid, ids.repovec_gid)?;
-    verify_data_directory(&paths.git_mirrors_root(), ids.repovec_uid, ids.repovec_gid)?;
-    verify_data_directory(&paths.worktrees_root(), ids.repovec_uid, ids.repovec_gid)?;
-    verify_data_directory(&paths.grepai_root(), ids.repovec_uid, ids.repovec_gid)?;
+    let data_contract = DirectoryContract {
+        owner_uid: ids.repovec_uid,
+        owner_gid: ids.repovec_gid,
+        owner_label: "repovec",
+        group_label: "repovec",
+        mode: 0o700,
+    };
+    let storage_contract = DirectoryContract {
+        owner_uid: ids.privileged_uid,
+        owner_gid: ids.privileged_gid,
+        owner_label: "root",
+        group_label: "root",
+        mode: 0o700,
+    };
+    let secrets_contract = DirectoryContract {
+        owner_uid: ids.privileged_uid,
+        owner_gid: ids.repovec_gid,
+        owner_label: "root",
+        group_label: "repovec",
+        mode: 0o750,
+    };
 
-    let storage = paths.qdrant_storage_root();
-    verify_root_private_directory(&storage, ids.privileged_uid, ids.privileged_gid)?;
-
-    let config_root = paths.config_root();
-    verify_secrets_directory(config_root, ids.privileged_uid, ids.repovec_gid)?;
-
-    Ok(())
+    verify_directory(paths.data_root(), data_contract)?;
+    verify_directory(&paths.git_mirrors_root(), data_contract)?;
+    verify_directory(&paths.worktrees_root(), data_contract)?;
+    verify_directory(&paths.grepai_root(), data_contract)?;
+    verify_directory(&paths.qdrant_storage_root(), storage_contract)?;
+    verify_directory(paths.config_root(), secrets_contract)
 }
 
-/// Resolves the `repovec` account uid/gid from `/etc/passwd`.
+/// The `repovec` uid and gid resolved from the account databases.
 ///
-/// This is deliberately in the live adapter: resolving ownership by name is a
-/// runtime concern (the pure validator never touches the live filesystem).
-fn resolve_repovec_ids() -> Result<(u32, u32), LiveLayoutError> {
-    let etc = Dir::open_ambient_dir("/etc", ambient_authority()).map_err(|source| {
-        LiveLayoutError::UnreadablePath { path: Utf8PathBuf::from("/etc/passwd"), source }
-    })?;
-    let passwd = etc.read_to_string("passwd").map_err(|source| {
-        LiveLayoutError::UnreadablePath { path: Utf8PathBuf::from("/etc/passwd"), source }
-    })?;
-
-    find_repovec_ids(&passwd).ok_or(LiveLayoutError::RepovecUserNotFound)
+/// A named pair rather than a tuple keeps the uid and gid distinguishable at
+/// every use site, and keeps them from colliding with the identically-shaped
+/// [`LiveLayoutIds`] fields at the call site.
+#[derive(Clone, Copy, Debug)]
+struct ResolvedRepovec {
+    uid: u32,
+    gid: u32,
 }
 
-/// Extracts the `repovec` uid/gid from passwd text.
-pub(crate) fn find_repovec_ids(passwd: &str) -> Option<(u32, u32)> {
+impl ResolvedRepovec {
+    /// Reads the `repovec` uid from `/etc/passwd` and gid from `/etc/group`.
+    ///
+    /// This is deliberately in the live adapter: resolving ownership by name is
+    /// a runtime concern (the pure validator never touches the live
+    /// filesystem).
+    fn resolve() -> Result<Self, LiveLayoutError> {
+        let etc = Dir::open_ambient_dir("/etc", ambient_authority()).map_err(|source| {
+            LiveLayoutError::UnreadablePath { path: Utf8PathBuf::from("/etc/passwd"), source }
+        })?;
+        let passwd = etc.read_to_string("passwd").map_err(|source| {
+            LiveLayoutError::UnreadablePath { path: Utf8PathBuf::from("/etc/passwd"), source }
+        })?;
+
+        let uid = find_repovec_uid(&passwd).ok_or(LiveLayoutError::RepovecUserNotFound)?;
+        let gid = lookup_repovec_gid().map_err(|error| match error {
+            GroupLookupError::Unreadable(source) => LiveLayoutError::UnreadablePath {
+                path: Utf8PathBuf::from(GROUP_DATABASE_PATH),
+                source,
+            },
+            GroupLookupError::NotFound => LiveLayoutError::RepovecGroupNotFound,
+        })?;
+
+        Ok(Self { uid, gid })
+    }
+
+    /// Pairs the resolved account ids with the privileged root ids.
+    const fn into_ids(self) -> LiveLayoutIds {
+        LiveLayoutIds {
+            repovec_uid: self.uid,
+            repovec_gid: self.gid,
+            privileged_uid: PRIVILEGED_UID,
+            privileged_gid: PRIVILEGED_GID,
+        }
+    }
+}
+
+/// Extracts the `repovec` uid from passwd text.
+///
+/// Only the uid is taken from `passwd`; the group is resolved separately from
+/// the group database (see [`ResolvedRepovec::resolve`]).
+pub(crate) fn find_repovec_uid(passwd: &str) -> Option<u32> {
     passwd.lines().find_map(|line| {
         let mut fields = line.split(':');
         if fields.next()? != "repovec" {
             return None;
         }
         let _password = fields.next()?;
-        let uid = fields.next()?.parse().ok()?;
-        let gid = fields.next()?.parse().ok()?;
-        Some((uid, gid))
+        fields.next()?.parse().ok()
     })
-}
-
-fn verify_data_directory(
-    path: &camino::Utf8Path,
-    expected_owner_uid: u32,
-    expected_owner_gid: u32,
-) -> Result<(), LiveLayoutError> {
-    let metadata = read_directory_metadata(path)?;
-
-    if metadata.uid() != expected_owner_uid {
-        return Err(LiveLayoutError::IncorrectOwner {
-            violation: LiveLayoutViolation {
-                path: path.to_path_buf(),
-                expected: format!("uid {expected_owner_uid} (repovec)"),
-                actual: format!("uid {}", metadata.uid()),
-            },
-        });
-    }
-    if metadata.gid() != expected_owner_gid {
-        return Err(LiveLayoutError::IncorrectGroup {
-            violation: LiveLayoutViolation {
-                path: path.to_path_buf(),
-                expected: format!("gid {expected_owner_gid} (repovec)"),
-                actual: format!("gid {}", metadata.gid()),
-            },
-        });
-    }
-    if metadata.mode() & 0o077 != 0 {
-        return Err(LiveLayoutError::InsecureMode {
-            violation: LiveLayoutViolation {
-                path: path.to_path_buf(),
-                expected: String::from("no group/other access (0700)"),
-                actual: format!("{:04o}", metadata.mode() & 0o777),
-            },
-        });
-    }
-    Ok(())
-}
-
-fn verify_root_private_directory(
-    path: &camino::Utf8Path,
-    expected_uid: u32,
-    expected_gid: u32,
-) -> Result<(), LiveLayoutError> {
-    let metadata = read_directory_metadata(path)?;
-
-    if metadata.uid() != expected_uid {
-        return Err(LiveLayoutError::IncorrectOwner {
-            violation: LiveLayoutViolation {
-                path: path.to_path_buf(),
-                expected: format!("uid {expected_uid} (root)"),
-                actual: format!("uid {}", metadata.uid()),
-            },
-        });
-    }
-    if metadata.gid() != expected_gid {
-        return Err(LiveLayoutError::IncorrectGroup {
-            violation: LiveLayoutViolation {
-                path: path.to_path_buf(),
-                expected: format!("gid {expected_gid} (root)"),
-                actual: format!("gid {}", metadata.gid()),
-            },
-        });
-    }
-    if metadata.mode() & 0o077 != 0 {
-        return Err(LiveLayoutError::InsecureMode {
-            violation: LiveLayoutViolation {
-                path: path.to_path_buf(),
-                expected: String::from("no group/other access (0700)"),
-                actual: format!("{:04o}", metadata.mode() & 0o777),
-            },
-        });
-    }
-    Ok(())
-}
-
-fn verify_secrets_directory(
-    path: &camino::Utf8Path,
-    secrets_uid: u32,
-    expected_owner_gid: u32,
-) -> Result<(), LiveLayoutError> {
-    let metadata = read_directory_metadata(path)?;
-
-    if metadata.uid() != secrets_uid {
-        return Err(LiveLayoutError::IncorrectOwner {
-            violation: LiveLayoutViolation {
-                path: path.to_path_buf(),
-                expected: format!("uid {secrets_uid} (secrets owner)"),
-                actual: format!("uid {}", metadata.uid()),
-            },
-        });
-    }
-    if metadata.gid() != expected_owner_gid {
-        return Err(LiveLayoutError::IncorrectGroup {
-            violation: LiveLayoutViolation {
-                path: path.to_path_buf(),
-                expected: format!("gid {expected_owner_gid} (repovec)"),
-                actual: format!("gid {}", metadata.gid()),
-            },
-        });
-    }
-    // root-owned, group repovec, non-world and non-group-write (0750).
-    if metadata.mode() & 0o027 != 0 {
-        return Err(LiveLayoutError::InsecureMode {
-            violation: LiveLayoutViolation {
-                path: path.to_path_buf(),
-                expected: String::from("root-owned, group repovec, non-world (0750)"),
-                actual: format!("{:04o}", metadata.mode() & 0o777),
-            },
-        });
-    }
-    Ok(())
-}
-
-fn read_directory_metadata(
-    path: &camino::Utf8Path,
-) -> Result<cap_std::fs_utf8::Metadata, LiveLayoutError> {
-    let Some(parent) = path.parent() else {
-        return Err(LiveLayoutError::UnreadablePath {
-            path: path.to_path_buf(),
-            source: io::Error::new(io::ErrorKind::InvalidInput, "path must name a directory"),
-        });
-    };
-    let Some(name) = path.file_name() else {
-        return Err(LiveLayoutError::UnreadablePath {
-            path: path.to_path_buf(),
-            source: io::Error::new(io::ErrorKind::InvalidInput, "path must name a directory"),
-        });
-    };
-
-    let directory = Dir::open_ambient_dir(parent, ambient_authority())
-        .map_err(|source| map_metadata_error(path, source))?;
-
-    directory.metadata(name).map_err(|source| map_metadata_error(path, source))
-}
-
-/// Maps a filesystem error to the typed error, distinguishing a missing
-/// required directory from a directory that exists but cannot be inspected.
-fn map_metadata_error(path: &camino::Utf8Path, source: io::Error) -> LiveLayoutError {
-    if source.kind() == io::ErrorKind::NotFound {
-        LiveLayoutError::MissingPath { path: path.to_path_buf() }
-    } else {
-        LiveLayoutError::UnreadablePath { path: path.to_path_buf(), source }
-    }
 }

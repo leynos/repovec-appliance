@@ -20,21 +20,26 @@
 //! `/etc/passwd`, or touches the live filesystem. Live ownership checks are the
 //! responsibility of the separately carved-out pre-flight adapter.
 
+mod directory_contract;
 mod error;
+mod group;
 pub mod live;
 mod parser;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_display;
+#[cfg(test)]
 mod tests_live;
 #[cfg(test)]
 mod tests_proptest;
+#[cfg(test)]
+mod tests_support;
 
-use std::collections::HashSet;
-
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 pub use error::{DirectoryLayoutError, Mode};
+use error::{SYSUSERS_ASSET, TMPFILES_ASSET};
 
 use crate::RuntimePaths;
 
@@ -144,15 +149,15 @@ pub fn validate_checked_in_directory_layout() -> Result<(), DirectoryLayoutError
 /// use repovec_core::appliance::directory_layout::validate_directory_layout;
 ///
 /// // A data tree missing the worktrees entry violates the contract.
-/// let tmpfiles = "\
-/// d /var/lib/repovec 0700 repovec repovec -\
-/// d /var/lib/repovec/git-mirrors 0700 repovec repovec -\
-/// d /var/lib/repovec/.grepai 0700 repovec repovec -\
-/// d /var/lib/repovec/qdrant-storage 0700 root root -
-/// ";
-/// let sysusers = "\
-/// u repovec - \"repovec appliance service user\" /var/lib/repovec /usr/sbin/nologin
-/// ";
+/// let tmpfiles = concat!(
+///     "d /var/lib/repovec 0700 repovec repovec -\n",
+///     "d /var/lib/repovec/git-mirrors 0700 repovec repovec -\n",
+///     "d /var/lib/repovec/.grepai 0700 repovec repovec -\n",
+///     "d /var/lib/repovec/qdrant-storage 0700 root root -\n",
+/// );
+/// let sysusers = concat!(
+///     "u repovec - \"repovec appliance service user\" /var/lib/repovec /usr/sbin/nologin\n",
+/// );
 /// assert!(validate_directory_layout(tmpfiles, sysusers).is_err());
 /// ```
 pub fn validate_directory_layout(
@@ -171,17 +176,18 @@ fn validate_tmpfiles_entries(
     paths: &RuntimePaths,
     contract: &[DirectorySpec],
 ) -> Result<(), DirectoryLayoutError> {
-    let mut expected_paths = contract.iter().map(|spec| spec.path.as_str()).collect::<HashSet<_>>();
+    let mut satisfied = vec![false; contract.len()];
 
     for (line_index, raw_line) in tmpfiles.lines().enumerate() {
         let line_number = line_index + 1;
-        let Some(entry) = parser::tmpfiles_entry(raw_line, "tmpfiles.d/repovec.conf", line_number)?
-        else {
+        let Some(entry) = parser::tmpfiles_entry(raw_line, TMPFILES_ASSET, line_number)? else {
             continue;
         };
 
         let path = entry.path.as_str();
-        let Some(spec) = contract.iter().find(|spec| spec.path.as_str() == path) else {
+        let Some((index, spec)) =
+            contract.iter().enumerate().find(|(_, spec)| spec.path.as_str() == path)
+        else {
             // A config-root entry violates the single-authority invariant (SI-4):
             // the libexec helper owns /etc/repovec, so the tmpfiles asset must
             // never declare it. Anything else outside the contract is just an
@@ -190,11 +196,23 @@ fn validate_tmpfiles_entries(
         };
 
         compare_spec(spec, &entry, line_number)?;
-        expected_paths.remove(path);
+
+        // `index` comes from enumerating the contract, and `satisfied` is
+        // allocated with exactly the contract's length, so the slot exists.
+        // `get_mut` is used rather than indexing so a future change to either
+        // length becomes a visible no-op instead of a panic.
+        if let Some(is_satisfied) = satisfied.get_mut(index) {
+            *is_satisfied = true;
+        }
     }
 
-    if let Some(path) = expected_paths.into_iter().next() {
-        return Err(DirectoryLayoutError::MissingDirectoryEntry { path: Utf8PathBuf::from(path) });
+    // Report the first contract entry with no asset line, searching in contract
+    // order rather than in hash order. The operator sees the same missing path
+    // on every run, and it is the first one in the documented layout.
+    for (spec, is_satisfied) in contract.iter().zip(&satisfied) {
+        if !is_satisfied {
+            return Err(DirectoryLayoutError::MissingDirectoryEntry { path: spec.path.clone() });
+        }
     }
 
     Ok(())
@@ -204,12 +222,14 @@ fn unexpected_tmpfiles_path_error(
     path: &str,
     runtime_paths: &RuntimePaths,
 ) -> DirectoryLayoutError {
-    if path == runtime_paths.config_root().as_str()
-        || path.starts_with(runtime_paths.config_root().as_str())
-    {
-        DirectoryLayoutError::ForbiddenSecretsEntry { path: Utf8PathBuf::from(path) }
+    // Compare path components, not string prefixes: `/etc/repovec-backup` is a
+    // different directory, and a prefix comparison would misreport it as a
+    // second authority for the secrets file.
+    let candidate = Utf8Path::new(path);
+    if candidate.starts_with(runtime_paths.config_root()) {
+        DirectoryLayoutError::ForbiddenSecretsEntry { path: candidate.to_path_buf() }
     } else {
-        DirectoryLayoutError::UnexpectedDirectoryEntry { path: Utf8PathBuf::from(path) }
+        DirectoryLayoutError::UnexpectedDirectoryEntry { path: candidate.to_path_buf() }
     }
 }
 
@@ -218,38 +238,66 @@ fn compare_spec(
     entry: &parser::TmpfilesEntry,
     line_number: usize,
 ) -> Result<(), DirectoryLayoutError> {
-    let actual_mode =
-        parser::parse_mode(&entry.mode).ok_or(DirectoryLayoutError::NonExplicitField {
-            asset: "tmpfiles.d/repovec.conf",
+    let actual_mode = parser::parse_mode(&entry.mode).map_err(|error| match error {
+        parser::ModeParseError::Placeholder => DirectoryLayoutError::NonExplicitField {
+            asset: TMPFILES_ASSET,
             line_number,
             field: "mode",
-        })?;
+        },
+        parser::ModeParseError::Invalid => DirectoryLayoutError::InvalidField {
+            asset: TMPFILES_ASSET,
+            line_number,
+            field: "mode",
+            value: entry.mode.clone(),
+        },
+    })?;
 
-    if actual_mode != spec.mode {
-        return Err(DirectoryLayoutError::IncorrectMode {
-            path: Utf8PathBuf::from(entry.path.as_str()),
-            expected: spec.mode,
-            actual: actual_mode,
-        });
+    compare_mode(spec, entry, actual_mode)?;
+    compare_owner(spec, entry)?;
+    compare_group(spec, entry)
+}
+
+fn compare_mode(
+    spec: &DirectorySpec,
+    entry: &parser::TmpfilesEntry,
+    actual_mode: Mode,
+) -> Result<(), DirectoryLayoutError> {
+    if actual_mode == spec.mode {
+        return Ok(());
     }
+    Err(DirectoryLayoutError::IncorrectMode {
+        path: Utf8PathBuf::from(entry.path.as_str()),
+        expected: spec.mode,
+        actual: actual_mode,
+    })
+}
 
-    if entry.user != spec.owner {
-        return Err(DirectoryLayoutError::IncorrectOwner {
-            path: Utf8PathBuf::from(entry.path.as_str()),
-            expected: spec.owner,
-            actual: entry.user.clone(),
-        });
+fn compare_owner(
+    spec: &DirectorySpec,
+    entry: &parser::TmpfilesEntry,
+) -> Result<(), DirectoryLayoutError> {
+    if entry.user == spec.owner {
+        return Ok(());
     }
+    Err(DirectoryLayoutError::IncorrectOwner {
+        path: Utf8PathBuf::from(entry.path.as_str()),
+        expected: spec.owner,
+        actual: entry.user.clone(),
+    })
+}
 
-    if entry.group != spec.group {
-        return Err(DirectoryLayoutError::IncorrectGroup {
-            path: Utf8PathBuf::from(entry.path.as_str()),
-            expected: spec.group,
-            actual: entry.group.clone(),
-        });
+fn compare_group(
+    spec: &DirectorySpec,
+    entry: &parser::TmpfilesEntry,
+) -> Result<(), DirectoryLayoutError> {
+    if entry.group == spec.group {
+        return Ok(());
     }
-
-    Ok(())
+    Err(DirectoryLayoutError::IncorrectGroup {
+        path: Utf8PathBuf::from(entry.path.as_str()),
+        expected: spec.group,
+        actual: entry.group.clone(),
+    })
 }
 
 fn validate_sysusers_entries(sysusers: &str) -> Result<(), DirectoryLayoutError> {
@@ -257,17 +305,25 @@ fn validate_sysusers_entries(sysusers: &str) -> Result<(), DirectoryLayoutError>
 
     for (line_index, raw_line) in sysusers.lines().enumerate() {
         let line_number = line_index + 1;
-        let Some(entry) =
-            parser::sysusers_user_line(raw_line, "sysusers.d/repovec.conf", line_number)?
-        else {
+        let Some(entry) = parser::sysusers_user_line(raw_line, SYSUSERS_ASSET, line_number)? else {
             continue;
         };
 
+        // Another account declared by the same asset is not the repovec user and
+        // is simply not the entry this validator is looking for; only the
+        // absence of a repovec declaration is a failure.
         if entry.name != REPOVEC_USER {
-            return Err(DirectoryLayoutError::SysusersMissingUser);
+            continue;
         }
 
         found_user = true;
+
+        // systemd-sysusers allocates the uid when the column is `-`. Pinning a
+        // numeric uid would make provisioning depend on that number being free
+        // on the host, which the appliance does not control.
+        if entry.uid != "-" {
+            return Err(DirectoryLayoutError::SysusersPinnedUid { actual: entry.uid.clone() });
+        }
 
         if entry.home != REPOVEC_HOME {
             return Err(DirectoryLayoutError::SysusersIncorrectHome {
@@ -284,9 +340,5 @@ fn validate_sysusers_entries(sysusers: &str) -> Result<(), DirectoryLayoutError>
         }
     }
 
-    if !found_user {
-        return Err(DirectoryLayoutError::SysusersMissingUser);
-    }
-
-    Ok(())
+    if found_user { Ok(()) } else { Err(DirectoryLayoutError::SysusersMissingUser) }
 }

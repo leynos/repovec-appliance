@@ -6,13 +6,21 @@
 //! column, which keeps the column indices correct for the sysusers home and
 //! shell fields even when the GECOS comment contains spaces.
 //!
-//! The views are strict: [`tmpfiles_entry`] accepts only the `d` type this
-//! asset uses and rejects anything else with [`MalformedLine`]. The tokenizer
-//! itself never panics and never returns a partially populated view.
+//! The views accept the column arity `systemd` accepts, not just the arity the
+//! checked-in assets happen to use. Both formats let trailing columns be
+//! omitted, and `tmpfiles.d` may also carry a trailing argument, so the views
+//! require only the leading columns they actually interpret. A `u` line that is
+//! short is reported with the name of the first absent column, so the operator
+//! is told which field to add rather than only that the line is malformed. The
+//! tokenizer never panics and never returns a partially populated view.
 
 use crate::appliance::directory_layout::{DirectoryLayoutError, Mode};
 
 /// Splits a trimmed, non-comment line into shell-style quoted-aware columns.
+///
+/// A quoted section always contributes a column, so an empty quoted field is
+/// preserved rather than silently removed. Dropping it would shift every later
+/// column and reject a syntactically valid declaration.
 fn tokenize(line: &str) -> Vec<String> {
     let mut columns = Vec::new();
     let mut current = String::new();
@@ -20,12 +28,11 @@ fn tokenize(line: &str) -> Vec<String> {
 
     for ch in line.chars() {
         match ch {
-            '"' => {
-                in_quotes = !in_quotes;
-                if !in_quotes && !current.is_empty() {
-                    columns.push(std::mem::take(&mut current));
-                }
+            '"' if in_quotes => {
+                in_quotes = false;
+                columns.push(std::mem::take(&mut current));
             }
+            '"' => in_quotes = true,
             c if c.is_whitespace() && !in_quotes => {
                 if !current.is_empty() {
                     columns.push(std::mem::take(&mut current));
@@ -41,6 +48,26 @@ fn tokenize(line: &str) -> Vec<String> {
     columns
 }
 
+/// Splits tokenized columns into the leading `N` interpreted columns and any
+/// trailing ones.
+///
+/// Consuming the owned columns lets each view move its fields out instead of
+/// cloning them, while still tolerating the optional trailing columns the
+/// formats allow. Returns `None` when the line carries fewer than `N` columns.
+fn split_columns<const N: usize>(mut columns: Vec<String>) -> Option<([String; N], Vec<String>)> {
+    if columns.len() < N {
+        return None;
+    }
+    let tail = columns.split_off(N);
+    let head = columns.try_into().ok()?;
+    Some((head, tail))
+}
+
+/// Builds the malformed-line error for a rejected asset line.
+fn malformed_line(asset: &'static str, line_number: usize, trimmed: &str) -> DirectoryLayoutError {
+    DirectoryLayoutError::MalformedLine { asset, line_number, line: trimmed.to_owned() }
+}
+
 /// A parsed `d` entry from the `tmpfiles.d` asset.
 pub(crate) struct TmpfilesEntry {
     pub path: String,
@@ -50,6 +77,10 @@ pub(crate) struct TmpfilesEntry {
 }
 
 /// Parses an arbitrary line as a `tmpfiles.d` `d` entry.
+///
+/// Only the leading five columns are interpreted: the `age` column and a
+/// trailing argument are optional under `tmpfiles.d` and are not part of the
+/// contract, so a conformant line that omits or extends them is accepted.
 pub(crate) fn tmpfiles_entry(
     line: &str,
     asset: &'static str,
@@ -60,38 +91,36 @@ pub(crate) fn tmpfiles_entry(
         return Ok(None);
     }
 
-    let columns = tokenize(trimmed);
-    let [kind, path, mode, user, group, _age] = columns.as_slice() else {
-        return Err(DirectoryLayoutError::MalformedLine {
-            asset,
-            line_number,
-            line: trimmed.to_owned(),
-        });
+    let Some(([kind, path, mode, user, group], _tail)) = split_columns(tokenize(trimmed)) else {
+        return Err(malformed_line(asset, line_number, trimmed));
     };
     if kind != "d" {
-        return Err(DirectoryLayoutError::MalformedLine {
-            asset,
-            line_number,
-            line: trimmed.to_owned(),
-        });
+        return Err(malformed_line(asset, line_number, trimmed));
     }
 
-    Ok(Some(TmpfilesEntry {
-        path: path.clone(),
-        mode: mode.clone(),
-        user: user.clone(),
-        group: group.clone(),
-    }))
+    Ok(Some(TmpfilesEntry { path, mode, user, group }))
 }
 
 /// A parsed `u` line from the `sysusers.d` asset.
 pub(crate) struct SysusersUserLine {
     pub name: String,
+    pub uid: String,
     pub home: String,
     pub shell: String,
 }
 
+/// The `u` columns this view interprets, in declaration order.
+///
+/// The name at index `n` is the `n`th column, so a short line can be reported
+/// with the first column it is missing.
+const SYSUSERS_COLUMNS: [&str; 5] = ["type", "name", "uid", "gecos", "home"];
+
 /// Parses an arbitrary line as a `sysusers.d` `u` user declaration.
+///
+/// A `sysusers.d` `u` line is `u name uid gecos home shell`, and every column
+/// after the type may be omitted. This view requires the five columns it
+/// interprets and names the first absent one when the line is short; the
+/// optional `shell` column is carried through when present.
 pub(crate) fn sysusers_user_line(
     line: &str,
     asset: &'static str,
@@ -103,33 +132,47 @@ pub(crate) fn sysusers_user_line(
     }
 
     let columns = tokenize(trimmed);
-    let [kind, name, _uid, _gecos, home, shell] = columns.as_slice() else {
-        return Err(DirectoryLayoutError::MalformedLine {
-            asset,
-            line_number,
-            line: trimmed.to_owned(),
-        });
-    };
-    if kind != "u" {
-        return Err(DirectoryLayoutError::MalformedLine {
-            asset,
-            line_number,
-            line: trimmed.to_owned(),
-        });
+    if columns.first().is_none_or(|kind| kind != "u") {
+        return Err(malformed_line(asset, line_number, trimmed));
     }
+    let column_count = columns.len();
+    let Some(([_kind, name, uid, _gecos, home], tail)) = split_columns(columns) else {
+        // The line starts with `u` and has fewer than five columns, so the
+        // first absent column is always addressable.
+        let Some(field) = SYSUSERS_COLUMNS.get(column_count).copied() else {
+            return Err(malformed_line(asset, line_number, trimmed));
+        };
+        return Err(DirectoryLayoutError::MissingSysusersField { asset, line_number, field });
+    };
 
-    Ok(Some(SysusersUserLine { name: name.clone(), home: home.clone(), shell: shell.clone() }))
+    Ok(Some(SysusersUserLine {
+        name,
+        uid,
+        home,
+        shell: tail.into_iter().next().unwrap_or_default(),
+    }))
 }
 
-/// Parses an explicit octal mode string (e.g. "0700").
+/// Why a mode column could not be accepted as an explicit octal mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ModeParseError {
+    /// The `-` placeholder was used instead of an explicit value (SI-5).
+    Placeholder,
+    /// The field is explicit, but is not a valid octal mode.
+    Invalid,
+}
+
+/// Parses an explicit octal mode string (e.g. `"0700"`).
 ///
-/// Returns `None` for the `-` placeholder token (SI-5), which the validator
-/// rejects as [`DirectoryLayoutError::NonExplicitField`], and for any
-/// non-octal input.
-#[must_use]
-pub(crate) fn parse_mode(text: &str) -> Option<Mode> {
+/// # Errors
+///
+/// Returns [`ModeParseError::Placeholder`] for the `-` default token and
+/// [`ModeParseError::Invalid`] for any other non-octal input. Keeping the two
+/// apart lets the validator tell an operator that the mode is missing, rather
+/// than wrongly reporting that a present but unparsable mode is missing.
+pub(crate) fn parse_mode(text: &str) -> Result<Mode, ModeParseError> {
     if text == "-" {
-        return None;
+        return Err(ModeParseError::Placeholder);
     }
-    u16::from_str_radix(text, 8).ok().map(Mode)
+    u16::from_str_radix(text, 8).map(Mode).map_err(|_| ModeParseError::Invalid)
 }

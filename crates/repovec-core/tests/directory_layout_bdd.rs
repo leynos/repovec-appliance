@@ -125,7 +125,10 @@ fn the_directory_layout_asset_set_is_accepted(directory_layout_world: &Directory
         panic!("the validation step should have run");
     };
 
-    assert!(validation_result.is_ok());
+    assert!(
+        validation_result.is_ok(),
+        "expected the asset set to be accepted, got {validation_result:?}"
+    );
 }
 
 #[then("validation fails because a required directory entry is missing")]

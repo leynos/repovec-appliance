@@ -25,9 +25,12 @@ pub(super) enum ValidationScenario {
     MissingProvisionAfterSysusers,
     MissingProvisionBeforeRepovecd,
     WrongProvisionSysusersExecStart,
+    SwappedProvisionExecStartOrder,
+    ExtraProvisionExecStart,
     MissingProvisionType,
     MissingRepovecdServiceSection,
     MissingRepovecdRequiresQdrant,
+    MissingRepovecdRequiresProvision,
     MissingRepovecdAfterQdrant,
     RepovecdUsesQdrantContainerService,
     WrongRepovecdExecStart,
@@ -38,6 +41,7 @@ pub(super) enum ValidationScenario {
     MissingMcpdServiceSection,
     MissingMcpdRequiresQdrant,
     MissingMcpdRequiresRepovecd,
+    MissingMcpdRequiresProvision,
     MissingMcpdAfterQdrant,
     MissingMcpdAfterRepovecd,
     WrongMcpdExecStart,
@@ -87,10 +91,13 @@ impl ValidationScenario {
             | Self::MissingProvisionAfterSysusers
             | Self::MissingProvisionBeforeRepovecd
             | Self::WrongProvisionSysusersExecStart
+            | Self::SwappedProvisionExecStartOrder
+            | Self::ExtraProvisionExecStart
             | Self::MissingProvisionType => self.mutate_provision(&mut units),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
+            | Self::MissingRepovecdRequiresProvision
             | Self::MissingRepovecdAfterQdrant
             | Self::RepovecdUsesQdrantContainerService
             | Self::WrongRepovecdExecStart
@@ -101,6 +108,7 @@ impl ValidationScenario {
             Self::MissingMcpdServiceSection
             | Self::MissingMcpdRequiresQdrant
             | Self::MissingMcpdRequiresRepovecd
+            | Self::MissingMcpdRequiresProvision
             | Self::MissingMcpdAfterQdrant
             | Self::MissingMcpdAfterRepovecd
             | Self::WrongMcpdExecStart
@@ -200,6 +208,25 @@ impl ValidationScenario {
                 "/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf",
                 "/usr/bin/systemd-sysusers /usr/lib/sysusers.d/wrong.conf",
             ),
+            Self::SwappedProvisionExecStartOrder => units.replace_token(
+                UnitFile::Provision,
+                concat!(
+                    "ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf\n",
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf\n",
+                ),
+                concat!(
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf\n",
+                    "ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf\n",
+                ),
+            ),
+            Self::ExtraProvisionExecStart => units.replace_token(
+                UnitFile::Provision,
+                "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf\n",
+                concat!(
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf\n",
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/extra.conf\n",
+                ),
+            ),
             Self::MissingProvisionType => {
                 units.remove_line(UnitFile::Provision, "Type=oneshot\n");
             }
@@ -217,6 +244,9 @@ impl ValidationScenario {
             }
             Self::MissingRepovecdRequiresQdrant => {
                 units.remove_line(UnitFile::Repovecd, "Requires=qdrant.service\n");
+            }
+            Self::MissingRepovecdRequiresProvision => {
+                units.remove_line(UnitFile::Repovecd, "Requires=repovec-provision.service\n");
             }
             Self::MissingRepovecdAfterQdrant => {
                 units.remove_line(UnitFile::Repovecd, "After=qdrant.service\n");
@@ -257,6 +287,9 @@ impl ValidationScenario {
             }
             Self::MissingMcpdRequiresRepovecd => {
                 units.remove_token(UnitFile::Mcpd, "Requires=", "repovecd.service");
+            }
+            Self::MissingMcpdRequiresProvision => {
+                units.remove_line(UnitFile::Mcpd, "Requires=repovec-provision.service\n");
             }
             Self::MissingMcpdAfterQdrant => {
                 units.remove_token(UnitFile::Mcpd, "After=", "qdrant.service");

@@ -42,9 +42,12 @@ use unit_set::{UnitSet, checked_in_unit_set};
 #[case::missing_provision_after_sysusers(ValidationScenario::MissingProvisionAfterSysusers)]
 #[case::missing_provision_before_repovecd(ValidationScenario::MissingProvisionBeforeRepovecd)]
 #[case::wrong_provision_sysusers_exec_start(ValidationScenario::WrongProvisionSysusersExecStart)]
+#[case::swapped_provision_exec_start_order(ValidationScenario::SwappedProvisionExecStartOrder)]
+#[case::extra_provision_exec_start(ValidationScenario::ExtraProvisionExecStart)]
 #[case::missing_provision_type(ValidationScenario::MissingProvisionType)]
 #[case::missing_repovecd_service_section(ValidationScenario::MissingRepovecdServiceSection)]
 #[case::missing_repovecd_requires_qdrant(ValidationScenario::MissingRepovecdRequiresQdrant)]
+#[case::missing_repovecd_requires_provision(ValidationScenario::MissingRepovecdRequiresProvision)]
 #[case::missing_repovecd_after_qdrant(ValidationScenario::MissingRepovecdAfterQdrant)]
 #[case::repovecd_uses_qdrant_container_service(
     ValidationScenario::RepovecdUsesQdrantContainerService
@@ -57,6 +60,7 @@ use unit_set::{UnitSet, checked_in_unit_set};
 #[case::missing_mcpd_service_section(ValidationScenario::MissingMcpdServiceSection)]
 #[case::missing_mcpd_requires_qdrant(ValidationScenario::MissingMcpdRequiresQdrant)]
 #[case::missing_mcpd_requires_repovecd(ValidationScenario::MissingMcpdRequiresRepovecd)]
+#[case::missing_mcpd_requires_provision(ValidationScenario::MissingMcpdRequiresProvision)]
 #[case::missing_mcpd_after_qdrant(ValidationScenario::MissingMcpdAfterQdrant)]
 #[case::missing_mcpd_after_repovecd(ValidationScenario::MissingMcpdAfterRepovecd)]
 #[case::wrong_mcpd_exec_start(ValidationScenario::WrongMcpdExecStart)]

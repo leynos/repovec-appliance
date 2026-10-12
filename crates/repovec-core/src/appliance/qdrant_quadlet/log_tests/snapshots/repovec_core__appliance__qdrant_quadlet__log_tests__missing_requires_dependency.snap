@@ -20,7 +20,7 @@ expression: events
         fields: {
             "directive": "Requires",
             "expected_dependency": "repovec-qdrant-api-key.service",
-            "message": "qdrant quadlet validation failed: missing api key provisioning dependency",
+            "message": "qdrant quadlet validation failed: missing provisioning dependency",
         },
     },
 ]

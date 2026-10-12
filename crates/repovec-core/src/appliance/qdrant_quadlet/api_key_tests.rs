@@ -61,7 +61,8 @@ fn api_key_secret_type_is_contradictory() -> String {
 }
 
 fn api_key_requires_dependency_missing() -> String {
-    qdrant_quadlet_contents().replace("Requires=repovec-qdrant-api-key.service\n", "")
+    qdrant_quadlet_contents()
+        .replace("Requires=repovec-qdrant-api-key.service repovec-provision.service\n", "")
 }
 
 fn api_key_after_dependency_missing() -> String {
@@ -69,13 +70,25 @@ fn api_key_after_dependency_missing() -> String {
 }
 
 fn api_key_requires_dependency_wrong() -> String {
-    qdrant_quadlet_contents()
-        .replace("Requires=repovec-qdrant-api-key.service", "Requires=network-online.target")
+    qdrant_quadlet_contents().replace(
+        "Requires=repovec-qdrant-api-key.service repovec-provision.service",
+        "Requires=network-online.target",
+    )
 }
 
 fn api_key_after_dependency_wrong() -> String {
     qdrant_quadlet_contents()
         .replace("After=repovec-qdrant-api-key.service", "After=network-online.target")
+}
+
+/// The `Requires=` directive keeps the API-key service but loses the
+/// provisioning oneshot, so the quadlet would start Qdrant against an
+/// unprovisioned `/var/lib/repovec/qdrant-storage`.
+fn provision_dependency_missing() -> String {
+    qdrant_quadlet_contents().replace(
+        "Requires=repovec-qdrant-api-key.service repovec-provision.service",
+        "Requires=repovec-qdrant-api-key.service",
+    )
 }
 
 fn inline_api_key_environment() -> String {
@@ -96,6 +109,10 @@ fn inline_api_key_environment() -> String {
 #[case::incorrect_api_key_after_dependency(
     api_key_after_dependency_wrong(),
     "incorrect_api_key_after_dependency_display"
+)]
+#[case::incorrect_provision_dependency(
+    provision_dependency_missing(),
+    "incorrect_provision_dependency_display"
 )]
 #[case::missing_api_key_secret(api_key_secret_missing(), "missing_api_key_secret_display")]
 #[case::incorrect_api_key_secret_type(
@@ -200,7 +217,10 @@ fn qdrant_quadlet_requires_api_key_requires_dependency() {
 
     assert_eq!(
         error,
-        QdrantQuadletError::MissingApiKeyProvisioningDependency { directive: "Requires" }
+        QdrantQuadletError::MissingUnitDependency {
+            directive: "Requires",
+            expected: "repovec-qdrant-api-key.service",
+        }
     );
 }
 
@@ -212,7 +232,10 @@ fn qdrant_quadlet_requires_api_key_after_dependency() {
 
     assert_eq!(
         error,
-        QdrantQuadletError::MissingApiKeyProvisioningDependency { directive: "After" }
+        QdrantQuadletError::MissingUnitDependency {
+            directive: "After",
+            expected: "repovec-qdrant-api-key.service",
+        }
     );
 }
 
@@ -224,9 +247,10 @@ fn qdrant_quadlet_rejects_wrong_api_key_dependency() {
 
     assert_eq!(
         error,
-        QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
+        QdrantQuadletError::IncorrectUnitDependency {
             directive: "Requires",
-            dependency: String::from("network-online.target"),
+            expected: "repovec-qdrant-api-key.service",
+            actual: String::from("network-online.target"),
         }
     );
 }
@@ -239,9 +263,26 @@ fn qdrant_quadlet_rejects_wrong_api_key_after_dependency() {
 
     assert_eq!(
         error,
-        QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
+        QdrantQuadletError::IncorrectUnitDependency {
             directive: "After",
-            dependency: String::from("network-online.target"),
+            expected: "repovec-qdrant-api-key.service",
+            actual: String::from("network-online.target"),
+        }
+    );
+}
+
+#[test]
+fn qdrant_quadlet_requires_provision_dependency() {
+    let contents = provision_dependency_missing();
+    let error = validate_qdrant_quadlet(&contents, &())
+        .expect_err("Requires= must also reference the provisioning oneshot");
+
+    assert_eq!(
+        error,
+        QdrantQuadletError::IncorrectUnitDependency {
+            directive: "Requires",
+            expected: "repovec-provision.service",
+            actual: String::from("repovec-qdrant-api-key.service"),
         }
     );
 }

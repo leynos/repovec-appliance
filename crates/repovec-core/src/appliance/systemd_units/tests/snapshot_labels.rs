@@ -22,10 +22,13 @@ impl ValidationScenario {
             | Self::MissingProvisionAfterSysusers
             | Self::MissingProvisionBeforeRepovecd
             | Self::WrongProvisionSysusersExecStart
+            | Self::SwappedProvisionExecStartOrder
+            | Self::ExtraProvisionExecStart
             | Self::MissingProvisionType => self.provision_snapshot_label(),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
+            | Self::MissingRepovecdRequiresProvision
             | Self::MissingRepovecdAfterQdrant
             | Self::RepovecdUsesQdrantContainerService
             | Self::WrongRepovecdExecStart
@@ -36,6 +39,7 @@ impl ValidationScenario {
             Self::MissingMcpdServiceSection
             | Self::MissingMcpdRequiresQdrant
             | Self::MissingMcpdRequiresRepovecd
+            | Self::MissingMcpdRequiresProvision
             | Self::MissingMcpdAfterQdrant
             | Self::MissingMcpdAfterRepovecd
             | Self::WrongMcpdExecStart
@@ -90,6 +94,8 @@ impl ValidationScenario {
             Self::MissingProvisionAfterSysusers => "missing_provision_after_sysusers_display",
             Self::MissingProvisionBeforeRepovecd => "missing_provision_before_repovecd_display",
             Self::WrongProvisionSysusersExecStart => "wrong_provision_sysusers_exec_start_display",
+            Self::SwappedProvisionExecStartOrder => "swapped_provision_exec_start_order_display",
+            Self::ExtraProvisionExecStart => "extra_provision_exec_start_display",
             Self::MissingProvisionType => "missing_provision_type_display",
             _ => panic!("provision snapshot label called for non-provision scenario"),
         }
@@ -100,6 +106,7 @@ impl ValidationScenario {
             Self::PropertyBeforeSection => "property_before_section_display",
             Self::MissingRepovecdServiceSection => "missing_repovecd_service_section_display",
             Self::MissingRepovecdRequiresQdrant => "missing_repovecd_requires_qdrant_display",
+            Self::MissingRepovecdRequiresProvision => "missing_repovecd_requires_provision_display",
             Self::MissingRepovecdAfterQdrant => "missing_repovecd_after_qdrant_display",
             Self::RepovecdUsesQdrantContainerService => {
                 "repovecd_uses_qdrant_container_service_display"
@@ -118,6 +125,7 @@ impl ValidationScenario {
             Self::MissingMcpdServiceSection => "missing_mcpd_service_section_display",
             Self::MissingMcpdRequiresQdrant => "missing_mcpd_requires_qdrant_display",
             Self::MissingMcpdRequiresRepovecd => "missing_mcpd_requires_repovecd_display",
+            Self::MissingMcpdRequiresProvision => "missing_mcpd_requires_provision_display",
             Self::MissingMcpdAfterQdrant => "missing_mcpd_after_qdrant_display",
             Self::MissingMcpdAfterRepovecd => "missing_mcpd_after_repovecd_display",
             Self::WrongMcpdExecStart => "wrong_mcpd_exec_start_display",

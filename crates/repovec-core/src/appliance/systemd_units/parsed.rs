@@ -150,26 +150,25 @@ impl ParsedUnit {
         })
     }
 
-    /// Requires at least one `ExecStart` value equal to `expected`.
+    /// Requires `ExecStart=` to declare exactly `expected`, in this order.
     ///
-    /// A provisioning oneshot may legitimately carry several `ExecStart` lines, so
-    /// the check accepts the expected command among them rather than demanding it
-    /// be the only one. For example, expected `/usr/bin/systemd-sysusers` succeeds
-    /// when the service also runs `systemd-tmpfiles`; a service without that
-    /// command yields [`SystemdUnitError::IncorrectExecStart`].
-    pub(super) fn require_any_exec_start(
+    /// Membership is not enough for the provisioning oneshot: `systemd-sysusers`
+    /// must run before `systemd-tmpfiles`, and a repeated or extra command would
+    /// otherwise pass validation. Comparing the whole sequence rejects a swapped
+    /// order, a missing command, and an unexpected addition alike.
+    pub(super) fn require_exec_start_sequence(
         &self,
-        expected: &'static str,
+        expected: &'static [&'static str],
     ) -> Result<(), SystemdUnitError> {
         let values = self.values(SERVICE_SECTION, "ExecStart");
-        if values.iter().any(|actual| actual == expected) {
+        if values.iter().map(String::as_str).eq(expected.iter().copied()) {
             return Ok(());
         }
 
-        Err(SystemdUnitError::IncorrectExecStart {
+        Err(SystemdUnitError::IncorrectExecStartSequence {
             unit: self.unit,
             expected,
-            actual: values.join(","),
+            actual: values.to_vec(),
         })
     }
 

@@ -8,10 +8,10 @@
 use super::{
     GREPAI_BOOLEAN_HARDENING_DIRECTIVES, GREPAI_HARDENING_DIRECTIVES,
     GREPAI_RESTRICT_ADDRESS_FAMILIES, GREPAI_WORKING_DIRECTORY, INSTALL_SECTION,
-    QDRANT_API_KEY_SERVICE, QDRANT_SERVICE, REPOVEC_MCPD_UNIT, REPOVEC_PROVISION_SERVICE,
-    REPOVECD_UNIT, SERVICE_GROUP, SERVICE_HOME_ENVIRONMENT, SERVICE_SECTION, SERVICE_USER,
-    SERVICE_WORKING_DIRECTORY, SYSUSERS_EXEC, SYSUSERS_SERVICE, SystemdUnitError, TARGET_UNIT,
-    TMPFILES_EXEC, UNIT_SECTION, parsed::ParsedUnit,
+    PROVISION_EXEC_SEQUENCE, QDRANT_API_KEY_SERVICE, QDRANT_SERVICE, REPOVEC_MCPD_UNIT,
+    REPOVEC_PROVISION_SERVICE, REPOVECD_UNIT, SERVICE_GROUP, SERVICE_HOME_ENVIRONMENT,
+    SERVICE_SECTION, SERVICE_USER, SERVICE_WORKING_DIRECTORY, SYSUSERS_SERVICE, SystemdUnitError,
+    TARGET_UNIT, UNIT_SECTION, parsed::ParsedUnit,
 };
 
 /// Checks the parsed target's required sections and dependency tokens.
@@ -45,8 +45,7 @@ pub(super) fn validate_provision_service(provision: &ParsedUnit) -> Result<(), S
     provision.require_dependency(UNIT_SECTION, "Before", REPOVEC_MCPD_UNIT)?;
     provision.require_service_directive("Type", "oneshot")?;
     provision.require_service_directive("RemainAfterExit", "yes")?;
-    provision.require_any_exec_start(SYSUSERS_EXEC)?;
-    provision.require_any_exec_start(TMPFILES_EXEC)
+    provision.require_exec_start_sequence(PROVISION_EXEC_SEQUENCE)
 }
 
 /// Checks a parsed daemon unit's Qdrant dependency and service identity.
@@ -57,6 +56,7 @@ pub(super) fn validate_repovecd(repovecd: &ParsedUnit) -> Result<(), SystemdUnit
     repovecd.require_section(UNIT_SECTION)?;
     repovecd.require_section(SERVICE_SECTION)?;
     repovecd.require_dependency(UNIT_SECTION, "Requires", QDRANT_SERVICE)?;
+    repovecd.require_dependency(UNIT_SECTION, "Requires", REPOVEC_PROVISION_SERVICE)?;
     repovecd.require_dependency(UNIT_SECTION, "After", QDRANT_SERVICE)?;
     repovecd.require_exec_start("/usr/bin/repovecd")?;
     repovecd.require_service_directive("User", SERVICE_USER)?;
@@ -74,6 +74,7 @@ pub(super) fn validate_mcpd(mcpd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     mcpd.require_section(SERVICE_SECTION)?;
     mcpd.require_dependency(UNIT_SECTION, "Requires", QDRANT_SERVICE)?;
     mcpd.require_dependency(UNIT_SECTION, "Requires", REPOVECD_UNIT)?;
+    mcpd.require_dependency(UNIT_SECTION, "Requires", REPOVEC_PROVISION_SERVICE)?;
     mcpd.require_dependency(UNIT_SECTION, "After", QDRANT_SERVICE)?;
     mcpd.require_dependency(UNIT_SECTION, "After", REPOVECD_UNIT)?;
     mcpd.require_exec_start("/usr/bin/repovec-mcpd")?;

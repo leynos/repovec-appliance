@@ -4,7 +4,7 @@ use rstest::rstest;
 
 use super::{
     QDRANT_API_KEY_ENVIRONMENT_VARIABLE,
-    api_key::{
+    environment::{
         is_api_key_environment_assignment, redact_api_key_environment_assignment,
         split_environment_assignments,
     },

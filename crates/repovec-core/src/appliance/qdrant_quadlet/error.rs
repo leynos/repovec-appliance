@@ -80,17 +80,21 @@ pub enum QdrantQuadletError {
         /// The unexpected auto-update policy value.
         auto_update: String,
     },
-    /// The Quadlet does not depend on the API-key provisioning unit.
-    MissingApiKeyProvisioningDependency {
+    /// The Quadlet does not depend on a required provisioning unit.
+    MissingUnitDependency {
         /// The missing systemd dependency directive.
         directive: &'static str,
+        /// The systemd unit the directive must reference.
+        expected: &'static str,
     },
     /// The Quadlet depends on the wrong provisioning unit.
-    IncorrectApiKeyProvisioningDependency {
+    IncorrectUnitDependency {
         /// The systemd dependency directive with the wrong value.
         directive: &'static str,
+        /// The systemd unit the directive must reference.
+        expected: &'static str,
         /// The unexpected dependency value.
-        dependency: String,
+        actual: String,
     },
     /// The API-key Podman secret is not present in the container definition.
     MissingApiKeySecret,
@@ -149,17 +153,11 @@ impl fmt::Display for QdrantQuadletError {
             Self::IncorrectAutoUpdate { auto_update } => {
                 write!(f, "AutoUpdate must remain {REQUIRED_AUTO_UPDATE_POLICY}: {auto_update}")
             }
-            Self::MissingApiKeyProvisioningDependency { directive } => {
-                write!(
-                    f,
-                    "missing {directive}=repovec-qdrant-api-key.service dependency for Qdrant API-key provisioning",
-                )
+            Self::MissingUnitDependency { directive, expected } => {
+                write!(f, "missing {directive}={expected} dependency")
             }
-            Self::IncorrectApiKeyProvisioningDependency { directive, dependency } => {
-                write!(
-                    f,
-                    "{directive} must include repovec-qdrant-api-key.service for Qdrant API-key provisioning: {dependency}",
-                )
+            Self::IncorrectUnitDependency { directive, expected, actual } => {
+                write!(f, "{directive} must include {expected}: {actual}")
             }
             Self::MissingApiKeySecret => {
                 write!(

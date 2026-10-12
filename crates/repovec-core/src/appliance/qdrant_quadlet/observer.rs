@@ -89,16 +89,11 @@ pub trait QdrantQuadletObserver: Send + Sync {
     /// Records an incorrect or duplicate auto-update policy.
     fn incorrect_auto_update(&self, _auto_update: &str, _expected_auto_update: &str) {}
 
-    /// Records a missing API-key provisioning dependency.
-    fn missing_api_key_provisioning_dependency(
-        &self,
-        _directive: &str,
-        _expected_dependency: &str,
-    ) {
-    }
+    /// Records a missing required provisioning dependency.
+    fn missing_provisioning_dependency(&self, _directive: &str, _expected_dependency: &str) {}
 
-    /// Records an incorrect API-key provisioning dependency.
-    fn incorrect_api_key_provisioning_dependency(
+    /// Records an incorrect required provisioning dependency.
+    fn incorrect_provisioning_dependency(
         &self,
         _directive: &str,
         _dependency: &str,
@@ -283,16 +278,16 @@ impl QdrantQuadletObserver for TracingQdrantQuadletObserver {
         );
     }
 
-    fn missing_api_key_provisioning_dependency(&self, directive: &str, expected_dependency: &str) {
+    fn missing_provisioning_dependency(&self, directive: &str, expected_dependency: &str) {
         warn!(
             target: LOG_TARGET,
             directive,
             expected_dependency,
-            "qdrant quadlet validation failed: missing api key provisioning dependency"
+            "qdrant quadlet validation failed: missing provisioning dependency"
         );
     }
 
-    fn incorrect_api_key_provisioning_dependency(
+    fn incorrect_provisioning_dependency(
         &self,
         directive: &str,
         dependency: &str,
@@ -303,7 +298,7 @@ impl QdrantQuadletObserver for TracingQdrantQuadletObserver {
             directive,
             dependency,
             expected_dependency,
-            "qdrant quadlet validation failed: incorrect api key provisioning dependency"
+            "qdrant quadlet validation failed: incorrect provisioning dependency"
         );
     }
 

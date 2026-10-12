@@ -26,7 +26,7 @@ proptest! {
     ) {
         let contents = format!(
             "[Unit]\n\
-             Requires=repovec-qdrant-api-key.service\n\
+             Requires=repovec-qdrant-api-key.service repovec-provision.service\n\
              After=repovec-qdrant-api-key.service\n\
              \n\
              [Container]\n\

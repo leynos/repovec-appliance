@@ -3,11 +3,16 @@
 //! This module owns the tracing subscriber test harness used to assert the
 //! public observer adapter emits stable structured events. It exercises the
 //! parent `qdrant_quadlet` validation entry points end to end, while the
-//! sibling `log_test_cases` module provides the malformed Quadlet fixtures and
-//! expected event contracts. These tests complement the behaviour snapshots in
-//! `tests.rs` by failing when operator-facing telemetry is removed or renamed.
+//! sibling case modules provide the malformed Quadlet fixtures and expected
+//! event contracts: `log_test_cases` covers the parser, structural, and API-key
+//! boundaries, `log_test_dependency_cases` covers the provisioning-dependency
+//! directives, and `log_test_case_support` holds the constructors they share.
+//! These tests complement the behaviour snapshots in `tests.rs` by failing when
+//! operator-facing telemetry is removed or renamed.
 
+mod log_test_case_support;
 mod log_test_cases;
+mod log_test_dependency_cases;
 
 use std::{
     collections::BTreeMap,
@@ -18,12 +23,15 @@ use std::{
 use insta::assert_debug_snapshot;
 use log_test_cases::{
     bearer_assignment_before_section, duplicate_image, grpc_port_not_loopback, image_not_pinned,
-    incorrect_after_dependency, incorrect_api_key_secret, incorrect_auto_update,
-    incorrect_requires_dependency, incorrect_storage_source, incorrect_storage_target,
-    inline_api_key_environment, invalid_line, malformed_storage_mount, missing_after_dependency,
-    missing_api_key_secret, missing_auto_update, missing_grpc_publish, missing_image,
-    missing_requires_dependency, missing_rest_publish, missing_selinux_relabel,
-    missing_storage_mount, property_before_section, rest_port_not_loopback, unexpected_image,
+    incorrect_auto_update, incorrect_storage_source, incorrect_storage_target, invalid_line,
+    malformed_storage_mount, missing_auto_update, missing_grpc_publish, missing_image,
+    missing_rest_publish, missing_selinux_relabel, missing_storage_mount, property_before_section,
+    rest_port_not_loopback, unexpected_image,
+};
+use log_test_dependency_cases::{
+    incorrect_after_dependency, incorrect_api_key_secret, incorrect_provision_dependency,
+    incorrect_requires_dependency, inline_api_key_environment, missing_after_dependency,
+    missing_api_key_secret, missing_requires_dependency,
 };
 use rstest::rstest;
 use tracing::{
@@ -208,6 +216,7 @@ fn parser_redacts_nested_environment_assignment_event_shape() {
 #[case::incorrect_auto_update(incorrect_auto_update())]
 #[case::missing_requires_dependency(missing_requires_dependency())]
 #[case::missing_after_dependency(missing_after_dependency())]
+#[case::incorrect_provision_dependency(incorrect_provision_dependency())]
 #[case::incorrect_requires_dependency(incorrect_requires_dependency())]
 #[case::incorrect_after_dependency(incorrect_after_dependency())]
 #[case::missing_api_key_secret(missing_api_key_secret())]

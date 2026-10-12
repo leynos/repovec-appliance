@@ -22,6 +22,7 @@
 //! representation for API-key-specific checks.
 
 mod api_key;
+mod environment;
 mod error;
 mod observer;
 mod parser;
@@ -43,8 +44,8 @@ mod tests_proptest;
 mod tests_proptest_strategies;
 
 use api_key::{
-    validate_api_key_provisioning_dependency, validate_api_key_secret,
-    validate_no_inline_api_key_environment,
+    validate_api_key_secret, validate_no_inline_api_key_environment,
+    validate_provisioning_dependency,
 };
 pub use error::QdrantQuadletError;
 pub use observer::{QdrantQuadletObserver, TracingQdrantQuadletObserver};
@@ -63,6 +64,13 @@ pub const INSTALLED_QDRANT_QUADLET_PATH: &str = "/etc/containers/systemd/qdrant.
 
 /// The systemd unit that provisions the Qdrant API key.
 const QDRANT_API_KEY_SERVICE: &str = "repovec-qdrant-api-key.service";
+
+/// The oneshot that provisions the `repovec` account and directory tree.
+///
+/// The Quadlet must `Requires=` this unit (not merely order after it) so a
+/// failed `systemd-sysusers`/`systemd-tmpfiles` run cancels the container
+/// start instead of mounting a missing or misowned storage directory.
+const PROVISION_SERVICE: &str = "repovec-provision.service";
 
 /// The Podman secret name that supplies the Qdrant API key.
 const QDRANT_API_KEY_SECRET: &str = "repovec-qdrant-api-key";
@@ -154,7 +162,7 @@ pub fn validate_checked_in_qdrant_quadlet(
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let contents = concat!(
 ///     "[Unit]\n",
-///     "Requires=repovec-qdrant-api-key.service\n",
+///     "Requires=repovec-qdrant-api-key.service repovec-provision.service\n",
 ///     "After=repovec-qdrant-api-key.service\n",
 ///     "\n",
 ///     "[Container]\n",
@@ -180,7 +188,7 @@ pub fn validate_qdrant_quadlet(
 
     validate_required_image(&parsed, observer)?;
     validate_platform_bindings(&parsed, observer)?;
-    validate_api_key_provisioning_dependency(&parsed, observer)?;
+    validate_provisioning_dependency(&parsed, observer)?;
     validate_api_key_secret(&parsed, observer)?;
     validate_no_inline_api_key_environment(&parsed, observer)?;
 

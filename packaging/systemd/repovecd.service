@@ -1,6 +1,9 @@
 [Unit]
 Description=repovec control-plane daemon
 Requires=qdrant.service
+# Ordering via repovec-provision.service's Before= is not enough on its own;
+# Requires= is what cancels this start job when the provisioning oneshot fails.
+Requires=repovec-provision.service
 After=qdrant.service
 
 [Service]

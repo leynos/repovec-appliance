@@ -301,12 +301,16 @@ to start indexers.
 `/usr/lib/sysusers.d/repovec.conf` and then `systemd-tmpfiles --create` on
 `/usr/lib/tmpfiles.d/repovec.conf`, so the `repovec` system user and the data
 directory tree exist before any dependent service starts — including on a
-freshly installed host that has not been rebooted. It is ordered before
-`repovec-qdrant-api-key.service`, `qdrant.service`, `repovecd.service`, and
-`repovec-mcpd.service`, and is activated by `repovec.target`.
-`systemd-sysusers` creates the account record but not the home directory; the
-`tmpfiles.d` asset creates the tree. Both tools are idempotent: re-running them
-converges from any state and never empties a populated directory.
+freshly installed host that has not been rebooted. Every dependent service
+declares `Requires=repovec-provision.service` as well as `After=` on it, and
+the service is activated by `repovec.target`. The `Requires=` directive is what
+makes provisioning mandatory: `After=` on its own only orders start jobs and
+does not prevent a dependent service from starting when provisioning fails. The
+requirement is what makes the appliance fail closed on a host where the
+`repovec` user or the data tree could not be created. `systemd-sysusers`
+creates the account record but not the home directory; the `tmpfiles.d` asset
+creates the tree. Both tools are idempotent: re-running them converges from any
+state and never empties a populated directory.
 
 Enable and start the appliance service group with:
 
@@ -418,16 +422,16 @@ unit-contract diagnostics require the lower-level trace.
 followed by a non-zero process exit:
 
 ```text
-ERROR live directory layout pre-flight at daemon startup
+ERROR live directory layout violation - aborting startup
   path=/var/lib/repovec/worktrees
-  error=/var/lib/repovec/worktrees must be owned by repovec: root
+  error=/var/lib/repovec/worktrees must be owned by repovec (uid 998): uid 0
 ```
 
-The `path` field names the directory whose ownership, group, mode, or presence
-violates the contract; the `error` field states the expected value. The live
-pre-flight runs after the static unit-contract validation and before the Qdrant
-liveness wait, so a misprovisioned host is rejected before any daemon-side
-network work begins.
+The `path` field names the directory whose ownership, group, mode, type, or
+presence violates the contract; the `error` field states the expected value and
+the account or mode that is actually present. The live pre-flight runs after
+the static unit-contract validation and before the Qdrant liveness wait, so a
+misprovisioned host is rejected before any daemon-side network work begins.
 
 Concrete grepai indexer instances also start after and require both Qdrant and
 `repovecd`.

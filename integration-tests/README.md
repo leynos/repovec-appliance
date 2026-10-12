@@ -130,16 +130,16 @@ podman run --rm --privileged repovec-integration-tests \
 
 ### `integration` suite (`test_directory_layout.py`)
 
-| Test | Asserts |
-| --- | --- |
+| Test                                                      | Asserts                                                                                                                                          |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `test_provisions_repovec_user_and_private_directory_tree` | `systemd-sysusers` + `systemd-tmpfiles --create` materialize the `repovec` user and the private `0700` data tree (`qdrant-storage` `root:root`). |
-| `test_repovec_provisioning_is_idempotent` | Re-running the sysusers-then-tmpfiles pair leaves tree ownership and modes unchanged. |
+| `test_repovec_provisioning_is_idempotent`                 | Re-running the sysusers-then-tmpfiles pair leaves tree ownership and modes unchanged.                                                            |
 
 This suite runs the exact sysusers-before-tmpfiles pair that
-`repovec-provision.service` runs. The container does **not** run systemd as
-PID 1, so `systemctl start repovec.target` and `qdrant.service` activeness
-cannot be asserted here; the static contracts and this lifecycle pairing are
-the CI proxy, matching the 1.2.2 precedent.
+`repovec-provision.service` runs. The container does **not** run systemd as PID
+1, so `systemctl start repovec.target` and `qdrant.service` activeness cannot
+be asserted here; the static contracts and this lifecycle pairing are the CI
+proxy, matching the 1.2.2 precedent.
 
 ## Troubleshooting
 

@@ -22,7 +22,6 @@ import pytest
 from cmd_mox import CmdMox
 
 from lib.commands import run_host
-from lib.result import CommandResult
 from lib.constants import (
     KEY_HEX_LENGTH,
     REPOVEC_GROUP,
@@ -31,6 +30,7 @@ from lib.constants import (
     REPOVEC_USER,
     SECRET_NAME,
 )
+from lib.result import CommandResult
 
 pytest_plugins = ("cmd_mox.pytest_plugin",)
 
@@ -140,17 +140,11 @@ def test_generates_key_when_key_file_is_absent(
     mv_spy.assert_called()
 
     # ``chown`` must target the documented owner:group pair.
-    chown_targets = [
-        call.args[0]
-        for call in chown_spy.invocations
-        if call.args
-    ]
+    chown_targets = [call.args[0] for call in chown_spy.invocations if call.args]
     assert f"{REPOVEC_USER}:{REPOVEC_GROUP}" in chown_targets, chown_targets
 
     # The final ``chmod`` invocation should set the contract's mode.
-    chmod_modes = [
-        call.args[0] for call in chmod_spy.invocations if call.args
-    ]
+    chmod_modes = [call.args[0] for call in chmod_spy.invocations if call.args]
     assert "0400" in chmod_modes, chmod_modes
 
 
@@ -235,8 +229,7 @@ def test_does_not_regenerate_valid_existing_key(
     # the original or the captured key into pytest's failure output.
     if _digest(helper_key_file.read_text(encoding="utf-8")) != _digest(original):
         raise AssertionError(
-            "key content changed unexpectedly on idempotent rerun "
-            "(contents redacted)"
+            "key content changed unexpectedly on idempotent rerun (contents redacted)"
         )
     assert helper_key_file.stat().st_mtime_ns == original_mtime, (
         f"key mtime changed unexpectedly: "

@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .constants import (
-    DATA_DIRS,
     DATA_DIR_MODE,
+    DATA_DIRS,
     KEY_FILE,
     KEY_FILE_MODE,
     KEY_HEX_LENGTH,
@@ -193,12 +193,26 @@ def assert_directory_contract(session: ContainerSession) -> None:
     (SI-2). Ownership is asserted by name, proving the
     sysusers-before-tmpfiles ordering resolved the `repovec` account first
     (R-2).
+
+    Parameters
+    ----------
+    session
+        Container session used to inspect the provisioned tree.
+
+    Returns
+    -------
+    None
+        The function returns nothing; it fails with an ``AssertionError``
+        when a directory violates the contract.
+
+    Raises
+    ------
+    AssertionError
+        If a data directory has the wrong mode, owner, or group.
     """
 
-    expected = {
-        **{path: (DATA_DIR_MODE, REPOVEC_USER, REPOVEC_GROUP) for path in DATA_DIRS},
-        QDRANT_DATA_DIR: (QDRANT_DATA_DIR_MODE, "root", "root"),
-    }
+    expected = dict.fromkeys(DATA_DIRS, (DATA_DIR_MODE, REPOVEC_USER, REPOVEC_GROUP))
+    expected[QDRANT_DATA_DIR] = (QDRANT_DATA_DIR_MODE, "root", "root")
     assert_data_dirs(session, expected)
 
 
@@ -210,9 +224,22 @@ def assert_data_dirs(
 
     Parameters
     ----------
+    session
+        Container session used to inspect the directories.
     expected
         Mapping of directory path to ``(mode, user, group)`` where mode is
         the four-digit octal form (for example ``"0700"``).
+
+    Returns
+    -------
+    None
+        The function returns nothing; it fails with an ``AssertionError``
+        when a directory violates the contract.
+
+    Raises
+    ------
+    AssertionError
+        If a directory has the wrong mode, owner, or group.
     """
 
     for path, (mode, user, group) in expected.items():

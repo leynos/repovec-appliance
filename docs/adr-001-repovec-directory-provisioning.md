@@ -119,9 +119,19 @@ or a `User=` directive is ever added, the contract must change.
 
 The runtime backstop is `repovec-core::appliance::directory_layout::live`,
 which stats the real tree at daemon startup and refuses to start on any owner,
-group, mode, or missing-directory violation, logging the offending path. The
-pure validator (`directory_layout`) and the live pre-flight together enforce
-the appliance directory contract in CI and on the host.
+group, mode, type, or missing-directory violation, logging the offending path.
+An entry that is not a directory is rejected even when its owner, group, and
+mode are correct, because a regular file left at the same path would otherwise
+satisfy every id-and-mode check while leaving the documented directory
+unusable. The pure validator (`directory_layout`) and the live pre-flight
+together enforce the appliance directory contract in CI and on the host.
+
+Enforcement of the provisioning step itself is by `Requires=`, not merely by
+ordering. `repovec-provision.service` is `WantedBy=repovec.target`, and every
+consuming unit declares `Requires=repovec-provision.service` alongside its
+`After=` directive, so a host where the assets fail to apply stops the
+dependent services rather than starting them against a missing account or an
+unprovisioned tree.
 
 ## Goals and non-goals
 

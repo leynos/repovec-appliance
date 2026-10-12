@@ -382,6 +382,15 @@ been rebooted. The contract, alternatives, and the `qdrant-storage`
 root-ownership dependency are recorded in
 [ADR-001: Provision the `repovec` system user and private directory tree](adr-001-repovec-directory-provisioning.md).
 
+Provisioning is a *requirement*, not an ordering hint. `After=` orders start
+jobs but does not cancel a dependent start job when the earlier unit fails, so
+every consuming unit — `repovecd.service`, `repovec-mcpd.service`,
+`repovec-qdrant-api-key.service`, and the `qdrant.container` Quadlet — carries
+`Requires=repovec-provision.service` alongside its `After=` directive. A host
+where `systemd-sysusers` or `systemd-tmpfiles` fails therefore fails closed:
+the dependent daemons do not start against a missing account or an
+unprovisioned tree.
+
 `repovec-grepai@.service` is a systemd template for future concrete indexer
 instances. Each instance runs `/usr/bin/grepai watch` as the `repovec` user and
 group, sets `HOME=/var/lib/repovec`, and uses

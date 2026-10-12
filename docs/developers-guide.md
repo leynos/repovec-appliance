@@ -905,11 +905,14 @@ The canonical user identity is exposed as constants: `REPOVEC_USER` (`repovec`),
 **Validation entry points.** `validate_checked_in_directory_layout()` validates
 the two embedded assets; `validate_directory_layout(tmpfiles, sysusers)`
 validates caller-supplied asset text against the same contract. Both return
-`Result<(), DirectoryLayoutError>`, a hand-rolled typed error enum (no
-`thiserror`, matching the other appliance modules) whose variants carry a
-`Mode(u16)` newtype (rendered as `{:04o}`), `Utf8PathBuf` paths, `&'static str`
-expected values, and an `.asset()` discriminator for structured logging — the
-analogue of `SystemdUnitError::unit()`.
+`Result<(), DirectoryLayoutError>`, a `thiserror`-derived typed error enum
+whose variants carry a `Mode(u16)` newtype (rendered as `{:04o}`),
+`Utf8PathBuf` paths, `&'static str` expected values, and an `.asset()`
+discriminator for structured logging — the analogue of
+`SystemdUnitError::unit()`. The `NonExplicitField` and `InvalidField` variants
+are deliberately distinct: the first means the `-` placeholder was used where
+SI-5 requires an explicit value, the second means the value is present but
+unparsable, and the operator fix differs in each case.
 
 **Spec-table contract.** The per-directory mode/owner/group policy is a single
 spec table, `layout_contract(&RuntimePaths)`, inside `directory_layout` whose
@@ -926,7 +929,14 @@ policy lives in the spec table, not on `RuntimePaths`.
 before `systemd-tmpfiles --create` at target start, so provisioning does not
 depend on a reboot. `repovec.target` declares
 `Wants=repovec-provision.service`, and the `systemd_units` validator rejects a
-target without it (the negative test covers this drift case). Details are in
+target without it (the negative test covers this drift case). Every consuming
+unit — `repovecd.service`, `repovec-mcpd.service`,
+`repovec-qdrant-api-key.service`, and the `qdrant.container` Quadlet — declares
+`Requires=repovec-provision.service` alongside its ordering directive, because
+`After=` alone does not cancel a dependent start job when provisioning fails.
+The `systemd_units` validator checks the ordered `ExecStart` sequence of the
+provisioning unit itself, so a reordered or removed `systemd-sysusers` /
+`systemd-tmpfiles` invocation fails the gate. Details are in
 `docs/repovec-appliance-technical-design.md`, "Service layout".
 
 **Systemd gate.** `repovec-ci systemd-gate` (`make validate-systemd`) now calls
@@ -936,7 +946,7 @@ deterministic gate rather than a production host.
 
 **Live pre-flight adapter and purity boundary.** Ownership of the real tree is
 checked separately by `directory_layout::live`, which stats the on-disk
-directories via `cap_std` and fails closed on any owner, group, mode, or
+directories via `cap_std` and fails closed on any owner, group, mode, type, or
 missing-dir violation. It is a distinct, explicitly I/O-bound adapter: the pure
 validator parses embedded asset text only and never invokes `systemd-tmpfiles`,
 `systemd-sysusers`, `useradd`, `podman`, reads `/etc/passwd`, or touches the
@@ -945,6 +955,16 @@ live filesystem. The live pre-flight is wired into
 systemd-unit validation, surfaces as `DaemonStartupError::LiveLayout`, is
 logged with the violating path, and maps to the startup-failure exit code
 shared by `repovecd` and `repovec-mcpd`.
+
+The expected owner ids are resolved by name rather than assumed: the uid comes
+from `directory_layout::group::find_repovec_uid` reading `/etc/passwd`, and the
+gid from `find_group_gid` reading `/etc/group`. Both lookups consult the
+database for their own account because `systemd-tmpfiles` resolves its group
+column through the group database; deriving the expected gid from the user's
+primary GID would reject a correctly provisioned tree on a host where the
+`repovec` user and group do not share a numeric id. The mode comparison is
+exact, not a permission mask: a directory more restrictive than the contract is
+as unusable to the daemon as one that is too permissive.
 
 ## 6. Provisioning integration tests
 

@@ -35,7 +35,9 @@ def test_ok_is_true_for_zero_exit() -> None:
 
 
 def test_ok_is_false_for_non_zero_exit() -> None:
-    assert _result(exit_code=1).ok is False, "ok must be False when exit_code is non-zero"
+    assert _result(exit_code=1).ok is False, (
+        "ok must be False when exit_code is non-zero"
+    )
 
 
 def test_render_emits_command_and_exit_code_only_for_minimal_result() -> None:
@@ -49,9 +51,9 @@ def test_render_emits_command_and_exit_code_only_for_minimal_result() -> None:
 def test_render_quotes_argv_with_spaces() -> None:
     rendered = _result(argv=("/bin/sh", "-c", "echo 'one two'")).render()
 
-    assert rendered.startswith(
-        "command: /bin/sh -c 'echo '\"'\"'one two'\"'\"''"
-    ), "shlex.join must quote argv tokens containing spaces"
+    assert rendered.startswith("command: /bin/sh -c 'echo '\"'\"'one two'\"'\"''"), (
+        "shlex.join must quote argv tokens containing spaces"
+    )
 
 
 def test_render_quotes_argv_with_shell_metacharacters() -> None:

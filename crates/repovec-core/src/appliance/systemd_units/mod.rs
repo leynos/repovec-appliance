@@ -54,6 +54,7 @@
 //! `main()`. Any [`SystemdUnitError`] is fatal at startup: the daemon logs the
 //! violation with `tracing::error!` and exits with code 1.
 
+mod constants;
 mod error;
 mod parsed;
 mod startup;
@@ -61,6 +62,13 @@ mod startup;
 #[cfg(test)]
 mod tests;
 
+use constants::{
+    GREPAI_BOOLEAN_HARDENING_DIRECTIVES, GREPAI_HARDENING_DIRECTIVES,
+    GREPAI_RESTRICT_ADDRESS_FAMILIES, GREPAI_WORKING_DIRECTORY, INSTALL_SECTION, QDRANT_CONTAINER,
+    QDRANT_CONTAINER_SERVICE, QDRANT_SERVICE, REPOVEC_GREPAI_TEMPLATE_UNIT, REPOVEC_MCPD_UNIT,
+    REPOVECD_UNIT, SERVICE_GROUP, SERVICE_HOME_ENVIRONMENT, SERVICE_SECTION, SERVICE_USER,
+    SERVICE_WORKING_DIRECTORY, TARGET_UNIT, UNIT_SECTION,
+};
 pub use error::SystemdUnitError;
 use parsed::ParsedUnit;
 pub use startup::{run_startup_validation, validate_and_trace_checked_in_units};
@@ -88,41 +96,6 @@ pub const CHECKED_IN_REPOVEC_MCPD_SERVICE_PATH: &str = "packaging/systemd/repove
 /// The repository path of the checked-in `repovec-grepai@.service` template.
 pub const CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH: &str =
     "packaging/systemd/repovec-grepai@.service";
-const TARGET_UNIT: &str = "repovec.target";
-const REPOVECD_UNIT: &str = "repovecd.service";
-const REPOVEC_MCPD_UNIT: &str = "repovec-mcpd.service";
-const REPOVEC_GREPAI_TEMPLATE_UNIT: &str = "repovec-grepai@.service";
-const UNIT_SECTION: &str = "Unit";
-const SERVICE_SECTION: &str = "Service";
-const INSTALL_SECTION: &str = "Install";
-const QDRANT_SERVICE: &str = "qdrant.service";
-const QDRANT_CONTAINER: &str = "qdrant.container";
-const QDRANT_CONTAINER_SERVICE: &str = "qdrant.container.service";
-const SERVICE_USER: &str = "repovec";
-const SERVICE_GROUP: &str = "repovec";
-const SERVICE_WORKING_DIRECTORY: &str = "/var/lib/repovec";
-const GREPAI_WORKING_DIRECTORY: &str = "/var/lib/repovec/worktrees/%I";
-const SERVICE_HOME_ENVIRONMENT: &str = "HOME=/var/lib/repovec";
-const GREPAI_HARDENING_DIRECTIVES: [(&str, &str); 15] = [
-    ("NoNewPrivileges", "yes"),
-    ("PrivateTmp", "yes"),
-    ("ProtectSystem", "full"),
-    ("ProtectHome", "read-only"),
-    ("PrivateDevices", "yes"),
-    ("DevicePolicy", "closed"),
-    ("LockPersonality", "yes"),
-    ("ProtectClock", "yes"),
-    ("ProtectControlGroups", "yes"),
-    ("ProtectHostname", "yes"),
-    ("ProtectKernelLogs", "yes"),
-    ("ProtectKernelModules", "yes"),
-    ("ProtectKernelTunables", "yes"),
-    ("ProtectProc", "invisible"),
-    ("ProcSubset", "pid"),
-];
-const GREPAI_BOOLEAN_HARDENING_DIRECTIVES: [(&str, &str); 3] =
-    [("RestrictNamespaces", "yes"), ("RestrictRealtime", "yes"), ("RestrictSUIDSGID", "yes")];
-const GREPAI_RESTRICT_ADDRESS_FAMILIES: &str = "AF_UNIX AF_INET AF_INET6";
 
 /// Returns the repository's checked-in `repovec.target` source.
 ///

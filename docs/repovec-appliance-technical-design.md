@@ -114,7 +114,7 @@ APIs.
 
 ### Operator interface
 
-- `repovec-tui`: a ratatui TUI over SSH, used to:
+- `repovec-tui`: a `ratatui` TUI over SSH, used to:
   - run the GitHub device flow
   - configure embedder/store choices
   - view repo/branch indexing status

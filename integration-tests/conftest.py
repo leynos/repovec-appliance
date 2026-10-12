@@ -1,6 +1,6 @@
 """Shared pytest fixtures for repovec-appliance integration tests.
 
-This module centralises the testcontainers lifecycle so test modules can stay
+This module centralizes the testcontainers lifecycle so test modules can stay
 focused on the helper's behavioural contract rather than image build and
 container plumbing. Two fixtures matter:
 

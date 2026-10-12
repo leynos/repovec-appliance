@@ -6,15 +6,20 @@ schema = 1
 stems = []
 
 [words]
-# Official name: the ratatui Rust crate.
-accepted = ["ratatui"]
+accepted = []
 
 [words.corrections]
 
 [patterns]
 ignore = [
-  # Inline code spans are masked; the shared dictionary does not mask them yet.
-  '`[^`\n]+`',
+  # Official crate name in documentation.
+  '`ratatui`',
+  # Cargo's fixed environment-variable name, including its documentation.
+  '\bCARGO_TERM_COLOR\b',
+  # The colour-control environment variable consumed by markdownlint-cli2.
+  '\bFORCE_COLOR\b',
+  # GitHub's fixed pull-request event names in the established trigger schema.
+  '(?m)^    types: \[opened, reopened, synchronize, labeled, ready_for_review\]$',
 ]
 
 [files]

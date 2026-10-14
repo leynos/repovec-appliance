@@ -18,6 +18,8 @@ impl fmt::Display for LossyStderr {
     }
 }
 
+/// Replaces whitespace-delimited words containing a GitHub token prefix.
+/// For example, `failed <token-bearing-word>` becomes `failed [redacted]`.
 fn redact_tokenish_words(input: &str) -> String {
     input
         .split_whitespace()
@@ -26,6 +28,8 @@ fn redact_tokenish_words(input: &str) -> String {
         .join(" ")
 }
 
+/// Checks whether a word contains any recognized GitHub token prefix.
+/// For example, a word containing `gho_` is recognized even after punctuation.
 fn contains_github_token_prefix(word: &str) -> bool {
     ["gho_", "ghp_", "ghs_", "ghr_", "ghu_", "github_pat_"]
         .iter()

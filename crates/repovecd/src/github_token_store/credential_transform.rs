@@ -4,14 +4,20 @@ use camino::Utf8Path;
 
 use super::{CommandRunner, LossyStderr, SystemdCredsError};
 
+/// Borrows all inputs needed for one systemd credential transformation.
 pub(super) struct SystemdCredsTransform<'a, R>
 where
     R: CommandRunner,
 {
+    /// Runner used to execute the command and capture its output.
     pub(super) runner: &'a R,
+    /// Path of the systemd credential transformation executable.
     pub(super) command: &'a Utf8Path,
+    /// Transformation verb, such as `encrypt` or `decrypt`.
     pub(super) operation: &'static str,
+    /// Optional credential identity passed through the command name argument.
     pub(super) name: Option<&'a str>,
+    /// Credential bytes supplied through standard input rather than command arguments.
     pub(super) input: &'a [u8],
 }
 

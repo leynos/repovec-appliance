@@ -9,10 +9,14 @@ use std::{
 use cap_std::fs_utf8::OpenOptionsExt;
 use cap_std::fs_utf8::{Dir, OpenOptions};
 
+/// Bounds retries when temporary credential filenames collide.
 const CREATE_RETRIES: u8 = 8;
 
+/// Allocates process-local suffixes without requiring cross-thread ordering.
 static NEXT_TEMP_FILE_ID: AtomicU64 = AtomicU64::new(0);
 
+/// Replaces a credential only after its encrypted bytes are flushed and synced.
+/// For example, writing ciphertext to an existing name atomically replaces that file.
 pub(super) fn write_atomically(root: &Dir, filename: &str, contents: &[u8]) -> std::io::Result<()> {
     let (temp_name, mut temp_file) = create_temp_file(root, filename)?;
     temp_file.write_all(contents)?;
@@ -23,6 +27,8 @@ pub(super) fn write_atomically(root: &Dir, filename: &str, contents: &[u8]) -> s
     root.open(".")?.sync_all()
 }
 
+/// Creates a new temporary credential file within the supplied directory.
+/// For example, a name collision retries; Unix files receive mode `0o600`.
 fn create_temp_file(
     root: &Dir,
     filename: &str,
@@ -45,6 +51,8 @@ fn create_temp_file(
     ))
 }
 
+/// Combines the credential name, process ID and counter into a temporary name.
+/// For example, `token.cred` becomes `.token.cred.<pid>.<counter>.tmp`.
 fn next_temp_name(filename: &str) -> String {
     let id = NEXT_TEMP_FILE_ID.fetch_add(1, Ordering::Relaxed);
     format!(".{filename}.{}.{id}.tmp", std::process::id())

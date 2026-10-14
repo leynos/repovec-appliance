@@ -68,6 +68,7 @@ pub trait Sleeper {
     fn sleep(&self, duration: Duration);
 }
 
+/// Shared monotonic clock used when a runtime does not inject its own clock.
 static STD_MONOTONIC_CLOCK: StdMonotonicClock = StdMonotonicClock;
 
 /// Production sleeper backed by the current thread.
@@ -185,6 +186,10 @@ where
     result
 }
 
+/// Completes the protocol steps while the caller's tracing span is entered.
+///
+/// For a successful request, this obtains authorization, polls until a token
+/// is returned, and stores that token before constructing the result.
 fn complete_device_flow_in_span<A, T, S, P>(
     runtime: &DeviceFlowRuntime<'_, A, T, S>,
     request: &DeviceFlowLoginRequest,
@@ -202,6 +207,11 @@ where
     Ok(CompletedDeviceFlow { prompt, token })
 }
 
+/// Requests device authorization and presents the resulting verification prompt.
+///
+/// For a request containing `repo` and `read:user` scopes, the callback receives
+/// GitHub's verification URI and user code before the function returns the
+/// authorization data and the same prompt.
 fn begin_device_flow<A, T, S, P>(
     runtime: &DeviceFlowRuntime<'_, A, T, S>,
     request: &DeviceFlowLoginRequest,
@@ -226,6 +236,10 @@ where
     Ok((authorization, prompt))
 }
 
+/// Persists a completed token through the configured store without logging its value.
+///
+/// Given a token returned by polling, success stores it through the encrypted
+/// store and emits the storage-success metric; adapter errors are propagated.
 fn store_completed_token<A, T, S>(
     runtime: &DeviceFlowRuntime<'_, A, T, S>,
     token: &AccessToken,

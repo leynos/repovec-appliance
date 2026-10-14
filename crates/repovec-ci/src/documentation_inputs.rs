@@ -5,6 +5,7 @@ use cap_std::fs_utf8::Dir;
 
 use super::MermaidDetection;
 
+/// Repository configuration files whose changes require documentation checks.
 const DOCS_TOOLING_CONFIG_PATHS: &[&str] = &[".markdownlint-cli2.jsonc"];
 
 /// Trims a changed path and removes one leading `./` component.

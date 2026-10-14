@@ -15,6 +15,8 @@ where
     pub(super) input: &'a [u8],
 }
 
+/// Runs a credential transformation and returns stdout only on a zero exit status.
+/// For example, `encrypt` passes bytes through stdin; a failed process returns its error.
 pub(super) fn run_systemd_creds_file_transform<R>(
     transform: &SystemdCredsTransform<'_, R>,
 ) -> Result<Vec<u8>, SystemdCredsError<R::Error>>

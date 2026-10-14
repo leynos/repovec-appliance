@@ -1,11 +1,6 @@
 //! Encrypted storage adapter for GitHub OAuth access tokens.
 
-use std::{
-    ffi::OsStr,
-    io::Write,
-    process::{Command, Stdio},
-    time::Instant,
-};
+use std::{ffi::OsStr, time::Instant};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use cap_std::{ambient_authority, fs_utf8::Dir};
@@ -16,10 +11,13 @@ use tracing::info_span;
 use crate::github_device_flow::TokenStore;
 
 mod atomic_write;
+mod command_runner;
+mod credential_transform;
 mod observability;
 mod redaction;
 
 use atomic_write::write_atomically;
+use credential_transform::{SystemdCredsTransform, run_systemd_creds_file_transform};
 use observability::{info_token_store_load, info_token_store_write};
 pub use redaction::LossyStderr;
 
@@ -275,41 +273,6 @@ pub struct CommandOutput {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemCommandRunner;
 
-impl CommandRunner for SystemCommandRunner {
-    type Error = std::io::Error;
-
-    fn run<I, S>(
-        &self,
-        command: &Utf8Path,
-        args: I,
-        stdin: &[u8],
-    ) -> Result<CommandOutput, Self::Error>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<OsStr>,
-    {
-        let mut child = Command::new(command.as_str())
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        if let Some(mut child_stdin) = child.stdin.take()
-            && let Err(error) = child_stdin.write_all(stdin)
-        {
-            drop(child.kill());
-            drop(child.wait());
-            return Err(error);
-        }
-        let output = child.wait_with_output()?;
-        Ok(CommandOutput {
-            status_code: output.status.code(),
-            stderr: output.stderr,
-            stdout: output.stdout,
-        })
-    }
-}
-
 /// Errors returned by encrypted token persistence.
 #[derive(Debug, Error)]
 pub enum TokenStoreError<E>
@@ -357,43 +320,5 @@ where
     },
 }
 
-struct SystemdCredsTransform<'a, R>
-where
-    R: CommandRunner,
-{
-    runner: &'a R,
-    command: &'a Utf8Path,
-    operation: &'static str,
-    name: Option<&'a str>,
-    input: &'a [u8],
-}
-
-fn run_systemd_creds_file_transform<R>(
-    transform: &SystemdCredsTransform<'_, R>,
-) -> Result<Vec<u8>, SystemdCredsError<R::Error>>
-where
-    R: CommandRunner,
-{
-    let mut args = vec![transform.operation.to_owned()];
-    if let Some(credential_name) = transform.name {
-        args.push(format!("--name={credential_name}"));
-    }
-    args.push("-".to_owned());
-    args.push("-".to_owned());
-
-    let output = transform
-        .runner
-        .run(transform.command, args, transform.input)
-        .map_err(SystemdCredsError::Run)?;
-    if output.status_code != Some(0) {
-        return Err(SystemdCredsError::CommandFailed {
-            operation: transform.operation,
-            status: output.status_code,
-            stderr: LossyStderr(String::from_utf8_lossy(&output.stderr).into_owned()),
-        });
-    }
-
-    Ok(output.stdout)
-}
 #[cfg(test)]
 mod tests;

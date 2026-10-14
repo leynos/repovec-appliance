@@ -225,9 +225,9 @@ pub(super) fn redact_api_key_environment_assignment(assignment: &str) -> String 
 
 /// Splits environment assignments on whitespace outside quoted values.
 ///
-/// The input is preserved as assignment strings, including quote and escape
-/// characters. For example, `A="one two" B=three` produces two entries,
-/// keeping the first value together.
+/// Opening and closing quote delimiters are removed; escapes within quoted
+/// values are retained. For example, `A="one two" B=three` yields `A=one two`
+/// and `B=three`, keeping the first value together.
 pub(super) fn split_environment_assignments(environment: &str) -> Vec<String> {
     let mut assignments = Vec::new();
     let mut assignment = String::new();

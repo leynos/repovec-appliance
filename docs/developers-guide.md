@@ -477,6 +477,11 @@ checked-in systemd units satisfy the appliance contract
 
 On failure it writes a human-readable error to stderr and exits with status 1.
 
+Path normalization, documentation-input classification, and Mermaid-fence
+detection live in the private `documentation_inputs` child module. Its helpers
+use `pub(super)` where the `repovec-ci` parent needs them; the extraction does
+not add crate-public API.
+
 ## 4. Required-check enforcement
 
 The desired repository ruleset is versioned in
@@ -951,6 +956,27 @@ The runtime modules live in `repovecd`:
   endpoints.
 - `github_token_store`: encrypted credential persistence under
   `/etc/repovec/`.
+
+The `github_device_flow` parent owns application orchestration: it begins the
+authorization, calls `poll_until_token`, and stores the completed token. Its
+private `polling` child owns the polling state and loop. Only
+`poll_until_token` is `pub(super)` for the parent; the polling helpers remain
+private.
+
+The `github_token_store` parent owns persistence and the `CredentialEncryptor`
+and `CommandRunner` traits. Its `command_runner` child implements
+`CommandRunner` for `SystemCommandRunner`. The `credential_transform` child
+builds the `systemd-creds` arguments and maps command output and failures into
+the transform result. `SystemdCredsTransform`, its fields, and
+`run_systemd_creds_file_transform` are `pub(super)` for the parent's encrypt
+and decrypt implementations.
+
+These helpers were extracted before their private-item Rustdoc was added, so
+the documentation could stay beside each responsibility without pushing the
+parent modules past the 400-line file limit. The extraction preserved the
+implementation bodies, public APIs, and observable behaviour. Keep future
+private-item documentation with its owning module, and expose it to a parent
+only when that call requires `pub(super)` visibility.
 
 Device-flow expiry and polling deadlines must use the `monotony`
 `MonotonicClock` port over `std::time::Instant`; do not use wall-clock time

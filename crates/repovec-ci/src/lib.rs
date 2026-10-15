@@ -1,9 +1,13 @@
 //! CI policy helpers for repository automation and merge gating.
 
-use camino::Utf8Path;
 use cap_std::fs_utf8::Dir;
 
-const DOCS_TOOLING_CONFIG_PATHS: &[&str] = &[".markdownlint-cli2.jsonc"];
+mod documentation_inputs;
+
+use documentation_inputs::{
+    is_docs_tooling_config_path, is_documentation_input, is_markdown_path, normalize_path,
+    path_contains_mermaid,
+};
 
 /// The reason the documentation gate should or should not run.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -358,39 +362,4 @@ where
 
         DocsGatePlan::required(matched_files, conservative_fallback_files, nixie_required)
     }
-}
-
-fn normalize_path(path: &str) -> Option<String> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    Some(trimmed.strip_prefix("./").map_or_else(|| trimmed.to_owned(), str::to_owned))
-}
-
-fn is_documentation_input(path: &str) -> bool {
-    is_markdown_path(path) || is_docs_tooling_config_path(path)
-}
-
-fn is_markdown_path(path: &str) -> bool {
-    Utf8Path::new(path).extension().is_some_and(|extension| {
-        extension.eq_ignore_ascii_case("md")
-            || extension.eq_ignore_ascii_case("markdown")
-            || extension.eq_ignore_ascii_case("mdx")
-    })
-}
-
-fn is_docs_tooling_config_path(path: &str) -> bool {
-    DOCS_TOOLING_CONFIG_PATHS.iter().any(|known_path| path.eq_ignore_ascii_case(known_path))
-}
-
-fn path_contains_mermaid(root: &Dir, path: &str) -> MermaidDetection {
-    root.read_to_string(Utf8Path::new(path)).map_or(MermaidDetection::Unknown, |contents| {
-        if contents.contains("```mermaid") {
-            MermaidDetection::Present
-        } else {
-            MermaidDetection::Absent
-        }
-    })
 }

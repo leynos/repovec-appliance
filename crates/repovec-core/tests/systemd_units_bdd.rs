@@ -374,5 +374,9 @@ fn assert_validation_result(systemd_world: &SystemdWorld, expected: SystemdUnitE
         panic!("the validation step should have run");
     };
 
-    assert_eq!(validation_result, &Err(expected));
+    assert_eq!(
+        validation_result,
+        &Err(expected),
+        "the validation step should reject the units with the expected contract error"
+    );
 }

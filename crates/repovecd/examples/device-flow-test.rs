@@ -10,6 +10,7 @@ use repovecd::{
 };
 use serde_json::json;
 
+/// Reversible example token transform for local tests; provides no cryptographic security.
 #[derive(Clone, Debug)]
 struct ExampleEncryptor;
 

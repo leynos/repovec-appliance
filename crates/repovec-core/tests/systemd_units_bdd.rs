@@ -142,157 +142,113 @@ fn the_systemd_unit_set_is_accepted(systemd_world: &SystemdWorld) {
     assert!(validation_result.is_ok());
 }
 
-#[then("validation fails because the target does not want cloudflared")]
-fn validation_fails_because_the_target_does_not_want_cloudflared(systemd_world: &SystemdWorld) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::MissingDependency {
+/// Declares the `#[then]` steps that assert a specific contract violation.
+///
+/// Every one of them does the same thing—assert that validation reported exactly
+/// the expected error—and differs only in the sentence the scenario reads and
+/// the error it pins. Each entry is one line of data rather than a five-line
+/// function, so the expectations can be scanned as a table and there is a single
+/// assertion path for all of them.
+macro_rules! then_validation_fails_with {
+    ($($step:ident => $sentence:literal => $expected:expr;)+) => {
+        $(
+            #[then($sentence)]
+            fn $step(systemd_world: &SystemdWorld) {
+                assert_validation_result(systemd_world, $expected);
+            }
+        )+
+    };
+}
+
+then_validation_fails_with! {
+    validation_fails_because_the_target_does_not_want_cloudflared
+        => "validation fails because the target does not want cloudflared"
+        => SystemdUnitError::MissingDependency {
             unit: "repovec.target",
             section: "Unit",
             key: "Wants",
             dependency: "cloudflared.service",
-        },
-    );
-}
-
-#[then("validation fails because the target does not want the provisioning oneshot")]
-fn validation_fails_because_the_target_does_not_want_the_provisioning_oneshot(
-    systemd_world: &SystemdWorld,
-) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::MissingDependency {
+        };
+    validation_fails_because_the_target_does_not_want_the_provisioning_oneshot
+        => "validation fails because the target does not want the provisioning oneshot"
+        => SystemdUnitError::MissingDependency {
             unit: "repovec.target",
             section: "Unit",
             key: "Wants",
             dependency: "repovec-provision.service",
-        },
-    );
-}
-
-#[then("validation fails because the target is not wanted by multi-user")]
-fn validation_fails_because_the_target_is_not_wanted_by_multi_user(systemd_world: &SystemdWorld) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::MissingDependency {
+        };
+    validation_fails_because_the_target_is_not_wanted_by_multi_user
+        => "validation fails because the target is not wanted by multi-user"
+        => SystemdUnitError::MissingDependency {
             unit: "repovec.target",
             section: "Install",
             key: "WantedBy",
             dependency: "multi-user.target",
-        },
-    );
-}
-
-#[then("validation fails because repovecd does not start after Qdrant")]
-fn validation_fails_because_repovecd_does_not_start_after_qdrant(systemd_world: &SystemdWorld) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::MissingDependency {
+        };
+    validation_fails_because_repovecd_does_not_start_after_qdrant
+        => "validation fails because repovecd does not start after Qdrant"
+        => SystemdUnitError::MissingDependency {
             unit: "repovecd.service",
             section: "Unit",
             key: "After",
             dependency: "qdrant.service",
-        },
-    );
-}
-
-#[then("validation fails because repovec-mcpd does not require repovecd")]
-fn validation_fails_because_repovec_mcpd_does_not_require_repovecd(systemd_world: &SystemdWorld) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::MissingDependency {
+        };
+    validation_fails_because_repovec_mcpd_does_not_require_repovecd
+        => "validation fails because repovec-mcpd does not require repovecd"
+        => SystemdUnitError::MissingDependency {
             unit: "repovec-mcpd.service",
             section: "Unit",
             key: "Requires",
             dependency: "repovecd.service",
-        },
-    );
-}
-
-#[then("validation fails because the Quadlet source name was used")]
-fn validation_fails_because_the_quadlet_source_name_was_used(systemd_world: &SystemdWorld) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::UsesQuadletSourceDependency {
+        };
+    validation_fails_because_the_quadlet_source_name_was_used
+        => "validation fails because the Quadlet source name was used"
+        => SystemdUnitError::UsesQuadletSourceDependency {
             unit: "repovecd.service",
             section: "Unit",
             key: "Requires",
             dependency: String::from("qdrant.container"),
-        },
-    );
-}
-
-#[then("validation fails because repovecd has the wrong service user")]
-fn validation_fails_because_repovecd_has_the_wrong_service_user(systemd_world: &SystemdWorld) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::IncorrectServiceDirective {
+        };
+    validation_fails_because_repovecd_has_the_wrong_service_user
+        => "validation fails because repovecd has the wrong service user"
+        => SystemdUnitError::IncorrectServiceDirective {
             unit: "repovecd.service",
             key: "User",
             expected: "repovec",
             actual: String::from("root"),
-        },
-    );
-}
-
-#[then("validation fails because repovec-mcpd has no appliance home environment")]
-fn validation_fails_because_repovec_mcpd_has_no_appliance_home_environment(
-    systemd_world: &SystemdWorld,
-) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::IncorrectServiceDirective {
+        };
+    validation_fails_because_repovec_mcpd_has_no_appliance_home_environment
+        => "validation fails because repovec-mcpd has no appliance home environment"
+        => SystemdUnitError::IncorrectServiceDirective {
             unit: "repovec-mcpd.service",
             key: "Environment",
             expected: "HOME=/var/lib/repovec",
             actual: String::new(),
-        },
-    );
-}
-
-#[then("validation fails because the grepai template does not start after Qdrant")]
-fn validation_fails_because_the_grepai_template_does_not_start_after_qdrant(
-    systemd_world: &SystemdWorld,
-) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::MissingDependency {
+        };
+    validation_fails_because_the_grepai_template_does_not_start_after_qdrant
+        => "validation fails because the grepai template does not start after Qdrant"
+        => SystemdUnitError::MissingDependency {
             unit: "repovec-grepai@.service",
             section: "Unit",
             key: "After",
             dependency: "qdrant.service",
-        },
-    );
-}
-
-#[then("validation fails because the grepai template has the wrong service user")]
-fn validation_fails_because_the_grepai_template_has_the_wrong_service_user(
-    systemd_world: &SystemdWorld,
-) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::IncorrectServiceDirective {
+        };
+    validation_fails_because_the_grepai_template_has_the_wrong_service_user
+        => "validation fails because the grepai template has the wrong service user"
+        => SystemdUnitError::IncorrectServiceDirective {
             unit: "repovec-grepai@.service",
             key: "User",
             expected: "repovec",
             actual: String::from("root"),
-        },
-    );
-}
-
-#[then("validation fails because the grepai template does not use journald")]
-fn validation_fails_because_the_grepai_template_does_not_use_journald(
-    systemd_world: &SystemdWorld,
-) {
-    assert_validation_result(
-        systemd_world,
-        SystemdUnitError::IncorrectServiceDirective {
+        };
+    validation_fails_because_the_grepai_template_does_not_use_journald
+        => "validation fails because the grepai template does not use journald"
+        => SystemdUnitError::IncorrectServiceDirective {
             unit: "repovec-grepai@.service",
             key: "StandardOutput",
             expected: "journal",
             actual: String::from("file:/var/log/repovec/grepai.log"),
-        },
-    );
+        };
 }
 
 #[scenario(

@@ -33,41 +33,70 @@ pub(super) fn redact_api_key_environment_assignment(assignment: &str) -> String 
 /// Unmatched quotes are treated as part of the current assignment until the scan
 /// ends. Empty assignments created by repeated whitespace are skipped.
 pub(super) fn split_environment_assignments(environment: &str) -> Vec<String> {
-    let mut assignments = Vec::new();
-    let mut assignment = String::new();
-    let mut quote = None;
-    let mut is_escaped = false;
-
+    let mut scanner = EnvironmentScanner::default();
     for character in environment.chars() {
-        if is_escaped {
-            assignment.push(character);
-            is_escaped = false;
-            continue;
-        }
+        scanner.accept(character);
+    }
+    scanner.finish()
+}
 
-        match (quote, character) {
-            (Some(_), '\\') => {
-                assignment.push(character);
-                is_escaped = true;
-            }
-            (Some(active_quote), current) if active_quote == current => quote = None,
-            (None, '"' | '\'') if assignment.is_empty() || assignment.ends_with('=') => {
-                quote = Some(character);
-            }
-            (None, current) if current.is_ascii_whitespace() => {
-                if !assignment.is_empty() {
-                    assignments.push(std::mem::take(&mut assignment));
-                }
-            }
-            _ => assignment.push(character),
+/// Quote-aware scanner for a single Quadlet `Environment=` value.
+///
+/// The scan position—the assignments already emitted, the assignment under
+/// construction, the open quote character, and whether the previous character
+/// escaped the next one—is a single evolving state, so it lives in one place
+/// rather than as a parameter clump shared between free functions.
+#[derive(Default)]
+struct EnvironmentScanner {
+    assignments: Vec<String>,
+    assignment: String,
+    quote: Option<char>,
+    is_escaped: bool,
+}
+
+impl EnvironmentScanner {
+    /// Emits the assignment under construction, unless it is empty.
+    ///
+    /// Repeated whitespace between assignments must not produce empty entries,
+    /// which would be reported as spurious contract violations.
+    fn end_assignment(&mut self) {
+        if !self.assignment.is_empty() {
+            self.assignments.push(std::mem::take(&mut self.assignment));
         }
     }
 
-    if !assignment.is_empty() {
-        assignments.push(assignment);
+    /// Reports whether a quote here opens a value rather than sits inside one.
+    ///
+    /// Quadlet only treats a quote as opening a value at the start of an
+    /// assignment or immediately after its `=`, so a quote inside a bare value
+    /// stays an ordinary character.
+    fn is_at_value_start(&self) -> bool {
+        self.assignment.is_empty() || self.assignment.ends_with('=')
     }
 
-    assignments
+    /// Folds one character of the environment value into the scan state.
+    fn accept(&mut self, character: char) {
+        match (self.is_escaped, self.quote, character) {
+            (true, _, escaped) => {
+                self.assignment.push(escaped);
+                self.is_escaped = false;
+            }
+            (false, Some(_), '\\') => {
+                self.assignment.push(character);
+                self.is_escaped = true;
+            }
+            (false, Some(active_quote), current) if active_quote == current => self.quote = None,
+            (false, None, '"' | '\'') if self.is_at_value_start() => self.quote = Some(character),
+            (false, None, current) if current.is_ascii_whitespace() => self.end_assignment(),
+            (_, _, stray) => self.assignment.push(stray),
+        }
+    }
+
+    /// Consumes the scanner and returns the completed assignments.
+    fn finish(mut self) -> Vec<String> {
+        self.end_assignment();
+        self.assignments
+    }
 }
 
 /// Reports whether an assignment sets the Qdrant API-key environment variable.

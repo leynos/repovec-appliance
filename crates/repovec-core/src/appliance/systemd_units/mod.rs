@@ -98,6 +98,38 @@ use validate::{
     validate_target,
 };
 
+/// The five unit texts that make up one appliance unit set.
+///
+/// The validators need every unit at once, and the mutation-test fixture swaps
+/// them independently, so the set travels as one named value rather than as five
+/// positional arguments that are easy to transpose at a call site.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct UnitTexts<'a> {
+    /// The target unit that pulls the appliance services in.
+    pub(crate) target: &'a str,
+    /// The control-plane daemon unit.
+    pub(crate) repovecd: &'a str,
+    /// The MCP daemon unit.
+    pub(crate) mcpd: &'a str,
+    /// The per-repository indexer template unit.
+    pub(crate) grepai_template: &'a str,
+    /// The provisioning oneshot unit.
+    pub(crate) provision: &'a str,
+}
+
+impl UnitTexts<'_> {
+    /// The checked-in unit set, borrowed from the embedded assets.
+    pub(crate) const fn checked_in() -> Self {
+        Self {
+            target: checked_in_repovec_target(),
+            repovecd: checked_in_repovecd_service(),
+            mcpd: checked_in_repovec_mcpd_service(),
+            grepai_template: checked_in_repovec_grepai_template(),
+            provision: checked_in_repovec_provision_service(),
+        }
+    }
+}
+
 /// Validates the repository's checked-in repovec systemd unit definitions.
 ///
 /// This checks the embedded appliance target, daemon services, and grepai
@@ -116,13 +148,7 @@ use validate::{
 /// validate_checked_in_systemd_units().expect("the checked-in units remain valid");
 /// ```
 pub fn validate_checked_in_systemd_units() -> Result<(), SystemdUnitError> {
-    validate_systemd_units_with_grepai_template_and_provision(
-        checked_in_repovec_target(),
-        checked_in_repovecd_service(),
-        checked_in_repovec_mcpd_service(),
-        checked_in_repovec_grepai_template(),
-        checked_in_repovec_provision_service(),
-    )
+    validate_systemd_units_with_grepai_template_and_provision(UnitTexts::checked_in())
 }
 
 /// Validates arbitrary repovec systemd unit contents against the appliance contract.
@@ -251,13 +277,13 @@ pub fn validate_systemd_units_with_grepai_template(
     repovec_mcpd_service: &str,
     repovec_grepai_template: &str,
 ) -> Result<(), SystemdUnitError> {
-    validate_systemd_units_with_grepai_template_and_provision(
-        repovec_target,
-        repovecd_service,
-        repovec_mcpd_service,
-        repovec_grepai_template,
-        checked_in_repovec_provision_service(),
-    )
+    validate_systemd_units_with_grepai_template_and_provision(UnitTexts {
+        target: repovec_target,
+        repovecd: repovecd_service,
+        mcpd: repovec_mcpd_service,
+        grepai_template: repovec_grepai_template,
+        provision: checked_in_repovec_provision_service(),
+    })
 }
 
 /// Validates arbitrary repovec systemd units, including the grepai template and
@@ -271,22 +297,14 @@ pub fn validate_systemd_units_with_grepai_template(
 /// # Errors
 ///
 /// Returns [`SystemdUnitError`] describing the first contract violation.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "crate-private test seam: the mutation-test fixture supplies \
-              five independent unit texts (target, repovecd, mcpd, grepai, provision)"
-)]
 pub(crate) fn validate_systemd_units_with_grepai_template_and_provision(
-    repovec_target: &str,
-    repovecd_service: &str,
-    repovec_mcpd_service: &str,
-    repovec_grepai_template: &str,
-    repovec_provision_service: &str,
+    unit_texts: UnitTexts<'_>,
 ) -> Result<(), SystemdUnitError> {
-    validate_systemd_units(repovec_target, repovecd_service, repovec_mcpd_service)?;
-    let template = ParsedUnit::parse(REPOVEC_GREPAI_TEMPLATE_UNIT, repovec_grepai_template)?;
+    validate_systemd_units(unit_texts.target, unit_texts.repovecd, unit_texts.mcpd)?;
+    let template = ParsedUnit::parse(REPOVEC_GREPAI_TEMPLATE_UNIT, unit_texts.grepai_template)?;
 
     validate_grepai_template(&template)?;
-    let provision = ParsedUnit::parse(REPOVEC_PROVISION_SERVICE, repovec_provision_service)?;
+    let provision = ParsedUnit::parse(REPOVEC_PROVISION_SERVICE, unit_texts.provision)?;
+
     validate_provision_service(&provision)
 }

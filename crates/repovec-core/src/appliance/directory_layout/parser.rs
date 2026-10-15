@@ -16,36 +16,59 @@
 
 use crate::appliance::directory_layout::{DirectoryLayoutError, Mode};
 
+/// Quote-aware column accumulator for a single asset line.
+///
+/// The scan state—columns already emitted, the column under construction, and
+/// whether the scan currently sits inside a quoted section—only makes sense
+/// together, so it is held in one place rather than threaded through helper
+/// functions as a parameter clump.
+#[derive(Default)]
+struct Tokenizer {
+    columns: Vec<String>,
+    current: String,
+    in_quotes: bool,
+}
+
+impl Tokenizer {
+    /// Closes the column under construction, preserving an empty quoted field.
+    fn end_column(&mut self) { self.columns.push(std::mem::take(&mut self.current)); }
+
+    /// Closes the current column only when it holds anything.
+    ///
+    /// Unquoted whitespace is skipped rather than emitted as an empty column,
+    /// so the column indices of the fields after it stay correct.
+    fn end_non_empty_column(&mut self) {
+        if !self.current.is_empty() {
+            self.end_column();
+        }
+    }
+
+    /// Folds one character of the line into the tokenizer state.
+    fn accept(&mut self, character: char) {
+        match (self.in_quotes, character) {
+            (true, '"') => {
+                self.in_quotes = false;
+                self.end_column();
+            }
+            (false, '"') => self.in_quotes = true,
+            (false, current) if current.is_whitespace() => self.end_non_empty_column(),
+            (_, current) => self.current.push(current),
+        }
+    }
+}
+
 /// Splits a trimmed, non-comment line into shell-style quoted-aware columns.
 ///
 /// A quoted section always contributes a column, so an empty quoted field is
 /// preserved rather than silently removed. Dropping it would shift every later
 /// column and reject a syntactically valid declaration.
 fn tokenize(line: &str) -> Vec<String> {
-    let mut columns = Vec::new();
-    let mut current = String::new();
-    let mut in_quotes = false;
-
-    for ch in line.chars() {
-        match ch {
-            '"' if in_quotes => {
-                in_quotes = false;
-                columns.push(std::mem::take(&mut current));
-            }
-            '"' => in_quotes = true,
-            c if c.is_whitespace() && !in_quotes => {
-                if !current.is_empty() {
-                    columns.push(std::mem::take(&mut current));
-                }
-            }
-            c => current.push(c),
-        }
+    let mut tokenizer = Tokenizer::default();
+    for character in line.chars() {
+        tokenizer.accept(character);
     }
-
-    if !current.is_empty() {
-        columns.push(current);
-    }
-    columns
+    tokenizer.end_non_empty_column();
+    tokenizer.columns
 }
 
 /// Splits tokenized columns into the leading `N` interpreted columns and any

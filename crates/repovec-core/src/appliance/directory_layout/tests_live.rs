@@ -14,6 +14,7 @@ use cap_std::{
     fs::{MetadataExt as CapMetadataExt, PermissionsExt as CapPermissionsExt},
     fs_utf8::Dir,
 };
+use rstest::rstest;
 use tempfile::TempDir;
 
 use super::{
@@ -127,43 +128,134 @@ fn missing_data_directory_is_reported() {
     assert_eq!(path, Utf8PathBuf::from(missing));
 }
 
-#[test]
-fn over_permissive_data_directory_is_reported() {
+/// Cases where a directory's on-disk state differs from the contract, and the
+/// violation the adapter must report for it.
+///
+/// Each case runs the same path—build a correct tree, seed one mismatch, run the
+/// pre-flight—so the cases are held as data and driven through one test body.
+#[derive(Clone, Copy, Debug)]
+enum LiveViolationCase {
+    /// `var/lib/repovec/git-mirrors` is widened to group-readable.
+    OverPermissiveMode,
+    /// `var/lib/repovec/git-mirrors` is more restrictive than the contract.
+    ///
+    /// The mode comparison is exact, not one-directional: a directory more
+    /// restrictive than the contract is as unusable to the daemon as one that is
+    /// too permissive, so both are rejected.
+    OverRestrictiveMode,
+    /// `etc/repovec` is world-writable.
+    OverPermissiveSecretsMode,
+    /// The data root is expected to belong to a uid it does not have.
+    WrongOwner,
+    /// The data root is expected to belong to a gid it does not have.
+    WrongGroup,
+}
+
+impl LiveViolationCase {
+    /// Seeds this case's single mismatch on an otherwise contract-correct tree.
+    fn seed(self, tree: &LiveTree) {
+        match self {
+            Self::OverPermissiveMode => {
+                tree.chmod("var/lib/repovec/git-mirrors", 0o750)
+                    .expect("chmod git-mirrors to 0750");
+            }
+            Self::OverRestrictiveMode => {
+                tree.chmod("var/lib/repovec/git-mirrors", 0o500)
+                    .expect("chmod git-mirrors to 0500");
+            }
+            Self::OverPermissiveSecretsMode => {
+                tree.chmod("etc/repovec", 0o0777).expect("chmod etc/repovec to 0777");
+            }
+            Self::WrongOwner | Self::WrongGroup => {}
+        }
+    }
+
+    /// The expected ids for this case, seeded so exactly one of them is wrong.
+    fn ids(self, uid: u32, gid: u32) -> LiveLayoutIds {
+        match self {
+            Self::WrongOwner => live_ids(mismatched_id(uid), gid),
+            Self::WrongGroup => live_ids(uid, mismatched_id(gid)),
+            _ => live_ids(uid, gid),
+        }
+    }
+
+    /// The directory this case expects the violation to name.
+    fn violated_path(self) -> &'static str {
+        match self {
+            Self::OverPermissiveMode | Self::OverRestrictiveMode => "var/lib/repovec/git-mirrors",
+            Self::OverPermissiveSecretsMode => "etc/repovec",
+            Self::WrongOwner | Self::WrongGroup => "var/lib/repovec",
+        }
+    }
+}
+
+#[rstest]
+#[case::over_permissive_data_directory(LiveViolationCase::OverPermissiveMode, "0700", "0750")]
+#[case::over_restrictive_data_directory(LiveViolationCase::OverRestrictiveMode, "0700", "0500")]
+#[case::over_permissive_secrets_directory(
+    LiveViolationCase::OverPermissiveSecretsMode,
+    "0750",
+    "0777"
+)]
+fn incorrect_mode_is_reported(
+    #[case] case: LiveViolationCase,
+    #[case] expected: &str,
+    #[case] actual: &str,
+) {
     let tree = LiveTree::new().expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
-    tree.chmod("var/lib/repovec/git-mirrors", 0o750).expect("chmod");
+    case.seed(&tree);
 
-    let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
+    let result = verify_layout_for_ids(&tree.paths, case.ids(uid, gid));
 
     let Err(LiveLayoutError::IncorrectMode { violation }) = result else {
         panic!("expected IncorrectMode, got {result:?}");
     };
     assert_eq!(
         violation.path,
-        Utf8PathBuf::from(
-            expected_absolute(&tree, "var/lib/repovec/git-mirrors").expect("utf8 path")
-        )
+        Utf8PathBuf::from(expected_absolute(&tree, case.violated_path()).expect("utf8 path"))
     );
-    assert_eq!(violation.expected, "0700");
-    assert_eq!(violation.actual, "0750");
+    assert_eq!(violation.expected, expected);
+    assert_eq!(violation.actual, actual);
 }
 
-#[test]
-fn over_restrictive_data_directory_is_reported() {
+#[rstest]
+#[case::wrong_data_owner(LiveViolationCase::WrongOwner)]
+#[case::wrong_data_group(LiveViolationCase::WrongGroup)]
+fn incorrect_identity_is_reported(#[case] case: LiveViolationCase) {
     let tree = LiveTree::new().expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
-    // The mode comparison is exact, not one-directional: a directory more
-    // restrictive than the contract is as unusable to the daemon as one that is
-    // too permissive, so both are rejected.
-    tree.chmod("var/lib/repovec/git-mirrors", 0o500).expect("chmod");
 
-    let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
+    let outcome = verify_layout_for_ids(&tree.paths, case.ids(uid, gid));
 
-    let Err(LiveLayoutError::IncorrectMode { violation }) = result else {
-        panic!("expected IncorrectMode, got {result:?}");
+    let violation = match (case, outcome) {
+        (LiveViolationCase::WrongOwner, Err(LiveLayoutError::IncorrectOwner { violation }))
+        | (LiveViolationCase::WrongGroup, Err(LiveLayoutError::IncorrectGroup { violation })) => {
+            violation
+        }
+        (observed, actual_outcome) => {
+            panic!("expected an identity violation for {observed:?}, got {actual_outcome:?}")
+        }
     };
-    assert_eq!(violation.expected, "0700");
-    assert_eq!(violation.actual, "0500");
+
+    assert_eq!(
+        violation.path,
+        Utf8PathBuf::from(expected_absolute(&tree, case.violated_path()).expect("utf8 path"))
+    );
+
+    // The sentinel id proves the check actually ran: the expectation names the id
+    // the pre-flight was asked to require, and the report names the id on disk.
+    let (expected, actual) = match case {
+        LiveViolationCase::WrongOwner => {
+            (format!("repovec (uid {})", mismatched_id(uid)), format!("uid {uid}"))
+        }
+        LiveViolationCase::WrongGroup => {
+            (format!("repovec (gid {})", mismatched_id(gid)), format!("gid {gid}"))
+        }
+        other => panic!("{other:?} does not seed an identity mismatch"),
+    };
+    assert_eq!(violation.expected, expected);
+    assert_eq!(violation.actual, actual);
 }
 
 #[test]
@@ -184,60 +276,6 @@ fn regular_file_in_place_of_a_directory_is_reported() {
         panic!("expected NotADirectory, got {result:?}");
     };
     assert_eq!(path, Utf8PathBuf::from(replaced));
-}
-
-#[test]
-fn wrong_data_owner_is_reported() {
-    let tree = LiveTree::new().expect("fixture tree");
-    let (uid, gid) = current_ids(&tree).expect("data root ids");
-    // A sentinel uid that cannot match the tree owner proves the owner check.
-    let wrong_uid = mismatched_id(uid);
-
-    let result = verify_layout_for_ids(&tree.paths, live_ids(wrong_uid, gid));
-
-    let Err(LiveLayoutError::IncorrectOwner { violation }) = result else {
-        panic!("expected IncorrectOwner, got {result:?}");
-    };
-    assert_eq!(
-        violation.path,
-        Utf8PathBuf::from(expected_absolute(&tree, "var/lib/repovec").expect("utf8 path"))
-    );
-}
-
-#[test]
-fn wrong_data_group_is_reported() {
-    let tree = LiveTree::new().expect("fixture tree");
-    let (uid, gid) = current_ids(&tree).expect("data root ids");
-    let wrong_gid = mismatched_id(gid);
-
-    let result = verify_layout_for_ids(&tree.paths, live_ids(uid, wrong_gid));
-
-    let Err(LiveLayoutError::IncorrectGroup { violation }) = result else {
-        panic!("expected IncorrectGroup, got {result:?}");
-    };
-    assert_eq!(
-        violation.path,
-        Utf8PathBuf::from(expected_absolute(&tree, "var/lib/repovec").expect("utf8 path"))
-    );
-}
-
-#[test]
-fn over_permissive_secrets_directory_is_reported() {
-    let tree = LiveTree::new().expect("fixture tree");
-    let (uid, gid) = current_ids(&tree).expect("data root ids");
-    tree.chmod("etc/repovec", 0o0777).expect("chmod");
-
-    let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
-
-    let Err(LiveLayoutError::IncorrectMode { violation }) = result else {
-        panic!("expected IncorrectMode, got {result:?}");
-    };
-    assert_eq!(
-        violation.path,
-        Utf8PathBuf::from(expected_absolute(&tree, "etc/repovec").expect("utf8 path"))
-    );
-    assert_eq!(violation.expected, "0750");
-    assert_eq!(violation.actual, "0777");
 }
 
 #[test]

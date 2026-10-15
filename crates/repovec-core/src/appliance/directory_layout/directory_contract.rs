@@ -46,68 +46,99 @@ impl DirectoryContract {
     fn expected_mode(self) -> String { format!("{:04o}", self.mode) }
 }
 
+/// One field of the per-directory contract, expressed as data.
+///
+/// Owner, group, and mode are checked by the same three-step decision—does the
+/// metadata satisfy the contract, what did the contract require, what is
+/// actually there—and differ only in the predicate, the two message fragments,
+/// and the error variant. Holding those four pieces together lets the checks run
+/// as one ordered pass instead of three near-identical functions.
+struct Expectation {
+    /// Whether the directory metadata satisfies this field of the contract.
+    is_satisfied: fn(&Metadata, DirectoryContract) -> bool,
+    /// The operator-facing description of the required value.
+    expected: fn(DirectoryContract) -> String,
+    /// The operator-facing description of the value found on disk.
+    reported: fn(&Metadata) -> String,
+    /// The error variant this field reports when it is unsatisfied.
+    violation: fn(LiveLayoutViolation) -> LiveLayoutError,
+}
+
+impl Expectation {
+    /// Returns the violation for `path` when the metadata fails this field.
+    fn check(
+        self,
+        path: &Utf8Path,
+        metadata: &Metadata,
+        contract: DirectoryContract,
+    ) -> Result<(), LiveLayoutError> {
+        if (self.is_satisfied)(metadata, contract) {
+            return Ok(());
+        }
+
+        Err((self.violation)(LiveLayoutViolation {
+            path: path.to_path_buf(),
+            expected: (self.expected)(contract),
+            actual: (self.reported)(metadata),
+        }))
+    }
+}
+
+/// The contract fields, in the order their violations are reported.
+///
+/// Order matters: `verify_directory` returns the first unsatisfied field, so the
+/// list runs from the most fundamental mismatch (owner) to the least (mode).
+const EXPECTATIONS: [Expectation; 3] = [
+    Expectation {
+        is_satisfied: owner_is_satisfied,
+        expected: DirectoryContract::expected_owner,
+        reported: reported_owner,
+        violation: |violation| LiveLayoutError::IncorrectOwner { violation },
+    },
+    Expectation {
+        is_satisfied: group_is_satisfied,
+        expected: DirectoryContract::expected_group,
+        reported: reported_group,
+        violation: |violation| LiveLayoutError::IncorrectGroup { violation },
+    },
+    Expectation {
+        is_satisfied: mode_is_satisfied,
+        expected: DirectoryContract::expected_mode,
+        reported: reported_mode,
+        violation: |violation| LiveLayoutError::IncorrectMode { violation },
+    },
+];
+
+/// The permission bits of the metadata, with the file-type bits masked off.
+fn permission_bits(metadata: &Metadata) -> u32 { metadata.mode() & 0o777 }
+
+fn owner_is_satisfied(metadata: &Metadata, contract: DirectoryContract) -> bool {
+    metadata.uid() == contract.owner_uid
+}
+
+fn group_is_satisfied(metadata: &Metadata, contract: DirectoryContract) -> bool {
+    metadata.gid() == contract.owner_gid
+}
+
+fn mode_is_satisfied(metadata: &Metadata, contract: DirectoryContract) -> bool {
+    permission_bits(metadata) == u32::from(contract.mode)
+}
+
+fn reported_owner(metadata: &Metadata) -> String { format!("uid {}", metadata.uid()) }
+
+fn reported_group(metadata: &Metadata) -> String { format!("gid {}", metadata.gid()) }
+
+fn reported_mode(metadata: &Metadata) -> String { format!("{:04o}", permission_bits(metadata)) }
+
 /// Verifies one directory against its ownership and permission contract.
 pub(super) fn verify_directory(
     path: &Utf8Path,
     contract: DirectoryContract,
 ) -> Result<(), LiveLayoutError> {
     let metadata = read_directory_metadata(path)?;
-    check_owner(path, &metadata, contract)?;
-    check_group(path, &metadata, contract)?;
-    check_mode(path, &metadata, contract)
-}
-
-/// Rejects a directory owned by an account other than the expected one.
-fn check_owner(
-    path: &Utf8Path,
-    metadata: &Metadata,
-    contract: DirectoryContract,
-) -> Result<(), LiveLayoutError> {
-    if metadata.uid() == contract.owner_uid {
-        return Ok(());
-    }
-    Err(LiveLayoutError::IncorrectOwner {
-        violation: LiveLayoutViolation {
-            path: path.to_path_buf(),
-            expected: contract.expected_owner(),
-            actual: format!("uid {}", metadata.uid()),
-        },
-    })
-}
-
-fn check_group(
-    path: &Utf8Path,
-    metadata: &Metadata,
-    contract: DirectoryContract,
-) -> Result<(), LiveLayoutError> {
-    if metadata.gid() == contract.owner_gid {
-        return Ok(());
-    }
-    Err(LiveLayoutError::IncorrectGroup {
-        violation: LiveLayoutViolation {
-            path: path.to_path_buf(),
-            expected: contract.expected_group(),
-            actual: format!("gid {}", metadata.gid()),
-        },
-    })
-}
-
-fn check_mode(
-    path: &Utf8Path,
-    metadata: &Metadata,
-    contract: DirectoryContract,
-) -> Result<(), LiveLayoutError> {
-    let actual_mode = metadata.mode() & 0o777;
-    if actual_mode == u32::from(contract.mode) {
-        return Ok(());
-    }
-    Err(LiveLayoutError::IncorrectMode {
-        violation: LiveLayoutViolation {
-            path: path.to_path_buf(),
-            expected: contract.expected_mode(),
-            actual: format!("{actual_mode:04o}"),
-        },
-    })
+    EXPECTATIONS
+        .into_iter()
+        .try_for_each(|expectation| expectation.check(path, &metadata, contract))
 }
 
 /// Reads the metadata of a required layout directory.

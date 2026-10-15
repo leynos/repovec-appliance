@@ -56,20 +56,46 @@ pub(super) fn missing_after_dependency() -> LogScenario {
     )
 }
 
-/// The `Requires=` line loses the provisioning oneshot but keeps the API-key
-/// service, so the failure must name `repovec-provision.service` even though
-/// the directive itself is still present.
-pub(super) fn incorrect_provision_dependency() -> LogScenario {
-    incorrect_dependency(
-        "incorrect_provision_dependency",
-        IncorrectDependencyCase {
-            directive: "Requires",
-            dependency: API_KEY_SERVICE,
-            expected_dependency: "repovec-provision.service",
-            from: "Requires=repovec-qdrant-api-key.service repovec-provision.service",
-            to: "Requires=repovec-qdrant-api-key.service",
-        },
-    )
+/// Generates the named `incorrect_dependency` scenario constructors.
+///
+/// Each one differs only in the directive it mutates and the values it expects;
+/// the shared shape—name the snapshot after the function and hand the case to
+/// [`incorrect_dependency`]—is written once here rather than repeated per case.
+macro_rules! incorrect_dependency_scenarios {
+    ($($scenario:ident => $case:expr),+ $(,)?) => {
+        $(
+            pub(super) fn $scenario() -> LogScenario {
+                incorrect_dependency(stringify!($scenario), $case)
+            }
+        )+
+    };
+}
+
+// The first scenario is the interesting one: the `Requires=` line loses the
+// provisioning oneshot but keeps the API-key service, so the failure must name
+// `repovec-provision.service` even though the directive itself is still present.
+incorrect_dependency_scenarios! {
+    incorrect_provision_dependency => IncorrectDependencyCase {
+        directive: "Requires",
+        dependency: API_KEY_SERVICE,
+        expected_dependency: "repovec-provision.service",
+        from: "Requires=repovec-qdrant-api-key.service repovec-provision.service",
+        to: "Requires=repovec-qdrant-api-key.service",
+    },
+    incorrect_requires_dependency => IncorrectDependencyCase {
+        directive: "Requires",
+        dependency: "network-online.target",
+        expected_dependency: API_KEY_SERVICE,
+        from: "Requires=repovec-qdrant-api-key.service repovec-provision.service",
+        to: "Requires=network-online.target",
+    },
+    incorrect_after_dependency => IncorrectDependencyCase {
+        directive: "After",
+        dependency: "network-online.target",
+        expected_dependency: API_KEY_SERVICE,
+        from: "After=repovec-qdrant-api-key.service",
+        to: "After=network-online.target",
+    },
 }
 
 fn missing_dependency(
@@ -86,32 +112,6 @@ fn missing_dependency(
             "qdrant quadlet validation failed: missing provisioning dependency",
             &[("directive", directive), ("expected_dependency", expected_dependency)],
         ),
-    )
-}
-
-pub(super) fn incorrect_requires_dependency() -> LogScenario {
-    incorrect_dependency(
-        "incorrect_requires_dependency",
-        IncorrectDependencyCase {
-            directive: "Requires",
-            dependency: "network-online.target",
-            expected_dependency: API_KEY_SERVICE,
-            from: "Requires=repovec-qdrant-api-key.service repovec-provision.service",
-            to: "Requires=network-online.target",
-        },
-    )
-}
-
-pub(super) fn incorrect_after_dependency() -> LogScenario {
-    incorrect_dependency(
-        "incorrect_after_dependency",
-        IncorrectDependencyCase {
-            directive: "After",
-            dependency: "network-online.target",
-            expected_dependency: API_KEY_SERVICE,
-            from: "After=repovec-qdrant-api-key.service",
-            to: "After=network-online.target",
-        },
     )
 }
 

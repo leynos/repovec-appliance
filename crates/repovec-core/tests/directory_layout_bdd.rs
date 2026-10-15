@@ -131,125 +131,102 @@ fn the_directory_layout_asset_set_is_accepted(directory_layout_world: &Directory
     );
 }
 
-#[then("validation fails because a required directory entry is missing")]
-fn validation_fails_because_a_required_directory_entry_is_missing(
-    directory_layout_world: &DirectoryLayoutWorld,
-) {
-    assert_validation_result(
-        directory_layout_world,
-        DirectoryLayoutError::MissingDirectoryEntry { path: "/var/lib/repovec/worktrees".into() },
-    );
+/// Declares the `#[then]` steps that assert a specific contract violation.
+///
+/// They all do the same thing—assert that validation reported the expected
+/// error—and differ only in the sentence the scenario reads and the error they
+/// pin. Each entry is one line of data rather than a five-line function, so the
+/// expectations can be scanned as a table and there is a single assertion path
+/// for all of them.
+///
+/// `exact:` pins the whole error. `pattern:` pins only a discriminant and the
+/// fields the scenario is actually about, for cases where the remaining fields
+/// (line numbers, verbatim line text) are incidental to the contract under test.
+macro_rules! then_validation_fails_with {
+    (exact: $($step:ident => $sentence:literal => $expected:expr;)+) => {
+        $(
+            #[then($sentence)]
+            fn $step(directory_layout_world: &DirectoryLayoutWorld) {
+                assert_validation_result(directory_layout_world, $expected);
+            }
+        )+
+    };
+    (pattern: $($step:ident => $sentence:literal => $pattern:pat,)+) => {
+        $(
+            #[then($sentence)]
+            fn $step(directory_layout_world: &DirectoryLayoutWorld) {
+                let Some(validation_result) = directory_layout_world.validation_result.as_ref()
+                else {
+                    panic!("the validation step should have run");
+                };
+
+                assert!(
+                    matches!(validation_result, Err($pattern)),
+                    "expected the error the scenario pins, got {validation_result:?}"
+                );
+            }
+        )+
+    };
 }
 
-#[then("validation fails because an unexpected directory entry is present")]
-fn validation_fails_because_an_unexpected_directory_entry_is_present(
-    directory_layout_world: &DirectoryLayoutWorld,
-) {
-    assert_validation_result(
-        directory_layout_world,
-        DirectoryLayoutError::UnexpectedDirectoryEntry { path: "/var/lib/repovec/cache".into() },
-    );
-}
-
-#[then("validation fails because the directory mode is incorrect")]
-fn validation_fails_because_the_directory_mode_is_incorrect(
-    directory_layout_world: &DirectoryLayoutWorld,
-) {
-    assert_validation_result(
-        directory_layout_world,
-        DirectoryLayoutError::IncorrectMode {
+then_validation_fails_with! {
+    exact:
+    validation_fails_because_a_required_directory_entry_is_missing
+        => "validation fails because a required directory entry is missing"
+        => DirectoryLayoutError::MissingDirectoryEntry {
+            path: "/var/lib/repovec/worktrees".into()
+        };
+    validation_fails_because_an_unexpected_directory_entry_is_present
+        => "validation fails because an unexpected directory entry is present"
+        => DirectoryLayoutError::UnexpectedDirectoryEntry {
+            path: "/var/lib/repovec/cache".into()
+        };
+    validation_fails_because_the_directory_mode_is_incorrect
+        => "validation fails because the directory mode is incorrect"
+        => DirectoryLayoutError::IncorrectMode {
             path: "/var/lib/repovec/worktrees".into(),
             expected: Mode(0o700),
             actual: Mode(0o750),
-        },
-    );
-}
-
-#[then("validation fails because the directory owner is incorrect")]
-fn validation_fails_because_the_directory_owner_is_incorrect(
-    directory_layout_world: &DirectoryLayoutWorld,
-) {
-    assert_validation_result(
-        directory_layout_world,
-        DirectoryLayoutError::IncorrectOwner {
+        };
+    validation_fails_because_the_directory_owner_is_incorrect
+        => "validation fails because the directory owner is incorrect"
+        => DirectoryLayoutError::IncorrectOwner {
             path: "/var/lib/repovec/git-mirrors".into(),
             expected: "repovec",
             actual: "root".to_owned(),
-        },
-    );
-}
-
-#[then("validation fails because the directory group is incorrect")]
-fn validation_fails_because_the_directory_group_is_incorrect(
-    directory_layout_world: &DirectoryLayoutWorld,
-) {
-    assert_validation_result(
-        directory_layout_world,
-        DirectoryLayoutError::IncorrectGroup {
+        };
+    validation_fails_because_the_directory_group_is_incorrect
+        => "validation fails because the directory group is incorrect"
+        => DirectoryLayoutError::IncorrectGroup {
             path: "/var/lib/repovec/.grepai".into(),
             expected: "repovec",
             actual: "wheel".to_owned(),
-        },
-    );
-}
-
-#[then("validation fails because a required field is not explicit")]
-fn validation_fails_because_a_required_field_is_not_explicit(
-    directory_layout_world: &DirectoryLayoutWorld,
-) {
-    let Some(validation_result) = directory_layout_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
-    assert!(matches!(
-        validation_result,
-        Err(DirectoryLayoutError::NonExplicitField { field: "mode", .. })
-    ));
-}
-
-#[then("validation fails because the secrets directory has a single authority")]
-fn validation_fails_because_the_secrets_directory_has_a_single_authority(
-    directory_layout_world: &DirectoryLayoutWorld,
-) {
-    assert_validation_result(
-        directory_layout_world,
-        DirectoryLayoutError::ForbiddenSecretsEntry { path: "/etc/repovec".into() },
-    );
-}
-
-#[then("validation fails because a line is malformed")]
-fn validation_fails_because_a_line_is_malformed(directory_layout_world: &DirectoryLayoutWorld) {
-    let Some(validation_result) = directory_layout_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
-    assert!(matches!(validation_result, Err(DirectoryLayoutError::MalformedLine { .. })));
-}
-
-#[then("validation fails because the sysusers home is incorrect")]
-fn validation_fails_because_the_sysusers_home_is_incorrect(
-    directory_layout_world: &DirectoryLayoutWorld,
-) {
-    assert_validation_result(
-        directory_layout_world,
-        DirectoryLayoutError::SysusersIncorrectHome {
+        };
+    validation_fails_because_the_secrets_directory_has_a_single_authority
+        => "validation fails because the secrets directory has a single authority"
+        => DirectoryLayoutError::ForbiddenSecretsEntry { path: "/etc/repovec".into() };
+    validation_fails_because_the_sysusers_home_is_incorrect
+        => "validation fails because the sysusers home is incorrect"
+        => DirectoryLayoutError::SysusersIncorrectHome {
             expected: "/var/lib/repovec",
             actual: "/home/repovec".to_owned(),
-        },
-    );
-}
-
-#[then("validation fails because the sysusers shell is incorrect")]
-fn validation_fails_because_the_sysusers_shell_is_incorrect(
-    directory_layout_world: &DirectoryLayoutWorld,
-) {
-    assert_validation_result(
-        directory_layout_world,
-        DirectoryLayoutError::SysusersIncorrectShell {
+        };
+    validation_fails_because_the_sysusers_shell_is_incorrect
+        => "validation fails because the sysusers shell is incorrect"
+        => DirectoryLayoutError::SysusersIncorrectShell {
             expected: "/usr/sbin/nologin",
             actual: "/bin/bash".to_owned(),
-        },
-    );
+        };
+}
+
+then_validation_fails_with! {
+    pattern:
+    validation_fails_because_a_required_field_is_not_explicit
+        => "validation fails because a required field is not explicit"
+        => DirectoryLayoutError::NonExplicitField { field: "mode", .. },
+    validation_fails_because_a_line_is_malformed
+        => "validation fails because a line is malformed"
+        => DirectoryLayoutError::MalformedLine { .. },
 }
 
 #[scenario(

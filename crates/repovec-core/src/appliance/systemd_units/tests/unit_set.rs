@@ -3,8 +3,9 @@
 use rstest::fixture;
 
 use crate::appliance::systemd_units::{
-    SystemdUnitError, checked_in_repovec_grepai_template, checked_in_repovec_mcpd_service,
-    checked_in_repovec_provision_service, checked_in_repovec_target, checked_in_repovecd_service,
+    SystemdUnitError, UnitTexts, checked_in_repovec_grepai_template,
+    checked_in_repovec_mcpd_service, checked_in_repovec_provision_service,
+    checked_in_repovec_target, checked_in_repovecd_service,
     validate_systemd_units_with_grepai_template_and_provision,
 };
 
@@ -68,13 +69,13 @@ impl UnitSet {
     }
 
     pub(super) fn validate(&self) -> Result<(), SystemdUnitError> {
-        validate_systemd_units_with_grepai_template_and_provision(
-            &self.target,
-            &self.repovecd,
-            &self.mcpd,
-            &self.grepai_template,
-            &self.provision,
-        )
+        validate_systemd_units_with_grepai_template_and_provision(UnitTexts {
+            target: &self.target,
+            repovecd: &self.repovecd,
+            mcpd: &self.mcpd,
+            grepai_template: &self.grepai_template,
+            provision: &self.provision,
+        })
     }
 
     fn file_mut(&mut self, file: UnitFile) -> &mut String {

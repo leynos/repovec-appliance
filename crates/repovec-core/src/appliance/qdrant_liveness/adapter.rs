@@ -11,6 +11,9 @@ use super::{
     QdrantLivenessReport,
 };
 
+/// Runs the authenticated Qdrant health and collection probes once.
+/// For example, a configured endpoint and key produce a readiness report only when both probes
+/// succeed.
 pub(super) async fn check_qdrant_liveness_once(
     config: &QdrantLivenessConfig,
 ) -> Result<QdrantLivenessReport, QdrantLivenessError> {
@@ -22,6 +25,9 @@ pub(super) async fn check_qdrant_liveness_once(
     QdrantLivenessReport::try_from(reply)
 }
 
+/// Runs one Qdrant request future with the supplied timeout.
+/// For example, an elapsed deadline becomes `Timeout`, while a completed client error is mapped to
+/// the liveness error model.
 async fn timed_probe<T, F>(timeout: Duration, probe: F) -> Result<T, QdrantLivenessError>
 where
     F: Future<Output = Result<T, QdrantError>>,
@@ -32,6 +38,9 @@ where
         .map_err(map_qdrant_error)
 }
 
+/// Reads the provisioned API key from a UTF-8 path through a directory handle.
+/// For example, a missing file becomes `MissingApiKeyFile`; other path or I/O failures become
+/// `UnreadableApiKeyFile`.
 pub(super) fn read_api_key_file(path: &camino::Utf8Path) -> Result<String, QdrantLivenessError> {
     let parent = path.parent().ok_or_else(|| invalid_api_key_path_error(path))?;
     let filename = path.file_name().ok_or_else(|| invalid_api_key_path_error(path))?;
@@ -43,6 +52,9 @@ pub(super) fn read_api_key_file(path: &camino::Utf8Path) -> Result<String, Qdran
         .map_err(|source| map_api_key_read_error(path.to_path_buf(), source))
 }
 
+/// Builds the typed error used when the configured API-key path cannot identify a file.
+/// For example, a path without a parent or filename is reported as an unreadable key file with an
+/// invalid-input source.
 fn invalid_api_key_path_error(path: &camino::Utf8Path) -> QdrantLivenessError {
     QdrantLivenessError::UnreadableApiKeyFile {
         path: path.to_path_buf(),
@@ -50,6 +62,9 @@ fn invalid_api_key_path_error(path: &camino::Utf8Path) -> QdrantLivenessError {
     }
 }
 
+/// Maps API-key file I/O failures while preserving the path and underlying cause.
+/// For example, `NotFound` becomes `MissingApiKeyFile`, and other I/O kinds become
+/// `UnreadableApiKeyFile`.
 fn map_api_key_read_error(path: Utf8PathBuf, source: io::Error) -> QdrantLivenessError {
     if source.kind() == io::ErrorKind::NotFound {
         QdrantLivenessError::MissingApiKeyFile { path }
@@ -58,6 +73,9 @@ fn map_api_key_read_error(path: Utf8PathBuf, source: io::Error) -> QdrantLivenes
     }
 }
 
+/// Builds an authenticated Qdrant client from the liveness configuration and validated key.
+/// For example, an invalid endpoint is returned as `InvalidEndpoint`; other client construction
+/// failures use the shared gRPC error mapping.
 pub(super) fn build_qdrant_client(
     config: &QdrantLivenessConfig,
     api_key: &QdrantApiKey,
@@ -69,6 +87,9 @@ pub(super) fn build_qdrant_client(
         .map_err(|error| map_qdrant_build_error(config.endpoint(), error))
 }
 
+/// Maps client-construction errors using the endpoint being configured.
+/// For example, an invalid URI is associated with that endpoint, while other failures use the
+/// common Qdrant error mapping.
 fn map_qdrant_build_error(endpoint: &str, error: QdrantError) -> QdrantLivenessError {
     if matches!(error, QdrantError::InvalidUri(ref _source)) {
         QdrantLivenessError::InvalidEndpoint { endpoint: endpoint.to_owned() }
@@ -77,6 +98,9 @@ fn map_qdrant_build_error(endpoint: &str, error: QdrantError) -> QdrantLivenessE
     }
 }
 
+/// Converts Qdrant client errors into the liveness error categories.
+/// For example, authentication failures become `AuthenticationFailed`, while transport and other
+/// response failures become `GrpcUnavailable`.
 fn map_qdrant_error(error: QdrantError) -> QdrantLivenessError {
     match error {
         QdrantError::ResponseError { status }
@@ -101,14 +125,21 @@ fn map_qdrant_error(error: QdrantError) -> QdrantLivenessError {
     }
 }
 
+/// Recognizes gRPC status codes that directly indicate failed authentication.
+/// For example, `Unauthenticated` and `PermissionDenied` return `true`; unrelated codes return
+/// `false`.
 pub(super) fn is_authentication_failure_code(code: &str) -> bool {
     matches!(code, "Unauthenticated" | "PermissionDenied")
 }
 
+/// Checks both the gRPC status code and Qdrant error text for authentication failures.
+/// For example, an authentication status or a recognized invalid-key message returns `true`.
 pub(super) fn is_authentication_failure_status(code: &str, message: &str) -> bool {
     is_authentication_failure_code(code) || is_qdrant_authentication_failure_message(message)
 }
 
+/// Recognizes Qdrant message text that indicates rejected credentials.
+/// For example, messages mentioning invalid API keys or JWTs match after case normalization.
 fn is_qdrant_authentication_failure_message(message: &str) -> bool {
     let normalized_message = message.to_ascii_lowercase();
 

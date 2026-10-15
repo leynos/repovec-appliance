@@ -121,7 +121,9 @@ impl fmt::Debug for UserCode {
 /// GitHub access token returned by a completed device flow.
 #[derive(Clone, Eq, PartialEq)]
 pub struct AccessToken {
+    /// Secret bearer credential retained for API requests or encrypted storage.
     token: String,
+    /// OAuth scopes granted by GitHub for this credential.
     scopes: Vec<String>,
 }
 

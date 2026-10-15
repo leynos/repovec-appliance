@@ -73,15 +73,19 @@ pub use error::SystemdUnitError;
 use parsed::ParsedUnit;
 pub use startup::{run_startup_validation, validate_and_trace_checked_in_units};
 
+/// Embeds the shipped target unit for static validation.
 const CHECKED_IN_REPOVEC_TARGET: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovec.target"));
+/// Embeds the shipped daemon unit for static validation.
 const CHECKED_IN_REPOVECD_SERVICE: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovecd.service"));
+/// Embeds the shipped MCP daemon unit for static validation.
 const CHECKED_IN_REPOVEC_MCPD_SERVICE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../packaging/systemd/repovec-mcpd.service"
 ));
 
+/// Embeds the shipped grepai template for static validation.
 const CHECKED_IN_REPOVEC_GREPAI_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../packaging/systemd/repovec-grepai@.service"
@@ -300,6 +304,9 @@ pub fn validate_systemd_units_with_grepai_template(
 
     validate_grepai_template(&template)
 }
+/// Checks the parsed target's required sections and dependency tokens.
+///
+/// For example, all required `Wants=` entries return `Ok(())`; a missing entry returns an error.
 fn validate_target(target: &ParsedUnit) -> Result<(), SystemdUnitError> {
     target.require_section(UNIT_SECTION)?;
     target.require_section(INSTALL_SECTION)?;
@@ -310,6 +317,10 @@ fn validate_target(target: &ParsedUnit) -> Result<(), SystemdUnitError> {
     target.require_dependency(UNIT_SECTION, "Wants", "cloudflared.service")
 }
 
+/// Checks a parsed daemon unit's Qdrant dependency and service identity.
+///
+/// For example, valid `User=`, `Group=`, and Qdrant entries return `Ok(())`; a mismatch returns an
+/// error.
 fn validate_repovecd(repovecd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     repovecd.require_section(UNIT_SECTION)?;
     repovecd.require_section(SERVICE_SECTION)?;
@@ -322,6 +333,10 @@ fn validate_repovecd(repovecd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     repovecd.require_service_environment(SERVICE_HOME_ENVIRONMENT)
 }
 
+/// Checks a parsed MCP unit's dependencies and service settings.
+///
+/// For example, both required dependencies and matching service values return `Ok(())`; a
+/// mismatch returns an error.
 fn validate_mcpd(mcpd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     mcpd.require_section(UNIT_SECTION)?;
     mcpd.require_section(SERVICE_SECTION)?;
@@ -336,6 +351,10 @@ fn validate_mcpd(mcpd: &ParsedUnit) -> Result<(), SystemdUnitError> {
     mcpd.require_service_environment(SERVICE_HOME_ENVIRONMENT)
 }
 
+/// Checks a parsed grepai template's target linkage and service settings.
+///
+/// For example, valid target dependencies and service directives return `Ok(())`; a mismatch
+/// returns an error.
 fn validate_grepai_template(template: &ParsedUnit) -> Result<(), SystemdUnitError> {
     template.require_section(UNIT_SECTION)?;
     template.require_section(SERVICE_SECTION)?;
@@ -359,6 +378,10 @@ fn validate_grepai_template(template: &ParsedUnit) -> Result<(), SystemdUnitErro
     template.require_service_directive("StandardError", "journal")
 }
 
+/// Checks a parsed grepai template against the required hardening values.
+///
+/// For example, each configured directive at its expected value returns `Ok(())`; a mismatch
+/// returns an error.
 fn validate_grepai_template_hardening(template: &ParsedUnit) -> Result<(), SystemdUnitError> {
     for (key, expected) in GREPAI_HARDENING_DIRECTIVES {
         template.require_service_directive(key, expected)?;

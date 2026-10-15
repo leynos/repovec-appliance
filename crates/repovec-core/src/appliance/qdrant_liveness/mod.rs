@@ -49,8 +49,11 @@ pub const DEFAULT_QDRANT_LIVENESS_TIMEOUT: Duration = Duration::from_secs(5);
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QdrantLivenessConfig {
+    /// The Qdrant gRPC endpoint URI used by the probe.
     endpoint: String,
+    /// Validated API-key material retained for authenticated requests.
     api_key: QdrantApiKey,
+    /// Maximum time allowed for each health or collection request.
     timeout: Duration,
 }
 
@@ -152,8 +155,14 @@ impl QdrantLivenessConfig {
     #[must_use]
     pub const fn timeout(&self) -> Duration { self.timeout }
 
+    /// Provides the validated key to the sibling gRPC adapter.
+    /// For example, client construction receives the secret without exposing key parsing to the
+    /// adapter.
     pub(super) const fn api_key(&self) -> &QdrantApiKey { &self.api_key }
 
+    /// Loads and validates key material before constructing a configuration.
+    /// For example, an unreadable key path returns its typed liveness error to the appliance
+    /// constructor.
     pub(super) fn from_api_key_file(
         endpoint: impl Into<String>,
         api_key_path: &camino::Utf8Path,
@@ -178,8 +187,11 @@ impl QdrantLivenessConfig {
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QdrantLivenessReport {
+    /// Qdrant service title returned by the health endpoint.
     title: String,
+    /// Qdrant server version required for readiness evidence.
     version: String,
+    /// Optional source commit identifier reported by Qdrant.
     commit: Option<String>,
 }
 
@@ -252,8 +264,12 @@ impl fmt::Debug for QdrantApiKey {
     }
 }
 
+/// Reports whether a byte is outside the printable ASCII range accepted for gRPC metadata.
 const fn is_invalid_metadata_value_byte(byte: u8) -> bool { !matches!(byte, 0x20..=0x7e) }
 
+/// Loads the provisioned API key and validates it for gRPC metadata.
+/// For example, empty or non-printable contents return a typed key error before client
+/// construction.
 pub(super) fn load_qdrant_api_key(
     path: &camino::Utf8Path,
 ) -> Result<QdrantApiKey, QdrantLivenessError> {

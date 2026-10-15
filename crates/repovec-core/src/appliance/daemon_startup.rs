@@ -10,8 +10,11 @@ use super::{
     systemd_units::{SystemdUnitError, validate_and_trace_checked_in_units},
 };
 
+/// Process status returned when any required daemon startup check fails.
 const STARTUP_FAILURE_EXIT_CODE: i32 = 1;
+/// Maximum startup retry window before an unavailable Qdrant aborts the daemon.
 const QDRANT_STARTUP_READINESS_TIMEOUT: Duration = Duration::from_secs(30);
+/// Delay between retryable Qdrant probes during the startup window.
 const QDRANT_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Startup validation failures that abort daemon startup.
@@ -124,6 +127,10 @@ where
     validate_qdrant_liveness_with(qdrant_liveness_check)
 }
 
+/// Runs an injected health check with the appliance startup retry timings.
+///
+/// For example, a check that becomes healthy on retry allows startup to proceed;
+/// an authentication failure is returned immediately as a startup error.
 fn validate_qdrant_liveness_with<H, F>(health_check: H) -> Result<(), DaemonStartupError>
 where
     H: FnMut() -> F,
@@ -136,6 +143,10 @@ where
     )
 }
 
+/// Runs an injected health check on a temporary runtime using explicit timings.
+///
+/// For example, a short readiness window bounds retries in a startup test;
+/// exhausting it returns a liveness error rather than starting the daemon.
 fn validate_qdrant_liveness_with_policy<H, F>(
     health_check: H,
     readiness_timeout: Duration,
@@ -158,6 +169,10 @@ where
     result.map_err(DaemonStartupError::QdrantLiveness)
 }
 
+/// Emits the category-specific startup failure and returns the failure status.
+///
+/// For example, a systemd contract error is logged with its unit and produces
+/// exit status 1 for the daemon entrypoint.
 fn log_daemon_startup_error(startup_error: DaemonStartupError) -> i32 {
     match startup_error {
         DaemonStartupError::SystemdUnit(error) => log_systemd_startup_error(&error),
@@ -167,6 +182,10 @@ fn log_daemon_startup_error(startup_error: DaemonStartupError) -> i32 {
     STARTUP_FAILURE_EXIT_CODE
 }
 
+/// Records a rejected systemd unit with the unit name and underlying error.
+///
+/// For example, a missing ordering directive emits an error identifying the
+/// affected unit so an operator can repair the startup contract.
 fn log_systemd_startup_error(error: &SystemdUnitError) {
     tracing::error!(
         unit = %error.unit(),
@@ -175,6 +194,10 @@ fn log_systemd_startup_error(error: &SystemdUnitError) {
     );
 }
 
+/// Records a failed Qdrant startup probe with its stable error category.
+///
+/// For example, an expired readiness window emits a timeout category alongside
+/// the error details for startup diagnosis.
 fn log_qdrant_startup_error(error: &QdrantLivenessError) {
     tracing::error!(
         error = %error,
@@ -183,6 +206,10 @@ fn log_qdrant_startup_error(error: &QdrantLivenessError) {
     );
 }
 
+/// Records an I/O error preventing construction of the startup-only runtime.
+///
+/// For example, an unavailable runtime resource emits its error before the
+/// entrypoint returns a failure status.
 fn log_async_runtime_startup_error(error: &std::io::Error) {
     tracing::error!(
         error = %error,

@@ -80,6 +80,10 @@ where
     Ok(())
 }
 
+/// Runs an injected validator and traces only successful validation.
+///
+/// For example, a closure returning `Ok(())` produces the trace event and returns success; errors
+/// pass through unchanged for the startup boundary to report.
 fn validate_and_trace_systemd_units_with<F>(validator: F) -> Result<(), SystemdUnitError>
 where
     F: FnOnce() -> Result<(), SystemdUnitError>,

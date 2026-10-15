@@ -28,12 +28,19 @@ mod proptests;
 #[cfg(test)]
 mod tests;
 
+/// Parsed section and directive values for the supported Quadlet subset.
 #[derive(Debug)]
 pub(super) struct ParsedQuadlet {
+    /// Maps each section and key to all values encountered, preserving duplicates.
     sections: BTreeMap<String, BTreeMap<String, Vec<String>>>,
 }
 
 impl ParsedQuadlet {
+    /// Parses sectioned Quadlet text and reports malformed lines to the observer.
+    ///
+    /// The input is scanned line by line. A valid entry such as
+    /// `[Container]` followed by `Image=docker.io/qdrant/qdrant:v1` stores the
+    /// image under that section; malformed entries return a redacted error.
     pub(super) fn parse(
         contents: &str,
         observer: &dyn QdrantQuadletObserver,
@@ -80,13 +87,24 @@ impl ParsedQuadlet {
         Ok(Self { sections })
     }
 
+    /// Returns all values for a section and key, or an empty slice when absent.
+    ///
+    /// For example, querying `Container` and `Image` returns the parsed image
+    /// entries in their original order.
     pub(super) fn values(&self, section: &str, key: &str) -> &[String] {
         self.sections.get(section).and_then(|entries| entries.get(key)).map_or(&[], Vec::as_slice)
     }
 }
 
+/// Extracts a section name from a complete bracketed header.
+///
+/// `[Container]` returns `Container`; ordinary property lines return `None`.
 fn parse_section_header(line: &str) -> Option<&str> { line.strip_prefix('[')?.strip_suffix(']') }
 
+/// Redacts a sensitive assignment or bearer token from one diagnostic line.
+///
+/// The line is tokenized with quote awareness. For example,
+/// `api_key=secret` becomes `api_key=<redacted>`.
 fn redact_line(line: &str) -> String {
     let mut redacted = Vec::new();
     let mut tokens = line_tokens(line).into_iter();
@@ -107,6 +125,10 @@ fn redact_line(line: &str) -> String {
     redacted.join(" ")
 }
 
+/// Splits a line on unquoted whitespace while retaining quoted text in each token.
+///
+/// For example, `Environment="A=one two" B=three` produces two tokens, with
+/// the quoted assignment kept together.
 fn line_tokens(line: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut token = String::new();
@@ -151,11 +173,17 @@ fn line_tokens(line: &str) -> Vec<String> {
     tokens
 }
 
+/// A token after secret-value redaction, with a flag for sensitive assignments.
 struct RedactedToken {
+    /// The safe token text used in a diagnostic.
     value: String,
+    /// Whether processing should stop after this sensitive assignment.
     is_sensitive_assignment: bool,
 }
 
+/// Redacts a sensitive assignment value or URL credentials within one token.
+///
+/// For example, `token=abc` becomes `token=<redacted>` and is marked sensitive.
 fn redact_token(token: &str) -> RedactedToken {
     if let Some((key, value)) = token.split_once('=') {
         return if is_sensitive_assignment(key, value) {
@@ -168,6 +196,10 @@ fn redact_token(token: &str) -> RedactedToken {
     RedactedToken { value: redact_url_authority(token), is_sensitive_assignment: false }
 }
 
+/// Detects sensitive keys and secret-like values, including quoted forms.
+///
+/// The key and value are checked independently. For example,
+/// `password` with any value is sensitive, as is a `Bearer` value.
 fn is_sensitive_assignment(key: &str, value: &str) -> bool {
     if is_sensitive_key(key) || looks_like_secret_value(value) {
         return true;
@@ -201,6 +233,10 @@ fn is_sensitive_assignment(key: &str, value: &str) -> bool {
     })
 }
 
+/// Checks for a sensitive key whose `=` and value occupy following tokens.
+///
+/// A sequence `api_key`, `=`, `secret` is sensitive; a key followed directly
+/// by another token is not classified by this spaced-assignment rule.
 fn is_spaced_sensitive_assignment(tokens: &[String], index: usize, key: &str) -> bool {
     if !is_sensitive_key(key) {
         return false;
@@ -211,6 +247,10 @@ fn is_spaced_sensitive_assignment(tokens: &[String], index: usize, key: &str) ->
     has_separator && has_value
 }
 
+/// Removes one matching pair of single or double quotes around a value.
+///
+/// For example, `"token"` returns `token`; unquoted or mismatched input is
+/// returned unchanged.
 fn trim_surrounding_quotes(value: &str) -> &str {
     value
         .strip_prefix('"')
@@ -219,6 +259,10 @@ fn trim_surrounding_quotes(value: &str) -> &str {
         .unwrap_or(value)
 }
 
+/// Hides credentials preceding `@` in a URL token while retaining its host and path.
+///
+/// For example, `https://user:secret@example.test/path` becomes
+/// `https://<redacted>@example.test/path`.
 fn redact_url_authority(token: &str) -> String {
     let Some((scheme, rest)) = token.split_once("://") else {
         return token.to_owned();
@@ -229,6 +273,10 @@ fn redact_url_authority(token: &str) -> String {
     format!("{scheme}://<redacted>@{host_and_path}")
 }
 
+/// Reports whether a normalized key names a credential or secret field.
+///
+/// Keys containing terms such as `token`, `password`, or `api_key` are
+/// sensitive, regardless of ASCII letter case.
 fn is_sensitive_key(key: &str) -> bool {
     let normalized = key.to_ascii_lowercase();
     normalized.contains("api_key")
@@ -242,6 +290,9 @@ fn is_sensitive_key(key: &str) -> bool {
         || normalized.contains("token")
 }
 
+/// Detects a bearer scheme followed by a non-empty token in a value.
+///
+/// For example, `Bearer abc123` is sensitive, while `Bearer` alone is not.
 fn looks_like_secret_value(value: &str) -> bool {
     let unquoted_value = trim_surrounding_quotes(value).trim();
     let mut parts = unquoted_value.splitn(2, char::is_whitespace);

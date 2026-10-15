@@ -97,6 +97,10 @@ pub fn ensure_log_line_contains(
     ensure(found, &format!("{message}: {logs}"))
 }
 
+/// Runs startup validation with a temporary subscriber and returns its logs.
+///
+/// For example, a passing validator yields `Ok((Ok(()), captured_text))`; log
+/// decoding or buffer-lock failures are returned as the outer `Err`.
 fn startup_with_captured_logs<F>(validator: F) -> Result<(Result<(), i32>, String), String>
 where
     F: FnOnce() -> Result<(), SystemdUnitError>,
@@ -259,12 +263,18 @@ pub fn assert_startup_logs_structured_validation_failure(unit: &'static str) -> 
     )
 }
 
+/// Shared handle for the formatted events produced by a temporary subscriber.
 #[derive(Clone, Default)]
 struct CapturedLogs {
+    /// Shared bytes written by each subscriber writer instance.
     buffer: Arc<Mutex<Vec<u8>>>,
 }
 
 impl CapturedLogs {
+    /// Decodes the captured bytes after the subscriber finishes writing.
+    ///
+    /// For example, buffered UTF-8 log lines become a `String`; invalid UTF-8
+    /// or a poisoned lock returns an explanatory `Err`.
     fn content(&self) -> Result<String, String> {
         let buffer = self
             .buffer
@@ -274,7 +284,9 @@ impl CapturedLogs {
     }
 }
 
+/// Appends formatted tracing events to the shared in-memory capture buffer.
 struct CapturedLogWriter {
+    /// Buffer shared with the subscriber's `CapturedLogs` handle.
     buffer: Arc<Mutex<Vec<u8>>>,
 }
 
@@ -297,6 +309,10 @@ impl<'writer> MakeWriter<'writer> for CapturedLogs {
     }
 }
 
+/// Builds the validation error used to exercise a missing service section.
+///
+/// For example, `"repovec.service"` returns `Err(MissingSection { section:
+/// "Service", .. })` for startup logging and exit-code assertions.
 const fn missing_section_error(unit: &'static str) -> Result<(), SystemdUnitError> {
     Err(SystemdUnitError::MissingSection { unit, section: "Service" })
 }

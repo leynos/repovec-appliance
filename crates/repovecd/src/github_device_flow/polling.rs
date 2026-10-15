@@ -106,10 +106,14 @@ where
     }
 }
 
+/// Tracks the interval, attempt count, and monotonic start of one authorization.
 #[derive(Clone, Copy, Debug)]
 struct ActivePolling {
+    /// Delay to wait before the next token request.
     interval: Duration,
+    /// Number of token requests started so far.
     attempt: u64,
+    /// Monotonic instant used to measure the authorization lifetime.
     started_at: Instant,
 }
 

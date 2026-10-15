@@ -45,10 +45,15 @@ impl DocsGateReason {
 /// The computed plan for the documentation gate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocsGatePlan {
+    /// Documentation paths that matched the input policy.
     matched_files: Vec<String>,
+    /// Markdown paths whose contents could not be inspected safely.
     conservative_fallback_files: Vec<String>,
+    /// Whether the documentation checks must run for this change.
     docs_gate_required: bool,
+    /// Whether Mermaid syntax validation must run for this change.
     nixie_required: bool,
+    /// Why the policy selected or skipped the documentation checks.
     reason: DocsGateReason,
 }
 
@@ -204,8 +209,14 @@ pub enum MermaidDetection {
 }
 
 impl MermaidDetection {
+    /// Reports whether this result requires Mermaid validation.
+    ///
+    /// For example, `Absent` skips Nixie, while `Present` and `Unknown` run it.
     const fn requires_nixie(self) -> bool { !matches!(self, Self::Absent) }
 
+    /// Reports whether the content read failed and needs a conservative fallback.
+    ///
+    /// For example, `Unknown` records the path for fallback reporting.
     const fn is_unknown(self) -> bool { matches!(self, Self::Unknown) }
 }
 

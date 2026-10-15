@@ -26,15 +26,21 @@ use observability::{
 };
 use wire::{DeviceCodeWire, TokenPollWire};
 
+/// OAuth grant identifier sent when polling a device authorization.
 const DEVICE_CODE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
+/// Polling delay used when GitHub omits the interval from its response.
 const DEFAULT_DEVICE_POLL_INTERVAL: Duration = Duration::from_secs(5);
+/// Connection deadline applied to requests made by the adapter.
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Overall deadline applied to each request made by the adapter.
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// GitHub OAuth endpoint URLs used by the device-flow adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeviceFlowEndpoints {
+    /// URL receiving device-code requests.
     device_code_url: String,
+    /// URL receiving token-poll requests.
     token_url: String,
 }
 
@@ -90,7 +96,9 @@ impl DeviceFlowEndpoints {
 /// Blocking OAuth device-flow client used by repovecd.
 #[derive(Debug)]
 pub struct GitHubOAuthClient {
+    /// Endpoint pair validated when this client is constructed.
     endpoints: DeviceFlowEndpoints,
+    /// Blocking HTTP client with redirects disabled and bounded timeouts.
     http: Client,
 }
 
@@ -209,6 +217,8 @@ impl GitHubOAuthClient {
         Ok(outcome)
     }
 
+    /// Sends the client identifier and joined scopes within the request span.
+    /// For example, `repo read:org` is sent as one scope parameter.
     fn send_device_code_request(
         &self,
         span: &Span,
@@ -225,6 +235,8 @@ impl GitHubOAuthClient {
         .map_err(OAuthClientError::RequestDeviceCode)
     }
 
+    /// Sends one token poll while keeping the device code out of diagnostics.
+    /// For example, the form carries the supplied code and the device grant identifier.
     fn send_token_poll_request(
         &self,
         span: &Span,
@@ -312,6 +324,8 @@ pub enum OAuthClientError {
     },
 }
 
+/// Accepts successful device-code statuses and records failures on the span.
+/// For example, `200 OK` succeeds while `502` becomes `UnexpectedStatus`.
 fn ensure_device_code_status(status: StatusCode, span: &Span) -> Result<(), OAuthClientError> {
     if status.is_success() {
         return Ok(());
@@ -320,6 +334,8 @@ fn ensure_device_code_status(status: StatusCode, span: &Span) -> Result<(), OAut
     Err(OAuthClientError::UnexpectedStatus { endpoint: "device-code", status })
 }
 
+/// Interprets an OAuth poll body according to its HTTP status and error code.
+/// For example, `authorization_pending` yields `AuthorizationPending`.
 fn token_poll_outcome(
     body: TokenPollWire,
     is_success: bool,
@@ -334,18 +350,26 @@ fn token_poll_outcome(
     Err(OAuthClientError::ReadTokenErrorWithoutErrorField)
 }
 
+/// Counts non-empty whitespace-separated scope names for span metadata.
+/// For example, `repo read:org` produces the count `2`.
 fn scope_count(scopes: &str) -> usize {
     scopes.split_whitespace().filter(|scope| !scope.is_empty()).count()
 }
 
+/// Checks that the configured token endpoint is a parseable URL.
+/// For example, `https://github.com/login/oauth/access_token` is accepted.
 fn validate_token_url(token_url: &str) -> Result<(), OAuthClientError> {
     Url::parse(token_url).map(|_| ()).map_err(OAuthClientError::InvalidTokenUrl)
 }
 
+/// Checks that the configured device-code endpoint is a parseable URL.
+/// For example, `https://github.com/login/device/code` is accepted.
 fn validate_device_code_url(device_code_url: &str) -> Result<(), OAuthClientError> {
     Url::parse(device_code_url).map(|_| ()).map_err(OAuthClientError::InvalidDeviceCodeUrl)
 }
 
+/// Joins scope names with the space separator expected by the request API.
+/// For example, scope names `repo` and `read:org` become `repo read:org`.
 fn join_scopes<I, S>(scopes: I) -> String
 where
     I: IntoIterator<Item = S>,

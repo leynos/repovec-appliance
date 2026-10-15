@@ -21,7 +21,9 @@ use credential_transform::{SystemdCredsTransform, run_systemd_creds_file_transfo
 use observability::{info_token_store_load, info_token_store_write};
 pub use redaction::LossyStderr;
 
+/// Credential identity supplied to both systemd encryption and decryption.
 const TOKEN_CREDENTIAL_NAME: &str = "repovec-github-oauth-token";
+/// Relative encrypted credential filename shared with the appliance configuration.
 const TOKEN_CREDENTIAL_FILE: &str = GITHUB_OAUTH_TOKEN_CREDENTIAL_FILE;
 
 /// Encrypts and decrypts token material before filesystem persistence.
@@ -75,7 +77,9 @@ pub trait CredentialEncryptor {
 /// Encrypted GitHub token store rooted below `/etc/repovec`.
 #[derive(Debug)]
 pub struct EncryptedGitHubTokenStore<E> {
+    /// Directory capability that roots all encrypted token file access.
     root: Dir,
+    /// Adapter responsible for encrypting writes and decrypting reads.
     encryptor: E,
 }
 
@@ -192,7 +196,9 @@ where
 /// Runs `systemd-creds` for credential encryption and decryption.
 #[derive(Clone, Debug)]
 pub struct SystemdCredsEncryptor<R> {
+    /// Process boundary used to invoke the credential transformation command.
     runner: R,
+    /// Executable path used for both encryption and decryption.
     command: Utf8PathBuf,
 }
 

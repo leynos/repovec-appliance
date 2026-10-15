@@ -16,10 +16,19 @@ enum QuoteStyle {
     Double,
 }
 
+/// Generate bare, single-quoted and double-quoted forms so assignment properties cover each
+/// supported spelling.
+///
+/// For example, the generated variants include `QuoteStyle::Single`, which exercises delimiter
+/// removal without requiring a particular random sample order.
 fn quote_style_strategy() -> impl Strategy<Value = QuoteStyle> {
     prop_oneof![Just(QuoteStyle::Bare), Just(QuoteStyle::Single), Just(QuoteStyle::Double)]
 }
 
+/// Pair rendered assignment syntax with the normalized token expected from splitting.
+///
+/// For example, `assignment("A", "one two", QuoteStyle::Bare)` yields
+/// `("A=one_two", "A=one_two")`; quoted forms retain the value space in the token.
 fn assignment(key: &str, value: &str, quote_style: QuoteStyle) -> (String, String) {
     match quote_style {
         QuoteStyle::Bare => {
@@ -32,6 +41,11 @@ fn assignment(key: &str, value: &str, quote_style: QuoteStyle) -> (String, Strin
 }
 
 prop_compose! {
+    /// Generate valid unrelated assignments around the target key to expose accidental absorption
+    /// of adjacent values.
+    ///
+    /// For example, `A=zz1` is a possible bare neighbour, while a quoted neighbour may contain
+    /// spaces.
     fn neighbouring_assignment()(
         key in "[A-Z][A-Z0-9_]{0,8}",
         value in "zz[0-9A-F _-]{1,18}",
@@ -42,6 +56,10 @@ prop_compose! {
 }
 
 prop_compose! {
+    /// Generate rendered target syntax, its expected token and its normalized payload together.
+    ///
+    /// For example, a double-quoted dummy value zz1 yields `QDRANT__SERVICE__API_KEY="zz1"`, token
+    /// `QDRANT__SERVICE__API_KEY=zz1` and payload zz1.
     fn api_key_assignment()(
         value in "zz[0-9A-F _-]{1,18}",
         quote_style in quote_style_strategy(),
@@ -58,6 +76,8 @@ prop_compose! {
 }
 
 proptest! {
+    /// Keep the generated API-key assignment isolated among arbitrary neighbours and a malformed
+    /// trailing quoted value.
     #[test]
     fn api_key_assignment_survives_splitting(
         before in proptest::collection::vec(neighbouring_assignment(), 1..4),
@@ -80,6 +100,7 @@ proptest! {
         prop_assert!(api_key_is_isolated);
     }
 
+    /// Preserve detection of both valued assignments and the bare API-key variable name.
     #[test]
     fn api_key_assignment_is_detected(value in "zz[0-9A-F_./:-]{1,32}") {
         let assignment = format!("{QDRANT_API_KEY_ENVIRONMENT_VARIABLE}={value}");
@@ -88,6 +109,7 @@ proptest! {
         prop_assert!(is_api_key_environment_assignment(QDRANT_API_KEY_ENVIRONMENT_VARIABLE));
     }
 
+    /// Prevent generated secret values from crossing the assignment redaction boundary.
     #[test]
     fn api_key_assignment_is_redacted(value in "zz[0-9A-F _-]{1,32}") {
         let assignment = format!("{QDRANT_API_KEY_ENVIRONMENT_VARIABLE}={value}");
@@ -97,6 +119,8 @@ proptest! {
         prop_assert!(!redacted.contains(&value));
     }
 
+    /// Protect splitter, detector and redactor composition across whitespace and optional valued
+    /// target assignments.
     #[test]
     fn split_detect_redact_pipeline_holds(
         before in proptest::collection::vec(neighbouring_assignment(), 0..3),

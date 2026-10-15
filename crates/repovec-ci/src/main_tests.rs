@@ -10,6 +10,10 @@ use super::{
     write_plan,
 };
 
+/// Decode captured CLI output strictly so snapshots cannot conceal invalid UTF-8.
+///
+/// For example, the bytes in `b"ready"` produce `"ready"`; invalid bytes panic instead of
+/// substituting replacement characters.
 fn buffer_to_string(buffer: Vec<u8>) -> String {
     match String::from_utf8(buffer) {
         Ok(output) => output,
@@ -17,6 +21,7 @@ fn buffer_to_string(buffer: Vec<u8>) -> String {
     }
 }
 
+/// Protect the exact operator-facing help text and its snapshot against accidental CLI changes.
 #[test]
 fn test_help_output() {
     let mut buffer = Vec::new();
@@ -29,6 +34,8 @@ fn test_help_output() {
     assert_snapshot!("help_output", output);
 }
 
+/// Protect the rendered documentation plan for a changed Markdown file, beyond successful input
+/// parsing.
 #[test]
 fn test_changed_file_docs_output() {
     let plan = evaluate_docs_gate_with(["docs/roadmap.md"], |_path| MermaidDetection::Absent);
@@ -39,6 +46,8 @@ fn test_changed_file_docs_output() {
     assert_snapshot!("changed_file_docs_output", buffer_to_string(buffer));
 }
 
+/// Keep an empty changed-path iterator conservative: missing inputs must not silently bypass
+/// documentation or Mermaid checks.
 #[test]
 fn test_stdin_empty_output() {
     let plan =
@@ -50,6 +59,7 @@ fn test_stdin_empty_output() {
     assert_snapshot!("stdin_empty_output", buffer_to_string(buffer));
 }
 
+/// Preserve the parser diagnostic snapshot so unsupported flags remain understandable to operators.
 #[test]
 fn test_invalid_flag_error() {
     let Err(error) = parse_args(["--unknown"].into_iter().map(str::to_owned)) else {
@@ -59,6 +69,7 @@ fn test_invalid_flag_error() {
     assert_snapshot!("invalid_flag_error", error.to_string());
 }
 
+/// Keep bare invocation in changed-file mode to preserve the CI wrapper input contract.
 #[test]
 fn no_arguments_default_to_changed_files_input() {
     let command = parse_args(std::iter::empty::<String>()).expect("empty args should parse");
@@ -71,6 +82,7 @@ fn no_arguments_default_to_changed_files_input() {
     }
 }
 
+/// Keep top-level help as a parser result so rendering remains at the CLI boundary.
 #[test]
 fn help_flag_returns_help_input() {
     let command = parse_args(["--help".to_owned()]).expect("help flag should parse");
@@ -78,6 +90,7 @@ fn help_flag_returns_help_input() {
     assert!(matches!(command, Command::Help));
 }
 
+/// Protect subcommand help from being mistaken for documentation-gate input.
 #[test]
 fn docs_gate_subcommand_accepts_help_flag() {
     let command =
@@ -86,6 +99,7 @@ fn docs_gate_subcommand_accepts_help_flag() {
     assert!(matches!(command, Command::DocsGate(Input::Help)));
 }
 
+/// Preserve the shorthand that selects streamed documentation input for CI callers.
 #[test]
 fn stdin_flag_returns_stdin_input() {
     let command = parse_args(["--stdin".to_owned()]).expect("stdin flag should parse");
@@ -93,6 +107,7 @@ fn stdin_flag_returns_stdin_input() {
     assert!(matches!(command, Command::DocsGate(Input::Stdin)));
 }
 
+/// Keep explicit subcommand and shorthand syntax consistent about streamed input.
 #[test]
 fn docs_gate_subcommand_accepts_stdin_flag() {
     let command =
@@ -101,6 +116,8 @@ fn docs_gate_subcommand_accepts_stdin_flag() {
     assert!(matches!(command, Command::DocsGate(Input::Stdin)));
 }
 
+/// Route systemd requests to their validator instead of accidentally producing a documentation
+/// plan.
 #[test]
 fn systemd_gate_subcommand_returns_systemd_command() {
     let command = parse_args(["systemd-gate".to_owned()]).expect("systemd gate should parse");
@@ -108,6 +125,8 @@ fn systemd_gate_subcommand_returns_systemd_command() {
     assert!(matches!(command, Command::SystemdGate));
 }
 
+/// Keep repeated path options ordered and complete, including documentation-tool configuration
+/// inputs.
 #[test]
 fn changed_file_flags_collect_all_paths() {
     let command = parse_args([
@@ -128,6 +147,8 @@ fn changed_file_flags_collect_all_paths() {
     }
 }
 
+/// Reject documentation-only options in systemd mode rather than silently ignoring a caller
+/// mistake.
 #[test]
 fn systemd_gate_rejects_changed_file_flags() {
     let Err(error) = parse_args([
@@ -142,6 +163,8 @@ fn systemd_gate_rejects_changed_file_flags() {
     assert!(error.to_string().contains("unsupported argument for systemd-gate"));
 }
 
+/// Keep the real systemd command wired to shipped unit validation rather than a test-only success
+/// seam.
 #[test]
 fn systemd_gate_validates_real_checked_in_units() {
     let mut buffer = Vec::new();
@@ -152,6 +175,7 @@ fn systemd_gate_validates_real_checked_in_units() {
     assert_snapshot!("systemd_gate_real_validation_success", buffer_to_string(buffer));
 }
 
+/// Keep successful validation observable to operators through a stable confirmation line.
 #[test]
 fn systemd_gate_writes_success_confirmation() {
     let mut buffer = Vec::new();
@@ -162,6 +186,7 @@ fn systemd_gate_writes_success_confirmation() {
     assert_snapshot!("systemd_gate_success_confirmation", buffer_to_string(buffer));
 }
 
+/// Keep failed validation visible to callers without emitting misleading success output.
 #[test]
 fn systemd_gate_propagates_validation_error() {
     use repovec_core::appliance::systemd_units::SystemdUnitError;
@@ -180,6 +205,7 @@ fn systemd_gate_propagates_validation_error() {
     assert_snapshot!("systemd_gate_error_message", error.to_string());
 }
 
+/// Reject dangling path options with usage guidance instead of interpreting them as empty paths.
 #[test]
 fn missing_changed_file_value_reports_usage() {
     let Err(error) = parse_args(["--changed-file".to_owned()]) else {
@@ -190,6 +216,7 @@ fn missing_changed_file_value_reports_usage() {
     assert!(error.to_string().contains(USAGE));
 }
 
+/// Reject competing input sources so stream and flag-based paths cannot be combined ambiguously.
 #[test]
 fn stdin_and_changed_file_are_mutually_exclusive() {
     let Err(error) = parse_args([
@@ -204,6 +231,8 @@ fn stdin_and_changed_file_are_mutually_exclusive() {
     assert!(error.to_string().contains("--stdin cannot be combined with --changed-file"));
 }
 
+/// Keep usage guidance attached to unknown-option errors so callers can recover from invalid CLI
+/// syntax.
 #[test]
 fn invalid_flag_reports_usage() {
     let Err(error) = parse_args(["--bogus".to_owned()]) else {

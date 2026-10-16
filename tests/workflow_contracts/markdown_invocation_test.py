@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -91,7 +92,11 @@ def _make(
     ],
     ids=["make_fmt", "make_check_fmt", "make_markdownlint"],
 )
-def test_make_invokes_direct_markdown_tools(probes, target, expected) -> None:
+def test_make_invokes_direct_markdown_tools(
+    probes: tuple[Path, dict[str, str]],
+    target: str,
+    expected: list[list[str]],
+) -> None:
     """Formatting fixes in order; formatting checks never receive fix flags."""
     status, calls = _make(target, probes)
     assert status == 0, f"make {target} failed: {calls}"
@@ -105,7 +110,11 @@ def test_make_invokes_direct_markdown_tools(probes, target, expected) -> None:
      ("fmt", "markdownlint"), ("markdownlint", "markdownlint")],
     ids=["check_rejection", "format_rejection", "fix_lint_rejection", "lint_rejection"],
 )
-def test_markdown_rejection_fails_make(probes, target, tool) -> None:
+def test_markdown_rejection_fails_make(
+    probes: tuple[Path, dict[str, str]],
+    target: str,
+    tool: str,
+) -> None:
     """A failing formatter or linter rejects Make and stops subsequent tools."""
     probes[1]["MARKDOWN_FAIL_TOOL"] = tool
     status, calls = _make(target, probes)
@@ -231,7 +240,10 @@ def _move_installer_last(steps: list[dict], installer: dict) -> None:
         ),
     ],
 )
-def test_installation_contract_detects_workflow_mutations(mutate, job_name) -> None:
+def test_installation_contract_detects_workflow_mutations(
+    mutate: Callable[[list[dict[str, object]], dict[str, object]], object],
+    job_name: str,
+) -> None:
     """Mutations of parsed repository CI must fail its real Markdown checker."""
     workflows = copy.deepcopy(repository_workflows())
     _assert_markdown_ci_contract(workflows)
@@ -244,7 +256,10 @@ def test_installation_contract_detects_workflow_mutations(mutate, job_name) -> N
         _assert_markdown_ci_contract(workflows)
 
 
-def test_git_selection_repairs_untracked_but_preserves_ignored_markdown(tmp_path, probes) -> None:
+def test_git_selection_repairs_untracked_but_preserves_ignored_markdown(
+    tmp_path: Path,
+    probes: tuple[Path, dict[str, str]],
+) -> None:
     """An untracked malformed table fails a check, is repaired, then passes."""
     binary = shutil.which("mdtablefix")
     assert binary, "install mdtablefix >=0.6.0 before running Markdown contracts"

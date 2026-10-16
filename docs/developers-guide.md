@@ -59,7 +59,7 @@ make nixie 2>&1 | tee /tmp/repovec-make-nixie.log
 These Make targets are the source of truth for local validation and for CI. Do
 not duplicate or partially reimplement them in workflow YAML.
 
-### Markdown tool installation
+### 1.1 Markdown tool installation
 
 Install the local linter through Bun, using the same release bundled by the CI
 action:
@@ -84,7 +84,7 @@ later; CI selects its binary release 0.6.1.
 [markdownlint-action-package]: https://github.com/DavidAnson/markdownlint-cli2-action/blob/21c1be1b93ad9ed58fa840aacc3f279cde2a72ff/package.json
 [markdownlint-cli-package]: https://github.com/DavidAnson/markdownlint-cli2/blob/v0.23.2/package.json
 
-### 1.1 Gate sequencing lives in a script, not in a recipe
+### 1.2 Gate sequencing lives in a script, not in a recipe
 
 A Make recipe is one shell invocation and runs without `set -e`, so its exit
 status is that of its *last* command. A recipe that chains commands with `;`

@@ -44,7 +44,8 @@ The observable outcome a reviewer can check:
    applied, the tree exists with the expected ownership and modes,
    `qdrant.service` reaches `active`, and Qdrant answers on loopback gRPC.
 
-This plan is in DRAFT. Do not begin implementation until the user approves it.
+This plan was DRAFT. Implementation was approved on 2026-08-11 (Progress, Stage
+A) and all six milestones are complete; see `Outcomes & Retrospective`.
 
 ## Constraints
 
@@ -443,10 +444,61 @@ action; they are not quality targets.
 
 ## Outcomes & Retrospective
 
-To be completed at milestones and at completion. Compare the delivered
-contract, modes, and the live pre-flight against this purpose statement;
-capture any deviation and any follow-up filed for the grepai sandbox (R-3) or a
-deferred live guard (D-6).
+The implementation shipped the `repovec` account and the appliance directory
+tree as checked-in packaging assets, and it landed the pure and live halves of
+the contract that guard them.
+
+`packaging/sysusers.d/repovec.conf` declares the `repovec` system user and
+group with `/var/lib/repovec` as its home, and
+`packaging/tmpfiles.d/repovec.conf` creates the `/var/lib/repovec` data tree
+(the root, `git-mirrors`, `worktrees`, `.grepai`, and `qdrant-storage`) with
+explicit owner, group, and mode fields.
+`packaging/systemd/repovec-provision.service` runs `systemd-sysusers` before
+`systemd-tmpfiles --create`, so the `repovec` account exists before
+`systemd-tmpfiles` resolves the `repovec:repovec` ownership of the tree (risk
+R-2).
+
+The delivered contract matches the purpose statement on every security
+invariant:
+
+- SI-1: the `/var/lib/repovec` data tree is `0700 repovec:repovec`.
+- SI-2: `qdrant-storage` is `0700 root:root`.
+- SI-3: `/etc/repovec` stays root-owned, group `repovec`, mode `0750`.
+- SI-4: `/etc/repovec` keeps a single authority. 1.3.3 does not
+  re-provision it, and the static validator enforces that by *rejecting* any
+  tmpfiles entry at or beneath `/etc/repovec` with
+  `DirectoryLayoutError::ForbiddenSecretsEntry`; the live pre-flight checks its
+  owner, group, and mode without ever creating it.
+- SI-5: every tmpfiles line states its owner, group, and mode explicitly
+  rather than relying on `-`; the parser rejects the `-` placeholder. This is
+  load-bearing, because the `systemd-tmpfiles` default for an omitted mode is
+  world-readable `0755`, which would expose the private corpus.
+
+The pure validator in `appliance::directory_layout` parses the embedded
+`sysusers.d` and `tmpfiles.d` text with `include_str!` and never touches the
+live filesystem, so the static contract is checkable in CI. It enforces the
+bidirectional drift guard, SI-4, SI-5, per-directory mode/owner/group exact
+match, and the sysusers user/home/shell contract, and it rejects a regular file
+carrying the contract owner, group, and mode. The live pre-flight in
+`appliance::directory_layout::live` stats the real tree through `cap_std` at
+daemon startup and fails closed, closing risk R-6 in this pull request.
+
+Two deviations from the original plan are recorded rather than silently
+absorbed. First, Milestone 4 was initially split out to respect the file and
+line tolerance, then brought back when the user explicitly approved extending
+that tolerance (Decision D-11 supersede note). Second, the container used by
+the integration suite cannot run systemd as PID 1, so the
+`systemctl start repovec.target` and `qdrant.service` activeness assertion
+remains a documented manual run on a capable host, following the 1.2.2
+precedent; the provisioning lifecycle test and the static contracts are the CI
+proxy.
+
+The grepai sandbox risk (R-3) was re-confirmed rather than deferred:
+`ProtectSystem=full` and `ProtectHome=read-only` do not cover
+`/var/lib/repovec`, which is outside `/home`, `/root`, `/run/user`, `/usr`,
+`/boot`, and `/etc`, so the indexer sandbox and this layout do not conflict and
+no follow-up was needed. No live guard was deferred beyond D-6: the fail-closed
+pre-flight shipped here.
 
 ## Context and orientation
 

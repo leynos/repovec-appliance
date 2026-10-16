@@ -17,12 +17,18 @@
 //! - [`qdrant_liveness`] validates the live Qdrant gRPC endpoint using the
 //!   stored appliance API key.
 //!
-//! - [`daemon_startup`] composes [`systemd_units`] and [`qdrant_liveness`]
-//!   during daemon startup.
+//! - [`directory_layout`] validates the checked-in `sysusers.d` and
+//!   `tmpfiles.d` assets that provision the `repovec` system user and its
+//!   private on-disk tree, and exposes the live ownership pre-flight used by
+//!   [`daemon_startup`].
+//!
+//! - [`daemon_startup`] composes [`systemd_units`], [`directory_layout`], and
+//!   [`qdrant_liveness`] during daemon startup.
 //!
 //! The submodules compose the appliance surface: [`qdrant_quadlet`] covers the
 //! Podman/Quadlet layer, [`systemd_units`] covers the systemd service
-//! orchestration layer, and [`qdrant_liveness`] covers runtime readiness.
+//! orchestration layer, [`directory_layout`] covers the account and directory
+//! provisioning layer, and [`qdrant_liveness`] covers runtime readiness.
 
 pub mod daemon_startup;
 pub mod directory_layout;

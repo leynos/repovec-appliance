@@ -59,7 +59,38 @@ make nixie 2>&1 | tee /tmp/repovec-make-nixie.log
 These Make targets are the source of truth for local validation and for CI. Do
 not duplicate or partially reimplement them in workflow YAML.
 
-### 1.1 Gate sequencing lives in a script, not in a recipe
+### 1.1 Markdown tool installation
+
+Install the local linter through Bun, using the same release bundled by the CI
+action:
+
+```sh
+bun add --global --exact markdownlint-cli2@0.23.2
+markdownlint-cli2 --version
+```
+
+The [pinned CI action's package manifest][markdownlint-action-package] selects
+`markdownlint-cli2` 0.23.2. Its [release manifest][markdownlint-cli-package]
+requires Node.js 22 or later. When updating the action pin, reconcile this
+local release with the version in its package manifest.
+
+`MDLINT` finds the executable on `PATH`, then falls back to
+`$HOME/.bun/bin/markdownlint-cli2`. If another installation appears first,
+verify its version or set `MDLINT="$HOME/.bun/bin/markdownlint-cli2"` when
+running the Make targets. Both local and CI linting read
+`.markdownlint-cli2.jsonc`. The format targets also require mdtablefix 0.6.0 or
+later; CI selects its binary release 0.6.1.
+
+Workflow contracts also run the real CLI 0.23.2 against an isolated Git
+repository. Supply its executable explicitly when running those contracts, for
+example `MDLINT=/absolute/path/markdownlint-cli2 make test-workflow-contracts`.
+CI installs the pinned action's manifest and lock into its temporary tool
+directory before running the contracts; no test downloads or installs tools.
+
+[markdownlint-action-package]: https://github.com/DavidAnson/markdownlint-cli2-action/blob/21c1be1b93ad9ed58fa840aacc3f279cde2a72ff/package.json
+[markdownlint-cli-package]: https://github.com/DavidAnson/markdownlint-cli2/blob/v0.23.2/package.json
+
+### 1.2 Gate sequencing lives in a script, not in a recipe
 
 A Make recipe is one shell invocation and runs without `set -e`, so its exit
 status is that of its *last* command. A recipe that chains commands with `;`

@@ -130,7 +130,50 @@ jobs:
         with:
           python-version: '3.13'
           enable-cache: true
+      - name: Install mdtablefix for workflow contracts
+        # The selection contract exercises the real formatter in a scratch Git
+        # repository; tool probes cover the other Make invocation boundaries.
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@e693d81d176d2305e2b736a0be0f9038085dec7f
+        with:
+          version: "0.6.1"
+      - name: Setup Node for Markdown contracts
+        id: setup_markdownlint
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.2'
+          package-manager-cache: false
+      - name: Provision pinned Markdown linter for contracts
+        id: provision_markdownlint
+        shell: bash
+        env:
+          MARKDOWNLINT_ACTION_REVISION: 21c1be1b93ad9ed58fa840aacc3f279cde2a72ff
+          MARKDOWNLINT_PACKAGE_SHA256: c5d29548af9601591933259daac76c09b85d8c6788654c5651a94a26c22b33b7
+          MARKDOWNLINT_LOCK_SHA256: 9951527515b50ea7aa3d574272bfc8cd2490e1668d99c3316731329f81154a2b
+          MARKDOWNLINT_CLI_VERSION: '0.23.2'
+          MARKDOWNLINT_CLI_INTEGRITY: sha512-eUhcnkSpzURo/o4htSqc7LPDszgOOTknhU4eY/sPHvMCLxnTCYscv1gw1/js/idmaZPisv9ECVEIORcllqjTUw==
+        run: |
+          set -euo pipefail
+          tool_dir="$RUNNER_TEMP/repovec-markdownlint"
+          mkdir -p "$tool_dir"
+          release="https://raw.githubusercontent.com/DavidAnson/markdownlint-cli2-action/$MARKDOWNLINT_ACTION_REVISION"
+          curl --fail --location --proto '=https' --tlsv1.2 "$release/package.json" --output "$tool_dir/package.json"
+          curl --fail --location --proto '=https' --tlsv1.2 "$release/package-lock.json" --output "$tool_dir/package-lock.json"
+          printf '%s  %s\n' "$MARKDOWNLINT_PACKAGE_SHA256" "$tool_dir/package.json" | sha256sum --check --strict
+          printf '%s  %s\n' "$MARKDOWNLINT_LOCK_SHA256" "$tool_dir/package-lock.json" | sha256sum --check --strict
+          npm ci --prefix "$tool_dir" --omit=dev --ignore-scripts --no-audit --no-fund
+          node --input-type=module - "$tool_dir" <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const root = process.argv[2];
+          const cli = JSON.parse(readFileSync(`${root}/node_modules/markdownlint-cli2/package.json`, 'utf8'));
+          const lock = JSON.parse(readFileSync(`${root}/package-lock.json`, 'utf8'));
+          assert.equal(cli.version, process.env.MARKDOWNLINT_CLI_VERSION);
+          assert.equal(lock.packages['node_modules/markdownlint-cli2'].integrity, process.env.MARKDOWNLINT_CLI_INTEGRITY);
+          JS
       - name: Workflow contract tests
+        id: workflow_contracts
+        env:
+          MDLINT: ${{ runner.temp }}/repovec-markdownlint/node_modules/.bin/markdownlint-cli2
         run: make test-workflow-contracts
 
   test:

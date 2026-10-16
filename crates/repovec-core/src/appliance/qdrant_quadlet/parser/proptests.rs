@@ -34,7 +34,7 @@ prop_compose! {
 }
 
 proptest! {
-    /// Tokenisation removes only inter-token ASCII whitespace.
+    /// Tokenization removes only inter-token ASCII whitespace.
     #[test]
     fn line_tokens_preserve_non_whitespace_content(line in "\\PC{0,128}") {
         let joined = line_tokens(&line).join(" ");
@@ -42,7 +42,7 @@ proptest! {
         prop_assert_eq!(non_whitespace_content(&joined), non_whitespace_content(&line));
     }
 
-    /// Tokenisation never emits empty tokens.
+    /// Tokenization never emits empty tokens.
     #[test]
     fn line_tokens_never_emit_empty_tokens(line in "\\PC{0,128}") {
         prop_assert!(line_tokens(&line).iter().all(|token| !token.is_empty()));

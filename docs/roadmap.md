@@ -410,11 +410,11 @@ manage all aspects of the system through an interactive text user interface
 
 ### 5.1. TUI framework and navigation
 
-Objective: `repovec-tui` provides a navigable ratatui interface connected to
+Objective: `repovec-tui` provides a navigable `ratatui` interface connected to
 repovecd's local Unix socket API.
 
-- [ ] 5.1.1. Scaffold ratatui application
-  - Set up the ratatui event loop, main layout, and screen navigation.
+- [ ] 5.1.1. Scaffold `ratatui` application
+  - Set up the `ratatui` event loop, main layout, and screen navigation.
   - Connect to repovecd's local Unix socket for status and control.
 - [ ] 5.1.2. Implement status dashboard
   - Display a summary: authenticated user, number of indexed repos,

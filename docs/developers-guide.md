@@ -81,6 +81,12 @@ running the Make targets. Both local and CI linting read
 `.markdownlint-cli2.jsonc`. The format targets also require mdtablefix 0.6.0 or
 later; CI selects its binary release 0.6.1.
 
+Workflow contracts also run the real CLI 0.23.2 against an isolated Git
+repository. Supply its executable explicitly when running those contracts, for
+example `MDLINT=/absolute/path/markdownlint-cli2 make test-workflow-contracts`.
+CI installs the pinned action's manifest and lock into its temporary tool
+directory before running the contracts; no test downloads or installs tools.
+
 [markdownlint-action-package]: https://github.com/DavidAnson/markdownlint-cli2-action/blob/21c1be1b93ad9ed58fa840aacc3f279cde2a72ff/package.json
 [markdownlint-cli-package]: https://github.com/DavidAnson/markdownlint-cli2/blob/v0.23.2/package.json
 

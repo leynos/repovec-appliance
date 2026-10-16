@@ -168,6 +168,8 @@ def _assert_job_markdown_contract(job: dict) -> int:
                 "Markdown consumers require an unconditional full-SHA installer "
                 f"selecting mdtablefix {SELECTED_MDTABLEFIX_VERSION} first"
             )
+        if str(step.get("run", "")).strip() == "make test-workflow-contracts":
+            _assert_linter_provisioning(steps, index)
         if str(step.get("uses", "")).startswith("DavidAnson/markdownlint-cli2-action@"):
             assert _action_input_matches(step, "globs", "**/*.md"), (
                 "markdownlint requires a mapping with globs exactly **/*.md"
@@ -280,3 +282,92 @@ def test_git_selection_repairs_untracked_but_preserves_ignored_markdown(
     assert after == 0, "make check-fmt rejected the repaired Markdown table"
     assert untracked.read_text() != defect
     assert ignored.read_text() == defect
+
+NODE_SETUP = "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38"
+LINTER_PATH = "${{ runner.temp }}/repovec-markdownlint/node_modules/.bin/markdownlint-cli2"
+LINTER_PROVENANCE = {
+    "MARKDOWNLINT_ACTION_REVISION": "21c1be1b93ad9ed58fa840aacc3f279cde2a72ff",
+    "MARKDOWNLINT_PACKAGE_SHA256": "c5d29548af9601591933259daac76c09b85d8c6788654c5651a94a26c22b33b7",
+    "MARKDOWNLINT_LOCK_SHA256": "9951527515b50ea7aa3d574272bfc8cd2490e1668d99c3316731329f81154a2b",
+    "MARKDOWNLINT_CLI_VERSION": "0.23.2",
+    "MARKDOWNLINT_CLI_INTEGRITY": "sha512-eUhcnkSpzURo/o4htSqc7LPDszgOOTknhU4eY/sPHvMCLxnTCYscv1gw1/js/idmaZPisv9ECVEIORcllqjTUw==",
+}
+
+
+def _assert_linter_provisioning(steps: list[dict], index: int) -> None:
+    """Require locked real-tool provisioning before its integration contract.
+
+    Moving provisioning after the test or changing its release rejects CI.
+    """
+    ids = {step.get("id"): (i, step) for i, step in enumerate(steps)}
+    assert {"setup_markdownlint", "provision_markdownlint"} <= ids.keys(), "missing linter provisioning"
+    node_index, node = ids["setup_markdownlint"]
+    install_index, install = ids["provision_markdownlint"]
+    assert node_index < install_index < index, "linter provisioning order"
+    assert node.get("uses") == NODE_SETUP, "linter Node action pin"
+    assert _action_input_matches(node, "node-version", "22.23.2"), "linter Node version"
+    assert node["with"].get("package-manager-cache") is False, "linter cache must be disabled"
+    assert not any("if" in step or step.get("continue-on-error", False) for step in (node, install)), "linter provisioning must fail closed"
+    assert install.get("env") == LINTER_PROVENANCE, "linter release provenance"
+    script = install.get("run", "")
+    assert all(token in script for token in ("set -euo pipefail", "sha256sum --check --strict", "npm ci", "--ignore-scripts", "--omit=dev")), "linter locked installation"
+    assert steps[index].get("env", {}).get("MDLINT") == LINTER_PATH, "linter executable route"
+
+
+@pytest.mark.parametrize(("step_id", "group", "key", "value"), [
+    ("setup_markdownlint", None, "uses", "actions/setup-node@main"),
+    ("setup_markdownlint", "with", "node-version", "20"),
+    ("setup_markdownlint", "with", "package-manager-cache", True),
+    ("provision_markdownlint", "env", "MARKDOWNLINT_ACTION_REVISION", "main"),
+    ("provision_markdownlint", "env", "MARKDOWNLINT_PACKAGE_SHA256", "0" * 64),
+    ("provision_markdownlint", "env", "MARKDOWNLINT_LOCK_SHA256", "0" * 64),
+    ("provision_markdownlint", "env", "MARKDOWNLINT_CLI_VERSION", "0.22.1"),
+    ("provision_markdownlint", "env", "MARKDOWNLINT_CLI_INTEGRITY", "sha512-invalid"),
+    ("provision_markdownlint", None, "continue-on-error", True),
+    ("workflow_contracts", "env", "MDLINT", "/unqualified/markdownlint-cli2"),
+])
+def test_linter_provisioning_detects_mutations(
+    step_id: str, group: str | None, key: str, value: str | bool,
+) -> None:
+    """Parsed CI must reject moving pins, cache, soft failure and wrong tools."""
+    workflows = copy.deepcopy(repository_workflows())
+    _assert_markdown_ci_contract(workflows)
+    steps = workflows["ci.yml"]["jobs"]["lint"]["steps"]
+    step = next(step for step in steps if step.get("id") == step_id)
+    (step if group is None else step[group])[key] = value
+    with pytest.raises(AssertionError, match="linter"):
+        _assert_markdown_ci_contract(workflows)
+
+
+@pytest.mark.parametrize("step_id", ["setup_markdownlint", "provision_markdownlint"])
+def test_linter_provisioning_rejects_late_steps(step_id: str) -> None:
+    """The actual CI document must reject provisioning moved after tests."""
+    workflows = copy.deepcopy(repository_workflows())
+    _assert_markdown_ci_contract(workflows)
+    steps = workflows["ci.yml"]["jobs"]["lint"]["steps"]
+    step = next(step for step in steps if step.get("id") == step_id)
+    steps.remove(step)
+    steps.append(step)
+    with pytest.raises(AssertionError, match="linter"):
+        _assert_markdown_ci_contract(workflows)
+
+
+def test_real_markdownlint_respects_gitignore(tmp_path: Path) -> None:
+    """Real pinned linting ignores a defect until identical bytes are exposed."""
+    binary = os.environ.get("MDLINT") or shutil.which("markdownlint-cli2")
+    assert binary, "provide markdownlint-cli2 0.23.2 through MDLINT"
+    subprocess.run(["git", "init", "--quiet", str(tmp_path)], check=True)
+    shutil.copyfile(REPOSITORY / ".markdownlint-cli2.jsonc", tmp_path / ".markdownlint-cli2.jsonc")
+    (tmp_path / ".gitignore").write_text("ignored.md\n")
+    (tmp_path / "README.md").write_text("# Probe\n")
+    subprocess.run(["git", "add", ".gitignore", ".markdownlint-cli2.jsonc", "README.md"], cwd=tmp_path, check=True)
+    defect = "# Probe\n\n" + " ".join(["word"] * 20) + "\n"
+    (tmp_path / "ignored.md").write_text(defect)
+    command = [binary, "**/*.md"]
+    ignored = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert "markdownlint-cli2 v0.23.2 (markdownlint v0.41.1)" in ignored.stdout, "unqualified linter"
+    assert ignored.returncode == 0, ignored.stdout + ignored.stderr
+    (tmp_path / "visible.md").write_text(defect)
+    visible = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert visible.returncode != 0, "unignored line-length violation was not checked"
+    assert "MD013" in visible.stdout + visible.stderr, "expected the real line-length diagnostic"

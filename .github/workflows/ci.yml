@@ -130,6 +130,12 @@ jobs:
         with:
           python-version: '3.13'
           enable-cache: true
+      - name: Install mdtablefix for workflow contracts
+        # The selection contract exercises the real formatter in a scratch Git
+        # repository; tool probes cover the other Make invocation boundaries.
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@e693d81d176d2305e2b736a0be0f9038085dec7f
+        with:
+          version: "0.6.1"
       - name: Workflow contract tests
         run: make test-workflow-contracts
 

@@ -72,11 +72,15 @@ pub(super) fn validate_provisioning_dependency(
 /// `After=` orders the secret creation before the container tries to read it.
 const REQUIRED_DEPENDENCY_DIRECTIVES: [&str; 2] = ["Requires", "After"];
 
-/// Checks one systemd dependency directive for the API-key provisioning service.
+/// Checks one systemd dependency directive for a required provisioning service.
 ///
 /// The parsed Quadlet and directive name are inspected, and violations are
-/// reported to the observer before returning a domain error. For example, a
-/// `Requires` value containing `repovec-qdrant-api-key.service` passes.
+/// reported to the observer before returning a domain error. The general
+/// callbacks forward API-key service events to their original callbacks by
+/// default, while observers can override the general callbacks for both
+/// dependencies.
+/// For example, a `Requires` value containing
+/// `repovec-qdrant-api-key.service` passes.
 fn validate_unit_dependency(
     parsed: &ParsedQuadlet,
     directive: &'static str,

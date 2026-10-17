@@ -975,6 +975,12 @@ that check the scan silently absorbed the remainder of the line, so a stray
 quote — for example a trailing `"` after the shell column — left the
 interpreted columns intact and the malformed declaration passed the static gate.
 
+The `sysusers.d` view also rejects columns after the optional shell field. For
+persistent `tmpfiles.d` `d` entries, the cleanup age must be omitted or `-`,
+and the unused argument must be omitted or `-`. This keeps time-based cleanup
+from deleting repository, worktree, or Qdrant state and rejects fields that
+systemd does not accept for a `d` entry.
+
 ## 6. Provisioning integration tests
 
 The Rust workspace's unit and behavioural tests cover the helper's contract on

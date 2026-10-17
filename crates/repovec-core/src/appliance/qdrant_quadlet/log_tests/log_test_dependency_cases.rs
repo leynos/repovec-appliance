@@ -104,24 +104,34 @@ fn missing_dependency(
     directive: &'static str,
     expected_dependency: &'static str,
 ) -> LogScenario {
+    let message = if expected_dependency == API_KEY_SERVICE {
+        "qdrant quadlet validation failed: missing api key provisioning dependency"
+    } else {
+        "qdrant quadlet validation failed: missing provisioning dependency"
+    };
     without_line(
         snapshot_name,
         line,
         event(
             Level::WARN,
-            "qdrant quadlet validation failed: missing provisioning dependency",
+            message,
             &[("directive", directive), ("expected_dependency", expected_dependency)],
         ),
     )
 }
 
 fn incorrect_dependency(snapshot_name: &'static str, case: IncorrectDependencyCase) -> LogScenario {
+    let message = if case.expected_dependency == API_KEY_SERVICE {
+        "qdrant quadlet validation failed: incorrect api key provisioning dependency"
+    } else {
+        "qdrant quadlet validation failed: incorrect provisioning dependency"
+    };
     LogScenario {
         snapshot_name,
         contents: canonical().replace(case.from, case.to),
         expected: event(
             Level::WARN,
-            "qdrant quadlet validation failed: incorrect provisioning dependency",
+            message,
             &[
                 ("directive", case.directive),
                 ("dependency", case.dependency),

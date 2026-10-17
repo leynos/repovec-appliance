@@ -8,12 +8,12 @@
 //! inside a quoted section is rejected rather than partially consumed, matching
 //! the `Syntax error.` that `systemd-sysusers` reports for the same input.
 //!
-//! The views accept the column arity `systemd` accepts, not just the arity the
-//! checked-in assets happen to use. Both formats let trailing columns be
-//! omitted, and `tmpfiles.d` may also carry a trailing argument, so the views
-//! require only the leading columns they actually interpret. A `u` line that is
-//! short is reported with the name of the first absent column, so the operator
-//! is told which field to add rather than only that the line is malformed. The
+//! The views accept optional fields where `systemd` permits them while still
+//! enforcing the appliance policy. A sysusers `u` line permits one optional
+//! shell field; persistent tmpfiles `d` lines permit only an omitted or `-`
+//! cleanup age and an omitted or `-` unused argument. A short `u` line is
+//! reported with the name of the first absent column, so the operator is told
+//! which field to add rather than only that the line is malformed. The
 //! tokenizer never panics and never returns a partially populated view.
 
 use crate::appliance::directory_layout::{DirectoryLayoutError, Mode};
@@ -97,6 +97,19 @@ fn split_columns<const N: usize>(mut columns: Vec<String>) -> Option<([String; N
     Some((head, tail))
 }
 
+/// Reports whether an optional `d`-line age and argument preserve contents.
+///
+/// An omitted age or `-` disables time-based cleanup. The `d` type has no
+/// argument, so systemd accepts only an omitted argument or its `-` placeholder.
+fn tmpfiles_d_preserves_contents(tail: &[String]) -> bool {
+    match tail {
+        [] => true,
+        [age] => age == "-",
+        [age, argument] => age == "-" && argument == "-",
+        _ => false,
+    }
+}
+
 /// Builds the malformed-line error for a rejected asset line.
 fn malformed_line(asset: &'static str, line_number: usize, trimmed: &str) -> DirectoryLayoutError {
     DirectoryLayoutError::MalformedLine { asset, line_number, line: trimmed.to_owned() }
@@ -112,9 +125,10 @@ pub(crate) struct TmpfilesEntry {
 
 /// Parses an arbitrary line as a `tmpfiles.d` `d` entry.
 ///
-/// Only the leading five columns are interpreted: the `age` column and a
-/// trailing argument are optional under `tmpfiles.d` and are not part of the
-/// contract, so a conformant line that omits or extends them is accepted.
+/// Only the leading five columns describe the directory, but the optional age
+/// and argument are checked because these paths hold persistent state. Cleanup
+/// must be disabled: age is omitted or `-`, and the unused argument is omitted
+/// or `-`.
 pub(crate) fn tmpfiles_entry(
     line: &str,
     asset: &'static str,
@@ -128,10 +142,10 @@ pub(crate) fn tmpfiles_entry(
     let Some(columns) = tokenize(trimmed) else {
         return Err(malformed_line(asset, line_number, trimmed));
     };
-    let Some(([kind, path, mode, user, group], _tail)) = split_columns(columns) else {
+    let Some(([kind, path, mode, user, group], tail)) = split_columns(columns) else {
         return Err(malformed_line(asset, line_number, trimmed));
     };
-    if kind != "d" {
+    if kind != "d" || !tmpfiles_d_preserves_contents(&tail) {
         return Err(malformed_line(asset, line_number, trimmed));
     }
 
@@ -183,6 +197,9 @@ pub(crate) fn sysusers_user_line(
         };
         return Err(DirectoryLayoutError::MissingSysusersField { asset, line_number, field });
     };
+    if tail.len() > 1 {
+        return Err(malformed_line(asset, line_number, trimmed));
+    }
 
     Ok(Some(SysusersUserLine {
         name,

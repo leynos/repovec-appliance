@@ -56,6 +56,28 @@ fn checked_in_assets_satisfy_the_directory_contract() {
         value: "0999".to_owned(),
     },
 )]
+#[case::tmpfiles_cleanup_age(
+    Mutation::tmpfiles(
+        "d /var/lib/repovec/worktrees 0700 repovec repovec -",
+        "d /var/lib/repovec/worktrees 0700 repovec repovec 1d",
+    ),
+    DirectoryLayoutError::MalformedLine {
+        asset: "tmpfiles.d/repovec.conf",
+        line_number: 7,
+        line: "d /var/lib/repovec/worktrees 0700 repovec repovec 1d".to_owned(),
+    },
+)]
+#[case::tmpfiles_unexpected_argument(
+    Mutation::tmpfiles(
+        "d /var/lib/repovec/worktrees 0700 repovec repovec -",
+        "d /var/lib/repovec/worktrees 0700 repovec repovec - unsafe",
+    ),
+    DirectoryLayoutError::MalformedLine {
+        asset: "tmpfiles.d/repovec.conf",
+        line_number: 7,
+        line: "d /var/lib/repovec/worktrees 0700 repovec repovec - unsafe".to_owned(),
+    },
+)]
 #[case::incorrect_owner(
     Mutation::tmpfiles(
         "d /var/lib/repovec/git-mirrors 0700 repovec repovec -",
@@ -128,6 +150,21 @@ fn checked_in_assets_satisfy_the_directory_contract() {
     Mutation::sysusers("u repovec - ", "u repovec 1000 "),
     DirectoryLayoutError::SysusersPinnedUid { actual: "1000".to_owned() },
 )]
+#[case::sysusers_extra_column(
+    Mutation::sysusers(
+        "/usr/sbin/nologin",
+        "/usr/sbin/nologin garbage",
+    ),
+    DirectoryLayoutError::MalformedLine {
+        asset: "sysusers.d/repovec.conf",
+        line_number: 1,
+        line: concat!(
+            "u repovec - \"repovec appliance service user\" ",
+            "/var/lib/repovec /usr/sbin/nologin garbage"
+        )
+        .to_owned(),
+    },
+)]
 #[case::sysusers_unterminated_quote(
     // An unbalanced trailing quote is a typo the tokenizer must not absorb:
     // `systemd-sysusers` rejects this line with `Syntax error.`, so a validator
@@ -171,6 +208,17 @@ fn a_foreign_sysusers_line_does_not_count_as_the_repovec_user() {
     );
 
     assert_mutation(mutation, DirectoryLayoutError::SysusersMissingUser);
+}
+
+#[test]
+fn omitted_tmpfiles_cleanup_age_preserves_persistent_directories() {
+    let mutation = Mutation::tmpfiles(
+        "d /var/lib/repovec/worktrees 0700 repovec repovec -",
+        "d /var/lib/repovec/worktrees 0700 repovec repovec",
+    );
+    let (tmpfiles, sysusers) = mutation.apply_to_checked_in();
+
+    assert_eq!(validate_directory_layout(&tmpfiles, &sysusers), Ok(()));
 }
 
 /// Octal-mode normalisation: `0750` and `750` denote the same permission set.

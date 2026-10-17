@@ -966,14 +966,19 @@ ps -p 1 -o comm=
 getenforce
 # Expect: Enforcing. Do not record a pass from a permissive host.
 
-# 1. Provision and start the target.
+# Capture debug success records from the startup-only daemons. The trap clears
+# this manager-wide setting when the procedure exits, including on failure.
 acceptance_started_at=$(date --iso-8601=seconds)
+sudo systemctl set-environment RUST_LOG=debug
+trap 'sudo systemctl unset-environment RUST_LOG' EXIT
+
+# 1. Provision and start the target.
 sudo systemctl daemon-reload
 sudo systemctl start repovec.target
-for unit in repovec-provision.service qdrant.service repovecd.service repovec-mcpd.service; do
+for unit in repovec.target repovec-provision.service qdrant.service; do
   test "$(sudo systemctl is-active "$unit")" = active
 done
-# Expect: each listed unit is active.
+# Expect: the target, completed provisioning oneshot, and Qdrant are active.
 
 # 2. Assert the provisioned layout, including the special bits that the live
 #    pre-flight compares (0700 exactly, not 02700).
@@ -983,26 +988,46 @@ stat -c '%U:%G %04a %n' /var/lib/repovec /var/lib/repovec/git-mirrors \
 # Expect: repovec:repovec 0700 for the first four; root:root 0700 for
 # qdrant-storage; root:repovec 0750 for /etc/repovec.
 
-# 3. Force both daemons through the authenticated gRPC startup probe. Each
-#    checks Qdrant health and performs a read-only authenticated collection
-#    list before it continues; failure makes the daemon exit 1.
-sudo systemctl restart repovecd.service repovec-mcpd.service
+# 3. Force each startup-only daemon through the live-layout and authenticated
+#    gRPC checks. They exit 0 after validation, so they should become inactive
+#    instead of remaining active like a long-running server.
+sudo systemctl restart repovecd.service
+sudo systemctl restart repovec-mcpd.service
 for unit in repovecd.service repovec-mcpd.service; do
-  test "$(sudo systemctl is-active "$unit")" = active
+  for attempt in $(seq 1 30); do
+    if [ "$(sudo systemctl show "$unit" -p ActiveState --value)" = inactive ] \
+      && [ "$(sudo systemctl show "$unit" -p Result --value)" = success ] \
+      && [ "$(sudo systemctl show "$unit" -p ExecMainStatus --value)" = 0 ]; then
+      break
+    fi
+    sleep 1
+  done
+  sudo systemctl show "$unit" -p ActiveState -p SubState -p Result -p ExecMainStatus
+  test "$(sudo systemctl show "$unit" -p ActiveState --value)" = inactive
+  test "$(sudo systemctl show "$unit" -p Result --value)" = success
   test "$(sudo systemctl show "$unit" -p ExecMainStatus --value)" = 0
+
+  startup_log=$(sudo journalctl -u "$unit" --since="$acceptance_started_at" --no-pager)
+  printf '%s\n' "$startup_log"
+  for marker in \
+    "systemd unit contract validated at daemon startup" \
+    "live directory layout pre-flight at daemon startup" \
+    "Qdrant liveness validated"; do
+    printf '%s\n' "$startup_log" | grep -F "$marker" >/dev/null
+  done
 done
-# Expect: both active, with ExecMainStatus=0. This result follows a forced
-#    restart, so it records the authenticated gRPC probe rather than merely
-#    observing a target that was already active.
-sudo journalctl -u repovecd.service -u repovec-mcpd.service \
-  --since="$acceptance_started_at" --no-pager
-# Expect: no "Qdrant liveness validation failed" or "aborting startup" line.
+# Expect: each daemon is inactive/dead with Result=success and
+# ExecMainStatus=0, and its journal records all three successful checks. The
+# Qdrant liveness success record follows the authenticated loopback gRPC probe.
 ```
 
 Step 3 exercises the loopback gRPC endpoint and the API-key header using the
 same startup check the installed daemons require. The journal output does not
 include the key. The `curl` example in the users guide separately checks the
-HTTP API-key path; it is not a substitute for this gRPC check.
+HTTP API-key path; it is not a substitute for this gRPC check. The daemon units
+use `Type=simple` with `Restart=on-failure`, but their current binaries return
+after validation; a clean return is recorded as inactive/dead with a successful
+result, not as a persistent active service.
 
 Update transcripts in `Artefacts and notes` as steps complete.
 
@@ -1337,6 +1362,16 @@ gates are green, and PR #78's description was updated to reflect the completed
 milestones and the capable-host integration result.
 
 ## Revision note
+
+Revision 4 (2026-10-17): review follow-up rejected extra sysusers columns and
+tmpfiles cleanup ages for persistent directories, restored the existing
+API-key-specific Qdrant observer callbacks while keeping the new provisioning
+callbacks, and corrected the capable-host procedure to verify successful
+startup-only daemon exits and their authenticated gRPC success records. The
+live special-bit cases, startup failure-boundary cases, and API-key service
+`Requires=repovec-provision.service` guard were already present on the reviewed
+candidate. Full systemd acceptance remains unverified until a privileged,
+SELinux-enforcing host records the procedure above.
 
 Revision 3 (2026-10-12): closed the review feedback on PR #78. The substantive
 changes are: every consuming unit now declares

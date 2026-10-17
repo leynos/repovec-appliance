@@ -478,8 +478,10 @@ The pure validator in `appliance::directory_layout` parses the embedded
 `sysusers.d` and `tmpfiles.d` text with `include_str!` and never touches the
 live filesystem, so the static contract is checkable in CI. It enforces the
 bidirectional drift guard, SI-4, SI-5, per-directory mode/owner/group exact
-match, and the sysusers user/home/shell contract, and it rejects a regular file
-carrying the contract owner, group, and mode. The live pre-flight in
+match, and the sysusers user/home/shell contract. A regular file standing in
+for a contracted directory is rejected by the *live pre-flight*, which stats
+the real tree and can therefore see the entry type; the pure validator never
+touches the filesystem and only reads the asset text. The live pre-flight in
 `appliance::directory_layout::live` stats the real tree through `cap_std` at
 daemon startup and fails closed, closing risk R-6 in this pull request.
 
@@ -931,14 +933,76 @@ make test      2>&1 | tee /tmp/test-$(git branch --show-current).out
 make validate-systemd 2>&1 | tee /tmp/validate-systemd-$(git branch --show-current).out
 ```
 
-Opt-in end-to-end (Milestone 3, on a host with rootful Podman + systemd under
-SELinux enforcing):
+Container-backed lifecycle evidence (Milestone 3, default CI proxy):
 
 ```sh
 make integration-test 2>&1 | tee /tmp/integration-$(git branch --show-current).out
-# Expect: the tree ownership/modes assert; qdrant.service is active; the
-# authenticated gRPC liveness probe succeeds on loopback.
+# Expect: pass. The container cannot run systemd as PID 1, so this asserts the
+# sysusers-then-tmpfiles pairing and the resulting tree, not service state.
 ```
+
+### Manual acceptance on a capable host
+
+`make integration-test` runs the container lifecycle tests only. It does not
+start `repovec.target` and it cannot assert `qdrant.service` activeness or
+authenticated gRPC reachability, because the integration container has no
+systemd PID 1. Those three assertions therefore remain **unverified in CI** and
+must be run by hand on a host with rootful Podman, systemd, and SELinux
+enforcing. Until the transcript below is recorded, full systemd acceptance is
+an open item rather than a delivered one.
+
+Prerequisites: a systemd host with systemd as PID 1; root access; rootful
+Podman; `systemd-sysusers` and `systemd-tmpfiles`; the Qdrant Quadlet installed
+at `/etc/containers/systemd/qdrant.container`; and the appliance units,
+sysusers, and tmpfiles assets installed as shown in the users guide. SELinux
+must be enforcing for the result to count.
+
+```sh
+set -eu
+
+# 0. Confirm the host can actually exercise the boundary.
+ps -p 1 -o comm=
+# Expect: systemd.
+getenforce
+# Expect: Enforcing. Do not record a pass from a permissive host.
+
+# 1. Provision and start the target.
+acceptance_started_at=$(date --iso-8601=seconds)
+sudo systemctl daemon-reload
+sudo systemctl start repovec.target
+for unit in repovec-provision.service qdrant.service repovecd.service repovec-mcpd.service; do
+  test "$(sudo systemctl is-active "$unit")" = active
+done
+# Expect: each listed unit is active.
+
+# 2. Assert the provisioned layout, including the special bits that the live
+#    pre-flight compares (0700 exactly, not 02700).
+stat -c '%U:%G %04a %n' /var/lib/repovec /var/lib/repovec/git-mirrors \
+  /var/lib/repovec/worktrees /var/lib/repovec/.grepai \
+  /var/lib/repovec/qdrant-storage /etc/repovec
+# Expect: repovec:repovec 0700 for the first four; root:root 0700 for
+# qdrant-storage; root:repovec 0750 for /etc/repovec.
+
+# 3. Force both daemons through the authenticated gRPC startup probe. Each
+#    checks Qdrant health and performs a read-only authenticated collection
+#    list before it continues; failure makes the daemon exit 1.
+sudo systemctl restart repovecd.service repovec-mcpd.service
+for unit in repovecd.service repovec-mcpd.service; do
+  test "$(sudo systemctl is-active "$unit")" = active
+  test "$(sudo systemctl show "$unit" -p ExecMainStatus --value)" = 0
+done
+# Expect: both active, with ExecMainStatus=0. This result follows a forced
+#    restart, so it records the authenticated gRPC probe rather than merely
+#    observing a target that was already active.
+sudo journalctl -u repovecd.service -u repovec-mcpd.service \
+  --since="$acceptance_started_at" --no-pager
+# Expect: no "Qdrant liveness validation failed" or "aborting startup" line.
+```
+
+Step 3 exercises the loopback gRPC endpoint and the API-key header using the
+same startup check the installed daemons require. The journal output does not
+include the key. The `curl` example in the users guide separately checks the
+HTTP API-key path; it is not a substitute for this gRPC check.
 
 Update transcripts in `Artefacts and notes` as steps complete.
 
@@ -957,12 +1021,13 @@ Acceptance is behavioural:
    `DirectoryLayoutError` variant, derived from real `validate_*` failures.
 4. The live pre-flight fails closed on each seeded ownership/mode mismatch and
    passes on a correct tree.
-5. On a capable host, `make integration-test` shows the `/var/lib/repovec` tree
-   present with `repovec:repovec` ownership and mode `0700` (`qdrant-storage`
-   `root:root` `0700`; `/etc/repovec` `0750 root:repovec`), `qdrant.service`
-   active, and Qdrant reachable on loopback gRPC — the roadmap success
-   criterion. Where the sandbox cannot run this suite, the limitation is
-   recorded and the static contract plus live pre-flight gate the behaviour.
+5. `make integration-test` covers the container-backed provisioning lifecycle
+   and directory ownership/mode assertions; it does not establish
+   `qdrant.service` activeness or authenticated gRPC liveness. The full roadmap
+   success criterion remains unverified until the manual acceptance procedure
+   above passes on a capable SELinux-enforcing systemd host and its transcript
+   is recorded. Static validation and the live pre-flight provide CI coverage
+   for their own contracts, not a substitute for that host evidence.
 
 Quality criteria ("done" means):
 

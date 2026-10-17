@@ -964,7 +964,16 @@ column through the group database; deriving the expected gid from the user's
 primary GID would reject a correctly provisioned tree on a host where the
 `repovec` user and group do not share a numeric id. The mode comparison is
 exact, not a permission mask: a directory more restrictive than the contract is
-as unusable to the daemon as one that is too permissive.
+as unusable to the daemon as one that is too permissive. The mask is `0o7777`
+rather than `0o777`, so the set-user-ID, set-group-ID, and sticky bits are
+compared and reported too: `02700` does not satisfy a `0700` contract, and the
+diagnostic renders the observed mode as `2700` rather than `0700`.
+
+The tokenizer rejects a line that ends inside a quoted section, matching the
+`Syntax error.` that `systemd-sysusers` reports for the same input. Without
+that check the scan silently absorbed the remainder of the line, so a stray
+quote — for example a trailing `"` after the shell column — left the
+interpreted columns intact and the malformed declaration passed the static gate.
 
 ## 6. Provisioning integration tests
 

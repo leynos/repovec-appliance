@@ -128,6 +128,32 @@ fn checked_in_assets_satisfy_the_directory_contract() {
     Mutation::sysusers("u repovec - ", "u repovec 1000 "),
     DirectoryLayoutError::SysusersPinnedUid { actual: "1000".to_owned() },
 )]
+#[case::sysusers_unterminated_quote(
+    // An unbalanced trailing quote is a typo the tokenizer must not absorb:
+    // `systemd-sysusers` rejects this line with `Syntax error.`, so a validator
+    // that accepted it would pass an asset the appliance cannot provision from.
+    Mutation::sysusers("/usr/sbin/nologin", "/usr/sbin/nologin\""),
+    DirectoryLayoutError::MalformedLine {
+        asset: "sysusers.d/repovec.conf",
+        line_number: 1,
+        line: concat!(
+            "u repovec - \"repovec appliance service user\" ",
+            "/var/lib/repovec /usr/sbin/nologin\""
+        )
+        .to_owned(),
+    },
+)]
+#[case::tmpfiles_unterminated_quote(
+    Mutation::tmpfiles(
+        "d /var/lib/repovec/worktrees 0700 repovec repovec -",
+        "d /var/lib/repovec/worktrees 0700 repovec repovec -\"",
+    ),
+    DirectoryLayoutError::MalformedLine {
+        asset: "tmpfiles.d/repovec.conf",
+        line_number: 7,
+        line: "d /var/lib/repovec/worktrees 0700 repovec repovec -\"".to_owned(),
+    },
+)]
 fn directory_mutations_fail_with_typed_errors(
     #[case] mutation: Mutation,
     #[case] expected: DirectoryLayoutError,

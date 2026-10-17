@@ -4,7 +4,9 @@
 //! the quoted GECOS field used by the `sysusers.d` declaration. It yields
 //! whitespace-separated columns while preserving quoted phrases as a single
 //! column, which keeps the column indices correct for the sysusers home and
-//! shell fields even when the GECOS comment contains spaces.
+//! shell fields even when the GECOS comment contains spaces. A line that ends
+//! inside a quoted section is rejected rather than partially consumed, matching
+//! the `Syntax error.` that `systemd-sysusers` reports for the same input.
 //!
 //! The views accept the column arity `systemd` accepts, not just the arity the
 //! checked-in assets happen to use. Both formats let trailing columns be
@@ -62,13 +64,22 @@ impl Tokenizer {
 /// A quoted section always contributes a column, so an empty quoted field is
 /// preserved rather than silently removed. Dropping it would shift every later
 /// column and reject a syntactically valid declaration.
-fn tokenize(line: &str) -> Vec<String> {
+///
+/// Returns `None` when the line ends inside a quoted section. `systemd` rejects
+/// an unterminated quote outright—`systemd-sysusers` 257 prints
+/// `Syntax error.`—so a tokenizer that instead absorbed the rest of the line
+/// would hand the validator a silently truncated column list and let a typo
+/// pass the static gate that is meant to catch it.
+fn tokenize(line: &str) -> Option<Vec<String>> {
     let mut tokenizer = Tokenizer::default();
     for character in line.chars() {
         tokenizer.accept(character);
     }
+    if tokenizer.in_quotes {
+        return None;
+    }
     tokenizer.end_non_empty_column();
-    tokenizer.columns
+    Some(tokenizer.columns)
 }
 
 /// Splits tokenized columns into the leading `N` interpreted columns and any
@@ -114,7 +125,10 @@ pub(crate) fn tmpfiles_entry(
         return Ok(None);
     }
 
-    let Some(([kind, path, mode, user, group], _tail)) = split_columns(tokenize(trimmed)) else {
+    let Some(columns) = tokenize(trimmed) else {
+        return Err(malformed_line(asset, line_number, trimmed));
+    };
+    let Some(([kind, path, mode, user, group], _tail)) = split_columns(columns) else {
         return Err(malformed_line(asset, line_number, trimmed));
     };
     if kind != "d" {
@@ -154,7 +168,9 @@ pub(crate) fn sysusers_user_line(
         return Ok(None);
     }
 
-    let columns = tokenize(trimmed);
+    let Some(columns) = tokenize(trimmed) else {
+        return Err(malformed_line(asset, line_number, trimmed));
+    };
     if columns.first().is_none_or(|kind| kind != "u") {
         return Err(malformed_line(asset, line_number, trimmed));
     }

@@ -110,7 +110,13 @@ const EXPECTATIONS: [Expectation; 3] = [
 ];
 
 /// The permission bits of the metadata, with the file-type bits masked off.
-fn permission_bits(metadata: &Metadata) -> u32 { metadata.mode() & 0o777 }
+///
+/// The mask keeps the set-user-ID, set-group-ID, and sticky bits as well as the
+/// nine ordinary permission bits. Masking with `0o777` would make `02700` and
+/// `01700` compare equal to the contracted `0700`, and would hide the special
+/// bits from the diagnostic, so the live pre-flight would accept a directory
+/// that does not match the exact-mode contract the pure validator enforces.
+fn permission_bits(metadata: &Metadata) -> u32 { metadata.mode() & 0o7777 }
 
 fn owner_is_satisfied(metadata: &Metadata, contract: DirectoryContract) -> bool {
     metadata.uid() == contract.owner_uid

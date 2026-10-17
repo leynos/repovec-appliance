@@ -10,8 +10,9 @@ use rstest::rstest;
 use super::{
     DaemonStartupError, QdrantLivenessError, STARTUP_FAILURE_EXIT_CODE, SystemdUnitError,
     log_daemon_startup_error, validate_daemon_startup_contracts_with,
-    validate_qdrant_liveness_with_policy,
+    validate_daemon_startup_contracts_with_live, validate_qdrant_liveness_with_policy,
 };
+use crate::appliance::directory_layout::live::LiveLayoutError;
 
 #[test]
 /// Protect the successful startup path through both injected systemd and Qdrant checks.
@@ -111,6 +112,114 @@ fn startup_error_logging_preserves_systemd_unit_field() -> Result<(), String> {
         "ERROR",
         "unit=repovec-mcpd.service",
         "startup failure log should preserve the systemd unit field",
+    )
+}
+
+/// Build the live-layout failure every live-boundary case injects.
+///
+/// A missing path is the operator-facing case: provisioning did not run, or ran
+/// against a different root. The path is carried through to the log line, so
+/// each assertion can name it rather than matching on text alone.
+fn missing_data_root() -> LiveLayoutError {
+    LiveLayoutError::MissingPath { path: "/var/lib/repovec".into() }
+}
+
+#[test]
+/// A live-layout violation must abort startup with the typed error, not fall through.
+fn startup_reports_live_layout_violation() {
+    let result = validate_daemon_startup_contracts_with_live(
+        || Ok(()),
+        || Err(missing_data_root()),
+        || async { Ok(()) },
+    );
+
+    let Err(DaemonStartupError::LiveLayout(error)) = result else {
+        panic!("a live layout violation must surface as DaemonStartupError::LiveLayout");
+    };
+    assert_eq!(error.path(), Some("/var/lib/repovec"));
+}
+
+#[test]
+/// A failed live pre-flight must not reach the Qdrant probe: the data tree is
+/// supposed to hold the API key, so probing would fail for the wrong reason.
+fn startup_skips_qdrant_after_live_layout_failure() {
+    let qdrant_called = Cell::new(false);
+
+    let result = validate_daemon_startup_contracts_with_live(
+        || Ok(()),
+        || Err(missing_data_root()),
+        || {
+            qdrant_called.set(true);
+            async { Ok(()) }
+        },
+    );
+
+    assert!(matches!(result, Err(DaemonStartupError::LiveLayout(_))));
+    assert!(!qdrant_called.get(), "the Qdrant probe must be suppressed");
+}
+
+#[test]
+/// The live pre-flight runs after the static systemd contract and before the
+/// Qdrant probe, so an operator sees the cheapest failure first.
+fn startup_runs_live_layout_check_between_the_other_two() {
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum Step {
+        Systemd,
+        LiveLayout,
+        Qdrant,
+    }
+
+    let observed = RefCell::new(Vec::new());
+
+    let result = validate_daemon_startup_contracts_with_live(
+        || {
+            observed.borrow_mut().push(Step::Systemd);
+            Ok(())
+        },
+        || {
+            observed.borrow_mut().push(Step::LiveLayout);
+            Ok(())
+        },
+        || {
+            observed.borrow_mut().push(Step::Qdrant);
+            async { Ok(()) }
+        },
+    );
+
+    assert!(result.is_ok());
+    assert_eq!(observed.into_inner(), vec![Step::Systemd, Step::LiveLayout, Step::Qdrant]);
+}
+
+#[test]
+/// Retain the offending path in the operator log and map the failure to exit 1.
+fn live_layout_startup_failure_names_the_path_and_exits_1() -> Result<(), String> {
+    let (exit_code_result, logs) = repovec_test_helpers::capture_logs(|| {
+        validate_daemon_startup_contracts_with_live(
+            || Ok(()),
+            || Err(missing_data_root()),
+            || async { Ok(()) },
+        )
+        .err()
+        .map(log_daemon_startup_error)
+        .ok_or_else(|| "a live layout violation must abort the startup boundary".to_owned())
+    })?;
+    let exit_code = exit_code_result?;
+
+    repovec_test_helpers::ensure(
+        exit_code == STARTUP_FAILURE_EXIT_CODE,
+        "a live layout failure must map to the startup failure exit code",
+    )?;
+    repovec_test_helpers::ensure_log_line_contains(
+        &logs,
+        "ERROR",
+        "path=/var/lib/repovec",
+        "the live layout failure log must name the offending path",
+    )?;
+    repovec_test_helpers::ensure_log_line_contains(
+        &logs,
+        "ERROR",
+        "live directory layout violation - aborting startup",
+        "the live layout failure log must state that startup is aborting",
     )
 }
 

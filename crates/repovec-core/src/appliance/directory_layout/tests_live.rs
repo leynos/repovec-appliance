@@ -145,6 +145,13 @@ enum LiveViolationCase {
     OverRestrictiveMode,
     /// `etc/repovec` is world-writable.
     OverPermissiveSecretsMode,
+    /// `var/lib/repovec/git-mirrors` carries the contracted `0700` plus set-group-ID.
+    ///
+    /// The nine ordinary bits match the contract exactly, so this case only
+    /// fails if the live check compares the special bits too.
+    SetGroupIdBitSet,
+    /// `var/lib/repovec/git-mirrors` carries the contracted `0700` plus sticky bit.
+    StickyBitSet,
     /// The data root is expected to belong to a uid it does not have.
     WrongOwner,
     /// The data root is expected to belong to a gid it does not have.
@@ -166,6 +173,14 @@ impl LiveViolationCase {
             Self::OverPermissiveSecretsMode => {
                 tree.chmod("etc/repovec", 0o0777).expect("chmod etc/repovec to 0777");
             }
+            Self::SetGroupIdBitSet => {
+                tree.chmod("var/lib/repovec/git-mirrors", 0o2700)
+                    .expect("chmod git-mirrors to 2700");
+            }
+            Self::StickyBitSet => {
+                tree.chmod("var/lib/repovec/git-mirrors", 0o1700)
+                    .expect("chmod git-mirrors to 1700");
+            }
             Self::WrongOwner | Self::WrongGroup => {}
         }
     }
@@ -182,7 +197,10 @@ impl LiveViolationCase {
     /// The directory this case expects the violation to name.
     fn violated_path(self) -> &'static str {
         match self {
-            Self::OverPermissiveMode | Self::OverRestrictiveMode => "var/lib/repovec/git-mirrors",
+            Self::OverPermissiveMode
+            | Self::OverRestrictiveMode
+            | Self::SetGroupIdBitSet
+            | Self::StickyBitSet => "var/lib/repovec/git-mirrors",
             Self::OverPermissiveSecretsMode => "etc/repovec",
             Self::WrongOwner | Self::WrongGroup => "var/lib/repovec",
         }
@@ -197,6 +215,8 @@ impl LiveViolationCase {
     "0750",
     "0777"
 )]
+#[case::set_group_id_bit_on_data_directory(LiveViolationCase::SetGroupIdBitSet, "0700", "2700")]
+#[case::sticky_bit_on_data_directory(LiveViolationCase::StickyBitSet, "0700", "1700")]
 fn incorrect_mode_is_reported(
     #[case] case: LiveViolationCase,
     #[case] expected: &str,

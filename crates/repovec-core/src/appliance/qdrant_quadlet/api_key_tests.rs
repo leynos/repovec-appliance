@@ -5,36 +5,10 @@
 //! snapshots here complement the broader Quadlet contract snapshots in the
 //! sibling `tests.rs` module.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use super::{
-    QDRANT_API_KEY_SERVICE, QdrantQuadletError, QdrantQuadletObserver, checked_in_qdrant_quadlet,
-    validate_qdrant_quadlet,
-};
-
-#[derive(Default)]
-struct LegacyApiKeyDependencyObserver {
-    missing_callbacks: AtomicUsize,
-    incorrect_callbacks: AtomicUsize,
-}
-
-impl QdrantQuadletObserver for LegacyApiKeyDependencyObserver {
-    fn missing_api_key_provisioning_dependency(&self, _directive: &str, _expected: &str) {
-        self.missing_callbacks.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn incorrect_api_key_provisioning_dependency(
-        &self,
-        _directive: &str,
-        _dependency: &str,
-        _expected: &str,
-    ) {
-        self.incorrect_callbacks.fetch_add(1, Ordering::Relaxed);
-    }
-}
+use super::{QdrantQuadletError, checked_in_qdrant_quadlet, validate_qdrant_quadlet};
 
 fn qdrant_quadlet_contents() -> String { checked_in_qdrant_quadlet().to_owned() }
 
@@ -115,27 +89,6 @@ fn provision_dependency_missing() -> String {
         "Requires=repovec-qdrant-api-key.service repovec-provision.service",
         "Requires=repovec-qdrant-api-key.service",
     )
-}
-
-#[test]
-fn legacy_api_key_dependency_observer_callbacks_remain_supported() {
-    let observer = LegacyApiKeyDependencyObserver::default();
-
-    let missing = validate_qdrant_quadlet(&api_key_requires_dependency_missing(), &observer);
-    assert!(matches!(
-        missing,
-        Err(QdrantQuadletError::MissingUnitDependency { expected, .. })
-            if expected == QDRANT_API_KEY_SERVICE
-    ));
-    assert_eq!(observer.missing_callbacks.load(Ordering::Relaxed), 1);
-
-    let incorrect = validate_qdrant_quadlet(&api_key_requires_dependency_wrong(), &observer);
-    assert!(matches!(
-        incorrect,
-        Err(QdrantQuadletError::IncorrectUnitDependency { expected, actual, .. })
-            if expected == QDRANT_API_KEY_SERVICE && actual == "network-online.target"
-    ));
-    assert_eq!(observer.incorrect_callbacks.load(Ordering::Relaxed), 1);
 }
 
 fn inline_api_key_environment() -> String {

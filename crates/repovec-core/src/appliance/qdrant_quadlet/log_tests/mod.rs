@@ -17,7 +17,10 @@ mod log_test_dependency_cases;
 use std::{
     collections::BTreeMap,
     fmt,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use insta::assert_debug_snapshot;
@@ -41,8 +44,9 @@ use tracing::{
 use tracing_subscriber::{Layer, layer::Context, prelude::*};
 
 use super::{
-    CHECKED_IN_QDRANT_QUADLET_PATH, LOG_TARGET, TracingQdrantQuadletObserver,
-    checked_in_qdrant_quadlet, validate_checked_in_qdrant_quadlet, validate_qdrant_quadlet,
+    CHECKED_IN_QDRANT_QUADLET_PATH, LOG_TARGET, QDRANT_API_KEY_SERVICE, QdrantQuadletError,
+    QdrantQuadletObserver, TracingQdrantQuadletObserver, checked_in_qdrant_quadlet,
+    validate_checked_in_qdrant_quadlet, validate_qdrant_quadlet,
 };
 
 #[derive(Clone, Debug)]
@@ -230,6 +234,54 @@ fn qdrant_quadlet_validation_emits_contract_violation_events(#[case] scenario: L
 
     assert_event(&events, scenario.expected);
     assert_debug_snapshot!(scenario.snapshot_name, events);
+}
+
+#[derive(Default)]
+struct LegacyApiKeyDependencyObserver {
+    missing_callbacks: AtomicUsize,
+    incorrect_callbacks: AtomicUsize,
+}
+
+impl QdrantQuadletObserver for LegacyApiKeyDependencyObserver {
+    fn missing_api_key_provisioning_dependency(&self, _directive: &str, _expected: &str) {
+        self.missing_callbacks.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn incorrect_api_key_provisioning_dependency(
+        &self,
+        _directive: &str,
+        _dependency: &str,
+        _expected: &str,
+    ) {
+        self.incorrect_callbacks.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[test]
+fn legacy_api_key_dependency_observer_callbacks_remain_supported() {
+    let observer = LegacyApiKeyDependencyObserver::default();
+    let canonical = canonical();
+    let missing_contents = canonical
+        .replace("Requires=repovec-qdrant-api-key.service repovec-provision.service\n", "");
+    let missing = validate_qdrant_quadlet(&missing_contents, &observer);
+    assert!(matches!(
+        missing,
+        Err(QdrantQuadletError::MissingUnitDependency { expected, .. })
+            if expected == QDRANT_API_KEY_SERVICE
+    ));
+    assert_eq!(observer.missing_callbacks.load(Ordering::Relaxed), 1);
+
+    let incorrect_contents = canonical.replace(
+        "Requires=repovec-qdrant-api-key.service repovec-provision.service",
+        "Requires=network-online.target",
+    );
+    let incorrect = validate_qdrant_quadlet(&incorrect_contents, &observer);
+    assert!(matches!(
+        incorrect,
+        Err(QdrantQuadletError::IncorrectUnitDependency { expected, actual, .. })
+            if expected == QDRANT_API_KEY_SERVICE && actual == "network-online.target"
+    ));
+    assert_eq!(observer.incorrect_callbacks.load(Ordering::Relaxed), 1);
 }
 
 fn assert_event(events: &[CapturedEvent], expected: ExpectedEvent) {

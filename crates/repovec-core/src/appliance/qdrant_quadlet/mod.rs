@@ -27,7 +27,6 @@ mod error;
 mod observer;
 mod parser;
 mod platform_bindings;
-mod tracing_observer;
 
 #[cfg(test)]
 mod api_key_tests;
@@ -49,10 +48,9 @@ use api_key::{
     validate_provisioning_dependency,
 };
 pub use error::QdrantQuadletError;
-pub use observer::QdrantQuadletObserver;
+pub use observer::{QdrantQuadletObserver, TracingQdrantQuadletObserver};
 use parser::ParsedQuadlet;
 use platform_bindings::validate_platform_bindings;
-pub use tracing_observer::TracingQdrantQuadletObserver;
 
 /// The repository's embedded Qdrant Quadlet definition used for startup validation.
 const CHECKED_IN_QDRANT_QUADLET: &str =

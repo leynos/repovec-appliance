@@ -5,7 +5,9 @@
 //! signatures. [`TracingQdrantQuadletObserver`] is the production adapter that
 //! maps those events to `tracing` records under the shared module target.
 
-use super::QDRANT_API_KEY_SERVICE;
+use tracing::{error, info, warn};
+
+use super::{LOG_TARGET, QDRANT_API_KEY_SERVICE};
 
 /// Receives Qdrant Quadlet validation telemetry.
 ///
@@ -160,3 +162,235 @@ pub trait QdrantQuadletObserver: Send + Sync {
 }
 
 impl QdrantQuadletObserver for () {}
+
+macro_rules! validation_warning {
+    ($message:literal $(, $field:ident)*) => {
+        warn!(target: LOG_TARGET, $($field,)* $message);
+    };
+}
+
+/// Emits Qdrant Quadlet validation telemetry through `tracing`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TracingQdrantQuadletObserver;
+
+impl QdrantQuadletObserver for TracingQdrantQuadletObserver {
+    fn validating_checked_in_qdrant_quadlet(&self, path: &str) {
+        info!(target: LOG_TARGET, path, "validating checked-in qdrant quadlet");
+    }
+
+    fn validating_qdrant_quadlet_contract(&self) {
+        info!(target: LOG_TARGET, "validating qdrant quadlet contract");
+    }
+
+    fn qdrant_quadlet_contract_validation_succeeded(&self) {
+        info!(target: LOG_TARGET, "qdrant quadlet contract validation succeeded");
+    }
+
+    fn invalid_line(&self, line_number: usize, redacted_line: &str) {
+        error!(
+            target: LOG_TARGET,
+            line_number,
+            redacted_line,
+            "qdrant quadlet validation rejected invalid line"
+        );
+    }
+
+    fn property_before_section(&self, line_number: usize, redacted_line: &str) {
+        error!(
+            target: LOG_TARGET,
+            line_number,
+            redacted_line,
+            "qdrant quadlet validation rejected property before section"
+        );
+    }
+
+    fn missing_image(&self, expected_image: &str) {
+        validation_warning!("qdrant quadlet validation failed: missing image", expected_image);
+    }
+
+    fn image_not_fully_qualified(&self, image: &str, expected_image: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: image is not fully qualified and pinned",
+            image,
+            expected_image
+        );
+    }
+
+    fn unexpected_image(&self, image: &str, expected_image: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: unexpected image",
+            image,
+            expected_image
+        );
+    }
+
+    fn missing_publish_port(&self, port: u16, expected_publish_port: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: missing publish port",
+            port,
+            expected_publish_port
+        );
+    }
+
+    fn publish_port_not_bound_to_loopback(
+        &self,
+        port: u16,
+        publish_port: &str,
+        expected_publish_port: &str,
+    ) {
+        validation_warning!(
+            "qdrant quadlet validation failed: publish port is not bound to loopback",
+            port,
+            publish_port,
+            expected_publish_port
+        );
+    }
+
+    fn missing_storage_mount(&self, expected_source: &str, expected_target: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: missing storage mount",
+            expected_source,
+            expected_target
+        );
+    }
+
+    fn missing_storage_mount_volume(
+        &self,
+        volume: &str,
+        expected_source: &str,
+        expected_target: &str,
+    ) {
+        validation_warning!(
+            "qdrant quadlet validation failed: missing storage mount",
+            volume,
+            expected_source,
+            expected_target
+        );
+    }
+
+    fn incorrect_storage_source(&self, source: &str, expected_source: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect storage source",
+            source,
+            expected_source
+        );
+    }
+
+    fn incorrect_storage_target(&self, storage_target: &str, expected_target: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect storage target",
+            storage_target,
+            expected_target
+        );
+    }
+
+    fn missing_selinux_relabel(&self, volume: &str, expected_selinux_relabel: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: missing selinux relabel",
+            volume,
+            expected_selinux_relabel
+        );
+    }
+
+    fn missing_auto_update(&self, expected_auto_update: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: missing auto-update policy",
+            expected_auto_update
+        );
+    }
+
+    fn incorrect_auto_update(&self, auto_update: &str, expected_auto_update: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect auto-update policy",
+            auto_update,
+            expected_auto_update
+        );
+    }
+
+    fn missing_api_key_provisioning_dependency(&self, directive: &str, expected_dependency: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: missing api key provisioning dependency",
+            directive,
+            expected_dependency
+        );
+    }
+
+    fn incorrect_api_key_provisioning_dependency(
+        &self,
+        directive: &str,
+        dependency: &str,
+        expected_dependency: &str,
+    ) {
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect api key provisioning dependency",
+            directive,
+            dependency,
+            expected_dependency
+        );
+    }
+
+    fn missing_provisioning_dependency(&self, directive: &str, expected_dependency: &str) {
+        if expected_dependency == QDRANT_API_KEY_SERVICE {
+            self.missing_api_key_provisioning_dependency(directive, expected_dependency);
+        } else {
+            validation_warning!(
+                "qdrant quadlet validation failed: missing provisioning dependency",
+                directive,
+                expected_dependency
+            );
+        }
+    }
+
+    fn incorrect_provisioning_dependency(
+        &self,
+        directive: &str,
+        dependency: &str,
+        expected_dependency: &str,
+    ) {
+        if expected_dependency == QDRANT_API_KEY_SERVICE {
+            self.incorrect_api_key_provisioning_dependency(
+                directive,
+                dependency,
+                expected_dependency,
+            );
+        } else {
+            validation_warning!(
+                "qdrant quadlet validation failed: incorrect provisioning dependency",
+                directive,
+                dependency,
+                expected_dependency
+            );
+        }
+    }
+
+    fn missing_api_key_secret(&self, expected_secret: &str, expected_target: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: missing api key secret",
+            expected_secret,
+            expected_target
+        );
+    }
+
+    fn incorrect_api_key_secret(&self, secret: &str, expected_secret: &str, expected_target: &str) {
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect api key secret",
+            secret,
+            expected_secret,
+            expected_target
+        );
+    }
+
+    fn inline_api_key_environment(
+        &self,
+        environment: &str,
+        expected_secret: &str,
+        expected_target: &str,
+    ) {
+        validation_warning!(
+            "qdrant quadlet validation failed: inline api key environment is disallowed",
+            environment,
+            expected_secret,
+            expected_target
+        );
+    }
+}

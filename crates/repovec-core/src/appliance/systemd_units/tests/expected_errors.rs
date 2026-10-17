@@ -1,10 +1,13 @@
 //! Typed expected-error mapping for systemd unit validator tests.
 
 use super::{
-    ValidationScenario,
     error_builders::{exec_start, missing, missing_install, quadlet_source, service_directive},
+    scenarios::ValidationScenario,
 };
-use crate::appliance::systemd_units::SystemdUnitError;
+use crate::appliance::systemd_units::{
+    PROVISION_EXEC_SEQUENCE, SystemdUnitError,
+    assets::{SYSUSERS_EXEC, TMPFILES_EXEC},
+};
 
 impl ValidationScenario {
     pub(super) fn expected_error(self) -> SystemdUnitError {
@@ -17,10 +20,22 @@ impl ValidationScenario {
             | Self::TargetUsesQdrantContainer
             | Self::MissingTargetWantsRepovecd
             | Self::MissingTargetWantsMcpd
-            | Self::MissingTargetWantsCloudflared => self.expected_target_error(),
+            | Self::MissingTargetWantsCloudflared
+            | Self::MissingTargetWantsProvision => self.expected_target_error(),
+            Self::MissingProvisionUnitSection
+            | Self::MissingProvisionServiceSection
+            | Self::MissingProvisionInstallSection
+            | Self::MissingProvisionWantedByTarget
+            | Self::MissingProvisionAfterSysusers
+            | Self::MissingProvisionBeforeRepovecd
+            | Self::WrongProvisionSysusersExecStart
+            | Self::SwappedProvisionExecStartOrder
+            | Self::ExtraProvisionExecStart
+            | Self::MissingProvisionType => self.expected_provision_error(),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
+            | Self::MissingRepovecdRequiresProvision
             | Self::MissingRepovecdAfterQdrant
             | Self::RepovecdUsesQdrantContainerService
             | Self::WrongRepovecdExecStart
@@ -31,6 +46,7 @@ impl ValidationScenario {
             Self::MissingMcpdServiceSection
             | Self::MissingMcpdRequiresQdrant
             | Self::MissingMcpdRequiresRepovecd
+            | Self::MissingMcpdRequiresProvision
             | Self::MissingMcpdAfterQdrant
             | Self::MissingMcpdAfterRepovecd
             | Self::WrongMcpdExecStart
@@ -88,7 +104,70 @@ impl ValidationScenario {
             Self::MissingTargetWantsCloudflared => {
                 missing("repovec.target", "Wants", "cloudflared.service")
             }
+            Self::MissingTargetWantsProvision => {
+                missing("repovec.target", "Wants", "repovec-provision.service")
+            }
             _ => panic!("target error called for non-target scenario"),
+        }
+    }
+
+    fn expected_provision_error(self) -> SystemdUnitError {
+        match self {
+            Self::MissingProvisionUnitSection => SystemdUnitError::MissingSection {
+                unit: "repovec-provision.service",
+                section: "Unit",
+            },
+            Self::MissingProvisionServiceSection => SystemdUnitError::MissingSection {
+                unit: "repovec-provision.service",
+                section: "Service",
+            },
+            Self::MissingProvisionInstallSection => SystemdUnitError::MissingSection {
+                unit: "repovec-provision.service",
+                section: "Install",
+            },
+            Self::MissingProvisionWantedByTarget => {
+                missing_install("repovec-provision.service", "repovec.target")
+            }
+            Self::MissingProvisionAfterSysusers => {
+                missing("repovec-provision.service", "After", "systemd-sysusers.service")
+            }
+            Self::MissingProvisionBeforeRepovecd => {
+                missing("repovec-provision.service", "Before", "repovecd.service")
+            }
+            Self::WrongProvisionSysusersExecStart
+            | Self::SwappedProvisionExecStartOrder
+            | Self::ExtraProvisionExecStart => SystemdUnitError::IncorrectExecStartSequence {
+                unit: "repovec-provision.service",
+                expected: PROVISION_EXEC_SEQUENCE,
+                actual: self.mutated_provision_exec_starts(),
+            },
+            Self::MissingProvisionType => SystemdUnitError::IncorrectServiceDirective {
+                unit: "repovec-provision.service",
+                key: "Type",
+                expected: "oneshot",
+                actual: String::new(),
+            },
+            _ => panic!("provision error called for non-provision scenario"),
+        }
+    }
+
+    /// Returns the `ExecStart=` commands the corresponding mutation leaves
+    /// behind, mirroring the edits applied in `scenarios.rs`.
+    fn mutated_provision_exec_starts(self) -> Vec<String> {
+        match self {
+            Self::WrongProvisionSysusersExecStart => vec![
+                String::from("/usr/bin/systemd-sysusers /usr/lib/sysusers.d/wrong.conf"),
+                String::from(TMPFILES_EXEC),
+            ],
+            Self::SwappedProvisionExecStartOrder => {
+                vec![String::from(TMPFILES_EXEC), String::from(SYSUSERS_EXEC)]
+            }
+            Self::ExtraProvisionExecStart => vec![
+                String::from(SYSUSERS_EXEC),
+                String::from(TMPFILES_EXEC),
+                String::from("/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/extra.conf"),
+            ],
+            _ => panic!("provision exec start sequence requested for a non-provision scenario"),
         }
     }
 
@@ -104,6 +183,9 @@ impl ValidationScenario {
             }
             Self::MissingRepovecdRequiresQdrant => {
                 missing("repovecd.service", "Requires", "qdrant.service")
+            }
+            Self::MissingRepovecdRequiresProvision => {
+                missing("repovecd.service", "Requires", "repovec-provision.service")
             }
             Self::MissingRepovecdAfterQdrant => {
                 missing("repovecd.service", "After", "qdrant.service")
@@ -144,6 +226,9 @@ impl ValidationScenario {
             }
             Self::MissingMcpdRequiresRepovecd => {
                 missing("repovec-mcpd.service", "Requires", "repovecd.service")
+            }
+            Self::MissingMcpdRequiresProvision => {
+                missing("repovec-mcpd.service", "Requires", "repovec-provision.service")
             }
             Self::MissingMcpdAfterQdrant => {
                 missing("repovec-mcpd.service", "After", "qdrant.service")

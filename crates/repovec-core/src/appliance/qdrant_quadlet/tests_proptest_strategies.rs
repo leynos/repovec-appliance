@@ -66,7 +66,7 @@ pub(super) fn auto_update_policy() -> impl Strategy<Value = String> { "[a-z]+" }
 /// Example snippet:
 /// ```text
 /// [Unit]
-/// Requires=repovec-qdrant-api-key.service
+/// Requires=repovec-qdrant-api-key.service repovec-provision.service
 /// After=repovec-qdrant-api-key.service
 ///
 /// [Container]
@@ -80,7 +80,7 @@ pub(super) fn auto_update_policy() -> impl Strategy<Value = String> { "[a-z]+" }
 pub(super) fn valid_quadlet_base() -> String {
     String::from(
         "[Unit]\n\
-         Requires=repovec-qdrant-api-key.service\n\
+         Requires=repovec-qdrant-api-key.service repovec-provision.service\n\
          After=repovec-qdrant-api-key.service\n\
          \n\
          [Container]\n\

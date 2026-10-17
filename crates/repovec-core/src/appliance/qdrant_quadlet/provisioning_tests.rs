@@ -75,6 +75,23 @@ fn provisioning_service_runs_the_packaged_helper_once() {
     assert!(PROVISIONING_SERVICE.contains("StandardError=journal"));
 }
 
+/// The API-key service is the fourth consumer of the `repovec` account, so it
+/// must require provisioning the same way the other three do.
+///
+/// `Before=` on `repovec-provision.service` only orders this unit's start job
+/// against the oneshot; it does not fail this unit when provisioning fails.
+/// Without `Requires=`, a provisioning failure would let the helper run against
+/// a tree that does not exist and write its secret outside the authenticated
+/// layout, so the guard is a fail-closed requirement rather than a preference.
+#[test]
+fn api_key_service_requires_provisioning() {
+    assert!(
+        PROVISIONING_SERVICE.contains("Requires=repovec-provision.service"),
+        "repovec-qdrant-api-key.service must require repovec-provision.service; \
+         Before= alone is only an ordering constraint"
+    );
+}
+
 #[test]
 fn sysusers_asset_declares_the_repovec_system_user() {
     assert!(REPOVEC_SYSUSERS.contains("u repovec -"));

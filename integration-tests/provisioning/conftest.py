@@ -98,9 +98,7 @@ def patched_helper(tmp_path: Path) -> Path:
         str(config_dir / "repovec-qdrant-api-key.lock"),
     )
     patched = (
-        raw.replace(
-            "CONFIG_DIR=/etc/repovec", f"CONFIG_DIR={quoted_config_dir}"
-        )
+        raw.replace("CONFIG_DIR=/etc/repovec", f"CONFIG_DIR={quoted_config_dir}")
         .replace(
             "KEY_FILE=/etc/repovec/qdrant-api-key",
             f"KEY_FILE={quoted_key_file}",

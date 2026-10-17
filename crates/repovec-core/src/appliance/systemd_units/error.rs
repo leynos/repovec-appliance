@@ -66,6 +66,16 @@ pub enum SystemdUnitError {
         /// The observed executable paths joined by commas.
         actual: String,
     },
+    /// A required ordered sequence of service commands is absent, reordered, or
+    /// extended with an unexpected command.
+    IncorrectExecStartSequence {
+        /// The logical unit file name.
+        unit: &'static str,
+        /// The expected commands, in the required order.
+        expected: &'static [&'static str],
+        /// The observed commands, in declaration order.
+        actual: Vec<String>,
+    },
     /// A required `[Service]` identity directive is absent or has the wrong value.
     IncorrectServiceDirective {
         /// The logical unit file name.
@@ -90,6 +100,7 @@ impl SystemdUnitError {
             | Self::MissingDependency { unit, .. }
             | Self::UsesQuadletSourceDependency { unit, .. }
             | Self::IncorrectExecStart { unit, .. }
+            | Self::IncorrectExecStartSequence { unit, .. }
             | Self::IncorrectServiceDirective { unit, .. } => unit,
         }
     }
@@ -116,6 +127,14 @@ impl fmt::Display for SystemdUnitError {
             ),
             Self::IncorrectExecStart { unit, expected, actual } => {
                 write!(f, "{unit} must use ExecStart={expected}: {actual}")
+            }
+            Self::IncorrectExecStartSequence { unit, expected, actual } => {
+                write!(
+                    f,
+                    "{unit} must declare ExecStart={} in order: {}",
+                    expected.join(", "),
+                    actual.join(", ")
+                )
             }
             Self::IncorrectServiceDirective { unit, key, expected, actual } => {
                 write!(f, "{unit} must have {key}={expected} in [Service]: {actual}")
@@ -169,6 +188,12 @@ mod tests {
                 expected: "repovec",
                 actual: "root".to_owned(),
             },
+            SystemdUnitError::MissingDependency {
+                unit: "repovec-provision.service",
+                section: "Unit",
+                key: "Before",
+                dependency: "repovecd.service",
+            },
         ];
 
         let observed_units = cases.map(|error| error.unit().to_owned());
@@ -183,6 +208,7 @@ mod tests {
                 "repovecd.service",
                 "repovecd.service",
                 "repovec-mcpd.service",
+                "repovec-provision.service",
             ],
         );
     }

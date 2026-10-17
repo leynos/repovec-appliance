@@ -12,19 +12,36 @@
 //! completed.
 
 use super::{
-    CONTAINER_SECTION, QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET,
-    QDRANT_API_KEY_SERVICE, QdrantQuadletError, UNIT_SECTION, observer::QdrantQuadletObserver,
+    CONTAINER_SECTION, PROVISION_SERVICE, QDRANT_API_KEY_ENVIRONMENT_VARIABLE,
+    QDRANT_API_KEY_SECRET, QDRANT_API_KEY_SERVICE, QdrantQuadletError, UNIT_SECTION,
+    environment::{
+        is_api_key_environment_assignment, redact_api_key_environment_assignment,
+        split_environment_assignments,
+    },
+    observer::QdrantQuadletObserver,
     parser::ParsedQuadlet,
 };
 
-/// Validates that the parsed Quadlet declares the API key provisioning dependency.
+/// Validates that the parsed Quadlet declares the provisioning dependencies.
+///
+/// Two systemd units must be required, because either may fail and the
+/// container must then fail closed rather than start against an unprovisioned
+/// host:
+///
+/// - `repovec-qdrant-api-key.service`, which creates the Podman secret wired
+///   through `Secret=`;
+/// - `repovec-provision.service`, which creates the `repovec` account and the
+///   `/var/lib/repovec/qdrant-storage` mount source.
+///
+/// `After=` is checked for the API-key service as well, because a `Requires=`
+/// alone would not order the secret creation before container start.
 ///
 /// # Errors
 ///
-/// Returns [`QdrantQuadletError::MissingApiKeyProvisioningDependency`] when a
-/// required dependency directive is absent, or
-/// [`QdrantQuadletError::IncorrectApiKeyProvisioningDependency`] when the
-/// directive does not reference the API key provisioning service.
+/// Returns [`QdrantQuadletError::MissingUnitDependency`] when a required
+/// dependency directive is absent, or
+/// [`QdrantQuadletError::IncorrectUnitDependency`] when the directive does not
+/// reference the required provisioning service.
 ///
 /// # Examples
 ///
@@ -38,13 +55,22 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-pub(super) fn validate_api_key_provisioning_dependency(
+pub(super) fn validate_provisioning_dependency(
     parsed: &ParsedQuadlet,
     observer: &dyn QdrantQuadletObserver,
 ) -> Result<(), QdrantQuadletError> {
-    validate_unit_dependency(parsed, "Requires", observer)?;
-    validate_unit_dependency(parsed, "After", observer)
+    for directive in REQUIRED_DEPENDENCY_DIRECTIVES {
+        validate_unit_dependency(parsed, directive, QDRANT_API_KEY_SERVICE, observer)?;
+    }
+
+    validate_unit_dependency(parsed, "Requires", PROVISION_SERVICE, observer)
 }
+
+/// The directives that must reference `repovec-qdrant-api-key.service`.
+///
+/// `Requires=` makes a failed API-key provision cancel the container start;
+/// `After=` orders the secret creation before the container tries to read it.
+const REQUIRED_DEPENDENCY_DIRECTIVES: [&str; 2] = ["Requires", "After"];
 
 /// Checks one systemd dependency directive for the API-key provisioning service.
 ///
@@ -54,29 +80,26 @@ pub(super) fn validate_api_key_provisioning_dependency(
 fn validate_unit_dependency(
     parsed: &ParsedQuadlet,
     directive: &'static str,
+    expected: &'static str,
     observer: &dyn QdrantQuadletObserver,
 ) -> Result<(), QdrantQuadletError> {
     let dependencies = parsed.values(UNIT_SECTION, directive);
     if dependencies.is_empty() {
-        observer.missing_api_key_provisioning_dependency(directive, QDRANT_API_KEY_SERVICE);
-        return Err(QdrantQuadletError::MissingApiKeyProvisioningDependency { directive });
+        observer.missing_provisioning_dependency(directive, expected);
+        return Err(QdrantQuadletError::MissingUnitDependency { directive, expected });
     }
 
     if dependencies
         .iter()
         .flat_map(|dependency| dependency.split_ascii_whitespace())
-        .any(|dependency| dependency == QDRANT_API_KEY_SERVICE)
+        .any(|dependency| dependency == expected)
     {
         return Ok(());
     }
 
     let dependency = dependencies.join(",");
-    observer.incorrect_api_key_provisioning_dependency(
-        directive,
-        &dependency,
-        QDRANT_API_KEY_SERVICE,
-    );
-    Err(QdrantQuadletError::IncorrectApiKeyProvisioningDependency { directive, dependency })
+    observer.incorrect_provisioning_dependency(directive, &dependency, expected);
+    Err(QdrantQuadletError::IncorrectUnitDependency { directive, expected, actual: dependency })
 }
 
 /// Validates that the parsed Quadlet wires the API key through a Podman secret.
@@ -170,7 +193,7 @@ fn is_required_api_key_secret(secret: &str) -> bool {
 ///
 /// let contents = concat!(
 ///     "[Unit]\n",
-///     "Requires=repovec-qdrant-api-key.service\n",
+///     "Requires=repovec-qdrant-api-key.service repovec-provision.service\n",
 ///     "After=repovec-qdrant-api-key.service\n",
 ///     "\n",
 ///     "[Container]\n",
@@ -210,83 +233,3 @@ pub(super) fn validate_no_inline_api_key_environment(
 
     Ok(())
 }
-
-/// Replaces an environment assignment's value with a redaction marker.
-///
-/// The assignment is returned with its key retained; for example,
-/// `QDRANT__SERVICE__API_KEY=secret` becomes
-/// `QDRANT__SERVICE__API_KEY=<redacted>`. Text without `=` is returned unchanged.
-pub(super) fn redact_api_key_environment_assignment(assignment: &str) -> String {
-    match assignment.split_once('=') {
-        Some((key, _)) => format!("{key}=<redacted>"),
-        None => assignment.to_owned(),
-    }
-}
-
-/// Splits environment assignments on whitespace outside quoted values.
-///
-/// Opening and closing quote delimiters are removed; escapes within quoted
-/// values are retained. For example, `A="one two" B=three` yields `A=one two`
-/// and `B=three`, keeping the first value together.
-pub(super) fn split_environment_assignments(environment: &str) -> Vec<String> {
-    let mut assignments = Vec::new();
-    let mut assignment = String::new();
-    let mut quote = None;
-    let mut is_escaped = false;
-
-    // split_environment_assignments uses a quote-aware linear scan because
-    // Quadlet Environment= values may contain spaces inside quoted KEY=VALUE
-    // pairs. The quote state records when whitespace belongs to the current
-    // assignment rather than separating assignments.
-    //
-    // Escaped characters inside quoted strings are kept in the current
-    // assignment. Unmatched quotes are treated as part of the current assignment
-    // until the scan ends. Empty assignments created by repeated whitespace are
-    // skipped.
-    for character in environment.chars() {
-        if is_escaped {
-            assignment.push(character);
-            is_escaped = false;
-            continue;
-        }
-
-        match (quote, character) {
-            (Some(_), '\\') => {
-                assignment.push(character);
-                is_escaped = true;
-            }
-            (Some(active_quote), current) if active_quote == current => quote = None,
-            (None, '"' | '\'') if assignment.is_empty() || assignment.ends_with('=') => {
-                quote = Some(character);
-            }
-            (None, current) if current.is_ascii_whitespace() => {
-                if !assignment.is_empty() {
-                    assignments.push(std::mem::take(&mut assignment));
-                }
-            }
-            _ => assignment.push(character),
-        }
-    }
-
-    if !assignment.is_empty() {
-        assignments.push(assignment);
-    }
-
-    assignments
-}
-
-/// Reports whether an assignment targets the Qdrant API-key environment variable.
-///
-/// Both the bare name and a `NAME=value` form are accepted. For example,
-/// `QDRANT__SERVICE__API_KEY=secret` returns `true`, while another key returns
-/// `false`.
-pub(super) fn is_api_key_environment_assignment(assignment: &str) -> bool {
-    assignment == QDRANT_API_KEY_ENVIRONMENT_VARIABLE
-        || assignment
-            .split_once('=')
-            .is_some_and(|(key, _value)| key == QDRANT_API_KEY_ENVIRONMENT_VARIABLE)
-}
-
-#[cfg(test)]
-#[path = "api_key_proptests.rs"]
-mod proptests;

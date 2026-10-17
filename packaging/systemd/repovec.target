@@ -1,6 +1,6 @@
 [Unit]
 Description=repovec appliance service group
-Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service
+Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service repovec-provision.service
 
 [Install]
 WantedBy=multi-user.target

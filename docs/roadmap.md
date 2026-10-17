@@ -113,12 +113,20 @@ correct ordering and dependency declarations.
   - Done: ships the checked-in systemd template, static validator coverage,
     `rstest` unit tests, and `rstest-bdd` behavioural scenarios. Concrete
     indexer instance reconciliation remains in 3.2.1.
-- [ ] 1.3.3. Create `repovec` system user and directory layout
+- [x] 1.3.3. Create `repovec` system user and directory layout
   - Create system user `repovec` with home `/var/lib/repovec`.
   - Create directories: `git-mirrors/`, `worktrees/`, and `.grepai/`.
   - Create `/etc/repovec/` with restricted permissions for secrets.
   - Success criteria: `systemctl start repovec.target` succeeds and Qdrant
     becomes reachable.
+  - Status: complete. The repository ships the `repovec` sysusers
+    declaration, a `tmpfiles.d` asset declaring the private `0700` data tree
+    (`qdrant-storage` `root:root`), and `repovec-provision.service` applying
+    both at target start. `repovec-core` statically validates the packaging
+    contract (drift-guarded, in the `systemd-gate`) and runs a live
+    fail-closed ownership pre-flight at daemon startup. The ownership/mode
+    contract is documented in the users guide; the provisioning decision is
+    recorded in `adr-001-repovec-directory-provisioning.md`.
 
 ## 2. Repository lifecycle
 

@@ -150,6 +150,28 @@ impl ParsedUnit {
         })
     }
 
+    /// Requires `ExecStart=` to declare exactly `expected`, in this order.
+    ///
+    /// Membership is not enough for the provisioning oneshot: `systemd-sysusers`
+    /// must run before `systemd-tmpfiles`, and a repeated or extra command would
+    /// otherwise pass validation. Comparing the whole sequence rejects a swapped
+    /// order, a missing command, and an unexpected addition alike.
+    pub(super) fn require_exec_start_sequence(
+        &self,
+        expected: &'static [&'static str],
+    ) -> Result<(), SystemdUnitError> {
+        let values = self.values(SERVICE_SECTION, "ExecStart");
+        if values.iter().map(String::as_str).eq(expected.iter().copied()) {
+            return Ok(());
+        }
+
+        Err(SystemdUnitError::IncorrectExecStartSequence {
+            unit: self.unit,
+            expected,
+            actual: values.to_vec(),
+        })
+    }
+
     /// Requires one service directive with the exact expected value.
     ///
     /// For example, `User=repovec` satisfies a matching expectation; a different value yields

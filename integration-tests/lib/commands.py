@@ -51,7 +51,7 @@ def _build_catalogue() -> tuple[Program, ...]:
     )
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def host_catalogue() -> ProgramCatalogue:
     """Build the host-side cuprum program catalogue.
 

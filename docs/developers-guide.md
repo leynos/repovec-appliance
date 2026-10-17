@@ -880,6 +880,101 @@ See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
 the project-local testing guidance.
 
+### 5.8 `directory_layout` validation surface
+
+The `directory_layout` module validates the checked-in assets that establish the
+`repovec` system user and its private on-disk directory tree. It follows the
+`systemd_units` pattern: pure, I/O-free parsing of embedded asset text with
+typed errors, a bidirectional drift guard, and inline snapshots.
+
+**Embedded assets and installed locations.** The module embeds two packaging
+inputs with `include_str!` and exposes their repository and installed paths:
+
+- `packaging/tmpfiles.d/repovec.conf` — installed to
+  `/usr/lib/tmpfiles.d/repovec.conf`. Exposed via
+  `checked_in_repovec_tmpfiles()`, `CHECKED_IN_REPOVEC_TMPFILES_PATH`, and
+  `INSTALLED_REPOVEC_TMPFILES_PATH`.
+- `packaging/sysusers.d/repovec.conf` — installed to
+  `/usr/lib/sysusers.d/repovec.conf`. Exposed via
+  `checked_in_repovec_sysusers()`, `CHECKED_IN_REPOVEC_SYSUSERS_PATH`, and
+  `INSTALLED_REPOVEC_SYSUSERS_PATH`.
+
+The canonical user identity is exposed as constants: `REPOVEC_USER` (`repovec`),
+`REPOVEC_HOME` (`/var/lib/repovec`), and `REPOVEC_SHELL` (`/usr/sbin/nologin`).
+
+**Validation entry points.** `validate_checked_in_directory_layout()` validates
+the two embedded assets; `validate_directory_layout(tmpfiles, sysusers)`
+validates caller-supplied asset text against the same contract. Both return
+`Result<(), DirectoryLayoutError>`, a `thiserror`-derived typed error enum
+whose variants carry a `Mode(u16)` newtype (rendered as `{:04o}`),
+`Utf8PathBuf` paths, `&'static str` expected values, and an `.asset()`
+discriminator for structured logging — the analogue of
+`SystemdUnitError::unit()`. The `NonExplicitField` and `InvalidField` variants
+are deliberately distinct: the first means the `-` placeholder was used where
+SI-5 requires an explicit value, the second means the value is present but
+unparsable, and the operator fix differs in each case.
+
+**Spec-table contract.** The per-directory mode/owner/group policy is a single
+spec table, `layout_contract(&RuntimePaths)`, inside `directory_layout` whose
+paths come from `RuntimePaths` (including the added `qdrant_storage_root()`
+accessor): the data root, `git-mirrors/`, `worktrees/`, and `.grepai/` are
+`0700 repovec:repovec` (SI-1); `qdrant-storage/` is `0700 root:root` (SI-2).
+The validator also checks the sysusers `u` line (SI-5 explicit fields; home
+`/var/lib/repovec`, shell `/usr/sbin/nologin`) and rejects any `/etc/repovec`
+entry (SI-4 single authority). `RuntimePaths` stays a pure path type — the
+policy lives in the spec table, not on `RuntimePaths`.
+
+**`repovec-provision.service` trigger.** The checked-in
+`packaging/systemd/repovec-provision.service` oneshot runs `systemd-sysusers`
+before `systemd-tmpfiles --create` at target start, so provisioning does not
+depend on a reboot. `repovec.target` declares
+`Wants=repovec-provision.service`, and the `systemd_units` validator rejects a
+target without it (the negative test covers this drift case). Every consuming
+unit — `repovecd.service`, `repovec-mcpd.service`,
+`repovec-qdrant-api-key.service`, and the `qdrant.container` Quadlet — declares
+`Requires=repovec-provision.service` alongside its ordering directive, because
+`After=` alone does not cancel a dependent start job when provisioning fails.
+The `systemd_units` validator checks the ordered `ExecStart` sequence of the
+provisioning unit itself, so a reordered or removed `systemd-sysusers` /
+`systemd-tmpfiles` invocation fails the gate. Details are in
+`docs/repovec-appliance-technical-design.md`, "Service layout".
+
+**Systemd gate.** `repovec-ci systemd-gate` (`make validate-systemd`) now calls
+`validate_checked_in_directory_layout()` in addition to
+`validate_checked_in_systemd_units()`, so a packaging-contract drift fails the
+deterministic gate rather than a production host.
+
+**Live pre-flight adapter and purity boundary.** Ownership of the real tree is
+checked separately by `directory_layout::live`, which stats the on-disk
+directories via `cap_std` and fails closed on any owner, group, mode, type, or
+missing-dir violation. It is a distinct, explicitly I/O-bound adapter: the pure
+validator parses embedded asset text only and never invokes `systemd-tmpfiles`,
+`systemd-sysusers`, `useradd`, `podman`, reads `/etc/passwd`, or touches the
+live filesystem. The live pre-flight is wired into
+`daemon_startup::validate_daemon_startup_contracts_with_live` after
+systemd-unit validation, surfaces as `DaemonStartupError::LiveLayout`, is
+logged with the violating path, and maps to the startup-failure exit code
+shared by `repovecd` and `repovec-mcpd`.
+
+The expected owner ids are resolved by name rather than assumed: the uid comes
+from `directory_layout::group::find_repovec_uid` reading `/etc/passwd`, and the
+gid from `find_group_gid` reading `/etc/group`. Both lookups consult the
+database for their own account because `systemd-tmpfiles` resolves its group
+column through the group database; deriving the expected gid from the user's
+primary GID would reject a correctly provisioned tree on a host where the
+`repovec` user and group do not share a numeric id. The mode comparison is
+exact, not a permission mask: a directory more restrictive than the contract is
+as unusable to the daemon as one that is too permissive. The mask is `0o7777`
+rather than `0o777`, so the set-user-ID, set-group-ID, and sticky bits are
+compared and reported too: `02700` does not satisfy a `0700` contract, and the
+diagnostic renders the observed mode as `2700` rather than `0700`.
+
+The tokenizer rejects a line that ends inside a quoted section, matching the
+`Syntax error.` that `systemd-sysusers` reports for the same input. Without
+that check the scan silently absorbed the remainder of the line, so a stray
+quote — for example a trailing `"` after the shell column — left the
+interpreted columns intact and the malformed declaration passed the static gate.
+
 ## 6. Provisioning integration tests
 
 The Rust workspace's unit and behavioural tests cover the helper's contract on

@@ -277,6 +277,11 @@ action; they are not quality targets.
   2026-08-24: roadmap item `1.3.3` is `[x]`, all gates re-run green, the opt-in
   integration suite ran green on a capable host, and the branch is pushed. PR
   #78 description updated to reflect the completed milestones.
+- [x] Pre-merge review closure on PR #181 (2026-10-18). The blocking testing
+  finding and the observability, user-facing, and developer documentation
+  warnings are actioned; see Revision 7. The branch is squashed onto
+  `1-3-3-repovec-directory-layout` with PRs #168 and #180 closed as
+  superseded.
 
 - [x] SCOPE ESCALATION (2026-08-12): branch is at 17 non-snapshot code/asset
   files and ~1700 net lines vs the plan tolerance (24 files / roughly 1000 net
@@ -1364,6 +1369,45 @@ gates are green, and PR #78's description was updated to reflect the completed
 milestones and the capable-host integration result.
 
 ## Revision note
+
+Revision 7 (2026-10-18): closed the CodeRabbit pre-merge check on PR #181 —
+one blocking testing error and three of four warnings.
+
+- **Testing (blocking).** The live-layout tests exercised `verify_layout_for_ids`
+  with ids built by the test itself, so they never proved that the production
+  adapter resolves ids and applies the privileged expectations. The read half
+  is now separate from the resolution half:
+  `account::passwd_database_text` and `group::group_database_text` read each
+  database once, `resolve_ids_from_databases` consumes captured text, and
+  `verify_layout_from_databases` joins the two. Every resolution rule
+  (missing, truncated, root account, wrong home, login shell, missing group)
+  is driven from fixture text rather than the host's real accounts.
+  `live::layout_contracts` is a pure table keyed by `RuntimePaths` and
+  `LiveLayoutIds`; `tests_live_tree.rs` asserts the table directly with
+  distinct ids (998/996 for `repovec`, 0/0 for privileged) and moves each
+  expectation off the on-disk id to prove that `qdrant-storage` consults the
+  privileged ids while the data tree consults the repovec ids. An end-to-end
+  case drives captured database text through the directory checks and fails
+  specifically on the storage root expectation — the evidence that resolution
+  reached the filesystem half.
+- **Observability.** The live failure now carries a stable `category()`, bounded
+  `expected`/`actual` diagnostics, and a category-only
+  `metric.daemon_startup_live_layout_failure_total` event; three log-capture
+  tests assert each field.
+- **User-facing and developer documentation.** `docs/migrations/0-2-0.md`
+  gains an operator-facing section (assets, `install`, `daemon-reload`,
+  `restart repovec.target`, the `Requires=` guarantee, fail-closed startup with
+  `error_category`, and `getent` guidance for pre-existing accounts).
+  `docs/developers-guide.md` §3.3 and §6.1 now describe the register-time and
+  directory-layout validators and list `provisioning/test_directory_layout.py`
+  in the integration table.
+- **Structure.** `live` was 422 lines and `daemon_startup::tests` 411, both over
+  the 400-line module cap. They split into `live_resolution.rs` and
+  `daemon_startup/tests_live.rs`; `tests_live.rs` retains the resolution cases
+  and `tests_live_tree.rs` the filesystem cases.
+- **Docstring coverage** remains below the review tool's 80% threshold. The
+  repository's own gates do not measure it and this revision does not attempt
+  to raise it; it is recorded here as an accepted, non-blocking gap.
 
 Revision 6 (2026-10-18): closed the Codex finding that the live pre-flight
 accepted unsafe pre-existing accounts.

@@ -32,6 +32,7 @@ from lib.assertions import (
 from lib.constants import (
     ASSUMED_SYSUSERS_SOURCE,
     ASSUMED_TMPFILES_SOURCE,
+    QDRANT_DATA_DIR,
     REPOVEC_HOME,
     REPOVEC_USER,
 )
@@ -80,12 +81,12 @@ def test_repovec_provisioning_is_idempotent(
 
     _provision(container_session)
     root_stat = stat_file(container_session, REPOVEC_HOME)
-    storage_stat = stat_file(container_session, f"{REPOVEC_HOME}/qdrant-storage")
+    storage_stat = stat_file(container_session, QDRANT_DATA_DIR)
 
     _provision(container_session)
 
     assert stat_file(container_session, REPOVEC_HOME) == root_stat, "root stat changed"
-    assert (
-        stat_file(container_session, f"{REPOVEC_HOME}/qdrant-storage") == storage_stat
-    ), "qdrant-storage stat changed"
+    assert stat_file(container_session, QDRANT_DATA_DIR) == storage_stat, (
+        "qdrant-storage stat changed"
+    )
     assert_directory_contract(container_session)

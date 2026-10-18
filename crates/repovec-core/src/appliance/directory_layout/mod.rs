@@ -20,6 +20,7 @@
 //! `/etc/passwd`, or touches the live filesystem. Live ownership checks are the
 //! responsibility of the separately carved-out pre-flight adapter.
 
+mod account;
 mod directory_contract;
 mod error;
 mod group;
@@ -28,6 +29,8 @@ mod parser;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_account;
 #[cfg(test)]
 mod tests_display;
 #[cfg(test)]

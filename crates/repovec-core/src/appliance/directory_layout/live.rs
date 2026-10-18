@@ -21,6 +21,13 @@
 //! group column through the group database, so deriving the expected group from
 //! the user's primary GID would reject correctly provisioned trees on hosts
 //! where the `repovec` user and group do not share a numeric id.
+//!
+//! The `passwd` row is parsed in full, not just for its uid. `systemd-sysusers`
+//! leaves an existing account untouched, so a pre-existing root-owned or
+//! login-capable `repovec` account survives provisioning; the pre-flight
+//! rejects it rather than trusting the by-name ownership that
+//! `systemd-tmpfiles` would apply. The record parsing and its rules live in
+//! `super::account`.
 
 use std::io;
 
@@ -28,6 +35,7 @@ use camino::Utf8PathBuf;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 
 use super::{
+    account::{find_repovec_account, validate_repovec_account},
     directory_contract::{DirectoryContract, verify_directory},
     group::{GROUP_DATABASE_PATH, GroupLookupError, lookup_repovec_gid},
 };
@@ -55,6 +63,37 @@ pub enum LiveLayoutError {
     /// cannot be resolved by name.
     #[error("the repovec system group does not exist")]
     RepovecGroupNotFound,
+    /// The `repovec` account exists but its uid is root.
+    ///
+    /// `systemd-sysusers` leaves an existing account untouched, so a host that
+    /// already carried a root-owned `repovec` entry would otherwise hand the
+    /// data tree, and every unit that runs as `User=repovec`, to root.
+    #[error("the repovec system user must not be root: uid {uid}")]
+    RepovecUserIsRoot {
+        /// The root uid the account resolved to.
+        uid: u32,
+    },
+    /// The `repovec` account exists but its home directory is not the
+    /// contract home.
+    ///
+    /// The same sysusers idempotence rule that makes a wrong uid survive
+    /// provisioning also makes a wrong home survive it.
+    #[error("the repovec user home must be {expected}: {actual}")]
+    RepovecHomeIncorrect {
+        /// The home directory the contract requires.
+        expected: &'static str,
+        /// The home directory recorded in `/etc/passwd`.
+        actual: String,
+    },
+    /// The `repovec` account exists but its login shell is not the contract
+    /// nologin shell.
+    #[error("the repovec user shell must be {expected}: {actual}")]
+    RepovecShellIncorrect {
+        /// The shell the contract requires.
+        expected: &'static str,
+        /// The shell recorded in `/etc/passwd`.
+        actual: String,
+    },
     /// A required directory is missing from the live tree.
     #[error("missing directory {path}")]
     MissingPath {
@@ -105,7 +144,11 @@ impl LiveLayoutError {
     #[must_use]
     pub fn path(&self) -> Option<&str> {
         match self {
-            Self::RepovecUserNotFound | Self::RepovecGroupNotFound => None,
+            Self::RepovecUserNotFound
+            | Self::RepovecGroupNotFound
+            | Self::RepovecUserIsRoot { .. }
+            | Self::RepovecHomeIncorrect { .. }
+            | Self::RepovecShellIncorrect { .. } => None,
             Self::MissingPath { path }
             | Self::UnreadablePath { path, .. }
             | Self::NotADirectory { path }
@@ -255,7 +298,8 @@ impl ResolvedRepovec {
             LiveLayoutError::UnreadablePath { path: Utf8PathBuf::from("/etc/passwd"), source }
         })?;
 
-        let uid = find_repovec_uid(&passwd).ok_or(LiveLayoutError::RepovecUserNotFound)?;
+        let account = find_repovec_account(&passwd).ok_or(LiveLayoutError::RepovecUserNotFound)?;
+        validate_repovec_account(&account)?;
         let gid = lookup_repovec_gid().map_err(|error| match error {
             GroupLookupError::Unreadable(source) => LiveLayoutError::UnreadablePath {
                 path: Utf8PathBuf::from(GROUP_DATABASE_PATH),
@@ -264,7 +308,7 @@ impl ResolvedRepovec {
             GroupLookupError::NotFound => LiveLayoutError::RepovecGroupNotFound,
         })?;
 
-        Ok(Self { uid, gid })
+        Ok(Self { uid: account.uid, gid })
     }
 
     /// Pairs the resolved account ids with the privileged root ids.
@@ -276,19 +320,4 @@ impl ResolvedRepovec {
             privileged_gid: PRIVILEGED_GID,
         }
     }
-}
-
-/// Extracts the `repovec` uid from passwd text.
-///
-/// Only the uid is taken from `passwd`; the group is resolved separately from
-/// the group database (see [`ResolvedRepovec::resolve`]).
-pub(crate) fn find_repovec_uid(passwd: &str) -> Option<u32> {
-    passwd.lines().find_map(|line| {
-        let mut fields = line.split(':');
-        if fields.next()? != "repovec" {
-            return None;
-        }
-        let _password = fields.next()?;
-        fields.next()?.parse().ok()
-    })
 }

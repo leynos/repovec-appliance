@@ -1365,6 +1365,35 @@ milestones and the capable-host integration result.
 
 ## Revision note
 
+Revision 6 (2026-10-18): closed the Codex finding that the live pre-flight
+accepted unsafe pre-existing accounts.
+
+- `systemd-sysusers` is idempotent: an existing `repovec` account keeps its
+  uid, home, and shell regardless of the checked-in asset. The live adapter
+  previously read only the uid, so a pre-existing `repovec` row with uid 0
+  passed the pre-flight and `systemd-tmpfiles` handed the data tree, and every
+  `User=repovec` unit, to root.
+- `directory_layout::account` now parses the full
+  `name:password:uid:gid:gecos:home:shell` record. A truncated row is treated
+  as absent. `validate_repovec_account` rejects a root uid, a home other than
+  `/var/lib/repovec`, and a shell other than `/usr/sbin/nologin` before any
+  directory is inspected; the new `RepovecUserIsRoot`, `RepovecHomeIncorrect`,
+  and `RepovecShellIncorrect` variants name the account at fault. Unit tests
+  cover each rejection plus the parse edge cases.
+- The rules are recorded in `docs/developers-guide.md` §5.8.
+- The same review pass rejected symlinks at contract paths: the live
+  pre-flight now calls `symlink_metadata`, so a link is judged on the entry
+  itself rather than on a target that would satisfy the ownership and mode
+  checks. A regression links `worktrees` to `git-mirrors` and expects
+  `NotADirectory`.
+- Corrected the ADR, technical design, user guide, and developer guide to say
+  that consumers declare `Requires=repovec-provision.service` and that the
+  oneshot's `Before=` supplies the ordering; no consumer declares `After=` on
+  the oneshot. The integration path constants are built with `PurePosixPath`
+  and the idempotence test reuses `QDRANT_DATA_DIR`.
+- Full systemd acceptance remains **unverified** until the privileged,
+  SELinux-enforcing host procedure above records a transcript.
+
 Revision 5 (2026-10-18): post-assessment follow-up closed three findings from
 the `RP133-COMP-4ba3851a15c8` assessment.
 

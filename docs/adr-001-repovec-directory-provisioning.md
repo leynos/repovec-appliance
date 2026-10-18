@@ -127,11 +127,11 @@ unusable. The pure validator (`directory_layout`) and the live pre-flight
 together enforce the appliance directory contract in CI and on the host.
 
 Enforcement of the provisioning step itself is by `Requires=`, not merely by
-ordering. `repovec-provision.service` is `WantedBy=repovec.target`, and every
-consuming unit declares `Requires=repovec-provision.service` alongside its
-`After=` directive, so a host where the assets fail to apply stops the
-dependent services rather than starting them against a missing account or an
-unprovisioned tree.
+ordering. `repovec-provision.service` is `WantedBy=repovec.target` and orders
+itself `Before=` every consumer, and every consuming unit declares
+`Requires=repovec-provision.service`, so a host where the assets fail to apply
+stops the dependent services rather than starting them against a missing
+account or an unprovisioned tree.
 
 ## Goals and non-goals
 

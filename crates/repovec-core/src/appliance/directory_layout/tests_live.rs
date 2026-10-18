@@ -19,10 +19,7 @@ use tempfile::TempDir;
 
 use super::{
     group::find_group_gid,
-    live::{
-        LiveLayoutError, LiveLayoutIds, LiveLayoutViolation, find_repovec_uid,
-        verify_layout_for_ids,
-    },
+    live::{LiveLayoutError, LiveLayoutIds, LiveLayoutViolation, verify_layout_for_ids},
 };
 use crate::RuntimePaths;
 
@@ -279,6 +276,27 @@ fn incorrect_identity_is_reported(#[case] case: LiveViolationCase) {
 }
 
 #[test]
+fn symlink_in_place_of_a_directory_is_reported() {
+    let tree = LiveTree::new().expect("fixture tree");
+    let (uid, gid) = current_ids(&tree).expect("data root ids");
+    let replaced = expected_absolute(&tree, "var/lib/repovec/worktrees").expect("utf8 path");
+    tree.root.remove_dir_all("var/lib/repovec/worktrees").expect("remove worktrees");
+    // The target is a contract-correct directory, so following the link would
+    // satisfy every owner, group, and mode check while aliasing two required
+    // paths onto one directory.
+    tree.root
+        .symlink("git-mirrors", "var/lib/repovec/worktrees")
+        .expect("link worktrees to git-mirrors");
+
+    let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
+
+    let Err(LiveLayoutError::NotADirectory { path }) = result else {
+        panic!("expected NotADirectory for a symlink, got {result:?}");
+    };
+    assert_eq!(path, Utf8PathBuf::from(replaced));
+}
+
+#[test]
 fn regular_file_in_place_of_a_directory_is_reported() {
     let tree = LiveTree::new().expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
@@ -296,20 +314,6 @@ fn regular_file_in_place_of_a_directory_is_reported() {
         panic!("expected NotADirectory, got {result:?}");
     };
     assert_eq!(path, Utf8PathBuf::from(replaced));
-}
-
-#[test]
-fn find_repovec_uid_parses_passwd_entry() {
-    let sample = "root:x:0:0:root:/root:/bin/bash\nrepovec:x:998:996:repovec appliance service user:/var/lib/repovec:/usr/sbin/nologin\n";
-
-    assert_eq!(find_repovec_uid(sample), Some(998));
-}
-
-#[test]
-fn find_repovec_uid_returns_none_when_absent() {
-    let sample = "root:x:0:0:root:/root:/bin/bash\n";
-
-    assert_eq!(find_repovec_uid(sample), None);
 }
 
 #[test]

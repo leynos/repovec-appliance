@@ -7,6 +7,7 @@ can assert against the contract without parsing the shell helper.
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import Final
 
 HELPER_SCRIPT: Final = "/usr/libexec/repovec/repovec-qdrant-api-key"
@@ -33,11 +34,12 @@ ASSUMED_TMPFILES_SOURCE: Final = "/usr/lib/tmpfiles.d/repovec.conf"
 ASSUMED_SYSUSERS_SOURCE: Final = "/usr/lib/sysusers.d/repovec.conf"
 DATA_ROOT: Final = "/var/lib/repovec"
 DATA_DIR_MODE: Final = "0700"
+_DATA_ROOT_PATH: Final = PurePosixPath(DATA_ROOT)
 DATA_DIRS: Final = (
     DATA_ROOT,
-    f"{DATA_ROOT}/git-mirrors",
-    f"{DATA_ROOT}/worktrees",
-    f"{DATA_ROOT}/.grepai",
+    str(_DATA_ROOT_PATH / "git-mirrors"),
+    str(_DATA_ROOT_PATH / "worktrees"),
+    str(_DATA_ROOT_PATH / ".grepai"),
 )
-QDRANT_DATA_DIR: Final = f"{DATA_ROOT}/qdrant-storage"
+QDRANT_DATA_DIR: Final = str(_DATA_ROOT_PATH / "qdrant-storage")
 QDRANT_DATA_DIR_MODE: Final = "0700"

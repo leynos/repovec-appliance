@@ -386,10 +386,10 @@ Provisioning is a *requirement*, not an ordering hint. `After=` orders start
 jobs but does not cancel a dependent start job when the earlier unit fails, so
 every consuming unit — `repovecd.service`, `repovec-mcpd.service`,
 `repovec-qdrant-api-key.service`, and the `qdrant.container` Quadlet — carries
-`Requires=repovec-provision.service` alongside its `After=` directive. A host
-where `systemd-sysusers` or `systemd-tmpfiles` fails therefore fails closed:
-the dependent daemons do not start against a missing account or an
-unprovisioned tree.
+`Requires=repovec-provision.service`, and the oneshot's own `Before=` line
+orders it ahead of each of them. A host where `systemd-sysusers` or
+`systemd-tmpfiles` fails therefore fails closed: the dependent daemons do not
+start against a missing account or an unprovisioned tree.
 
 `repovec-grepai@.service` is a systemd template for future concrete indexer
 instances. Each instance runs `/usr/bin/grepai watch` as the `repovec` user and

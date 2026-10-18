@@ -152,6 +152,11 @@ pub(super) fn verify_directory(
 /// The metadata must describe a directory: a regular file left at the same path
 /// with the expected owner, group, and mode would otherwise satisfy every
 /// subsequent check while leaving the documented directory unusable.
+///
+/// The entry itself is inspected, not a symlink target. A link such as
+/// `worktrees -> git-mirrors` resolves to a directory carrying the contract
+/// owner, group, and mode, so following it would pass every check while making
+/// two required paths alias one directory.
 fn read_directory_metadata(path: &Utf8Path) -> Result<Metadata, LiveLayoutError> {
     let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
         return Err(LiveLayoutError::UnreadablePath {
@@ -162,7 +167,8 @@ fn read_directory_metadata(path: &Utf8Path) -> Result<Metadata, LiveLayoutError>
 
     let directory = Dir::open_ambient_dir(parent, ambient_authority())
         .map_err(|source| map_metadata_error(path, source))?;
-    let metadata = directory.metadata(name).map_err(|source| map_metadata_error(path, source))?;
+    let metadata =
+        directory.symlink_metadata(name).map_err(|source| map_metadata_error(path, source))?;
 
     if metadata.is_dir() {
         Ok(metadata)

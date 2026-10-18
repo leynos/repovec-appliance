@@ -310,9 +310,9 @@ to start indexers.
 `/usr/lib/tmpfiles.d/repovec.conf`, so the `repovec` system user and the data
 directory tree exist before any dependent service starts — including on a
 freshly installed host that has not been rebooted. Every dependent service
-declares `Requires=repovec-provision.service` as well as `After=` on it, and
-the service is activated by `repovec.target`. The `Requires=` directive is what
-makes provisioning mandatory: `After=` on its own only orders start jobs and
+declares `Requires=repovec-provision.service`, the oneshot's `Before=` line
+orders it ahead of those services, and `repovec.target` activates it. The
+`Requires=` directive is what makes provisioning mandatory: ordering on its own
 does not prevent a dependent service from starting when provisioning fails. The
 requirement is what makes the appliance fail closed on a host where the
 `repovec` user or the data tree could not be created. `systemd-sysusers`

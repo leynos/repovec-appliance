@@ -14,15 +14,15 @@ use super::{
 };
 use crate::appliance::directory_layout::live::LiveLayoutError;
 
-#[test]
 /// Protect the successful startup path through both injected systemd and Qdrant checks.
+#[test]
 fn startup_succeeds_when_validation_passes() {
     validate_daemon_startup_contracts_with(|| Ok(()), || async { Ok(()) })
         .expect("startup contracts should pass");
 }
 
-#[test]
 /// Keep both successful startup checks observable in debug logs for operational diagnosis.
+#[test]
 fn startup_logs_successful_validation() -> Result<(), String> {
     let (result, logs) = repovec_test_helpers::capture_logs(|| {
         validate_daemon_startup_contracts_with(|| Ok(()), || async { Ok(()) })
@@ -43,9 +43,9 @@ fn startup_logs_successful_validation() -> Result<(), String> {
     )
 }
 
-#[test]
 /// Exercise the production unit validator while injecting Qdrant success to avoid an unrelated
 /// service dependency.
+#[test]
 fn startup_runs_real_systemd_validation() -> Result<(), String> {
     let (result, logs) = repovec_test_helpers::capture_logs(|| {
         validate_daemon_startup_contracts_with(
@@ -66,8 +66,8 @@ fn startup_runs_real_systemd_validation() -> Result<(), String> {
     )
 }
 
-#[test]
 /// Ensure failed systemd validation prevents invoking the Qdrant liveness callback.
+#[test]
 fn startup_skips_qdrant_after_systemd_failure() {
     let qdrant_called = Cell::new(false);
     let injected_error =
@@ -87,17 +87,17 @@ fn startup_skips_qdrant_after_systemd_failure() {
     assert!(!qdrant_called.get());
 }
 
-#[test]
 /// Preserve the fixed failure exit status used by the appliance startup boundary.
+#[test]
 fn startup_returns_exit_code_1_when_validation_fails() {
     let result = run_startup_with_systemd_error("repovecd.service");
 
     assert_eq!(result, Err(STARTUP_FAILURE_EXIT_CODE));
 }
 
-#[test]
 /// Retain the failing unit identity in error logs so operators can locate the broken service
 /// contract.
+#[test]
 fn startup_error_logging_preserves_systemd_unit_field() -> Result<(), String> {
     let (exit_code, logs) = repovec_test_helpers::capture_logs(|| {
         run_startup_with_systemd_error("repovec-mcpd.service")
@@ -124,8 +124,8 @@ fn missing_data_root() -> LiveLayoutError {
     LiveLayoutError::MissingPath { path: "/var/lib/repovec".into() }
 }
 
-#[test]
 /// A live-layout violation must abort startup with the typed error, not fall through.
+#[test]
 fn startup_reports_live_layout_violation() {
     let result = validate_daemon_startup_contracts_with_live(
         || Ok(()),
@@ -139,9 +139,9 @@ fn startup_reports_live_layout_violation() {
     assert_eq!(error.path(), Some("/var/lib/repovec"));
 }
 
-#[test]
 /// A failed live pre-flight must not reach the Qdrant probe: the data tree is
 /// supposed to hold the API key, so probing would fail for the wrong reason.
+#[test]
 fn startup_skips_qdrant_after_live_layout_failure() {
     let qdrant_called = Cell::new(false);
 
@@ -158,9 +158,9 @@ fn startup_skips_qdrant_after_live_layout_failure() {
     assert!(!qdrant_called.get(), "the Qdrant probe must be suppressed");
 }
 
-#[test]
 /// The live pre-flight runs after the static systemd contract and before the
 /// Qdrant probe, so an operator sees the cheapest failure first.
+#[test]
 fn startup_runs_live_layout_check_between_the_other_two() {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     enum Step {
@@ -190,8 +190,8 @@ fn startup_runs_live_layout_check_between_the_other_two() {
     assert_eq!(observed.into_inner(), vec![Step::Systemd, Step::LiveLayout, Step::Qdrant]);
 }
 
-#[test]
 /// Retain the offending path in the operator log and map the failure to exit 1.
+#[test]
 fn live_layout_startup_failure_names_the_path_and_exits_1() -> Result<(), String> {
     let (exit_code_result, logs) = repovec_test_helpers::capture_logs(|| {
         validate_daemon_startup_contracts_with_live(
@@ -223,8 +223,8 @@ fn live_layout_startup_failure_names_the_path_and_exits_1() -> Result<(), String
     )
 }
 
-#[test]
 /// Keep readiness timeouts classified as typed Qdrant startup failures.
+#[test]
 fn qdrant_liveness_timeout_maps_to_startup_error() {
     let result = validate_qdrant_liveness_with_policy(
         || async { Err(QdrantLivenessError::Timeout { timeout: Duration::from_millis(5) }) },
@@ -238,9 +238,9 @@ fn qdrant_liveness_timeout_maps_to_startup_error() {
     ));
 }
 
-#[test]
 /// Allow temporary unavailability to recover on the next probe instead of aborting startup
 /// immediately.
+#[test]
 fn qdrant_liveness_retries_transient_failures() {
     let attempts = Cell::new(0);
 

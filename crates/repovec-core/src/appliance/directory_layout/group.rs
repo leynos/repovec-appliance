@@ -8,7 +8,7 @@
 //! primary GID would reject those correctly provisioned directories, so the
 //! live adapter reads `/etc/group` instead.
 //!
-//! [`lookup_repovec_gid`] is the live file-reading adapter; [`find_group_gid`]
+//! [`group_database_text`] is the live file-reading adapter; [`find_group_gid`]
 //! is the pure parse seam the unit tests drive directly.
 
 use std::io;
@@ -47,22 +47,34 @@ impl std::error::Error for GroupLookupError {
     }
 }
 
-/// Resolves the `gid` of the `repovec` group from the live group database.
+/// Reads the live group database once, so a caller can resolve several ids
+/// from the same snapshot.
 ///
 /// # Errors
 ///
 /// Returns [`GroupLookupError::Unreadable`] when `/etc/group` cannot be opened
-/// or read, and [`GroupLookupError::NotFound`] when it declares no `repovec`
-/// group.
-pub(crate) fn lookup_repovec_gid() -> Result<u32, GroupLookupError> { lookup_gid("repovec") }
-
-/// Resolves the `gid` of `name` from the live group database.
-fn lookup_gid(name: &str) -> Result<u32, GroupLookupError> {
+/// or read. A missing `repovec` row is reported by the resolution step, not
+/// here, because the database itself was readable.
+pub(crate) fn group_database_text() -> Result<String, GroupLookupError> {
     let etc =
         Dir::open_ambient_dir("/etc", ambient_authority()).map_err(GroupLookupError::Unreadable)?;
-    let contents = etc.read_to_string("group").map_err(GroupLookupError::Unreadable)?;
 
-    find_group_gid(&contents, name).ok_or(GroupLookupError::NotFound)
+    etc.read_to_string("group").map_err(GroupLookupError::Unreadable)
+}
+
+/// Resolves the `repovec` gid from group-database text that has already been
+/// read.
+///
+/// Splitting the parse from the read lets the live pre-flight resolve every id
+/// from one snapshot of the databases, and lets tests drive the resolution
+/// rules without touching `/etc`.
+///
+/// # Errors
+///
+/// Returns [`GroupLookupError::NotFound`] when the text declares no `repovec`
+/// group.
+pub(crate) fn resolve_repovec_gid_from(contents: &str) -> Result<u32, GroupLookupError> {
+    find_group_gid(contents, "repovec").ok_or(GroupLookupError::NotFound)
 }
 
 /// Extracts the `gid` of `name` from group-database text.

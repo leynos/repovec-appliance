@@ -25,6 +25,7 @@ mod directory_contract;
 mod error;
 mod group;
 pub mod live;
+mod live_resolution;
 mod parser;
 
 #[cfg(test)]
@@ -35,6 +36,8 @@ mod tests_account;
 mod tests_display;
 #[cfg(test)]
 mod tests_live;
+#[cfg(test)]
+mod tests_live_tree;
 #[cfg(test)]
 mod tests_proptest;
 #[cfg(test)]

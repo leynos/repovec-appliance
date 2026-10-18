@@ -173,12 +173,15 @@ requires the conservative path. The user-visible flow is documented in
 
 `systemd-gate` always reports a result so it can be configured as a required
 check. It runs `make validate-systemd`, which builds the `repovec-ci` helper
-and calls `repovec-ci systemd-gate` to verify that the checked-in systemd unit
-files still satisfy the appliance service-layout contract. A non-zero exit from
-the gate is a fatal CI failure.
+and calls `repovec-ci systemd-gate`. That subcommand runs two validators: the
+systemd-unit validator checks the service-layout contract, and the
+directory-layout validator parses the checked-in `sysusers.d` and `tmpfiles.d`
+assets against the same path, owner, group, and mode contract the live
+pre-flight enforces. A non-zero exit from either is a fatal CI failure.
 
 Run `make validate-systemd` locally before proposing a change to any file under
-`packaging/systemd/` or `crates/repovec-core/src/appliance/systemd_units/`.
+`packaging/systemd/`, `packaging/sysusers.d/`, `packaging/tmpfiles.d/`, or
+`crates/repovec-core/src/appliance/systemd_units/`.
 
 ### 2.1 Workflow pins and Dependabot
 
@@ -479,14 +482,14 @@ USAGE:
     repovec-ci systemd-gate
 ```
 
-| Subcommand / Flag       | Description                                                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| *(no subcommand)*       | Equivalent to `docs-gate`; retained for backwards compatibility.                                                    |
-| `docs-gate`             | Evaluate the documentation-gate policy and print `key=value` lines for `$GITHUB_OUTPUT`.                            |
-| `systemd-gate`          | Validate the checked-in systemd unit files against the appliance contract; exit non-zero on any contract violation. |
-| `--changed-file <path>` | (docs-gate only) Treat `<path>` as a changed file; repeatable; mutually exclusive with `--stdin`.                   |
-| `--stdin`               | (docs-gate only) Read newline-delimited changed-file paths from stdin; mutually exclusive with `--changed-file`.    |
-| `-h`, `--help`          | Print usage text and exit.                                                                                          |
+| Subcommand / Flag       | Description                                                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| *(no subcommand)*       | Equivalent to `docs-gate`; retained for backwards compatibility.                                                                                |
+| `docs-gate`             | Evaluate the documentation-gate policy and print `key=value` lines for `$GITHUB_OUTPUT`.                                                        |
+| `systemd-gate`          | Validate the checked-in systemd unit files and directory-layout assets against the appliance contract; exit non-zero on any contract violation. |
+| `--changed-file <path>` | (docs-gate only) Treat `<path>` as a changed file; repeatable; mutually exclusive with `--stdin`.                                               |
+| `--stdin`               | (docs-gate only) Read newline-delimited changed-file paths from stdin; mutually exclusive with `--changed-file`.                                |
+| `-h`, `--help`          | Print usage text and exit.                                                                                                                      |
 
 In `docs-gate` mode the binary writes `key=value` lines to stdout for use with
 `$GITHUB_OUTPUT` and is invoked by the `docs-gate` CI job. The output keys are:
@@ -503,7 +506,7 @@ In `docs-gate` mode the binary writes `key=value` lines to stdout for use with
 `systemd-gate` writes a single confirmation line to stdout on success:
 
 ```text
-checked-in systemd units satisfy the appliance contract
+checked-in systemd units and directory layout satisfy the appliance contract
 ```
 
 On failure it writes a human-readable error to stderr and exits with status 1.
@@ -939,11 +942,6 @@ provisioning unit itself, so a reordered or removed `systemd-sysusers` /
 `systemd-tmpfiles` invocation fails the gate. Details are in
 `docs/repovec-appliance-technical-design.md`, "Service layout".
 
-**Systemd gate.** `repovec-ci systemd-gate` (`make validate-systemd`) now calls
-`validate_checked_in_directory_layout()` in addition to
-`validate_checked_in_systemd_units()`, so a packaging-contract drift fails the
-deterministic gate rather than a production host.
-
 **Live pre-flight adapter and purity boundary.** Ownership of the real tree is
 checked separately by `directory_layout::live`, which stats the on-disk
 directories via `cap_std` and fails closed on any owner, group, mode, type, or
@@ -1011,12 +1009,24 @@ that CI runners typically do not grant.
 | --------------------------------------------- | ------------- | --------------------------------------------------------------------- |
 | `provisioning/test_qdrant_api_key_cmd_mox.py` | `cmd_mox`     | Python and the harness dependencies. No container runtime needed.     |
 | `provisioning/test_qdrant_api_key.py`         | `integration` | A Docker-compatible runtime able to host privileged Podman-in-Podman. |
+| `provisioning/test_directory_layout.py`       | `integration` | A container runtime able to run a systemd-enabled Fedora image.       |
 
 The `cmd_mox` suite exercises the helper's external command orchestration by
 running the real shell script through a `PATH` populated with `cmd-mox` shims.
 The `integration` suite runs the real helper inside a privileged Fedora
 container managed by `testcontainers-python`, and uses rootful nested Podman to
 validate the full secret lifecycle.
+
+`provisioning/test_directory_layout.py` installs the checked-in
+`repovec-provision.service`, `sysusers.d`, and `tmpfiles.d` assets into the
+same kind of container, starts the provisioning oneshot, and asserts the
+resulting directory tree: every required path exists, `qdrant-storage` is
+`root:root`, the data tree is owned by `repovec`, `/etc/repovec` is
+`root:repovec`, and each mode matches the contract. It then re-runs
+provisioning to prove idempotence. The container runs systemd as PID 1, but the
+suite deliberately stops short of asserting unit *activeness* or authenticated
+loopback gRPC: those checks need a real systemd host and remain part of the
+manual acceptance procedure in the 1.3.3 execplan.
 
 ### 6.2 Prerequisites
 

@@ -13,10 +13,34 @@
 //! live file read lives in the parent module, next to the group lookup it is
 //! paired with.
 
+use std::io;
+
+use cap_std::{ambient_authority, fs_utf8::Dir};
+
 use super::{REPOVEC_HOME, REPOVEC_SHELL, REPOVEC_USER, live::LiveLayoutError};
 
-/// The root uid every site in this module compares against.
+/// The installed path of the account database consulted by the live pre-flight.
+pub(crate) const PASSWD_DATABASE_PATH: &str = "/etc/passwd";
+
+/// The root uid a `repovec` account must never resolve to.
 const PRIVILEGED_UID: u32 = 0;
+
+/// Reads the live account database so the resolution rules can run against a
+/// captured snapshot.
+///
+/// Keeping the read separate from the parse lets the live pre-flight read each
+/// database once, and lets tests drive every resolution rule—including
+/// unreadable input—without touching `/etc`.
+///
+/// # Errors
+///
+/// Returns the underlying [`io::Error`] when `/etc/passwd` cannot be opened or
+/// read.
+pub(crate) fn passwd_database_text() -> io::Result<String> {
+    let etc = Dir::open_ambient_dir("/etc", ambient_authority())?;
+
+    etc.read_to_string("passwd")
+}
 
 /// The `repovec` account record read from `/etc/passwd`.
 ///

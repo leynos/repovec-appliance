@@ -32,13 +32,11 @@
 use std::io;
 
 use camino::Utf8PathBuf;
-use cap_std::{ambient_authority, fs_utf8::Dir};
 
-use super::{
-    account::{find_repovec_account, validate_repovec_account},
-    directory_contract::{DirectoryContract, verify_directory},
-    group::{GROUP_DATABASE_PATH, GroupLookupError, lookup_repovec_gid},
-};
+use super::directory_contract::{DirectoryContract, verify_directory};
+pub use super::live_resolution::{LiveLayoutIds, verify_live_layout};
+#[cfg(test)]
+pub(crate) use super::live_resolution::{resolve_ids_from_databases, verify_layout_from_databases};
 use crate::RuntimePaths;
 
 /// A directory that failed the live layout pre-flight.
@@ -100,10 +98,10 @@ pub enum LiveLayoutError {
         /// The missing required directory.
         path: Utf8PathBuf,
     },
-    /// A required directory could not be inspected.
-    #[error("cannot inspect {path}")]
+    /// A required directory or account database could not be inspected.
+    #[error("cannot inspect {path}: {}", .source.kind())]
     UnreadablePath {
-        /// A required directory that could not be inspected.
+        /// A required directory or database that could not be inspected.
         path: Utf8PathBuf,
         /// The underlying filesystem error.
         #[source]
@@ -126,13 +124,13 @@ pub enum LiveLayoutError {
         violation: LiveLayoutViolation,
     },
     /// A directory is owned by a different user than its contract requires.
-    #[error("{} must be owned by {}", .violation.path, .violation.expected)]
+    #[error("{} must be owned by {}: {}", .violation.path, .violation.expected, .violation.actual)]
     IncorrectOwner {
         /// The directory and expectation that were violated.
         violation: LiveLayoutViolation,
     },
     /// A directory belongs to a different group than its contract requires.
-    #[error("{} must be in group {}", .violation.path, .violation.expected)]
+    #[error("{} must be in group {}: {}", .violation.path, .violation.expected, .violation.actual)]
     IncorrectGroup {
         /// The directory and expectation that were violated.
         violation: LiveLayoutViolation,
@@ -159,57 +157,54 @@ impl LiveLayoutError {
             }
         }
     }
-}
 
-/// Expected account ids for a live layout pre-flight.
-///
-/// The production path resolves the `repovec` ids by name from `/etc/passwd`
-/// and `/etc/group` and pins the storage and secrets owner to root (uid 0,
-/// gid 0). The testable seam [`verify_layout_for_ids`] takes the ids explicitly
-/// because a scratch tree owned by an unprivileged test process cannot be
-/// granted to root.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LiveLayoutIds {
-    /// The `repovec` account uid; owner of the private data tree (SI-1).
-    pub repovec_uid: u32,
-    /// The `repovec` account gid.
-    pub repovec_gid: u32,
-    /// The uid that must own `qdrant-storage` and `/etc/repovec` (root).
-    pub privileged_uid: u32,
-    /// The gid that must own `qdrant-storage` (root).
-    pub privileged_gid: u32,
-}
+    /// The stable, bounded category label for this failure.
+    ///
+    /// Metrics and failure logs carry the category, never the filesystem path,
+    /// so a dashboard label stays bounded and no host layout leaks into it.
+    #[must_use]
+    pub const fn category(&self) -> &'static str {
+        match self {
+            Self::RepovecUserNotFound => "repovec_user_not_found",
+            Self::RepovecGroupNotFound => "repovec_group_not_found",
+            Self::RepovecUserIsRoot { .. } => "repovec_user_is_root",
+            Self::RepovecHomeIncorrect { .. } => "repovec_home_incorrect",
+            Self::RepovecShellIncorrect { .. } => "repovec_shell_incorrect",
+            Self::MissingPath { .. } => "missing_path",
+            Self::UnreadablePath { .. } => "unreadable_path",
+            Self::NotADirectory { .. } => "not_a_directory",
+            Self::IncorrectMode { .. } => "incorrect_mode",
+            Self::IncorrectOwner { .. } => "incorrect_owner",
+            Self::IncorrectGroup { .. } => "incorrect_group",
+        }
+    }
 
-/// The root ids assumed for the privileged directories.
-///
-/// `qdrant-storage` and `/etc/repovec` are root-owned on a real host (SI-2,
-/// SI-3). Tests inject different ids because a scratch tree cannot be chowned
-/// to root without privileges.
-const PRIVILEGED_UID: u32 = 0;
-const PRIVILEGED_GID: u32 = 0;
-
-/// Verifies the live on-disk layout for the standard appliance paths.
-///
-/// Resolves the `repovec` account ids from `/etc/passwd` and `/etc/group` and
-/// requires every directory in the layout contract to exist with the documented
-/// mode and ownership.
-///
-/// # Examples
-///
-/// ```no_run
-/// use repovec_core::RuntimePaths;
-/// use repovec_core::appliance::directory_layout::live::verify_live_layout;
-///
-/// verify_live_layout(&RuntimePaths::appliance_defaults()).expect("the host is provisioned");
-/// ```
-///
-/// # Errors
-///
-/// Returns [`LiveLayoutError`] when the `repovec` account cannot be resolved
-/// or any required directory is missing, not a directory, unreadable,
-/// mis-moded, or misowned.
-pub fn verify_live_layout(paths: &RuntimePaths) -> Result<(), LiveLayoutError> {
-    verify_layout_for_ids(paths, ResolvedRepovec::resolve()?.into_ids())
+    /// The expected and observed values, bounded for diagnostic logging.
+    ///
+    /// Owner, group, and mode violations retain both sides of the comparison,
+    /// but the error display names only the expectation. `MissingPath`,
+    /// `NotADirectory`, and `RepovecUserNotFound` are self-describing. The
+    /// account-database and security violations report the expected contract
+    /// and the offending value. Every other variant has no observed value to
+    /// report, so both fields are empty.
+    #[must_use]
+    pub fn diagnostic_values(&self) -> (&str, &str) {
+        match self {
+            Self::IncorrectMode { violation }
+            | Self::IncorrectOwner { violation }
+            | Self::IncorrectGroup { violation } => {
+                (violation.expected.as_str(), violation.actual.as_str())
+            }
+            Self::RepovecUserIsRoot { .. } => ("a non-root uid", "root (uid 0)"),
+            Self::RepovecHomeIncorrect { expected, actual }
+            | Self::RepovecShellIncorrect { expected, actual } => (expected, actual.as_str()),
+            Self::RepovecUserNotFound
+            | Self::RepovecGroupNotFound
+            | Self::MissingPath { .. }
+            | Self::UnreadablePath { .. }
+            | Self::NotADirectory { .. } => ("", ""),
+        }
+    }
 }
 
 /// Verifies the live layout against explicitly supplied account ids.
@@ -243,6 +238,22 @@ pub fn verify_layout_for_ids(
     paths: &RuntimePaths,
     ids: LiveLayoutIds,
 ) -> Result<(), LiveLayoutError> {
+    layout_contracts(paths, ids)
+        .into_iter()
+        .try_for_each(|(path, contract)| verify_directory(&path, contract))
+}
+
+/// Pairs every required directory with its ownership and mode contract.
+///
+/// The mapping is the heart of the pre-flight: the data tree is owned by the
+/// `repovec` account (SI-1), `qdrant-storage` by root (SI-2), and `/etc/repovec`
+/// by root with the `repovec` group (SI-3). Returning it as data lets tests pin
+/// the id-to-directory mapping without provisioning a root-owned tree, which an
+/// unprivileged test process cannot create.
+pub(crate) fn layout_contracts(
+    paths: &RuntimePaths,
+    ids: LiveLayoutIds,
+) -> Vec<(Utf8PathBuf, DirectoryContract)> {
     let data_contract = DirectoryContract {
         owner_uid: ids.repovec_uid,
         owner_gid: ids.repovec_gid,
@@ -265,59 +276,12 @@ pub fn verify_layout_for_ids(
         mode: 0o750,
     };
 
-    verify_directory(paths.data_root(), data_contract)?;
-    verify_directory(&paths.git_mirrors_root(), data_contract)?;
-    verify_directory(&paths.worktrees_root(), data_contract)?;
-    verify_directory(&paths.grepai_root(), data_contract)?;
-    verify_directory(&paths.qdrant_storage_root(), storage_contract)?;
-    verify_directory(paths.config_root(), secrets_contract)
-}
-
-/// The `repovec` uid and gid resolved from the account databases.
-///
-/// A named pair rather than a tuple keeps the uid and gid distinguishable at
-/// every use site, and keeps them from colliding with the identically-shaped
-/// [`LiveLayoutIds`] fields at the call site.
-#[derive(Clone, Copy, Debug)]
-struct ResolvedRepovec {
-    uid: u32,
-    gid: u32,
-}
-
-impl ResolvedRepovec {
-    /// Reads the `repovec` uid from `/etc/passwd` and gid from `/etc/group`.
-    ///
-    /// This is deliberately in the live adapter: resolving ownership by name is
-    /// a runtime concern (the pure validator never touches the live
-    /// filesystem).
-    fn resolve() -> Result<Self, LiveLayoutError> {
-        let etc = Dir::open_ambient_dir("/etc", ambient_authority()).map_err(|source| {
-            LiveLayoutError::UnreadablePath { path: Utf8PathBuf::from("/etc/passwd"), source }
-        })?;
-        let passwd = etc.read_to_string("passwd").map_err(|source| {
-            LiveLayoutError::UnreadablePath { path: Utf8PathBuf::from("/etc/passwd"), source }
-        })?;
-
-        let account = find_repovec_account(&passwd).ok_or(LiveLayoutError::RepovecUserNotFound)?;
-        validate_repovec_account(&account)?;
-        let gid = lookup_repovec_gid().map_err(|error| match error {
-            GroupLookupError::Unreadable(source) => LiveLayoutError::UnreadablePath {
-                path: Utf8PathBuf::from(GROUP_DATABASE_PATH),
-                source,
-            },
-            GroupLookupError::NotFound => LiveLayoutError::RepovecGroupNotFound,
-        })?;
-
-        Ok(Self { uid: account.uid, gid })
-    }
-
-    /// Pairs the resolved account ids with the privileged root ids.
-    const fn into_ids(self) -> LiveLayoutIds {
-        LiveLayoutIds {
-            repovec_uid: self.uid,
-            repovec_gid: self.gid,
-            privileged_uid: PRIVILEGED_UID,
-            privileged_gid: PRIVILEGED_GID,
-        }
-    }
+    vec![
+        (paths.data_root().to_path_buf(), data_contract),
+        (paths.git_mirrors_root(), data_contract),
+        (paths.worktrees_root(), data_contract),
+        (paths.grepai_root(), data_contract),
+        (paths.qdrant_storage_root(), storage_contract),
+        (paths.config_root().to_path_buf(), secrets_contract),
+    ]
 }

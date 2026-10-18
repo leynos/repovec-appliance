@@ -289,9 +289,47 @@ fn log_daemon_startup_error(startup_error: DaemonStartupError) -> i32 {
     STARTUP_FAILURE_EXIT_CODE
 }
 
+/// Records a live-layout failure with its stable category and bounded details.
+///
+/// The category is a fixed label so a dashboard can group failures without
+/// unbounded cardinality. The expected and observed values are bounded
+/// diagnostics (`uid 998`, `mode 0700`), never a free-form path, so the metric
+/// event carries only the category.
 fn log_live_layout_startup_error(error: &LiveLayoutError) {
+    let (expected, actual) = error.diagnostic_values();
+    let fields = LiveLayoutLogFields {
+        path: error.path().unwrap_or("(unknown)"),
+        category: error.category(),
+        expected,
+        actual,
+    };
+
+    log_live_layout_violation(&fields, error);
+    tracing::info!(
+        error_category = fields.category,
+        "metric.daemon_startup_live_layout_failure_total"
+    );
+}
+
+/// The bounded diagnostic fields attached to a live-layout failure event.
+struct LiveLayoutLogFields<'a> {
+    /// The offending path, or a placeholder when the failure names none.
+    path: &'a str,
+    /// The stable category label.
+    category: &'a str,
+    /// The contract expectation, when the failure compared one.
+    expected: &'a str,
+    /// The observed value, when the failure compared one.
+    actual: &'a str,
+}
+
+/// Emits the structured violation event for a live-layout startup failure.
+fn log_live_layout_violation(fields: &LiveLayoutLogFields<'_>, error: &LiveLayoutError) {
     tracing::error!(
-        path = %error.path().unwrap_or("(unknown)"),
+        path = %fields.path,
+        error_category = fields.category,
+        expected = fields.expected,
+        actual = fields.actual,
         error = %error,
         "live directory layout violation - aborting startup",
     );
@@ -334,3 +372,5 @@ fn log_async_runtime_startup_error(error: &std::io::Error) {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_live;

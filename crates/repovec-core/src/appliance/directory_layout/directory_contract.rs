@@ -22,17 +22,17 @@ use super::live::{LiveLayoutError, LiveLayoutViolation};
 
 /// The ownership and permission contract for one directory in the layout.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct DirectoryContract {
+pub(crate) struct DirectoryContract {
     /// The uid that must own the directory.
-    pub(super) owner_uid: u32,
+    pub(crate) owner_uid: u32,
     /// The gid the directory must belong to.
-    pub(super) owner_gid: u32,
+    pub(crate) owner_gid: u32,
     /// The owner name rendered in diagnostics.
-    pub(super) owner_label: &'static str,
+    pub(crate) owner_label: &'static str,
     /// The group name rendered in diagnostics.
-    pub(super) group_label: &'static str,
+    pub(crate) group_label: &'static str,
     /// The exact octal mode the directory must carry.
-    pub(super) mode: u16,
+    pub(crate) mode: u16,
 }
 
 impl DirectoryContract {

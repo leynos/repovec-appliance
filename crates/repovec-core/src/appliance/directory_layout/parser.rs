@@ -20,41 +20,48 @@ use crate::appliance::directory_layout::{DirectoryLayoutError, Mode};
 
 /// Quote-aware column accumulator for a single asset line.
 ///
-/// The scan state—columns already emitted, the column under construction, and
-/// whether the scan currently sits inside a quoted section—only makes sense
-/// together, so it is held in one place rather than threaded through helper
-/// functions as a parameter clump.
+/// The scan state—columns already emitted, the column under construction,
+/// whether the scan currently sits inside a quoted section, and whether a
+/// column has begun at all—only makes sense together, so it is held in one
+/// place rather than threaded through helper functions as a parameter clump.
 #[derive(Default)]
 struct Tokenizer {
     columns: Vec<String>,
     current: String,
     in_quotes: bool,
+    has_column: bool,
 }
 
 impl Tokenizer {
-    /// Closes the column under construction, preserving an empty quoted field.
-    fn end_column(&mut self) { self.columns.push(std::mem::take(&mut self.current)); }
-
-    /// Closes the current column only when it holds anything.
+    /// Emits the column under construction when one has begun.
     ///
-    /// Unquoted whitespace is skipped rather than emitted as an empty column,
-    /// so the column indices of the fields after it stay correct.
-    fn end_non_empty_column(&mut self) {
-        if !self.current.is_empty() {
-            self.end_column();
+    /// Quoting is grouping, not a token boundary: `"/srv/data"0700` is one
+    /// column whose value is `/srv/data0700`, which is what systemd's
+    /// unquoting extractor reads. Emitting at the closing quote instead would
+    /// split it into `/srv/data` and `0700`, shifting every later column and
+    /// letting a typo pass the static gate. Tracking column presence
+    /// separately from the buffered text keeps an empty quoted field (`""`)
+    /// as a column of its own while still skipping runs of whitespace.
+    fn end_column(&mut self) {
+        if self.has_column {
+            self.has_column = false;
+            self.columns.push(std::mem::take(&mut self.current));
         }
     }
 
     /// Folds one character of the line into the tokenizer state.
     fn accept(&mut self, character: char) {
         match (self.in_quotes, character) {
-            (true, '"') => {
-                self.in_quotes = false;
-                self.end_column();
+            (true, '"') => self.in_quotes = false,
+            (false, '"') => {
+                self.in_quotes = true;
+                self.has_column = true;
             }
-            (false, '"') => self.in_quotes = true,
-            (false, current) if current.is_whitespace() => self.end_non_empty_column(),
-            (_, current) => self.current.push(current),
+            (false, current) if current.is_whitespace() => self.end_column(),
+            (_, current) => {
+                self.has_column = true;
+                self.current.push(current);
+            }
         }
     }
 }
@@ -78,7 +85,7 @@ fn tokenize(line: &str) -> Option<Vec<String>> {
     if tokenizer.in_quotes {
         return None;
     }
-    tokenizer.end_non_empty_column();
+    tokenizer.end_column();
     Some(tokenizer.columns)
 }
 

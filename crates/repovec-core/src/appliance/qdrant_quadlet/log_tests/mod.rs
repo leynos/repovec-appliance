@@ -44,9 +44,9 @@ use tracing::{
 use tracing_subscriber::{Layer, layer::Context, prelude::*};
 
 use super::{
-    CHECKED_IN_QDRANT_QUADLET_PATH, LOG_TARGET, QDRANT_API_KEY_SERVICE, QdrantQuadletError,
-    QdrantQuadletObserver, TracingQdrantQuadletObserver, checked_in_qdrant_quadlet,
-    validate_checked_in_qdrant_quadlet, validate_qdrant_quadlet,
+    CHECKED_IN_QDRANT_QUADLET_PATH, LOG_TARGET, QdrantQuadletError, QdrantQuadletObserver,
+    TracingQdrantQuadletObserver, checked_in_qdrant_quadlet, validate_checked_in_qdrant_quadlet,
+    validate_qdrant_quadlet,
 };
 
 #[derive(Clone, Debug)]
@@ -264,11 +264,7 @@ fn legacy_api_key_dependency_observer_callbacks_remain_supported() {
     let missing_contents = canonical
         .replace("Requires=repovec-qdrant-api-key.service repovec-provision.service\n", "");
     let missing = validate_qdrant_quadlet(&missing_contents, &observer);
-    assert!(matches!(
-        missing,
-        Err(QdrantQuadletError::MissingUnitDependency { expected, .. })
-            if expected == QDRANT_API_KEY_SERVICE
-    ));
+    assert!(matches!(missing, Err(QdrantQuadletError::MissingApiKeyProvisioningDependency { .. })));
     assert_eq!(observer.missing_callbacks.load(Ordering::Relaxed), 1);
 
     let incorrect_contents = canonical.replace(
@@ -278,8 +274,8 @@ fn legacy_api_key_dependency_observer_callbacks_remain_supported() {
     let incorrect = validate_qdrant_quadlet(&incorrect_contents, &observer);
     assert!(matches!(
         incorrect,
-        Err(QdrantQuadletError::IncorrectUnitDependency { expected, actual, .. })
-            if expected == QDRANT_API_KEY_SERVICE && actual == "network-online.target"
+        Err(QdrantQuadletError::IncorrectApiKeyProvisioningDependency { dependency, .. })
+            if dependency == "network-online.target"
     ));
     assert_eq!(observer.incorrect_callbacks.load(Ordering::Relaxed), 1);
 }

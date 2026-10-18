@@ -981,8 +981,10 @@ done
 # Expect: the target, completed provisioning oneshot, and Qdrant are active.
 
 # 2. Assert the provisioned layout, including the special bits that the live
-#    pre-flight compares (0700 exactly, not 02700).
-stat -c '%U:%G %04a %n' /var/lib/repovec /var/lib/repovec/git-mirrors \
+#    pre-flight compares (0700 exactly, not 02700). `stat` runs under `sudo`
+#    because the data tree is 0700 repovec:repovec and an ordinary operator
+#    cannot traverse it; `set -e` would otherwise abort the procedure.
+sudo stat -c '%U:%G %04a %n' /var/lib/repovec /var/lib/repovec/git-mirrors \
   /var/lib/repovec/worktrees /var/lib/repovec/.grepai \
   /var/lib/repovec/qdrant-storage /etc/repovec
 # Expect: repovec:repovec 0700 for the first four; root:root 0700 for
@@ -1362,6 +1364,25 @@ gates are green, and PR #78's description was updated to reflect the completed
 milestones and the capable-host integration result.
 
 ## Revision note
+
+Revision 5 (2026-10-18): post-assessment follow-up closed three findings from
+the `RP133-COMP-4ba3851a15c8` assessment.
+
+- The asset tokenizer now treats quoting as grouping rather than a column
+  boundary. `"path"0700` is one column whose value is `path0700`, matching
+  systemd's unquoting extractor; a token-presence flag preserves an empty
+  quoted field. A regression covers adjacent quoted and unquoted fragments in
+  both asset formats.
+- `QdrantQuadletError` keeps the original
+  `MissingApiKeyProvisioningDependency` and
+  `IncorrectApiKeyProvisioningDependency` variants, with their original
+  `Display` text, for the API-key oneshot. The general `MissingUnitDependency` /
+  `IncorrectUnitDependency` variants cover the newer
+  `repovec-provision.service` requirement. This restores source compatibility
+  for external callers and observers of the earlier error contract.
+- The manual acceptance procedure runs its `stat` assertions under `sudo`,
+  because the data tree is `0700 repovec:repovec` and an unprivileged operator
+  cannot traverse it.
 
 Revision 4 (2026-10-17): review follow-up rejected extra sysusers columns and
 tmpfiles cleanup ages for persistent directories, restored the existing

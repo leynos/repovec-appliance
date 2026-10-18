@@ -249,6 +249,14 @@ or metrics itself; callers should log or count the returned
   {directive} must include repovec-qdrant-api-key.service for Qdrant API-key provisioning: {dependency}
   ```
 
+- `MissingUnitDependency`:
+  `missing {directive}={expected} dependency`. Reported when a required
+  dependency other than the API-key oneshot, currently
+  `repovec-provision.service`, is absent.
+- `IncorrectUnitDependency`:
+  `{directive} must include {expected}: {actual}`. Reported when such a
+  dependency names the wrong unit.
+
 - `MissingApiKeySecret`:
   `missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY`.
 - `IncorrectApiKeySecret`:

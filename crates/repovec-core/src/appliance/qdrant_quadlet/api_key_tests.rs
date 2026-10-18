@@ -158,35 +158,27 @@ fn case(contents: String, reason: &'static str, expected: QdrantQuadletError) ->
 #[case::missing_api_key_requires_dependency(case(
     api_key_requires_dependency_missing(),
     "Requires= must pull the API-key oneshot in",
-    QdrantQuadletError::MissingUnitDependency {
-        directive: "Requires",
-        expected: "repovec-qdrant-api-key.service",
-    },
+    QdrantQuadletError::MissingApiKeyProvisioningDependency { directive: "Requires" },
 ))]
 #[case::missing_api_key_after_dependency(case(
     api_key_after_dependency_missing(),
     "After= must sequence the API-key oneshot first",
-    QdrantQuadletError::MissingUnitDependency {
-        directive: "After",
-        expected: "repovec-qdrant-api-key.service",
-    },
+    QdrantQuadletError::MissingApiKeyProvisioningDependency { directive: "After" },
 ))]
 #[case::incorrect_api_key_requires_dependency(case(
     api_key_requires_dependency_wrong(),
     "Requires= naming an unrelated unit leaves the API key unprovisioned",
-    QdrantQuadletError::IncorrectUnitDependency {
+    QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
         directive: "Requires",
-        expected: "repovec-qdrant-api-key.service",
-        actual: String::from("network-online.target"),
+        dependency: String::from("network-online.target"),
     },
 ))]
 #[case::incorrect_api_key_after_dependency(case(
     api_key_after_dependency_wrong(),
     "After= naming an unrelated unit removes the ordering guarantee",
-    QdrantQuadletError::IncorrectUnitDependency {
+    QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
         directive: "After",
-        expected: "repovec-qdrant-api-key.service",
-        actual: String::from("network-online.target"),
+        dependency: String::from("network-online.target"),
     },
 ))]
 #[case::incorrect_provision_dependency(case(

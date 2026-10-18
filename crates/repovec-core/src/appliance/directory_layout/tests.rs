@@ -7,7 +7,7 @@ use rstest::rstest;
 use super::tests_support::{Mutation, assert_mutation, checked_in};
 use crate::appliance::directory_layout::{
     DirectoryLayoutError, Mode,
-    parser::{ModeParseError, parse_mode},
+    parser::{ModeParseError, parse_mode, tmpfiles_entry},
     validate_directory_layout,
 };
 
@@ -208,6 +208,65 @@ fn a_foreign_sysusers_line_does_not_count_as_the_repovec_user() {
     );
 
     assert_mutation(mutation, DirectoryLayoutError::SysusersMissingUser);
+}
+
+/// Quoting groups text; it does not end a column. `"path"0700` is one token
+/// whose value is `path0700`, so the mode column is not silently invented.
+///
+/// A tokenizer that emitted a column at the closing quote would instead read a
+/// well-formed entry for the original path and accept the typo.
+#[test]
+fn a_quote_does_not_end_the_column_it_groups() {
+    let mutation = Mutation::tmpfiles(
+        "d /var/lib/repovec/worktrees 0700 repovec repovec -",
+        "d \"/var/lib/repovec/worktrees\"0700 repovec repovec -",
+    );
+
+    assert_mutation(
+        mutation,
+        DirectoryLayoutError::UnexpectedDirectoryEntry {
+            path: Utf8PathBuf::from("/var/lib/repovec/worktrees0700"),
+        },
+    );
+}
+
+/// The same grouping rule applies to a `d` line whose path is assembled from
+/// adjacent quoted and unquoted fragments, as systemd's unquoting extractor
+/// permits.
+#[test]
+fn adjacent_quoted_and_unquoted_tmpfiles_fragments_form_one_column() {
+    let line = "d \"/var/lib/\"repovec 0700 repovec repovec -";
+    let entry = tmpfiles_entry(line, "tmpfiles.d/repovec.conf", 1)
+        .expect("a well-formed d line must parse")
+        .expect("a d line must yield an entry");
+
+    assert_eq!(entry.path, "/var/lib/repovec");
+}
+
+/// A quoted sysusers column may be split across adjacent quoted and unquoted
+/// fragments, exactly as systemd's unquoting extractor allows.
+///
+/// `"/var/lib/"repovec` is one column with the value `/var/lib/repovec`, so the
+/// home field must be accepted rather than shifted into the shell field.
+#[test]
+fn adjacent_quoted_and_unquoted_sysusers_fragments_form_one_column() {
+    let mutation = Mutation::sysusers(
+        "/var/lib/repovec /usr/sbin/nologin",
+        "\"/var/lib/\"repovec \"/usr/sbin/\"nologin",
+    );
+    let (tmpfiles, sysusers) = mutation.apply_to_checked_in();
+
+    assert_eq!(validate_directory_layout(&tmpfiles, &sysusers), Ok(()));
+}
+
+/// An empty quoted column is still a column, so the home and shell fields keep
+/// their positions rather than sliding left into the empty GECOS slot.
+#[test]
+fn an_empty_quoted_column_still_counts_as_a_column() {
+    let mutation = Mutation::sysusers("\"repovec appliance service user\"", "\"\"");
+    let (tmpfiles, sysusers) = mutation.apply_to_checked_in();
+
+    assert_eq!(validate_directory_layout(&tmpfiles, &sysusers), Ok(()));
 }
 
 #[test]

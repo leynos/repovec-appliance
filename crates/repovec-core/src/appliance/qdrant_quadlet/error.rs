@@ -10,7 +10,8 @@
 use std::{error::Error, fmt};
 
 use super::{
-    REQUIRED_GRPC_PORT, REQUIRED_IMAGE, REQUIRED_REST_PORT, REQUIRED_STORAGE_TARGET,
+    QDRANT_API_KEY_SERVICE, REQUIRED_GRPC_PORT, REQUIRED_IMAGE, REQUIRED_REST_PORT,
+    REQUIRED_STORAGE_TARGET,
     platform_bindings::{
         REQUIRED_AUTO_UPDATE_POLICY, REQUIRED_SELINUX_OPTION, REQUIRED_STORAGE_SOURCE,
     },
@@ -80,14 +81,28 @@ pub enum QdrantQuadletError {
         /// The unexpected auto-update policy value.
         auto_update: String,
     },
-    /// The Quadlet does not depend on a required provisioning unit.
+    /// The Quadlet does not depend on the API-key provisioning unit.
+    MissingApiKeyProvisioningDependency {
+        /// The missing systemd dependency directive.
+        directive: &'static str,
+    },
+    /// The Quadlet depends on the wrong API-key provisioning unit.
+    IncorrectApiKeyProvisioningDependency {
+        /// The systemd dependency directive with the wrong value.
+        directive: &'static str,
+        /// The unexpected dependency value.
+        dependency: String,
+    },
+    /// The Quadlet does not depend on a required provisioning unit other than
+    /// the API-key oneshot.
     MissingUnitDependency {
         /// The missing systemd dependency directive.
         directive: &'static str,
         /// The systemd unit the directive must reference.
         expected: &'static str,
     },
-    /// The Quadlet depends on the wrong provisioning unit.
+    /// The Quadlet depends on the wrong provisioning unit other than the
+    /// API-key oneshot.
     IncorrectUnitDependency {
         /// The systemd dependency directive with the wrong value.
         directive: &'static str,
@@ -153,11 +168,18 @@ impl fmt::Display for QdrantQuadletError {
             Self::IncorrectAutoUpdate { auto_update } => {
                 write!(f, "AutoUpdate must remain {REQUIRED_AUTO_UPDATE_POLICY}: {auto_update}")
             }
+            Self::MissingApiKeyProvisioningDependency { directive } => {
+                DependencyFailure::missing(directive, QDRANT_API_KEY_SERVICE, true).fmt(f)
+            }
+            Self::IncorrectApiKeyProvisioningDependency { directive, dependency } => {
+                DependencyFailure::incorrect(directive, QDRANT_API_KEY_SERVICE, dependency, true)
+                    .fmt(f)
+            }
             Self::MissingUnitDependency { directive, expected } => {
-                write!(f, "missing {directive}={expected} dependency")
+                DependencyFailure::missing(directive, expected, false).fmt(f)
             }
             Self::IncorrectUnitDependency { directive, expected, actual } => {
-                write!(f, "{directive} must include {expected}: {actual}")
+                DependencyFailure::incorrect(directive, expected, actual, false).fmt(f)
             }
             Self::MissingApiKeySecret => {
                 write!(
@@ -174,6 +196,55 @@ impl fmt::Display for QdrantQuadletError {
             Self::InlineApiKeyEnvironmentDisallowed { .. } => f.write_str(
                 "Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>",
             ),
+        }
+    }
+}
+
+/// The dependency a `[Unit]` directive failed to declare.
+///
+/// [`QdrantQuadletError`] carries four variants for these failures because the
+/// API-key oneshot's variants are part of the historical public surface and
+/// must keep their original messages. Normalising the four into one value keeps
+/// the message shapes in one place without collapsing the variants.
+struct DependencyFailure<'a> {
+    directive: &'a str,
+    expected: &'a str,
+    /// The wrong unit the directive names, or `None` when it is absent.
+    actual: Option<&'a str>,
+    is_api_key: bool,
+}
+
+impl<'a> DependencyFailure<'a> {
+    const fn missing(directive: &'a str, expected: &'a str, is_api_key: bool) -> Self {
+        Self { directive, expected, actual: None, is_api_key }
+    }
+
+    const fn incorrect(
+        directive: &'a str,
+        expected: &'a str,
+        actual: &'a str,
+        is_api_key: bool,
+    ) -> Self {
+        Self { directive, expected, actual: Some(actual), is_api_key }
+    }
+
+    /// Writes the operator-facing message for this failure.
+    ///
+    /// The API-key wording names the oneshot explicitly and has been stable
+    /// since the secret contract shipped, so it is not generalised.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (directive, expected) = (self.directive, self.expected);
+        match (self.is_api_key, self.actual) {
+            (true, None) => write!(
+                f,
+                "missing {directive}={expected} dependency for Qdrant API-key provisioning",
+            ),
+            (true, Some(actual)) => write!(
+                f,
+                "{directive} must include {expected} for Qdrant API-key provisioning: {actual}",
+            ),
+            (false, None) => write!(f, "missing {directive}={expected} dependency"),
+            (false, Some(actual)) => write!(f, "{directive} must include {expected}: {actual}"),
         }
     }
 }

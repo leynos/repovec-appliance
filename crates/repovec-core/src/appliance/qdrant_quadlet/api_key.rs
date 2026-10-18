@@ -38,10 +38,13 @@ use super::{
 ///
 /// # Errors
 ///
-/// Returns [`QdrantQuadletError::MissingUnitDependency`] when a required
-/// dependency directive is absent, or
-/// [`QdrantQuadletError::IncorrectUnitDependency`] when the directive does not
-/// reference the required provisioning service.
+/// Returns [`QdrantQuadletError::MissingApiKeyProvisioningDependency`] or
+/// [`QdrantQuadletError::IncorrectApiKeyProvisioningDependency`] for the
+/// API-key oneshot, and [`QdrantQuadletError::MissingUnitDependency`] or
+/// [`QdrantQuadletError::IncorrectUnitDependency`] for
+/// `repovec-provision.service`. The API-key variants predate the general
+/// dependency check and remain part of the public surface so existing callers
+/// observing them keep working.
 ///
 /// # Examples
 ///
@@ -90,7 +93,7 @@ fn validate_unit_dependency(
     let dependencies = parsed.values(UNIT_SECTION, directive);
     if dependencies.is_empty() {
         observer.missing_provisioning_dependency(directive, expected);
-        return Err(QdrantQuadletError::MissingUnitDependency { directive, expected });
+        return Err(missing_dependency_error(directive, expected));
     }
 
     if dependencies
@@ -103,7 +106,31 @@ fn validate_unit_dependency(
 
     let dependency = dependencies.join(",");
     observer.incorrect_provisioning_dependency(directive, &dependency, expected);
-    Err(QdrantQuadletError::IncorrectUnitDependency { directive, expected, actual: dependency })
+    Err(incorrect_dependency_error(directive, expected, dependency))
+}
+
+/// Builds the missing-dependency error, preserving the API-key variant for the
+/// oneshot that predates the general provisioning check.
+fn missing_dependency_error(directive: &'static str, expected: &'static str) -> QdrantQuadletError {
+    if expected == QDRANT_API_KEY_SERVICE {
+        QdrantQuadletError::MissingApiKeyProvisioningDependency { directive }
+    } else {
+        QdrantQuadletError::MissingUnitDependency { directive, expected }
+    }
+}
+
+/// Builds the wrong-dependency error, preserving the API-key variant for the
+/// oneshot that predates the general provisioning check.
+fn incorrect_dependency_error(
+    directive: &'static str,
+    expected: &'static str,
+    dependency: String,
+) -> QdrantQuadletError {
+    if expected == QDRANT_API_KEY_SERVICE {
+        QdrantQuadletError::IncorrectApiKeyProvisioningDependency { directive, dependency }
+    } else {
+        QdrantQuadletError::IncorrectUnitDependency { directive, expected, actual: dependency }
+    }
 }
 
 /// Validates that the parsed Quadlet wires the API key through a Podman secret.

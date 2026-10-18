@@ -93,7 +93,7 @@ fn validate_unit_dependency(
     let dependencies = parsed.values(UNIT_SECTION, directive);
     if dependencies.is_empty() {
         observer.missing_provisioning_dependency(directive, expected);
-        return Err(missing_dependency_error(directive, expected));
+        return Err(dependency_error(directive, expected, None));
     }
 
     if dependencies
@@ -106,30 +106,32 @@ fn validate_unit_dependency(
 
     let dependency = dependencies.join(",");
     observer.incorrect_provisioning_dependency(directive, &dependency, expected);
-    Err(incorrect_dependency_error(directive, expected, dependency))
+    Err(dependency_error(directive, expected, Some(dependency)))
 }
 
-/// Builds the missing-dependency error, preserving the API-key variant for the
-/// oneshot that predates the general provisioning check.
-fn missing_dependency_error(directive: &'static str, expected: &'static str) -> QdrantQuadletError {
-    if expected == QDRANT_API_KEY_SERVICE {
-        QdrantQuadletError::MissingApiKeyProvisioningDependency { directive }
-    } else {
-        QdrantQuadletError::MissingUnitDependency { directive, expected }
-    }
-}
-
-/// Builds the wrong-dependency error, preserving the API-key variant for the
-/// oneshot that predates the general provisioning check.
-fn incorrect_dependency_error(
+/// Builds the dependency error for one directive.
+///
+/// The API-key oneshot's variants predate the general provisioning check and
+/// remain part of the public surface, so they are still produced for that
+/// service while every other expected unit gets the general variants. The
+/// `wrong_unit` argument distinguishes an absent directive (`None`) from one
+/// naming the wrong unit (`Some`).
+fn dependency_error(
     directive: &'static str,
     expected: &'static str,
-    dependency: String,
+    wrong_unit: Option<String>,
 ) -> QdrantQuadletError {
-    if expected == QDRANT_API_KEY_SERVICE {
-        QdrantQuadletError::IncorrectApiKeyProvisioningDependency { directive, dependency }
-    } else {
-        QdrantQuadletError::IncorrectUnitDependency { directive, expected, actual: dependency }
+    let is_api_key = expected == QDRANT_API_KEY_SERVICE;
+    match (is_api_key, wrong_unit) {
+        (true, None) => QdrantQuadletError::MissingApiKeyProvisioningDependency { directive },
+        (true, Some(unit)) => QdrantQuadletError::IncorrectApiKeyProvisioningDependency {
+            directive,
+            dependency: unit,
+        },
+        (false, None) => QdrantQuadletError::MissingUnitDependency { directive, expected },
+        (false, Some(unit)) => {
+            QdrantQuadletError::IncorrectUnitDependency { directive, expected, actual: unit }
+        }
     }
 }
 

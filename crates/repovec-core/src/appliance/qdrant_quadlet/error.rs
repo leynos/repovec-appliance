@@ -157,13 +157,7 @@ impl fmt::Display for QdrantQuadletError {
             Self::IncorrectStorageTarget { target } => {
                 write!(f, "storage target must be {REQUIRED_STORAGE_TARGET}: {target}")
             }
-            Self::MissingSelinuxRelabel { volume } => {
-                write!(
-                    f,
-                    "storage mount must include SELinux relabel :{REQUIRED_SELINUX_OPTION}: \
-                     {volume}"
-                )
-            }
+            Self::MissingSelinuxRelabel { volume } => write_selinux_relabel(f, volume),
             Self::MissingAutoUpdate => f.write_str("missing AutoUpdate= entry in [Container]"),
             Self::IncorrectAutoUpdate { auto_update } => {
                 write!(f, "AutoUpdate must remain {REQUIRED_AUTO_UPDATE_POLICY}: {auto_update}")
@@ -181,23 +175,31 @@ impl fmt::Display for QdrantQuadletError {
             Self::IncorrectUnitDependency { directive, expected, actual } => {
                 DependencyFailure::incorrect(directive, expected, actual, false).fmt(f)
             }
-            Self::MissingApiKeySecret => {
-                write!(
-                    f,
-                    "missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY",
-                )
-            }
-            Self::IncorrectApiKeySecret { secret } => {
-                write!(
-                    f,
-                    "Qdrant API-key secret must be repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
-                )
-            }
+            Self::MissingApiKeySecret => write_missing_api_key_secret(f),
+            Self::IncorrectApiKeySecret { secret } => write_incorrect_api_key_secret(f, secret),
             Self::InlineApiKeyEnvironmentDisallowed { .. } => f.write_str(
                 "Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>",
             ),
         }
     }
+}
+
+/// Writes the diagnostic for a storage mount without the relabel option.
+fn write_selinux_relabel(f: &mut fmt::Formatter<'_>, volume: &str) -> fmt::Result {
+    write!(f, "storage mount must include SELinux relabel :{REQUIRED_SELINUX_OPTION}: {volume}")
+}
+
+/// Writes the diagnostic for an absent API-key `Secret=` entry.
+fn write_missing_api_key_secret(f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY")
+}
+
+/// Writes the diagnostic for a `Secret=` entry wired to the wrong target.
+fn write_incorrect_api_key_secret(f: &mut fmt::Formatter<'_>, secret: &str) -> fmt::Result {
+    write!(
+        f,
+        "Qdrant API-key secret must be repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
+    )
 }
 
 /// The dependency a `[Unit]` directive failed to declare.

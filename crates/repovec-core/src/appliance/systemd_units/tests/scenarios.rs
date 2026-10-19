@@ -362,7 +362,7 @@ impl ValidationScenario {
                 units.remove_line(file, "After=qdrant.service\n");
             }
             Self::RepovecdUsesQdrantContainerService => {
-                units.replace_token(file, "qdrant.service", "qdrant.container.service")
+                units.replace_token(file, "qdrant.service", "qdrant.container.service");
             }
             Self::MissingMcpdRequiresQdrant => {
                 units.remove_token(file, "Requires=", "qdrant.service");

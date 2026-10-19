@@ -1,6 +1,9 @@
 //! Unit coverage for CLI argument parsing.
 
-use std::io;
+use std::{
+    cell::{Cell, RefCell},
+    io,
+};
 
 use insta::assert_snapshot;
 use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
@@ -180,29 +183,80 @@ fn systemd_gate_validates_real_checked_in_units() {
 fn systemd_gate_writes_success_confirmation() {
     let mut buffer = Vec::new();
 
-    run_systemd_gate_with(&mut buffer, || Ok(()))
+    run_systemd_gate_with(&mut buffer, || Ok(()), || Ok(()))
         .expect("successful validation should write a confirmation line");
 
     assert_snapshot!("systemd_gate_success_confirmation", buffer_to_string(buffer));
 }
 
-/// Keep failed validation visible to callers without emitting misleading success output.
+/// Keep unit validation first and directory validation second in the CI gate.
 #[test]
-fn systemd_gate_propagates_validation_error() {
+fn systemd_gate_checks_units_before_directory_layout() {
+    let observed = RefCell::new(Vec::new());
     let mut buffer = Vec::new();
 
-    // The gate chains the systemd-unit and directory-layout validators behind an
-    // `io::Error` seam, so the injected failure models any link in that chain.
-    let result = run_systemd_gate_with(&mut buffer, || {
-        Err(io::Error::other("repovecd.service is missing [Service]"))
-    });
+    run_systemd_gate_with(
+        &mut buffer,
+        || {
+            observed.borrow_mut().push("systemd units");
+            Ok(())
+        },
+        || {
+            observed.borrow_mut().push("directory layout");
+            Ok(())
+        },
+    )
+    .expect("both validators should succeed");
 
-    assert!(result.is_err(), "validation failure must propagate as Err");
+    assert_eq!(*observed.borrow(), ["systemd units", "directory layout"]);
+}
+
+/// A unit-contract failure must stop before directory validation and success output.
+#[test]
+fn systemd_gate_propagates_unit_validation_error() {
+    let layout_called = Cell::new(false);
+    let mut buffer = Vec::new();
+
+    let result = run_systemd_gate_with(
+        &mut buffer,
+        || Err(io::Error::other("repovecd.service is missing [Service]")),
+        || {
+            layout_called.set(true);
+            Ok(())
+        },
+    );
+
+    assert!(result.is_err(), "unit validation failure must propagate as Err");
+    assert!(!layout_called.get(), "layout validation must follow unit validation");
     assert!(buffer.is_empty(), "no output should be written on failure");
     let Err(error) = result else {
-        panic!("validation failure must propagate as Err");
+        panic!("unit validation failure must propagate as Err");
     };
-    assert_snapshot!("systemd_gate_error_message", error.to_string());
+    assert_eq!(error.to_string(), "repovecd.service is missing [Service]");
+}
+
+/// A layout-contract failure must propagate without emitting success output.
+#[test]
+fn systemd_gate_propagates_directory_layout_validation_error() {
+    let units_called = Cell::new(false);
+    let mut buffer = Vec::new();
+
+    let result = run_systemd_gate_with(
+        &mut buffer,
+        || {
+            units_called.set(true);
+            Ok(())
+        },
+        || Err(io::Error::other("/var/lib/repovec has mode 0755")),
+    );
+
+    assert!(result.is_err(), "layout validation failure must propagate as Err");
+    assert!(units_called.get(), "unit validation must run before layout validation");
+    assert!(buffer.is_empty(), "no output should be written on failure");
+    let Err(error) = result else {
+        panic!("layout validation failure must propagate as Err");
+    };
+    assert_eq!(error.to_string(), "/var/lib/repovec has mode 0755");
 }
 
 /// Reject dangling path options with usage guidance instead of interpreting them as empty paths.

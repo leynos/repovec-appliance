@@ -115,24 +115,34 @@ fn run_docs_gate(out: &mut impl io::Write, input: Input) -> io::Result<()> {
 /// # Example
 /// Valid checked-in units produce the appliance-contract confirmation line.
 fn run_systemd_gate(out: &mut impl io::Write) -> io::Result<()> {
-    run_systemd_gate_with(out, || {
-        repovec_core::appliance::systemd_units::validate_checked_in_systemd_units()
-            .map_err(io::Error::other)?;
-        repovec_core::appliance::directory_layout::validate_checked_in_directory_layout()
-            .map_err(io::Error::other)?;
-        Ok(())
-    })
+    run_systemd_gate_with(
+        out,
+        || {
+            repovec_core::appliance::systemd_units::validate_checked_in_systemd_units()
+                .map_err(io::Error::other)
+        },
+        || {
+            repovec_core::appliance::directory_layout::validate_checked_in_directory_layout()
+                .map_err(io::Error::other)
+        },
+    )
 }
 
-/// Runs the supplied validator before writing the systemd gate confirmation.
+/// Runs both supplied validators in order before writing the gate confirmation.
 ///
 /// # Example
-/// A validator returning `Ok(())` writes the confirmation; an error writes none.
-fn run_systemd_gate_with<F>(out: &mut impl io::Write, validator: F) -> io::Result<()>
+/// Two successful validators write the confirmation; either error writes none.
+fn run_systemd_gate_with<UnitValidator, LayoutValidator>(
+    out: &mut impl io::Write,
+    validate_units: UnitValidator,
+    validate_layout: LayoutValidator,
+) -> io::Result<()>
 where
-    F: FnOnce() -> io::Result<()>,
+    UnitValidator: FnOnce() -> io::Result<()>,
+    LayoutValidator: FnOnce() -> io::Result<()>,
 {
-    validator()?;
+    validate_units()?;
+    validate_layout()?;
     writeln!(out, "checked-in systemd units and directory layout satisfy the appliance contract")?;
     out.flush()
 }

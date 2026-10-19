@@ -647,13 +647,13 @@ authenticated, read-only `list_collections()` request because the health
 endpoint alone does not prove API-key validity.
 
 `repovec_core::appliance::daemon_startup` is the composition layer. It first
-validates checked-in systemd-unit contracts, then establishes authenticated
-Qdrant startup liveness. Both daemon binaries are thin delegates to that shared
-process boundary. Unit tests inject the liveness closure so they can prove
-ordering, retry policy, exit-code mapping, and structured logging without
-opening sockets; the ignored Podman integration test covers the real network
-and authentication boundary. Run that integration test explicitly on a host
-with Podman:
+validates checked-in systemd-unit contracts, then checks the live directory
+layout, and only then establishes authenticated Qdrant startup liveness. Both
+daemon binaries are thin delegates to that shared process boundary. Unit tests
+inject the live-layout and liveness checks so they can prove ordering, retry
+policy, exit-code mapping, and structured logging without opening sockets; the
+ignored Podman integration test covers the real network and authentication
+boundary. Run that integration test explicitly on a host with Podman:
 
 ```sh
 cargo test -p repovec-core --test qdrant_liveness_integration -- --ignored
@@ -661,8 +661,9 @@ cargo test -p repovec-core --test qdrant_liveness_integration -- --ignored
 
 ### 5.4 `systemd_units` validation surface
 
-The `systemd_units` module exposes the public validation surface for the
-checked-in repovec target, daemon service files, and grepai indexer template:
+The `systemd_units` module exposes the public validation surface for the five
+checked-in units: the repovec target, the provisioning oneshot, both daemon
+service files, and the grepai indexer template:
 
 - `checked_in_repovec_target() -> &'static str` returns the embedded
   `packaging/systemd/repovec.target` source.
@@ -670,8 +671,12 @@ checked-in repovec target, daemon service files, and grepai indexer template:
   `packaging/systemd/repovecd.service` source.
 - `checked_in_repovec_mcpd_service() -> &'static str` returns the embedded
   `packaging/systemd/repovec-mcpd.service` source.
+- `checked_in_repovec_provision_service() -> &'static str` returns the embedded
+  `packaging/systemd/repovec-provision.service` source.
 - `checked_in_repovec_grepai_template() -> &'static str` returns the embedded
   `packaging/systemd/repovec-grepai@.service` source.
+- `CHECKED_IN_REPOVEC_PROVISION_SERVICE_PATH` names the repository path for the
+  checked-in `packaging/systemd/repovec-provision.service` unit.
 - `CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH` names the repository path for the
   checked-in `packaging/systemd/repovec-grepai@.service` template.
 - `validate_checked_in_systemd_units() -> Result<(), SystemdUnitError>`
@@ -702,6 +707,12 @@ This module validates static unit-file policy only. It must not call
 `systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
 runtime installation work.
 
+Four appliance units consume provisioning: `repovecd.service`,
+`repovec-mcpd.service`, `repovec-qdrant-api-key.service`, and the
+`qdrant.container` Quadlet. Each declares `Requires=repovec-provision.service`,
+which blocks its start if provisioning fails; `After=` alone only orders start
+jobs.
+
 Keep the three-argument `validate_systemd_units` API for callers that only need
 the base target and daemon contract. New callers that need the complete
 checked-in appliance layout should use
@@ -725,6 +736,15 @@ effects visible at call sites. `TracingQdrantQuadletObserver` is the production
 adapter that maps observer callbacks to `tracing` events. The unit type `()`
 implements `QdrantQuadletObserver` as a no-op sink for test and silent paths
 that should validate without telemetry overhead.
+
+Provisioning dependency callbacks are general:
+`missing_provisioning_dependency` reports a missing required provisioning unit,
+and `incorrect_provisioning_dependency` reports an incorrect dependency. Their
+default implementations forward the Qdrant API-key service case to the older
+`missing_api_key_provisioning_dependency` and
+`incorrect_api_key_provisioning_dependency` callbacks, respectively. This keeps
+existing observers source-compatible; observers can override the general
+callbacks to handle other provisioning dependencies as well.
 
 Qdrant Quadlet observer adapters follow these instrumentation conventions:
 
@@ -883,6 +903,12 @@ See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
 the project-local testing guidance.
 
+Compile-fail fixtures for `repovec-core` belong in the single driver in
+`crates/repovec-core/tests/compile_time.rs`. `trybuild` drivers in one package
+share generated project state and fixture binary names, so parallel drivers can
+overwrite one another's state and produce misleading results. Add new fixtures
+to that driver's existing test case list.
+
 ### 5.8 `directory_layout` validation surface
 
 The `directory_layout` module validates the checked-in assets that establish the
@@ -944,8 +970,10 @@ provisioning commands again; an operator can also restart
 consumers because they declare `Requires=repovec-provision.service`. These
 provide reapply paths after an asset update or directory drift. The
 `systemd_units` validator checks the ordered `ExecStart` sequence and both
-rerun settings, so an active-after-exit setting or a `RefuseManualStop=`
-directive fails the gate. Details are in
+rerun settings, so an active-after-exit setting or an
+`[Unit] RefuseManualStop=` directive fails the gate. `RefuseManualStop=` is a
+`[Unit]` directive, and the validator rejects it under `[Service]` as well so a
+misplaced copy cannot mislead a reader. Details are in
 `docs/repovec-appliance-technical-design.md`, "Service layout".
 
 **Live pre-flight adapter and purity boundary.** Ownership of the real tree is

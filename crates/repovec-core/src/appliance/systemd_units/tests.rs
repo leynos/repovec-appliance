@@ -11,6 +11,8 @@ mod grepai_template_mutations;
 mod hardening;
 #[path = "tests/passing.rs"]
 mod passing;
+#[path = "tests/provision_lifecycle_mutations.rs"]
+mod provision_lifecycle_mutations;
 #[path = "tests/scenarios.rs"]
 mod scenarios;
 #[path = "tests/snapshot_labels.rs"]
@@ -47,6 +49,9 @@ use unit_set::{UnitSet, checked_in_unit_set};
 #[case::missing_provision_type(ValidationScenario::MissingProvisionType)]
 #[case::provision_remains_active(ValidationScenario::ProvisionRemainsActive)]
 #[case::provision_refuses_manual_stop(ValidationScenario::ProvisionRefusesManualStop)]
+#[case::provision_refuses_manual_stop_disabled(
+    ValidationScenario::ProvisionRefusesManualStopDisabled
+)]
 #[case::missing_repovecd_service_section(ValidationScenario::MissingRepovecdServiceSection)]
 #[case::missing_repovecd_requires_qdrant(ValidationScenario::MissingRepovecdRequiresQdrant)]
 #[case::missing_repovecd_requires_provision(ValidationScenario::MissingRepovecdRequiresProvision)]

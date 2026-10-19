@@ -30,6 +30,7 @@ pub(super) enum ValidationScenario {
     MissingProvisionType,
     ProvisionRemainsActive,
     ProvisionRefusesManualStop,
+    ProvisionRefusesManualStopDisabled,
     MissingRepovecdServiceSection,
     MissingRepovecdRequiresQdrant,
     MissingRepovecdRequiresProvision,
@@ -97,7 +98,8 @@ impl ValidationScenario {
             | Self::ExtraProvisionExecStart
             | Self::MissingProvisionType
             | Self::ProvisionRemainsActive
-            | Self::ProvisionRefusesManualStop => self.mutate_provision(&mut units),
+            | Self::ProvisionRefusesManualStop
+            | Self::ProvisionRefusesManualStopDisabled => self.mutate_provision(&mut units),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
@@ -234,16 +236,11 @@ impl ValidationScenario {
             Self::MissingProvisionType => {
                 units.remove_line(UnitFile::Provision, "Type=oneshot\n");
             }
-            Self::ProvisionRemainsActive => units.replace_token(
-                UnitFile::Provision,
-                "RemainAfterExit=no",
-                "RemainAfterExit=yes",
-            ),
-            Self::ProvisionRefusesManualStop => units.replace_token(
-                UnitFile::Provision,
-                "[Service]\nType=oneshot\n",
-                "[Service]\nType=oneshot\nRefuseManualStop=yes\n",
-            ),
+            Self::ProvisionRemainsActive
+            | Self::ProvisionRefusesManualStop
+            | Self::ProvisionRefusesManualStopDisabled => {
+                self.mutate_provision_lifecycle_directives(units);
+            }
             _ => panic!("provision mutation called for non-provision scenario"),
         }
     }

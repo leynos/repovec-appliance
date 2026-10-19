@@ -35,8 +35,10 @@ pub(super) fn validate_target(target: &ParsedUnit) -> Result<(), SystemdUnitErro
 /// active-after-exit setting returns an error.
 ///
 /// `RemainAfterExit=no` leaves the completed oneshot inactive, so a later
-/// target restart starts it again. `RefuseManualStop=` is also rejected so an
-/// operator may re-run the provisioning unit directly when needed.
+/// target restart starts it again. Any `[Unit] RefuseManualStop=` is rejected
+/// so an operator may re-run the provisioning unit directly when needed.
+/// `RefuseManualStop=` is a `[Unit]` directive, so the guard reads that
+/// section: a check of `[Service]` would miss the placement systemd honours.
 pub(super) fn validate_provision_service(provision: &ParsedUnit) -> Result<(), SystemdUnitError> {
     provision.require_section(UNIT_SECTION)?;
     provision.require_section(SERVICE_SECTION)?;
@@ -50,7 +52,8 @@ pub(super) fn validate_provision_service(provision: &ParsedUnit) -> Result<(), S
     provision.require_dependency(UNIT_SECTION, "Before", REPOVEC_MCPD_UNIT)?;
     provision.require_service_directive("Type", "oneshot")?;
     provision.require_service_directive("RemainAfterExit", "no")?;
-    provision.require_absent_service_directive("RefuseManualStop")?;
+    provision.require_absent_directive(UNIT_SECTION, "RefuseManualStop")?;
+    provision.require_absent_directive(SERVICE_SECTION, "RefuseManualStop")?;
     provision.require_exec_start_sequence(PROVISION_EXEC_SEQUENCE)
 }
 

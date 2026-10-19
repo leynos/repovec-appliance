@@ -87,14 +87,16 @@ pub enum SystemdUnitError {
         /// The observed value(s) joined by commas, or an empty string if absent.
         actual: String,
     },
-    /// A `[Service]` directive the contract forbids is present.
+    /// A directive the contract forbids is present in the named section.
     ///
     /// Used where the defect is the directive's existence rather than its
     /// value: the provisioning oneshot must stay manually restartable, so any
-    /// `RefuseManualStop=` occurrence is rejected whatever it is set to.
-    ForbiddenServiceDirective {
+    /// `[Unit] RefuseManualStop=` occurrence is rejected whatever it is set to.
+    ForbiddenDirective {
         /// The logical unit file name.
         unit: &'static str,
+        /// The section containing the forbidden directive.
+        section: &'static str,
         /// The forbidden directive key (e.g. `"RefuseManualStop"`).
         key: &'static str,
         /// The observed value(s) joined by commas.
@@ -115,7 +117,7 @@ impl SystemdUnitError {
             | Self::IncorrectExecStart { unit, .. }
             | Self::IncorrectExecStartSequence { unit, .. }
             | Self::IncorrectServiceDirective { unit, .. }
-            | Self::ForbiddenServiceDirective { unit, .. } => unit,
+            | Self::ForbiddenDirective { unit, .. } => unit,
         }
     }
 }
@@ -153,8 +155,8 @@ impl fmt::Display for SystemdUnitError {
             Self::IncorrectServiceDirective { unit, key, expected, actual } => {
                 write!(f, "{unit} must have {key}={expected} in [Service]: {actual}")
             }
-            Self::ForbiddenServiceDirective { unit, key, actual } => {
-                write!(f, "{unit} must not declare {key} in [Service]: {actual}")
+            Self::ForbiddenDirective { unit, section, key, actual } => {
+                write!(f, "{unit} must not declare {key} in [{section}]: {actual}")
             }
         }
     }
@@ -205,8 +207,9 @@ mod tests {
                 expected: "repovec",
                 actual: "root".to_owned(),
             },
-            SystemdUnitError::ForbiddenServiceDirective {
+            SystemdUnitError::ForbiddenDirective {
                 unit: "repovec-provision.service",
+                section: "Unit",
                 key: "RefuseManualStop",
                 actual: "yes".to_owned(),
             },

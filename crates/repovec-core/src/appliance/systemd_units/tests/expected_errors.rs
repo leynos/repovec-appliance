@@ -2,7 +2,7 @@
 
 use super::{
     error_builders::{
-        exec_start, forbidden_service_directive, missing, missing_install, quadlet_source,
+        exec_start, forbidden_directive, missing, missing_install, quadlet_source,
         service_directive,
     },
     scenarios::ValidationScenario,
@@ -36,7 +36,8 @@ impl ValidationScenario {
             | Self::ExtraProvisionExecStart
             | Self::MissingProvisionType
             | Self::ProvisionRemainsActive
-            | Self::ProvisionRefusesManualStop => self.expected_provision_error(),
+            | Self::ProvisionRefusesManualStop
+            | Self::ProvisionRefusesManualStopDisabled => self.expected_provision_error(),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
@@ -156,7 +157,10 @@ impl ValidationScenario {
                 service_directive("repovec-provision.service", "RemainAfterExit", "no", "yes")
             }
             Self::ProvisionRefusesManualStop => {
-                forbidden_service_directive("repovec-provision.service", "RefuseManualStop", "yes")
+                forbidden_directive("repovec-provision.service", "Unit", "RefuseManualStop", "yes")
+            }
+            Self::ProvisionRefusesManualStopDisabled => {
+                forbidden_directive("repovec-provision.service", "Unit", "RefuseManualStop", "no")
             }
             _ => panic!("provision error called for non-provision scenario"),
         }

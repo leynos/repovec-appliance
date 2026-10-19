@@ -136,12 +136,13 @@ account or an unprovisioned tree.
 The oneshot sets `RemainAfterExit=no` so that it returns to inactive after a
 successful run; a later `systemctl restart repovec.target` therefore starts it
 again and re-applies the idempotent `sysusers` and `tmpfiles` declarations.
-`RefuseManualStop=` must not be added to the unit: it would deny the direct
-`systemctl restart repovec-provision.service` that an operator needs after
-directory drift. That direct restart also restarts active consumers because
-they require the provisioning unit. `systemd_units` rejects any
-`RefuseManualStop=` occurrence. Both directives are contract, not style, and
-are guarded by mutation tests.
+`[Unit] RefuseManualStop=` must not be added to the unit: it would deny the
+direct `systemctl restart repovec-provision.service` that an operator needs
+after directory drift. That direct restart also restarts active consumers
+because they require the provisioning unit. `RefuseManualStop=` is a `[Unit]`
+directive, so `systemd_units` rejects any occurrence in `[Unit]` — and, as a
+misplaced directive, in `[Service]` too. Both directives are contract, not
+style, and are guarded by mutation tests.
 
 ## Goals and non-goals
 

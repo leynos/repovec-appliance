@@ -466,9 +466,12 @@ action; they are not quality targets.
   supported way to reapply the idempotent assets after directory drift or an
   asset update. With both corrections, either restart path re-runs the
   commands, and a direct restart also restarts the active units that declare
-  `Requires=repovec-provision.service`. `systemd_units` now rejects any
-  `RefuseManualStop=` occurrence and guards the `RemainAfterExit=no` value with
-  a mutation case.
+  `Requires=repovec-provision.service`. `systemd_units` now rejects
+  `RefuseManualStop=` in `[Unit]` — the section systemd reads it from — and, as
+  a misplaced copy, in `[Service]`. Mutation cases guard the
+  `RemainAfterExit=no` value and both section placements, including a
+  `RefuseManualStop=no` case that proves the check is on existence rather than
+  value.
 
 ## Outcomes & Retrospective
 
@@ -1445,9 +1448,11 @@ first successful activation (Decision D-14, Codex review of PR #186).
   `systemctl restart repovec-provision.service` that an operator needs after
   directory drift or an asset update; because the `Requires=` consumers are
   restarted with it, that command is the complete repair path. The validator
-  now rejects any `RefuseManualStop=` occurrence on the provisioning unit, and
-  a mutation case guards the rejection. The rejection is an existence check,
-  not a value check, so `RefuseManualStop=no` is rejected too.
+  now rejects `RefuseManualStop=` on the provisioning unit, and mutation cases
+  guard the rejection. `RefuseManualStop=` is a `[Unit]` directive, so the
+  guard reads `[Unit]`; a `[Service]` occurrence is rejected as a misplaced
+  directive too. The rejection is an existence check, not a value check, so
+  `RefuseManualStop=no` is rejected as well.
 - The users guide, developer guide, ADR, technical design, and migration
   instructions now describe target and direct unit restarts as reapply paths.
   The manual acceptance procedure checks that the oneshot exits successfully
@@ -1460,6 +1465,13 @@ first successful activation (Decision D-14, Codex review of PR #186).
   an inactive oneshot re-runs on either a direct restart or a target restart.
   These were throwaway units; no appliance host has run the acceptance
   procedure.
+- CodeRabbit's re-review of `b1fa643` caught that the first version of the
+  guard read `[Service]`, while `RefuseManualStop=` is a `[Unit]` directive.
+  The original unit carried it under `[Unit]`, so the mutation did not
+  reproduce the defect and a restored `[Unit]` occurrence would have bypassed
+  the guard. The lookup, mutation, and diagnostic now use `[Unit]`, `[Service]`
+  is rejected as a misplaced copy, and `ProvisionRefusesManualStopDisabled`
+  covers `RefuseManualStop=no`.
 
 Revision 9 (2026-10-19): completed the remaining parser and test review
 follow-up on the replacement PR branch.

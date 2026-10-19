@@ -109,6 +109,17 @@ FORK_FALLBACK_LABEL: typ.Final = "ubuntu-latest"
 #: the same shape that selects the wrong runner on every fork pull request.
 FORK_GUARD: typ.Final = "github.event.pull_request.head.repo.fork"
 
+#: The pull request's author, not ``github.actor``: the actor is whoever
+#: triggered the run, so a person pushing to a Dependabot branch would flip the
+#: runner. Hosted minutes cost nothing on a public repository, so Dependabot's
+#: pull requests take the fork arm too.
+DEPENDABOT_GUARD: typ.Final = (
+    "github.event.pull_request.user.login == 'dependabot[bot]'"
+)
+
+#: The exact guard every fallback lane keys on.
+HOSTED_GUARD: typ.Final = f"({FORK_GUARD} || {DEPENDABOT_GUARD})"
+
 #: Every Ubicloud job, with the reviewed label and the reviewed ceiling it
 #: must carry. Both are pinned per coordinate rather than assumed uniform:
 #: `lint` was right-sized to four vCPU on measurement, and a shape that is
@@ -143,11 +154,12 @@ GITHUB_HOSTED_LABELS: typ.Final = frozenset({FORK_FALLBACK_LABEL})
 #: renamed or neutered label still leaves its family's text behind.
 FOREIGN_RUNNER_FRAGMENTS: typ.Final = ("windows", "macos", "self-hosted")
 
-#: One expression, anchored end to end. ``[^'\n]`` in the arms and ``\S`` in
-#: the guard keep a value carrying an embedded line break from matching here
-#: as well, so the line-break failure is reported by its own test.
+#: One expression, anchored end to end. ``[^'\n]`` in the arms, and the
+#: guard's single-line forms (a bare context or one parenthesized condition),
+#: keep a value carrying an embedded line break from matching here as well, so
+#: the line-break failure is reported by its own test.
 RUNNER_EXPRESSION: typ.Final = re.compile(
-    r"^\$\{\{ (?P<guard>\S+)"
+    r"^\$\{\{ (?P<guard>\([^\n]*?\)|\S+)"
     r" && '(?P<fork_arm>[^'\n]*)'"
     r" \|\| '(?P<default_arm>[^'\n]*)' \}\}$"
 )
@@ -219,7 +231,9 @@ def _declaration_labels(declaration: object) -> set[str]:
     """
     text = str(declaration)
     if "${{" in text:
-        return set(EXPRESSION_LITERAL.findall(text))
+        # The author test compares against `dependabot[bot]`: an operand of
+        # the condition, not a runner label.
+        return set(EXPRESSION_LITERAL.findall(text)) - {"dependabot[bot]"}
     return {text.strip()}
 
 
@@ -311,9 +325,10 @@ def test_the_runner_expression_is_exactly_the_reviewed_one(
         f"{coordinate[0]}:{coordinate[1]} should declare the reviewed fork "
         f"fallback expression; got {value!r}"
     )
-    assert match["guard"] == FORK_GUARD, (
+    assert match["guard"] == HOSTED_GUARD, (
         f"{coordinate[0]}:{coordinate[1]} keys its fallback on "
-        f"{match['guard']!r}; only {FORK_GUARD!r} identifies a fork"
+        f"{match['guard']!r}; only {HOSTED_GUARD!r} identifies a fork or a "
+        "Dependabot pull request"
     )
     assert match["fork_arm"] == FORK_FALLBACK_LABEL, (
         f"{coordinate[0]}:{coordinate[1]} sends forks to "

@@ -37,8 +37,12 @@ jobs:
   # The Ubicloud label is registered for actionlint in .github/actionlint.yaml.
   spelling:
     name: spelling
+    # Dependabot pull requests run on the hosted pool too (free on a public
+    # repository). The author is tested, not the actor, which changes when
+    # someone else pushes to the branch.
     runs-on: >-
-      ${{ github.event.pull_request.head.repo.fork
+      ${{ (github.event.pull_request.head.repo.fork
+      || github.event.pull_request.user.login == 'dependabot[bot]')
       && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 10
     permissions:
@@ -58,7 +62,8 @@ jobs:
   build:
     name: build
     runs-on: >-
-      ${{ github.event.pull_request.head.repo.fork
+      ${{ (github.event.pull_request.head.repo.fork
+      || github.event.pull_request.user.login == 'dependabot[bot]')
       && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 15
     permissions:
@@ -73,7 +78,8 @@ jobs:
   check-fmt:
     name: check-fmt
     runs-on: >-
-      ${{ github.event.pull_request.head.repo.fork
+      ${{ (github.event.pull_request.head.repo.fork
+      || github.event.pull_request.user.login == 'dependabot[bot]')
       && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 15
     permissions:
@@ -112,7 +118,8 @@ jobs:
     # costs twice per minute, which is roughly cost-neutral if the work
     # halves, and buys back the wall-clock time.
     runs-on: >-
-      ${{ github.event.pull_request.head.repo.fork
+      ${{ (github.event.pull_request.head.repo.fork
+      || github.event.pull_request.user.login == 'dependabot[bot]')
       && 'ubuntu-latest' || 'ubicloud-standard-4' }}
     timeout-minutes: 30
     permissions:
@@ -179,7 +186,8 @@ jobs:
   test:
     name: test
     runs-on: >-
-      ${{ github.event.pull_request.head.repo.fork
+      ${{ (github.event.pull_request.head.repo.fork
+      || github.event.pull_request.user.login == 'dependabot[bot]')
       && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 25
     permissions:
@@ -199,7 +207,8 @@ jobs:
   docs-gate:
     name: docs-gate
     runs-on: >-
-      ${{ github.event.pull_request.head.repo.fork
+      ${{ (github.event.pull_request.head.repo.fork
+      || github.event.pull_request.user.login == 'dependabot[bot]')
       && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 30
     permissions:
@@ -285,7 +294,8 @@ jobs:
   systemd-gate:
     name: systemd-gate
     runs-on: >-
-      ${{ github.event.pull_request.head.repo.fork
+      ${{ (github.event.pull_request.head.repo.fork
+      || github.event.pull_request.user.login == 'dependabot[bot]')
       && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 15
     permissions:

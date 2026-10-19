@@ -281,6 +281,16 @@ action; they are not quality targets.
   finding and the observability, user-facing, and developer documentation
   warnings are actioned; see Revision 7. The branch is squashed onto
   `1-3-3-repovec-directory-layout` with PRs #168 and #180 closed as superseded.
+- [x] Documentation correction on branch `1-3-3-repovec-directory-layout-review`
+  (2026-10-19, `d30236f`). CodeRabbit's 2026-10-18 re-check confirmed the
+  testing and observability findings closed but kept both documentation
+  warnings open. The migration notes now install the assets to the `/usr/lib/`
+  paths the oneshot consumes and attribute `/etc/repovec` to the API-key
+  helper; the developer guide now describes the direct sysusers-then-tmpfiles
+  integration lifecycle and the absence of systemd as PID 1. The same commit
+  carries the pending `mdtablefix` reflow that made the hosted `check-fmt` job
+  fail at `f1d463d`. See Revision 8. PR #181 is closed as superseded by #186,
+  which carries the identical branch content plus this commit.
 
 - [x] SCOPE ESCALATION (2026-08-12): branch is at 17 non-snapshot code/asset
   files and ~1700 net lines vs the plan tolerance (24 files / roughly 1000 net
@@ -1368,6 +1378,32 @@ gates are green, and PR #78's description was updated to reflect the completed
 milestones and the capable-host integration result.
 
 ## Revision note
+
+Revision 8 (2026-10-19): closed the two documentation findings CodeRabbit kept
+open after Revision 7, and cleared the hosted formatting failure.
+
+- **Migration asset destinations.** `docs/migrations/0-2-0.md` installed the
+  `sysusers.d` and `tmpfiles.d` assets under `/etc`, but
+  `repovec-provision.service` executes the copies under `/usr/lib/`. The
+  instructions now match the unit. The same section no longer credits the
+  tmpfiles asset with creating `/etc/repovec`; it records the single-authority
+  rule (SI-4) and attributes the directory to the `repovec-qdrant-api-key`
+  helper, which creates it as `0750 root:repovec`.
+- **Integration coverage description.** `docs/developers-guide.md` §6.1 claimed
+  the suite installs and starts the provisioning oneshot inside a container
+  running systemd as PID 1, and that it asserts `/etc/repovec`. The container
+  runs `sleep infinity`, the suite invokes `systemd-sysusers` then
+  `systemd-tmpfiles --create` directly, and the `/etc/repovec` assertion lives
+  in `provisioning/test_qdrant_api_key.py`. The text now says so, and the suite
+  table row no longer implies a booted systemd image.
+- **Hosted `check-fmt`.** The failing job was `mdtablefix` reporting the
+  execplan as `+10 -11`; the reflow is applied in the same commit. The other
+  hosted jobs in run 39128549579 passed.
+- The branch now lives on `1-3-3-repovec-directory-layout-review`. PR #181 is
+  closed as superseded by PR #186, which carries the identical content plus
+  `d30236f`; no review work was discarded.
+- Full systemd acceptance remains **unverified**; nothing in this revision
+  changes that.
 
 Revision 7 (2026-10-18): closed the CodeRabbit pre-merge check on PR #181 — one
 blocking testing error and three of four warnings.

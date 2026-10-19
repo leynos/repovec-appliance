@@ -937,9 +937,15 @@ unit — `repovecd.service`, `repovec-mcpd.service`,
 `repovec-qdrant-api-key.service`, and the `qdrant.container` Quadlet — declares
 `Requires=repovec-provision.service` alongside its ordering directive, because
 `After=` alone does not cancel a dependent start job when provisioning fails.
-The `systemd_units` validator checks the ordered `ExecStart` sequence of the
-provisioning unit itself, so a reordered or removed `systemd-sysusers` /
-`systemd-tmpfiles` invocation fails the gate. Details are in
+The oneshot sets `RemainAfterExit=no`, so it returns to inactive after a
+successful run. A later `systemctl restart repovec.target` runs the idempotent
+provisioning commands again; an operator can also restart
+`repovec-provision.service` directly. The direct restart also restarts active
+consumers because they declare `Requires=repovec-provision.service`. These
+provide reapply paths after an asset update or directory drift. The
+`systemd_units` validator checks the ordered `ExecStart` sequence and both
+rerun settings, so an active-after-exit setting or a `RefuseManualStop=`
+directive fails the gate. Details are in
 `docs/repovec-appliance-technical-design.md`, "Service layout".
 
 **Live pre-flight adapter and purity boundary.** Ownership of the real tree is

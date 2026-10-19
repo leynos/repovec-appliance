@@ -133,6 +133,16 @@ itself `Before=` every consumer, and every consuming unit declares
 stops the dependent services rather than starting them against a missing
 account or an unprovisioned tree.
 
+The oneshot sets `RemainAfterExit=no` so that it returns to inactive after a
+successful run; a later `systemctl restart repovec.target` therefore starts it
+again and re-applies the idempotent `sysusers` and `tmpfiles` declarations.
+`RefuseManualStop=` must not be added to the unit: it would deny the direct
+`systemctl restart repovec-provision.service` that an operator needs after
+directory drift. That direct restart also restarts active consumers because
+they require the provisioning unit. `systemd_units` rejects any
+`RefuseManualStop=` occurrence. Both directives are contract, not style, and
+are guarded by mutation tests.
+
 ## Goals and non-goals
 
 - Goals:
@@ -150,7 +160,9 @@ account or an unprovisioned tree.
 ## Known Risks and Limitations
 
 - `systemd-tmpfiles` `d` lines do not repair misowned _existing children_; the
-  live pre-flight detects that case rather than silently tolerating it.
+  live pre-flight detects that case rather than silently tolerating it. The
+  operator remedy is to correct the child and then restart
+  `repovec-provision.service` or `repovec.target`.
 - The `qdrant-storage` `root:root` ownership assumes Qdrant remains rootful
   with no userns remap; any change to the Quadlet's user/namespace handling
   invalidates the directory contract and must be coordinated with this ADR.

@@ -3,11 +3,15 @@ Description=Provision the repovec user and directory layout
 Wants=systemd-sysusers.service
 After=systemd-sysusers.service
 Before=repovec-qdrant-api-key.service qdrant.service repovecd.service repovec-mcpd.service
-RefuseManualStop=yes
+# Do not add RefuseManualStop=yes: it refuses the direct
+# `systemctl restart repovec-provision.service` that an operator uses to
+# reapply the assets after directory drift or a tmpfiles update. Keep
+# RemainAfterExit=no so `systemctl restart repovec.target` re-runs the oneshot
+# as well. The static validator rejects RefuseManualStop outright.
 
 [Service]
 Type=oneshot
-RemainAfterExit=yes
+RemainAfterExit=no
 ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf
 ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf
 StandardOutput=journal

@@ -45,6 +45,8 @@ use unit_set::{UnitSet, checked_in_unit_set};
 #[case::swapped_provision_exec_start_order(ValidationScenario::SwappedProvisionExecStartOrder)]
 #[case::extra_provision_exec_start(ValidationScenario::ExtraProvisionExecStart)]
 #[case::missing_provision_type(ValidationScenario::MissingProvisionType)]
+#[case::provision_remains_active(ValidationScenario::ProvisionRemainsActive)]
+#[case::provision_refuses_manual_stop(ValidationScenario::ProvisionRefusesManualStop)]
 #[case::missing_repovecd_service_section(ValidationScenario::MissingRepovecdServiceSection)]
 #[case::missing_repovecd_requires_qdrant(ValidationScenario::MissingRepovecdRequiresQdrant)]
 #[case::missing_repovecd_requires_provision(ValidationScenario::MissingRepovecdRequiresProvision)]

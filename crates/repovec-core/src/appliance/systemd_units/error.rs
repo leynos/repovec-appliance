@@ -87,6 +87,19 @@ pub enum SystemdUnitError {
         /// The observed value(s) joined by commas, or an empty string if absent.
         actual: String,
     },
+    /// A `[Service]` directive the contract forbids is present.
+    ///
+    /// Used where the defect is the directive's existence rather than its
+    /// value: the provisioning oneshot must stay manually restartable, so any
+    /// `RefuseManualStop=` occurrence is rejected whatever it is set to.
+    ForbiddenServiceDirective {
+        /// The logical unit file name.
+        unit: &'static str,
+        /// The forbidden directive key (e.g. `"RefuseManualStop"`).
+        key: &'static str,
+        /// The observed value(s) joined by commas.
+        actual: String,
+    },
 }
 
 impl SystemdUnitError {
@@ -101,7 +114,8 @@ impl SystemdUnitError {
             | Self::UsesQuadletSourceDependency { unit, .. }
             | Self::IncorrectExecStart { unit, .. }
             | Self::IncorrectExecStartSequence { unit, .. }
-            | Self::IncorrectServiceDirective { unit, .. } => unit,
+            | Self::IncorrectServiceDirective { unit, .. }
+            | Self::ForbiddenServiceDirective { unit, .. } => unit,
         }
     }
 }
@@ -138,6 +152,9 @@ impl fmt::Display for SystemdUnitError {
             }
             Self::IncorrectServiceDirective { unit, key, expected, actual } => {
                 write!(f, "{unit} must have {key}={expected} in [Service]: {actual}")
+            }
+            Self::ForbiddenServiceDirective { unit, key, actual } => {
+                write!(f, "{unit} must not declare {key} in [Service]: {actual}")
             }
         }
     }
@@ -188,6 +205,11 @@ mod tests {
                 expected: "repovec",
                 actual: "root".to_owned(),
             },
+            SystemdUnitError::ForbiddenServiceDirective {
+                unit: "repovec-provision.service",
+                key: "RefuseManualStop",
+                actual: "yes".to_owned(),
+            },
             SystemdUnitError::MissingDependency {
                 unit: "repovec-provision.service",
                 section: "Unit",
@@ -208,6 +230,7 @@ mod tests {
                 "repovecd.service",
                 "repovecd.service",
                 "repovec-mcpd.service",
+                "repovec-provision.service",
                 "repovec-provision.service",
             ],
         );

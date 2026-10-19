@@ -28,10 +28,15 @@ pub(super) fn validate_target(target: &ParsedUnit) -> Result<(), SystemdUnitErro
     target.require_dependency(UNIT_SECTION, "Wants", REPOVEC_PROVISION_SERVICE)
 }
 
-/// Checks the provisioning oneshot's ordering, type, and seed commands.
+/// Checks the provisioning oneshot's ordering, rerun state, type, and commands.
 ///
-/// For example, a `oneshot` that is wanted by `repovec.target` and ordered before Qdrant and both
-/// daemons returns `Ok(())`; a missing ordering token returns an error.
+/// For example, a `oneshot` that returns to inactive after success can be
+/// started again by a later target restart; a missing ordering token or an
+/// active-after-exit setting returns an error.
+///
+/// `RemainAfterExit=no` leaves the completed oneshot inactive, so a later
+/// target restart starts it again. `RefuseManualStop=` is also rejected so an
+/// operator may re-run the provisioning unit directly when needed.
 pub(super) fn validate_provision_service(provision: &ParsedUnit) -> Result<(), SystemdUnitError> {
     provision.require_section(UNIT_SECTION)?;
     provision.require_section(SERVICE_SECTION)?;
@@ -44,7 +49,8 @@ pub(super) fn validate_provision_service(provision: &ParsedUnit) -> Result<(), S
     provision.require_dependency(UNIT_SECTION, "Before", REPOVECD_UNIT)?;
     provision.require_dependency(UNIT_SECTION, "Before", REPOVEC_MCPD_UNIT)?;
     provision.require_service_directive("Type", "oneshot")?;
-    provision.require_service_directive("RemainAfterExit", "yes")?;
+    provision.require_service_directive("RemainAfterExit", "no")?;
+    provision.require_absent_service_directive("RefuseManualStop")?;
     provision.require_exec_start_sequence(PROVISION_EXEC_SEQUENCE)
 }
 

@@ -24,7 +24,9 @@ impl ValidationScenario {
             | Self::WrongProvisionSysusersExecStart
             | Self::SwappedProvisionExecStartOrder
             | Self::ExtraProvisionExecStart
-            | Self::MissingProvisionType => self.provision_snapshot_label(),
+            | Self::MissingProvisionType
+            | Self::ProvisionRemainsActive
+            | Self::ProvisionRefusesManualStop => self.provision_snapshot_label(),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
@@ -97,6 +99,8 @@ impl ValidationScenario {
             Self::SwappedProvisionExecStartOrder => "swapped_provision_exec_start_order_display",
             Self::ExtraProvisionExecStart => "extra_provision_exec_start_display",
             Self::MissingProvisionType => "missing_provision_type_display",
+            Self::ProvisionRemainsActive => "provision_remains_active_display",
+            Self::ProvisionRefusesManualStop => "provision_refuses_manual_stop_display",
             _ => panic!("provision snapshot label called for non-provision scenario"),
         }
     }

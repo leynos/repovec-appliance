@@ -196,6 +196,32 @@ impl ParsedUnit {
         })
     }
 
+    /// Requires that a service directive is absent entirely.
+    ///
+    /// Some contract failures are not a wrong value but an extra directive. The
+    /// provisioning oneshot is one: `RefuseManualStop=yes` blocks a supported
+    /// direct re-run path, so any occurrence, whatever its value, is a contract
+    /// violation. Reporting the observed values keeps the diagnostic
+    /// actionable without needing a separate "forbidden value" API.
+    ///
+    /// For example, a unit without `RefuseManualStop=` returns `Ok(())`, while
+    /// `RefuseManualStop=yes` yields [`SystemdUnitError::ForbiddenServiceDirective`].
+    pub(super) fn require_absent_service_directive(
+        &self,
+        key: &'static str,
+    ) -> Result<(), SystemdUnitError> {
+        let values = self.values(SERVICE_SECTION, key);
+        if values.is_empty() {
+            return Ok(());
+        }
+
+        Err(SystemdUnitError::ForbiddenServiceDirective {
+            unit: self.unit,
+            key,
+            actual: values.join(","),
+        })
+    }
+
     /// Requires the expected value among the service's `Environment` entries.
     ///
     /// For example, `HOME=/var/lib/repovec` succeeds when present; otherwise the directive error

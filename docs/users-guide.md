@@ -317,8 +317,26 @@ does not prevent a dependent service from starting when provisioning fails. The
 requirement is what makes the appliance fail closed on a host where the
 `repovec` user or the data tree could not be created. `systemd-sysusers`
 creates the account record but not the home directory; the `tmpfiles.d` asset
-creates the tree. Both tools are idempotent: re-running them converges from any
-state and never empties a populated directory.
+creates the tree. Re-running the tools creates missing declarations and does
+not empty populated directories. It does not correct an existing `repovec`
+account or repair misowned existing children; those conditions require an
+operator to correct the account or child ownership separately.
+
+The provisioning oneshot returns to inactive after success. Restarting
+`repovec.target` therefore runs it again, providing a supported way to reapply
+the account and directory declarations after updating the assets or repairing
+directory drift:
+
+```sh
+sudo systemctl restart repovec.target
+```
+
+To reapply provisioning directly, restart its unit. Systemd also restarts
+active consumers because they require this unit:
+
+```sh
+sudo systemctl restart repovec-provision.service
+```
 
 Enable and start the appliance service group with:
 

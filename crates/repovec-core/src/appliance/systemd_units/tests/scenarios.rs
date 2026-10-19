@@ -28,6 +28,8 @@ pub(super) enum ValidationScenario {
     SwappedProvisionExecStartOrder,
     ExtraProvisionExecStart,
     MissingProvisionType,
+    ProvisionRemainsActive,
+    ProvisionRefusesManualStop,
     MissingRepovecdServiceSection,
     MissingRepovecdRequiresQdrant,
     MissingRepovecdRequiresProvision,
@@ -93,7 +95,9 @@ impl ValidationScenario {
             | Self::WrongProvisionSysusersExecStart
             | Self::SwappedProvisionExecStartOrder
             | Self::ExtraProvisionExecStart
-            | Self::MissingProvisionType => self.mutate_provision(&mut units),
+            | Self::MissingProvisionType
+            | Self::ProvisionRemainsActive
+            | Self::ProvisionRefusesManualStop => self.mutate_provision(&mut units),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
@@ -181,7 +185,7 @@ impl ValidationScenario {
             Self::MissingProvisionUnitSection => {
                 units.replace_file(
                     UnitFile::Provision,
-                    "[Service]\nType=oneshot\nRemainAfterExit=yes\n\n[Install]\nWantedBy=repovec.target\n",
+                    "[Service]\nType=oneshot\nRemainAfterExit=no\n\n[Install]\nWantedBy=repovec.target\n",
                 );
             }
             Self::MissingProvisionServiceSection => {
@@ -230,6 +234,16 @@ impl ValidationScenario {
             Self::MissingProvisionType => {
                 units.remove_line(UnitFile::Provision, "Type=oneshot\n");
             }
+            Self::ProvisionRemainsActive => units.replace_token(
+                UnitFile::Provision,
+                "RemainAfterExit=no",
+                "RemainAfterExit=yes",
+            ),
+            Self::ProvisionRefusesManualStop => units.replace_token(
+                UnitFile::Provision,
+                "[Service]\nType=oneshot\n",
+                "[Service]\nType=oneshot\nRefuseManualStop=yes\n",
+            ),
             _ => panic!("provision mutation called for non-provision scenario"),
         }
     }

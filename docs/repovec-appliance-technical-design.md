@@ -378,8 +378,13 @@ uses. `repovecd.service` declares both `Requires=qdrant.service` and
 `systemd-tmpfiles --create` on `/usr/lib/tmpfiles.d/repovec.conf`, so the
 `repovec` system user and the `/var/lib/repovec` data tree exist before any
 dependent service starts — including on a freshly installed host that has not
-been rebooted. The contract, alternatives, and the `qdrant-storage`
-root-ownership dependency are recorded in
+been rebooted. It sets `RemainAfterExit=no`, so it returns to inactive after a
+successful run and either `systemctl restart repovec.target` or
+`systemctl restart repovec-provision.service` re-applies the idempotent
+declarations after an asset update or directory drift. The unit must not set
+`RefuseManualStop=`, which would refuse the direct repair path. Restarting the
+provisioning unit also restarts active consumers that require it. The contract,
+alternatives, and the `qdrant-storage` root-ownership dependency are recorded in
 [ADR-001: Provision the `repovec` system user and private directory tree](adr-001-repovec-directory-provisioning.md).
 
 Provisioning is a *requirement*, not an ordering hint. `After=` orders start

@@ -250,24 +250,14 @@ pub fn verify_layout_for_ids(
 /// by root with the `repovec` group (SI-3). Returning it as data lets tests pin
 /// the id-to-directory mapping without provisioning a root-owned tree, which an
 /// unprivileged test process cannot create.
+///
+/// The five data-tree contracts come from the static validator spec table.
+/// `/etc/repovec` is appended separately because the API-key helper, not
+/// `tmpfiles.d`, owns that directory.
 pub(crate) fn layout_contracts(
     paths: &RuntimePaths,
     ids: LiveLayoutIds,
 ) -> Vec<(Utf8PathBuf, DirectoryContract)> {
-    let data_contract = DirectoryContract {
-        owner_uid: ids.repovec_uid,
-        owner_gid: ids.repovec_gid,
-        owner_label: "repovec",
-        group_label: "repovec",
-        mode: 0o700,
-    };
-    let storage_contract = DirectoryContract {
-        owner_uid: ids.privileged_uid,
-        owner_gid: ids.privileged_gid,
-        owner_label: "root",
-        group_label: "root",
-        mode: 0o700,
-    };
     let secrets_contract = DirectoryContract {
         owner_uid: ids.privileged_uid,
         owner_gid: ids.repovec_gid,
@@ -276,12 +266,24 @@ pub(crate) fn layout_contracts(
         mode: 0o750,
     };
 
-    vec![
-        (paths.data_root().to_path_buf(), data_contract),
-        (paths.git_mirrors_root(), data_contract),
-        (paths.worktrees_root(), data_contract),
-        (paths.grepai_root(), data_contract),
-        (paths.qdrant_storage_root(), storage_contract),
-        (paths.config_root().to_path_buf(), secrets_contract),
-    ]
+    let mut contracts: Vec<_> = super::layout_contract(paths)
+        .into_iter()
+        .map(|spec| {
+            let contract = DirectoryContract {
+                owner_uid: id_for(spec.owner, ids.repovec_uid, ids.privileged_uid),
+                owner_gid: id_for(spec.group, ids.repovec_gid, ids.privileged_gid),
+                owner_label: spec.owner,
+                group_label: spec.group,
+                mode: spec.mode.0,
+            };
+            (spec.path, contract)
+        })
+        .collect();
+    contracts.push((paths.config_root().to_path_buf(), secrets_contract));
+    contracts
+}
+
+/// Maps the two names used by `DirectorySpec` to their independently resolved ids.
+fn id_for(name: &str, repovec: u32, privileged: u32) -> u32 {
+    if name == super::REPOVEC_USER { repovec } else { privileged }
 }

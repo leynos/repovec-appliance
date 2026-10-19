@@ -1,7 +1,10 @@
 //! Typed expected-error mapping for systemd unit validator tests.
 
 use super::{
-    error_builders::{exec_start, missing, missing_install, quadlet_source, service_directive},
+    error_builders::{
+        exec_start, forbidden_service_directive, missing, missing_install, quadlet_source,
+        service_directive,
+    },
     scenarios::ValidationScenario,
 };
 use crate::appliance::systemd_units::{
@@ -31,7 +34,9 @@ impl ValidationScenario {
             | Self::WrongProvisionSysusersExecStart
             | Self::SwappedProvisionExecStartOrder
             | Self::ExtraProvisionExecStart
-            | Self::MissingProvisionType => self.expected_provision_error(),
+            | Self::MissingProvisionType
+            | Self::ProvisionRemainsActive
+            | Self::ProvisionRefusesManualStop => self.expected_provision_error(),
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
@@ -147,6 +152,12 @@ impl ValidationScenario {
                 expected: "oneshot",
                 actual: String::new(),
             },
+            Self::ProvisionRemainsActive => {
+                service_directive("repovec-provision.service", "RemainAfterExit", "no", "yes")
+            }
+            Self::ProvisionRefusesManualStop => {
+                forbidden_service_directive("repovec-provision.service", "RefuseManualStop", "yes")
+            }
             _ => panic!("provision error called for non-provision scenario"),
         }
     }

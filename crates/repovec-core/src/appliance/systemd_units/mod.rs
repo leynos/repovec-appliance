@@ -41,7 +41,8 @@
 //! - The provisioning oneshot contract: `repovec-provision.service` is wanted
 //!   by `repovec.target`, runs `systemd-sysusers` then `systemd-tmpfiles` in
 //!   that exact order, and is ordered before the Qdrant API-key oneshot,
-//!   Qdrant, and both daemons.
+//!   Qdrant, and both daemons. It returns to inactive after success so a later
+//!   target restart reruns the idempotent provisioning commands.
 //! - A requirement, not merely an ordering, from each provisioned consumer back
 //!   to the oneshot: `repovecd` and `repovec-mcpd` must `Requires=`
 //!   `repovec-provision.service`. `Before=` in the oneshot only sequences the

@@ -456,6 +456,20 @@ action; they are not quality targets.
   owner, group, and mode would otherwise satisfy every id-and-mode check while
   leaving the documented directory unusable.
 
+- Decision D-14 (2026-10-19, Codex review of PR #186): the provisioning oneshot
+  returns to inactive after success and stays manually restartable. The unit
+  sets `RemainAfterExit=no` and must not declare `RefuseManualStop=`.
+  Rationale: measured on systemd 257, a completed `RemainAfterExit=yes` oneshot
+  is active `(exited)`, so `systemctl restart repovec.target` does not re-run
+  `ExecStart`, and `RefuseManualStop=yes` additionally refuses the direct
+  `systemctl restart repovec-provision.service` (exit 4). Together they left no
+  supported way to reapply the idempotent assets after directory drift or an
+  asset update. With both corrections, either restart path re-runs the
+  commands, and a direct restart also restarts the active units that declare
+  `Requires=repovec-provision.service`. `systemd_units` now rejects any
+  `RefuseManualStop=` occurrence and guards the `RemainAfterExit=no` value with
+  a mutation case.
+
 ## Outcomes & Retrospective
 
 The implementation shipped the `repovec` account and the appliance directory
@@ -780,11 +794,10 @@ intended reason. Do not proceed until the red state is captured in `Progress`.
    Wants=systemd-sysusers.service
    After=systemd-sysusers.service
    Before=repovec-qdrant-api-key.service qdrant.service repovecd.service repovec-mcpd.service
-   RefuseManualStop=yes
 
    [Service]
    Type=oneshot
-   RemainAfterExit=yes
+   RemainAfterExit=no
    ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf
    ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf
    StandardOutput=journal
@@ -989,10 +1002,38 @@ trap 'sudo systemctl unset-environment RUST_LOG' EXIT
 # 1. Provision and start the target.
 sudo systemctl daemon-reload
 sudo systemctl start repovec.target
-for unit in repovec.target repovec-provision.service qdrant.service; do
+for unit in repovec.target qdrant.service; do
   test "$(sudo systemctl is-active "$unit")" = active
 done
-# Expect: the target, completed provisioning oneshot, and Qdrant are active.
+# Expect: the target and Qdrant are active; the completed provisioning oneshot
+# is inactive with a successful result because it does not remain active.
+test "$(sudo systemctl show repovec-provision.service -p ActiveState --value)" = inactive
+test "$(sudo systemctl show repovec-provision.service -p Result --value)" = success
+test "$(sudo systemctl show repovec-provision.service -p ExecMainStatus --value)" = 0
+first_provision_start=$(sudo systemctl show repovec-provision.service \
+  -p ExecMainStartTimestampMonotonic --value)
+
+# 1a. Verify that a later target restart re-runs the inactive oneshot.
+sudo systemctl restart repovec.target
+test "$(sudo systemctl show repovec-provision.service -p Result --value)" = success
+test "$(sudo systemctl show repovec-provision.service -p ExecMainStatus --value)" = 0
+second_provision_start=$(sudo systemctl show repovec-provision.service \
+  -p ExecMainStartTimestampMonotonic --value)
+test "$first_provision_start" != "$second_provision_start"
+# Expect: the provisioning start timestamp changes and its result remains
+# successful, proving that a target restart reapplies the installed assets.
+
+# 1b. Verify the direct unit restart path as well.
+before_direct_restart=$(sudo systemctl show repovec-provision.service \
+  -p ExecMainStartTimestampMonotonic --value)
+sudo systemctl restart repovec-provision.service
+third_provision_start=$(sudo systemctl show repovec-provision.service \
+  -p ExecMainStartTimestampMonotonic --value)
+test "$before_direct_restart" != "$third_provision_start"
+test "$(sudo systemctl show repovec-provision.service -p Result --value)" = success
+test "$(sudo systemctl show repovec-provision.service -p ExecMainStatus --value)" = 0
+test "$(sudo systemctl is-active qdrant.service)" = active
+# Expect: a direct restart also changes the start timestamp and succeeds.
 
 # 2. Assert the provisioned layout, including the special bits that the live
 #    pre-flight compares (0700 exactly, not 02700). `stat` runs under `sudo`
@@ -1378,6 +1419,47 @@ gates are green, and PR #78's description was updated to reflect the completed
 milestones and the capable-host integration result.
 
 ## Revision note
+
+Revision 11 (2026-10-19): addressed the remaining CodeRabbit review findings
+from the replacement PR.
+
+- The live pre-flight now derives its five `/var/lib/repovec` expectations
+  from the static validator's directory spec table and appends `/etc/repovec`
+  separately, preserving the API-key helper as its sole provisioning authority.
+- The 0.2.0 migration commands now install every changed systemd unit and the
+  Qdrant Quadlet before reloading systemd, so existing installations receive
+  the provisioning dependencies as well as the new provisioning service.
+- The users guide now limits the idempotence claim: rerunning the tools creates
+  missing declarations and preserves populated directories, but does not
+  correct an existing `repovec` account or misowned existing children.
+
+Revision 10 (2026-10-19): made the provisioning oneshot re-runnable after its
+first successful activation (Decision D-14, Codex review of PR #186).
+
+- `RemainAfterExit=yes` left the service active, so a later target restart did
+  not rerun the `systemd-sysusers` and `systemd-tmpfiles` commands. The unit
+  now uses `RemainAfterExit=no`, which leaves the completed oneshot inactive
+  and allows a target restart to start it again. The static unit validator and
+  a mutation case guard this lifecycle contract.
+- `RefuseManualStop=yes` was removed. It refused the direct
+  `systemctl restart repovec-provision.service` that an operator needs after
+  directory drift or an asset update; because the `Requires=` consumers are
+  restarted with it, that command is the complete repair path. The validator
+  now rejects any `RefuseManualStop=` occurrence on the provisioning unit, and
+  a mutation case guards the rejection. The rejection is an existence check,
+  not a value check, so `RefuseManualStop=no` is rejected too.
+- The users guide, developer guide, ADR, technical design, and migration
+  instructions now describe target and direct unit restarts as reapply paths.
+  The manual acceptance procedure checks that the oneshot exits successfully
+  and that its start timestamp changes after each restart. Full systemd
+  acceptance remains **unverified** until that procedure is run on a privileged
+  enforcing host.
+- Empirical basis: systemd 257 user-manager probes on 2026-10-19 measured that
+  a `RemainAfterExit=yes` oneshot does not re-run on a target restart, that a
+  `RefuseManualStop=yes` oneshot refuses a direct restart with exit 4, and that
+  an inactive oneshot re-runs on either a direct restart or a target restart.
+  These were throwaway units; no appliance host has run the acceptance
+  procedure.
 
 Revision 9 (2026-10-19): completed the remaining parser and test review
 follow-up on the replacement PR branch.

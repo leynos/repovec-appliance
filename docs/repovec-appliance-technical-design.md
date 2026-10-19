@@ -1,5 +1,32 @@
 # repovec-appliance technical design
 
+## Document status and governing decisions
+
+This is the living design for the appliance's production architecture. Accepted
+Architecture Decision Records (ADRs) take precedence where this document and a
+decision record diverge. The roadmap owns implementation status, while the
+[nursery crate guide](nursery-crates.md) owns current experimental interfaces
+and graduation evidence.
+
+The following proposed decisions define the rationalization target described in
+this revision:
+
+- [ADR 001](adr-001-retire-custom-oauth-device-flow.md) delegates OAuth device
+  grant mechanics to `oauth2`.
+- [ADR 002](adr-002-rationalize-systemd-and-quadlet-analysis.md) separates
+  source models, appliance policy, official consumer verification, and live
+  systemd control.
+- [ADR 003](adr-003-centralize-unit-contract-policy.md) centralizes
+  parser-neutral rules and structured diagnostics.
+- [ADR 004](adr-004-manage-extraction-candidates-in-a-nursery.md) governs
+  experimental crates under `crates/nursery/`.
+- [ADR 005](adr-005-rationalize-secret-persistence.md) separates secret
+  protection, durable persistence, systemd delivery, and Podman synchronization.
+
+Sections that describe migration targets distinguish them from the current
+implementation. The current implementation remains authoritative until its
+roadmap migration task is complete.
+
 ## Problem statement and design goals
 
 repovec-appliance is a self-hosted VM appliance that turns a user's private
@@ -138,28 +165,42 @@ via SSH without a browser on-box:
 GitHub explicitly indicates the device flow does not require the OAuth app
 `client_secret` (device flow uses `client_id` + device code + grant type).
 
-The implementation uses the generic `oauth2` crate at the HTTP boundary rather
-than `octocrab` for the device-flow exchange. This keeps the adapter aligned
-with the RFC 8628 endpoints and makes behavioural tests possible against
-`oauth2-test-server`, whose endpoint paths differ from GitHub's production
-paths. `repovec_core::github_oauth` owns the device-flow policy: device-code
-error classification, poll-interval transitions, terminal errors, and redacted
-secret wrappers. `repovecd` owns the ports and adapters: HTTP polling,
-sleep/time, orchestration, and encrypted token persistence.
+The target implementation uses the generic `oauth2` crate for the complete
+device authorization grant rather than only for HTTP types. `oauth2` owns the
+device authorization request, token polling, RFC 8628 response interpretation,
+and protocol errors. A thin `repovecd` adapter owns GitHub endpoint selection,
+one redirect-disabled HTTP client, timeouts, operator prompt presentation,
+telemetry, and token persistence. Behavioural tests continue to use
+`oauth2-test-server` and deterministic time seams.
 
-Access tokens are persisted below `/etc/repovec/` as `github-oauth-token.cred`.
-The token-store adapter encrypts and decrypts the bearer token through
-`systemd-creds --name=repovec-github-oauth-token`, writes the encrypted
-credential atomically, syncs the file and containing directory, and keeps token
-material off the command line and out of display diagnostics. Reloaded tokens
-contain the bearer secret only; scope metadata is treated as server response
-metadata and is not persisted with the credential. Permission checks based on
-granted scopes are therefore login-time checks only in this adapter. The GitHub
-OAuth token reload flow infers no scope-derived authorization from the bearer
-secret alone. After a restart, the control plane must revalidate the reloaded
-token against GitHub before enforcing permissions that depend on granted
-scopes; if that lookup fails, permissions remain unknown and the operator must
-complete login again.
+The current implementation still contains repovec-owned wire structures,
+protocol outcome types, and a polling state machine. Roadmap item `1.4.2`
+removes those duplicates after scenario parity is demonstrated. New OAuth
+features must extend the upstream-backed adapter rather than the private
+protocol model.
+
+Access tokens are persisted below `/etc/repovec/` as
+`github-oauth-token.cred`. The write and rotation path protects the bearer token
+without placing plaintext on a command line, then commits the protected bytes
+through a durable repository. The repository contract requires restrictive
+creation mode, same-directory temporary creation, complete write and file
+synchronization, atomic replacement, and containing-directory synchronization.
+
+The target service unit uses systemd service credentials to decrypt and expose
+the token only for the `repovecd` activation lifetime. The daemon reads from
+the credential directory supplied by systemd instead of spawning a second
+`systemd-creds decrypt` process. Existing Rust credential readers are evaluated
+before local reader code is added. Write-side `systemd-creds` invocation remains
+an adapter only if no maintained crate provides the required operation.
+
+Reloaded tokens contain the bearer secret only; scope metadata is treated as
+server response metadata and is not persisted with the credential. Permission
+checks based on granted scopes are therefore login-time checks only in this
+adapter. The GitHub OAuth token reload flow infers no scope-derived
+authorization from the bearer secret alone. After a restart, the control plane
+must revalidate the reloaded token against GitHub before enforcing permissions
+that depend on granted scopes; if that lookup fails, permissions remain unknown
+and the operator must complete login again.
 
 ### Discovery and continuous monitoring
 
@@ -338,6 +379,136 @@ If the "direct origin" mode is chosen, the appliance provisions Cloudflare
 Origin CA certificates (dashboard or API) and binds the MCP server with that
 certificate/key, using Cloudflare's "Full (strict)" TLS model.
 
+## Architecture rationalization and library reuse
+
+### Ownership rule
+
+Repovec owns appliance policy and product composition. It does not own generic
+implementations of external protocols or configuration languages when a viable
+specialist library exists. Adoption still requires compatibility evidence;
+"use a dependency" is not a substitute for verifying its semantics.
+
+The architecture therefore distinguishes four responsibilities:
+
+1. **External format and protocol implementation.** Maintained libraries own
+   OAuth device-flow mechanics, native systemd syntax, and Quadlet syntax.
+2. **Repovec policy.** Production crates define the image, networking,
+   dependency, identity, hardening, and secret-wiring contracts of the
+   appliance.
+3. **Independent consumer verification.** Podman and systemd tools verify that
+   the real consumers accept source and generated units.
+4. **Runtime effects.** Adapters invoke the GitHub API, credential tools, or the
+   live systemd manager through explicit ports.
+
+This separation prevents a parser result from becoming proof that systemd will
+accept a unit, and prevents a tool invocation from becoming the only way to
+unit-test product policy.
+
+### Systemd and Quadlet source adapters
+
+The current `systemd_units::ParsedUnit` and
+`qdrant_quadlet::ParsedQuadlet` implementations are migration scaffolding, not
+candidate public parsers. Both flatten source into maps and omit parts of the
+systemd syntax and effective-value model.
+
+Roadmap item `1.4.3` evaluates:
+
+- [`systemd-unit-edit`](https://crates.io/crates/systemd-unit-edit) for native
+  systemd units; and
+- [`quadlet-lens`](https://crates.io/crates/quadlet-lens) for Podman Quadlets.
+
+Adapters over the selected libraries implement the parser-neutral `UnitView`
+interface. They preserve ordered directive occurrences, raw and decoded values,
+source spans, reset assignments, and source origin. Parser-specific types do not
+cross the adapter boundary.
+
+The existing mutation and property-test corpus becomes differential adoption
+evidence. It is not a reason to continue extending the private parsers. Missing
+features should first become narrowly scoped upstream proposals.
+
+### Unit contract policy
+
+The nursery `repovec-unit-contract` crate defines source-aware unit views,
+validation rules, a diagnostic sink, and accumulated validation reports. It does
+not parse source, interpret every systemd directive, emit tracing, or know
+repovec policy.
+
+Production rule sets remain with their owning subsystem. A Qdrant rule set can
+require the approved image, loopback bindings, storage mount, SELinux option,
+auto-update policy, provisioning dependency, and secret target. A service rule
+set can require target membership, executable path, identity, directory, and
+hardening settings.
+
+Rules return structured diagnostics containing a stable code, severity,
+artefact identity, optional source span, and sensitivity. Application adapters
+render diagnostics to tracing or terminal output. Future CI integrations may
+render JSON or Static Analysis Results Interchange Format (SARIF) without
+changing rule code.
+
+The callback-per-finding `QdrantQuadletObserver` remains only until policy
+migration is complete. It must not become the shared validation abstraction.
+
+### Official consumer verification
+
+The nursery `repovec-systemd-probe` crate defines evidence types and ports for
+two external checks:
+
+- the Podman system generator consumes caller-supplied Quadlet documents and
+  produces native unit files; and
+- `systemd-analyze verify` consumes native checked-in and generated unit files.
+
+Probe adapters invoke programs directly without a shell and within
+caller-controlled temporary roots. Reports retain the exact program, argument
+vector, tool version, exit status, standard output, and standard error. Default
+`Debug` output exposes only buffer lengths because tool diagnostics may repeat
+secret-derived source.
+
+Consumer verification and policy validation both gate packaging, but answer
+different questions. Tool success does not prove appliance policy, and policy
+success does not prove tool acceptance.
+
+### Build-time, packaging-time, and runtime checks
+
+Repository source contracts belong in build and packaging gates. Runtime
+liveness checks belong in daemon startup when they verify resources the daemon
+will actually use.
+
+The current daemon startup checks embedded unit source. That proves neither the
+installed file nor the effective unit after administrator drop-ins. Roadmap item
+`1.4.6` replaces this ambiguous check with one of two honest boundaries:
+
+- a build and packaging invariant over repository assets; or
+- a runtime diagnostic over installed or effective manager configuration.
+
+Authenticated Qdrant liveness remains a valid runtime check because it proves a
+live dependency and credential path.
+
+### Live systemd manager control
+
+Per-branch indexer reconciliation requires live unit start, stop, enable,
+disable, and state queries. Roadmap item `1.4.7` evaluates maintained Rust D-Bus
+clients before defining the application port. Production code must not invoke
+`systemctl` and parse human-oriented output.
+
+The application port remains narrower than the systemd D-Bus API and models
+only reconciliation needs. Deterministic fakes drive unit lifecycle tests;
+the selected D-Bus adapter owns wire types and manager calls.
+
+### Nursery crates
+
+Potentially reusable interfaces live in the isolated `crates/nursery/`
+workspace described by
+[ADR 004](adr-004-manage-extraction-candidates-in-a-nursery.md)
+and the [nursery crate guide](nursery-crates.md). The initial interfaces are:
+
+- `repovec-unit-contract` for parser-neutral validation;
+- `repovec-systemd-probe` for consumer-tool evidence; and
+- `repovec-secret-store` for protection and durable persistence composition.
+
+The production workspace excludes the nursery. A separate workflow compiles,
+lints, tests, and documents it. No crate is publishable, and no compatibility
+promise applies until the graduation evidence is complete.
+
 ## Systemd, Podman/Qdrant, and update lifecycle
 
 ### Service layout
@@ -386,10 +557,16 @@ The template includes conservative systemd sandboxing directives such as
 `NoNewPrivileges=yes`, private temporary storage, read-only host filesystem
 protections, kernel and namespace restrictions, limited address families, and
 restricted process visibility. These hardening settings are packaging defaults
-for the appliance image. Static validation in `repovec-core` checks the
-service-layout contract, but it does not prove that the live host has
-`/usr/bin/grepai`, the `repovec` user, concrete worktrees, Qdrant reachability,
-or a compatible systemd version.
+for the appliance image.
+
+During the rationalization migration, `repovec-core` remains the owner of the
+service-layout policy while parsing and diagnostic plumbing move behind the
+interfaces described above. Packaging gates also ask the real Podman generator
+and `systemd-analyze verify` consumers to process the files. None of those
+static checks proves that a live host has `/usr/bin/grepai`, the `repovec` user,
+concrete worktrees, Qdrant reachability, or the expected effective drop-ins.
+Runtime checks must inspect those resources directly when the daemon depends on
+them.
 
 `cloudflared.service` is package-owned and is not supplied by the appliance
 unit set. The target queues it with `Wants=cloudflared.service`; tighter tunnel
@@ -398,11 +575,15 @@ unit needs additional drop-ins.
 
 Key service properties:
 
-- indexers run as unprivileged user (e.g. `repovec`) with fixed HOME
-- tight filesystem permissions on
-  - `/var/lib/repovec/` (repos, worktrees, grepai indices)
-  - `/etc/repovec/` (config and secrets)
-- journald logging for all units, no bespoke log files
+- indexers run as the unprivileged `repovec` account with fixed HOME;
+- `sysusers.d` is the sole account-creation mechanism;
+- shared package paths use `tmpfiles.d`, while service-owned state and
+  configuration use `StateDirectory=` and `ConfigurationDirectory=` when their
+  lifetime and ownership semantics fit;
+- `/var/lib/repovec/` contains repositories, worktrees, and grepai indices;
+- `/etc/repovec/` contains restricted configuration and protected credentials;
+  and
+- journald captures all unit output, with no bespoke log files.
 
 ### Qdrant under Podman + systemd
 
@@ -425,12 +606,16 @@ Security controls:
   external access.
 - In appliance mode, Qdrant binds to `127.0.0.1` only and is never exposed
   publicly; callers are local processes only.
-- The sysusers asset `packaging/sysusers.d/repovec.conf` is the packaging
-  prerequisite that ensures the minimal `repovec` system user exists.
+- The sysusers asset `packaging/sysusers.d/repovec.conf` is the sole
+  account-creation mechanism for the minimal `repovec` system user. The
+  provisioning helper must fail clearly when that packaging prerequisite is
+  absent; it must not invoke `useradd`.
+- Shared directory creation and ownership move to a packaged `tmpfiles.d`
+  definition, with service directory directives used where appropriate.
 - A one-shot systemd unit, `repovec-qdrant-api-key.service`, provisions the
-  local API-key material before `qdrant.service` starts. It creates
-  `/etc/repovec` and generates `/etc/repovec/qdrant-api-key` only when that
-  file is absent.
+  local API-key material before `qdrant.service` starts. It generates
+  `/etc/repovec/qdrant-api-key` only when that file is absent and relies on the
+  declarative packaging layer for account and directory prerequisites.
 - `/etc/repovec/qdrant-api-key` stores the raw key, not an environment-file
   assignment. The file is owned by `repovec:repovec` with mode `0400`, so the
   appliance service user can read it while other unprivileged users cannot.
@@ -476,29 +661,38 @@ The liveness policy performs two gRPC operations:
 
 The second operation is required because live integration testing showed that
 Qdrant's gRPC health endpoint can answer even when the supplied API key is
-wrong. `repovec_core::appliance::daemon_startup` owns startup composition: it
-validates checked-in systemd-unit contracts first, then establishes
-authenticated Qdrant liveness. `repovecd` and `repovec-mcpd` are thin delegates
-to that shared boundary. A failed liveness check is fatal and causes the daemon
+wrong. `repovec_core::appliance::daemon_startup` currently validates embedded
+checked-in systemd-unit source before establishing authenticated Qdrant
+liveness. `repovecd` and `repovec-mcpd` are thin delegates to that shared
+boundary.
+
+Roadmap item `1.4.6` removes the ambiguous embedded-source startup check after
+repository assets are covered by build and packaging gates. A later runtime
+unit diagnostic, if required, inspects installed or effective live manager
+configuration instead. Authenticated Qdrant liveness remains fatal because it
+proves a dependency the daemon will immediately use. Failure causes the daemon
 to exit with status `1`, leaving systemd to report a failed service and apply
-its normal restart policy. Its unit tests inject the liveness closure to
-exercise ordering and failure mapping, while the ignored Podman integration
-test verifies the network and authentication boundary.
+its normal restart policy. Unit tests inject the liveness closure to exercise
+ordering and failure mapping, while the ignored Podman integration test verifies
+the network and authentication boundary.
 
-### Validation telemetry boundary
+### Validation diagnostics and telemetry boundary
 
-- Qdrant Quadlet validation emits operational telemetry through the
-  `QdrantQuadletObserver` trait in `repovec-core`. The validator receives this
-  observer explicitly so logging remains a caller-visible adapter dependency,
-  not hidden domain logic.
-- `TracingQdrantQuadletObserver` is the production adapter. It maps validation
-  lifecycle events, contract violations, and parser diagnostics to `tracing`
-  events under the target `repovec_core::qdrant_quadlet`.
-- The no-op implementation for `()` keeps test and silent validation paths
-  available without forcing a tracing subscriber into every caller.
-- Parser and validation telemetry redacts secret-bearing line content before
-  emission. Public parse-error variants store the same redacted line content so
-  `Display` output and logs share the safe operator-facing surface.
+The current Qdrant validator makes telemetry explicit through
+`QdrantQuadletObserver`, with `TracingQdrantQuadletObserver` as the production
+adapter and `()` as the no-op implementation. Secret-bearing parser content is
+redacted before it reaches public errors or telemetry.
+
+The target architecture replaces the broad callback surface with structured
+`repovec-unit-contract::Diagnostic` values. Diagnostics carry code, severity,
+artefact, source span, and sensitivity. A tracing renderer maps those values to
+operator events under the appropriate target; silent validation simply omits a
+renderer. This preserves caller-visible effects while allowing the same report
+to support terminal output, JSON, or SARIF.
+
+The existing observer remains a compatibility bridge only until roadmap item
+`1.4.5` migrates all unit policies. New validators must return structured data
+rather than add more domain-specific observer methods.
 
 ### Automatic updates and safe rollouts
 
@@ -658,7 +852,9 @@ creating a tunnel via API and the permissions required (Tunnel edit + DNS edit).
 
 OpenTofu provisions a VM plus initial cloud-init:
 
-- creates `repovec` system user and directories
+- installs the packaged `sysusers.d` and `tmpfiles.d` definitions and lets
+  systemd directory directives create service-owned paths, rather than carrying
+  an independent imperative account and directory implementation;
 - installs:
   - podman
   - cloudflared

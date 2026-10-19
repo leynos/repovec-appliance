@@ -1009,7 +1009,7 @@ that CI runners typically do not grant.
 | --------------------------------------------- | ------------- | --------------------------------------------------------------------- |
 | `provisioning/test_qdrant_api_key_cmd_mox.py` | `cmd_mox`     | Python and the harness dependencies. No container runtime needed.     |
 | `provisioning/test_qdrant_api_key.py`         | `integration` | A Docker-compatible runtime able to host privileged Podman-in-Podman. |
-| `provisioning/test_directory_layout.py`       | `integration` | A container runtime able to run a systemd-enabled Fedora image.       |
+| `provisioning/test_directory_layout.py`       | `integration` | A container runtime able to run a Fedora image with systemd tools.    |
 
 The `cmd_mox` suite exercises the helper's external command orchestration by
 running the real shell script through a `PATH` populated with `cmd-mox` shims.
@@ -1017,16 +1017,20 @@ The `integration` suite runs the real helper inside a privileged Fedora
 container managed by `testcontainers-python`, and uses rootful nested Podman to
 validate the full secret lifecycle.
 
-`provisioning/test_directory_layout.py` installs the checked-in
-`repovec-provision.service`, `sysusers.d`, and `tmpfiles.d` assets into the
-same kind of container, starts the provisioning oneshot, and asserts the
-resulting directory tree: every required path exists, `qdrant-storage` is
-`root:root`, the data tree is owned by `repovec`, `/etc/repovec` is
-`root:repovec`, and each mode matches the contract. It then re-runs
-provisioning to prove idempotence. The container runs systemd as PID 1, but the
-suite deliberately stops short of asserting unit *activeness* or authenticated
-loopback gRPC: those checks need a real systemd host and remain part of the
-manual acceptance procedure in the 1.3.3 execplan.
+`provisioning/test_directory_layout.py` runs the checked-in `sysusers.d` and
+`tmpfiles.d` assets inside the same kind of container by invoking
+`systemd-sysusers` and then `systemd-tmpfiles --create` directly. That ordered
+pair is the exact lifecycle `repovec-provision.service` performs, but the
+container does not run systemd as PID 1 (`CMD ["sleep", "infinity"]`), so the
+suite does not start the unit. It asserts the resulting `var/lib/repovec` tree:
+the account exists with the documented home and nologin shell, the data tree is
+`repovec:repovec`, `qdrant-storage` is `root:root`, and every mode matches the
+contract. It then re-runs the pair to prove idempotence. The `/etc/repovec`
+contract (`0750 root:repovec`) belongs to the `repovec-qdrant-api-key` helper
+and is asserted by `provisioning/test_qdrant_api_key.py`, not by this suite.
+Asserting unit *activeness* and authenticated loopback gRPC still needs a real
+systemd host; those checks remain part of the manual acceptance procedure in
+the 1.3.3 execplan.
 
 ### 6.2 Prerequisites
 

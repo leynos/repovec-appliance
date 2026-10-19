@@ -280,8 +280,7 @@ action; they are not quality targets.
 - [x] Pre-merge review closure on PR #181 (2026-10-18). The blocking testing
   finding and the observability, user-facing, and developer documentation
   warnings are actioned; see Revision 7. The branch is squashed onto
-  `1-3-3-repovec-directory-layout` with PRs #168 and #180 closed as
-  superseded.
+  `1-3-3-repovec-directory-layout` with PRs #168 and #180 closed as superseded.
 
 - [x] SCOPE ESCALATION (2026-08-12): branch is at 17 non-snapshot code/asset
   files and ~1700 net lines vs the plan tolerance (24 files / roughly 1000 net
@@ -1370,18 +1369,18 @@ milestones and the capable-host integration result.
 
 ## Revision note
 
-Revision 7 (2026-10-18): closed the CodeRabbit pre-merge check on PR #181 —
-one blocking testing error and three of four warnings.
+Revision 7 (2026-10-18): closed the CodeRabbit pre-merge check on PR #181 — one
+blocking testing error and three of four warnings.
 
-- **Testing (blocking).** The live-layout tests exercised `verify_layout_for_ids`
-  with ids built by the test itself, so they never proved that the production
-  adapter resolves ids and applies the privileged expectations. The read half
-  is now separate from the resolution half:
+- **Testing (blocking).** The live-layout tests exercised
+  `verify_layout_for_ids` with ids built by the test itself, so they never
+  proved that the production adapter resolves ids and applies the privileged
+  expectations. The read half is now separate from the resolution half:
   `account::passwd_database_text` and `group::group_database_text` read each
   database once, `resolve_ids_from_databases` consumes captured text, and
-  `verify_layout_from_databases` joins the two. Every resolution rule
-  (missing, truncated, root account, wrong home, login shell, missing group)
-  is driven from fixture text rather than the host's real accounts.
+  `verify_layout_from_databases` joins the two. Every resolution rule (missing,
+  truncated, root account, wrong home, login shell, missing group) is driven
+  from fixture text rather than the host's real accounts.
   `live::layout_contracts` is a pure table keyed by `RuntimePaths` and
   `LiveLayoutIds`; `tests_live_tree.rs` asserts the table directly with
   distinct ids (998/996 for `repovec`, 0/0 for privileged) and moves each

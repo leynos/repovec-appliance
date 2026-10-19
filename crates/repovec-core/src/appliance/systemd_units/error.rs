@@ -66,6 +66,16 @@ pub enum SystemdUnitError {
         /// The observed executable paths joined by commas.
         actual: String,
     },
+    /// A required ordered sequence of service commands is absent, reordered, or
+    /// extended with an unexpected command.
+    IncorrectExecStartSequence {
+        /// The logical unit file name.
+        unit: &'static str,
+        /// The expected commands, in the required order.
+        expected: &'static [&'static str],
+        /// The observed commands, in declaration order.
+        actual: Vec<String>,
+    },
     /// A required `[Service]` identity directive is absent or has the wrong value.
     IncorrectServiceDirective {
         /// The logical unit file name.
@@ -75,6 +85,21 @@ pub enum SystemdUnitError {
         /// The required value.
         expected: &'static str,
         /// The observed value(s) joined by commas, or an empty string if absent.
+        actual: String,
+    },
+    /// A directive the contract forbids is present in the named section.
+    ///
+    /// Used where the defect is the directive's existence rather than its
+    /// value: the provisioning oneshot must stay manually restartable, so any
+    /// `[Unit] RefuseManualStop=` occurrence is rejected whatever it is set to.
+    ForbiddenDirective {
+        /// The logical unit file name.
+        unit: &'static str,
+        /// The section containing the forbidden directive.
+        section: &'static str,
+        /// The forbidden directive key (e.g. `"RefuseManualStop"`).
+        key: &'static str,
+        /// The observed value(s) joined by commas.
         actual: String,
     },
 }
@@ -90,7 +115,9 @@ impl SystemdUnitError {
             | Self::MissingDependency { unit, .. }
             | Self::UsesQuadletSourceDependency { unit, .. }
             | Self::IncorrectExecStart { unit, .. }
-            | Self::IncorrectServiceDirective { unit, .. } => unit,
+            | Self::IncorrectExecStartSequence { unit, .. }
+            | Self::IncorrectServiceDirective { unit, .. }
+            | Self::ForbiddenDirective { unit, .. } => unit,
         }
     }
 }
@@ -117,8 +144,19 @@ impl fmt::Display for SystemdUnitError {
             Self::IncorrectExecStart { unit, expected, actual } => {
                 write!(f, "{unit} must use ExecStart={expected}: {actual}")
             }
+            Self::IncorrectExecStartSequence { unit, expected, actual } => {
+                write!(
+                    f,
+                    "{unit} must declare ExecStart={} in order: {}",
+                    expected.join(", "),
+                    actual.join(", ")
+                )
+            }
             Self::IncorrectServiceDirective { unit, key, expected, actual } => {
                 write!(f, "{unit} must have {key}={expected} in [Service]: {actual}")
+            }
+            Self::ForbiddenDirective { unit, section, key, actual } => {
+                write!(f, "{unit} must not declare {key} in [{section}]: {actual}")
             }
         }
     }
@@ -169,6 +207,18 @@ mod tests {
                 expected: "repovec",
                 actual: "root".to_owned(),
             },
+            SystemdUnitError::ForbiddenDirective {
+                unit: "repovec-provision.service",
+                section: "Unit",
+                key: "RefuseManualStop",
+                actual: "yes".to_owned(),
+            },
+            SystemdUnitError::MissingDependency {
+                unit: "repovec-provision.service",
+                section: "Unit",
+                key: "Before",
+                dependency: "repovecd.service",
+            },
         ];
 
         let observed_units = cases.map(|error| error.unit().to_owned());
@@ -183,6 +233,8 @@ mod tests {
                 "repovecd.service",
                 "repovecd.service",
                 "repovec-mcpd.service",
+                "repovec-provision.service",
+                "repovec-provision.service",
             ],
         );
     }

@@ -29,6 +29,19 @@ pub(super) struct ParsedUnit {
     sections: BTreeMap<String, BTreeMap<String, Vec<String>>>,
 }
 
+#[derive(Clone, Copy)]
+enum DirectiveRequirement {
+    Exact(&'static str),
+    Contains(&'static str),
+    Absent,
+}
+
+#[derive(Clone, Copy)]
+enum ExecStartRequirement {
+    Single(&'static str),
+    Sequence(&'static [&'static str]),
+}
+
 /// A significant line classified by the static unit parser.
 enum ParsedLine<'line> {
     /// A section header, such as `[Service]`.
@@ -136,18 +149,53 @@ impl ParsedUnit {
         &self,
         expected: &'static str,
     ) -> Result<(), SystemdUnitError> {
+        self.require_exec_start_matching(ExecStartRequirement::Single(expected))
+    }
+
+    /// Requires `ExecStart=` to declare exactly `expected`, in this order.
+    ///
+    /// Membership is not enough for the provisioning oneshot: `systemd-sysusers`
+    /// must run before `systemd-tmpfiles`, and a repeated or extra command would
+    /// otherwise pass validation. Comparing the whole sequence rejects a swapped
+    /// order, a missing command, and an unexpected addition alike.
+    pub(super) fn require_exec_start_sequence(
+        &self,
+        expected: &'static [&'static str],
+    ) -> Result<(), SystemdUnitError> {
+        self.require_exec_start_matching(ExecStartRequirement::Sequence(expected))
+    }
+
+    /// Validates one exact `ExecStart` shape and builds its matching typed error.
+    ///
+    /// For example, the single-command form expects one value, while the
+    /// sequence form preserves and checks declaration order.
+    fn require_exec_start_matching(
+        &self,
+        requirement: ExecStartRequirement,
+    ) -> Result<(), SystemdUnitError> {
         let values = self.values(SERVICE_SECTION, "ExecStart");
-        if let [actual] = values
-            && actual == expected
-        {
+        let is_satisfied = match requirement {
+            ExecStartRequirement::Single(expected) => exec_start_values_match(values, &[expected]),
+            ExecStartRequirement::Sequence(expected) => exec_start_values_match(values, expected),
+        };
+        if is_satisfied {
             return Ok(());
         }
 
-        Err(SystemdUnitError::IncorrectExecStart {
-            unit: self.unit,
-            expected,
-            actual: values.join(","),
-        })
+        match requirement {
+            ExecStartRequirement::Single(expected) => Err(SystemdUnitError::IncorrectExecStart {
+                unit: self.unit,
+                expected,
+                actual: values.join(","),
+            }),
+            ExecStartRequirement::Sequence(expected) => {
+                Err(SystemdUnitError::IncorrectExecStartSequence {
+                    unit: self.unit,
+                    expected,
+                    actual: values.to_vec(),
+                })
+            }
+        }
     }
 
     /// Requires one service directive with the exact expected value.
@@ -159,19 +207,29 @@ impl ParsedUnit {
         key: &'static str,
         expected: &'static str,
     ) -> Result<(), SystemdUnitError> {
-        let values = self.values(SERVICE_SECTION, key);
-        if let [actual] = values
-            && actual == expected
-        {
-            return Ok(());
-        }
+        self.require_directive_matching(SERVICE_SECTION, key, DirectiveRequirement::Exact(expected))
+    }
 
-        Err(SystemdUnitError::IncorrectServiceDirective {
-            unit: self.unit,
-            key,
-            expected,
-            actual: values.join(","),
-        })
+    /// Requires that a directive is absent from the named section entirely.
+    ///
+    /// Some contract failures are not a wrong value but an extra directive. The
+    /// provisioning oneshot is one: `[Unit] RefuseManualStop=yes` blocks a
+    /// supported direct re-run path, so any occurrence, whatever its value, is
+    /// a contract violation. Reporting the observed values keeps the diagnostic
+    /// actionable without needing a separate "forbidden value" API.
+    ///
+    /// The section matters. `RefuseManualStop=` is a `[Unit]` directive, so
+    /// checking `[Service]` would miss the very placement the contract forbids.
+    ///
+    /// For example, a unit without `[Unit] RefuseManualStop=` returns `Ok(())`,
+    /// while `[Unit] RefuseManualStop=yes` yields
+    /// [`SystemdUnitError::ForbiddenDirective`].
+    pub(super) fn require_absent_directive(
+        &self,
+        section: &'static str,
+        key: &'static str,
+    ) -> Result<(), SystemdUnitError> {
+        self.require_directive_matching(section, key, DirectiveRequirement::Absent)
     }
 
     /// Requires the expected value among the service's `Environment` entries.
@@ -182,17 +240,47 @@ impl ParsedUnit {
         &self,
         expected: &'static str,
     ) -> Result<(), SystemdUnitError> {
-        let values = self.values(SERVICE_SECTION, "Environment");
-        if values.iter().any(|value| value == expected) {
+        self.require_directive_matching(
+            SERVICE_SECTION,
+            "Environment",
+            DirectiveRequirement::Contains(expected),
+        )
+    }
+
+    fn require_directive_matching(
+        &self,
+        section: &'static str,
+        key: &'static str,
+        requirement: DirectiveRequirement,
+    ) -> Result<(), SystemdUnitError> {
+        let values = self.values(section, key);
+        let is_satisfied = match requirement {
+            DirectiveRequirement::Exact(expected) => {
+                matches!(values, [actual] if actual == expected)
+            }
+            DirectiveRequirement::Contains(expected) => {
+                values.iter().any(|value| value == expected)
+            }
+            DirectiveRequirement::Absent => values.is_empty(),
+        };
+        if is_satisfied {
             return Ok(());
         }
 
-        Err(SystemdUnitError::IncorrectServiceDirective {
-            unit: self.unit,
-            key: "Environment",
-            expected,
-            actual: values.join(","),
-        })
+        let actual = values.join(",");
+        match requirement {
+            DirectiveRequirement::Exact(expected) | DirectiveRequirement::Contains(expected) => {
+                Err(SystemdUnitError::IncorrectServiceDirective {
+                    unit: self.unit,
+                    key,
+                    expected,
+                    actual,
+                })
+            }
+            DirectiveRequirement::Absent => {
+                Err(SystemdUnitError::ForbiddenDirective { unit: self.unit, section, key, actual })
+            }
+        }
     }
 
     /// Splits all values for a directive into a set of whitespace-delimited tokens.
@@ -212,6 +300,14 @@ impl ParsedUnit {
     fn values(&self, section: &str, key: &str) -> &[String] {
         self.sections.get(section).and_then(|entries| entries.get(key)).map_or(&[], Vec::as_slice)
     }
+}
+
+/// Returns whether a service's declared commands match the expected sequence exactly.
+///
+/// For example, a single `/usr/bin/repovecd` value matches that one-item
+/// expectation, while an additional command does not.
+fn exec_start_values_match(values: &[String], expected: &[&str]) -> bool {
+    values.iter().map(String::as_str).eq(expected.iter().copied())
 }
 
 /// Classifies a trimmed line as ignored, a section, or a key/value directive.

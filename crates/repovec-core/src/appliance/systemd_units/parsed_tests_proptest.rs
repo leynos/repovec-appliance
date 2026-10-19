@@ -102,6 +102,35 @@ proptest! {
         );
         prop_assert!(is_duplicate_rejected);
     }
+
+    /// Verifies that a forbidden directive is reported only for the section it
+    /// was declared in.
+    ///
+    /// `RefuseManualStop=` is a `[Unit]` directive. Scoping the absence check to
+    /// the wrong section would let the original defect back in, so the section
+    /// named in the error must be the section that carried the directive.
+    #[test]
+    fn absent_directive_is_scoped_to_its_declared_section(
+        declared_section in non_service_section(),
+        checked_section in non_service_section(),
+        value in prop::sample::select(vec!["yes", "no", "true", "false"]),
+    ) {
+        let contents = format!("[{declared_section}]\nRefuseManualStop={value}\n");
+        let parsed = parse_valid(&contents)?;
+
+        let rejected = matches!(
+            parsed.require_absent_directive(declared_section, "RefuseManualStop"),
+            Err(SystemdUnitError::ForbiddenDirective { section, actual, .. })
+                if section == declared_section && actual == value
+        );
+        prop_assert!(rejected, "declared section must be rejected");
+
+        if checked_section != declared_section {
+            let is_other_section_accepted =
+                parsed.require_absent_directive(checked_section, "RefuseManualStop").is_ok();
+            prop_assert!(is_other_section_accepted);
+        }
+    }
 }
 
 fn parse_valid(contents: &str) -> Result<ParsedUnit, TestCaseError> {

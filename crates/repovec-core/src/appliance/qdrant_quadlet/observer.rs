@@ -7,7 +7,7 @@
 
 use tracing::{error, info, warn};
 
-use super::LOG_TARGET;
+use super::{LOG_TARGET, QDRANT_API_KEY_SERVICE};
 
 /// Receives Qdrant Quadlet validation telemetry.
 ///
@@ -90,6 +90,9 @@ pub trait QdrantQuadletObserver: Send + Sync {
     fn incorrect_auto_update(&self, _auto_update: &str, _expected_auto_update: &str) {}
 
     /// Records a missing API-key provisioning dependency.
+    ///
+    /// This callback remains available for implementations written before the
+    /// general provisioning-dependency callback was added.
     fn missing_api_key_provisioning_dependency(
         &self,
         _directive: &str,
@@ -98,12 +101,42 @@ pub trait QdrantQuadletObserver: Send + Sync {
     }
 
     /// Records an incorrect API-key provisioning dependency.
+    ///
+    /// This callback remains available for implementations written before the
+    /// general provisioning-dependency callback was added.
     fn incorrect_api_key_provisioning_dependency(
         &self,
         _directive: &str,
         _dependency: &str,
         _expected_dependency: &str,
     ) {
+    }
+
+    /// Records a missing required provisioning dependency.
+    ///
+    /// The default forwards the existing API-key dependency to its original
+    /// callback, keeping implementations that only override that callback
+    /// source-compatible. Other dependencies are ignored by default.
+    fn missing_provisioning_dependency(&self, directive: &str, expected_dependency: &str) {
+        if expected_dependency == QDRANT_API_KEY_SERVICE {
+            self.missing_api_key_provisioning_dependency(directive, expected_dependency);
+        }
+    }
+
+    /// Records an incorrect required provisioning dependency.
+    fn incorrect_provisioning_dependency(
+        &self,
+        directive: &str,
+        dependency: &str,
+        expected_dependency: &str,
+    ) {
+        if expected_dependency == QDRANT_API_KEY_SERVICE {
+            self.incorrect_api_key_provisioning_dependency(
+                directive,
+                dependency,
+                expected_dependency,
+            );
+        }
     }
 
     /// Records a missing API-key secret entry.
@@ -129,6 +162,12 @@ pub trait QdrantQuadletObserver: Send + Sync {
 }
 
 impl QdrantQuadletObserver for () {}
+
+macro_rules! validation_warning {
+    ($message:literal $(, $field:ident)*) => {
+        warn!(target: LOG_TARGET, $($field,)* $message);
+    };
+}
 
 /// Emits Qdrant Quadlet validation telemetry through `tracing`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -166,37 +205,30 @@ impl QdrantQuadletObserver for TracingQdrantQuadletObserver {
     }
 
     fn missing_image(&self, expected_image: &str) {
-        warn!(
-            target: LOG_TARGET,
-            expected_image,
-            "qdrant quadlet validation failed: missing image"
-        );
+        validation_warning!("qdrant quadlet validation failed: missing image", expected_image);
     }
 
     fn image_not_fully_qualified(&self, image: &str, expected_image: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: image is not fully qualified and pinned",
             image,
-            expected_image,
-            "qdrant quadlet validation failed: image is not fully qualified and pinned"
+            expected_image
         );
     }
 
     fn unexpected_image(&self, image: &str, expected_image: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: unexpected image",
             image,
-            expected_image,
-            "qdrant quadlet validation failed: unexpected image"
+            expected_image
         );
     }
 
     fn missing_publish_port(&self, port: u16, expected_publish_port: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: missing publish port",
             port,
-            expected_publish_port,
-            "qdrant quadlet validation failed: missing publish port"
+            expected_publish_port
         );
     }
 
@@ -206,21 +238,19 @@ impl QdrantQuadletObserver for TracingQdrantQuadletObserver {
         publish_port: &str,
         expected_publish_port: &str,
     ) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: publish port is not bound to loopback",
             port,
             publish_port,
-            expected_publish_port,
-            "qdrant quadlet validation failed: publish port is not bound to loopback"
+            expected_publish_port
         );
     }
 
     fn missing_storage_mount(&self, expected_source: &str, expected_target: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: missing storage mount",
             expected_source,
-            expected_target,
-            "qdrant quadlet validation failed: missing storage mount"
+            expected_target
         );
     }
 
@@ -230,65 +260,58 @@ impl QdrantQuadletObserver for TracingQdrantQuadletObserver {
         expected_source: &str,
         expected_target: &str,
     ) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: missing storage mount",
             volume,
             expected_source,
-            expected_target,
-            "qdrant quadlet validation failed: missing storage mount"
+            expected_target
         );
     }
 
     fn incorrect_storage_source(&self, source: &str, expected_source: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect storage source",
             source,
-            expected_source,
-            "qdrant quadlet validation failed: incorrect storage source"
+            expected_source
         );
     }
 
     fn incorrect_storage_target(&self, storage_target: &str, expected_target: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect storage target",
             storage_target,
-            expected_target,
-            "qdrant quadlet validation failed: incorrect storage target"
+            expected_target
         );
     }
 
     fn missing_selinux_relabel(&self, volume: &str, expected_selinux_relabel: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: missing selinux relabel",
             volume,
-            expected_selinux_relabel,
-            "qdrant quadlet validation failed: missing selinux relabel"
+            expected_selinux_relabel
         );
     }
 
     fn missing_auto_update(&self, expected_auto_update: &str) {
-        warn!(
-            target: LOG_TARGET,
-            expected_auto_update,
-            "qdrant quadlet validation failed: missing auto-update policy"
+        validation_warning!(
+            "qdrant quadlet validation failed: missing auto-update policy",
+            expected_auto_update
         );
     }
 
     fn incorrect_auto_update(&self, auto_update: &str, expected_auto_update: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect auto-update policy",
             auto_update,
-            expected_auto_update,
-            "qdrant quadlet validation failed: incorrect auto-update policy"
+            expected_auto_update
         );
     }
 
     fn missing_api_key_provisioning_dependency(&self, directive: &str, expected_dependency: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: missing api key provisioning dependency",
             directive,
-            expected_dependency,
-            "qdrant quadlet validation failed: missing api key provisioning dependency"
+            expected_dependency
         );
     }
 
@@ -298,31 +321,62 @@ impl QdrantQuadletObserver for TracingQdrantQuadletObserver {
         dependency: &str,
         expected_dependency: &str,
     ) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect api key provisioning dependency",
             directive,
             dependency,
-            expected_dependency,
-            "qdrant quadlet validation failed: incorrect api key provisioning dependency"
+            expected_dependency
         );
     }
 
+    fn missing_provisioning_dependency(&self, directive: &str, expected_dependency: &str) {
+        if expected_dependency == QDRANT_API_KEY_SERVICE {
+            self.missing_api_key_provisioning_dependency(directive, expected_dependency);
+        } else {
+            validation_warning!(
+                "qdrant quadlet validation failed: missing provisioning dependency",
+                directive,
+                expected_dependency
+            );
+        }
+    }
+
+    fn incorrect_provisioning_dependency(
+        &self,
+        directive: &str,
+        dependency: &str,
+        expected_dependency: &str,
+    ) {
+        if expected_dependency == QDRANT_API_KEY_SERVICE {
+            self.incorrect_api_key_provisioning_dependency(
+                directive,
+                dependency,
+                expected_dependency,
+            );
+        } else {
+            validation_warning!(
+                "qdrant quadlet validation failed: incorrect provisioning dependency",
+                directive,
+                dependency,
+                expected_dependency
+            );
+        }
+    }
+
     fn missing_api_key_secret(&self, expected_secret: &str, expected_target: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: missing api key secret",
             expected_secret,
-            expected_target,
-            "qdrant quadlet validation failed: missing api key secret"
+            expected_target
         );
     }
 
     fn incorrect_api_key_secret(&self, secret: &str, expected_secret: &str, expected_target: &str) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: incorrect api key secret",
             secret,
             expected_secret,
-            expected_target,
-            "qdrant quadlet validation failed: incorrect api key secret"
+            expected_target
         );
     }
 
@@ -332,12 +386,11 @@ impl QdrantQuadletObserver for TracingQdrantQuadletObserver {
         expected_secret: &str,
         expected_target: &str,
     ) {
-        warn!(
-            target: LOG_TARGET,
+        validation_warning!(
+            "qdrant quadlet validation failed: inline api key environment is disallowed",
             environment,
             expected_secret,
-            expected_target,
-            "qdrant quadlet validation failed: inline api key environment is disallowed"
+            expected_target
         );
     }
 }

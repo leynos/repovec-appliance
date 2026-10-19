@@ -23,6 +23,7 @@ against accidentally skipping the entire suite.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -129,9 +130,13 @@ def _start_container(request: pytest.FixtureRequest, image: str) -> DockerContai
     container.with_kwargs(privileged=True)
     container.with_command(["sleep", "infinity"])
 
+    # Every failure mode of ``start`` is reported to pytest identically, so
+    # the exception type is deliberately not narrowed: a missing runtime, a
+    # missing privilege, and a port clash all deserve the same actionable
+    # skip message.
     try:
         container.start()
-    except Exception as exc:  # noqa: BLE001 - propagate as actionable skip
+    except Exception as exc:
         _skip_or_fail(
             request,
             (
@@ -186,7 +191,14 @@ def integration_container(
         _preflight(container, request)
         yield container
     finally:
+        # Teardown is best-effort: a failure to stop must not mask the
+        # assertion error that ended the test body. The exception type stays
+        # broad because the container must be discarded whatever went wrong,
+        # but the failure is reported on stderr so it remains diagnosable.
         try:
             container.stop()
-        except Exception:  # noqa: BLE001 - best-effort teardown
-            pass
+        except Exception as exc:  # noqa: BLE001 - reported, never masked
+            print(
+                f"WARNING: failed to stop the integration-test container: {exc}",
+                file=sys.stderr,
+            )

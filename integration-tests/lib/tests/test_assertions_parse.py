@@ -14,7 +14,6 @@ import pytest
 
 from lib.assertions import FileStat, PasswdEntry
 
-
 # ----- PasswdEntry --------------------------------------------------------
 
 
@@ -28,9 +27,7 @@ def test_passwd_parse_returns_all_seven_columns() -> None:
     assert entry.gid == "993", "passwd gid column should round-trip"
     assert entry.gecos == "", "passwd gecos column should round-trip (empty here)"
     assert entry.home == "/var/lib/repovec", "passwd home column should round-trip"
-    assert entry.shell == "/usr/sbin/nologin", (
-        "passwd shell column should round-trip"
-    )
+    assert entry.shell == "/usr/sbin/nologin", "passwd shell column should round-trip"
 
 
 def test_passwd_parse_strips_trailing_newline() -> None:

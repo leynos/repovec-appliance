@@ -1,6 +1,13 @@
 # Keep Qdrant private to the appliance host; repovec services reach it via localhost.
+#
+# Both directive kinds are required against the provisioning units. The
+# repovec-provision.service Before= line only orders this unit; ordering and
+# requirement dependencies are orthogonal, so Before= alone would still let
+# Qdrant start after a failed sysusers/tmpfiles run. Requires= is what cancels
+# this start job so the appliance fails closed rather than mounting a missing
+# or misowned storage directory.
 [Unit]
-Requires=repovec-qdrant-api-key.service
+Requires=repovec-qdrant-api-key.service repovec-provision.service
 After=repovec-qdrant-api-key.service
 
 [Container]

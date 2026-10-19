@@ -173,12 +173,15 @@ requires the conservative path. The user-visible flow is documented in
 
 `systemd-gate` always reports a result so it can be configured as a required
 check. It runs `make validate-systemd`, which builds the `repovec-ci` helper
-and calls `repovec-ci systemd-gate` to verify that the checked-in systemd unit
-files still satisfy the appliance service-layout contract. A non-zero exit from
-the gate is a fatal CI failure.
+and calls `repovec-ci systemd-gate`. That subcommand runs two validators: the
+systemd-unit validator checks the service-layout contract, and the
+directory-layout validator parses the checked-in `sysusers.d` and `tmpfiles.d`
+assets against the same path, owner, group, and mode contract the live
+pre-flight enforces. A non-zero exit from either is a fatal CI failure.
 
 Run `make validate-systemd` locally before proposing a change to any file under
-`packaging/systemd/` or `crates/repovec-core/src/appliance/systemd_units/`.
+`packaging/systemd/`, `packaging/sysusers.d/`, `packaging/tmpfiles.d/`, or
+`crates/repovec-core/src/appliance/systemd_units/`.
 
 ### 2.1 Workflow pins and Dependabot
 
@@ -479,14 +482,14 @@ USAGE:
     repovec-ci systemd-gate
 ```
 
-| Subcommand / Flag       | Description                                                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| *(no subcommand)*       | Equivalent to `docs-gate`; retained for backwards compatibility.                                                    |
-| `docs-gate`             | Evaluate the documentation-gate policy and print `key=value` lines for `$GITHUB_OUTPUT`.                            |
-| `systemd-gate`          | Validate the checked-in systemd unit files against the appliance contract; exit non-zero on any contract violation. |
-| `--changed-file <path>` | (docs-gate only) Treat `<path>` as a changed file; repeatable; mutually exclusive with `--stdin`.                   |
-| `--stdin`               | (docs-gate only) Read newline-delimited changed-file paths from stdin; mutually exclusive with `--changed-file`.    |
-| `-h`, `--help`          | Print usage text and exit.                                                                                          |
+| Subcommand / Flag       | Description                                                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| *(no subcommand)*       | Equivalent to `docs-gate`; retained for backwards compatibility.                                                                                |
+| `docs-gate`             | Evaluate the documentation-gate policy and print `key=value` lines for `$GITHUB_OUTPUT`.                                                        |
+| `systemd-gate`          | Validate the checked-in systemd unit files and directory-layout assets against the appliance contract; exit non-zero on any contract violation. |
+| `--changed-file <path>` | (docs-gate only) Treat `<path>` as a changed file; repeatable; mutually exclusive with `--stdin`.                                               |
+| `--stdin`               | (docs-gate only) Read newline-delimited changed-file paths from stdin; mutually exclusive with `--changed-file`.                                |
+| `-h`, `--help`          | Print usage text and exit.                                                                                                                      |
 
 In `docs-gate` mode the binary writes `key=value` lines to stdout for use with
 `$GITHUB_OUTPUT` and is invoked by the `docs-gate` CI job. The output keys are:
@@ -503,7 +506,7 @@ In `docs-gate` mode the binary writes `key=value` lines to stdout for use with
 `systemd-gate` writes a single confirmation line to stdout on success:
 
 ```text
-checked-in systemd units satisfy the appliance contract
+checked-in systemd units and directory layout satisfy the appliance contract
 ```
 
 On failure it writes a human-readable error to stderr and exits with status 1.
@@ -644,13 +647,13 @@ authenticated, read-only `list_collections()` request because the health
 endpoint alone does not prove API-key validity.
 
 `repovec_core::appliance::daemon_startup` is the composition layer. It first
-validates checked-in systemd-unit contracts, then establishes authenticated
-Qdrant startup liveness. Both daemon binaries are thin delegates to that shared
-process boundary. Unit tests inject the liveness closure so they can prove
-ordering, retry policy, exit-code mapping, and structured logging without
-opening sockets; the ignored Podman integration test covers the real network
-and authentication boundary. Run that integration test explicitly on a host
-with Podman:
+validates checked-in systemd-unit contracts, then checks the live directory
+layout, and only then establishes authenticated Qdrant startup liveness. Both
+daemon binaries are thin delegates to that shared process boundary. Unit tests
+inject the live-layout and liveness checks so they can prove ordering, retry
+policy, exit-code mapping, and structured logging without opening sockets; the
+ignored Podman integration test covers the real network and authentication
+boundary. Run that integration test explicitly on a host with Podman:
 
 ```sh
 cargo test -p repovec-core --test qdrant_liveness_integration -- --ignored
@@ -658,8 +661,9 @@ cargo test -p repovec-core --test qdrant_liveness_integration -- --ignored
 
 ### 5.4 `systemd_units` validation surface
 
-The `systemd_units` module exposes the public validation surface for the
-checked-in repovec target, daemon service files, and grepai indexer template:
+The `systemd_units` module exposes the public validation surface for the five
+checked-in units: the repovec target, the provisioning oneshot, both daemon
+service files, and the grepai indexer template:
 
 - `checked_in_repovec_target() -> &'static str` returns the embedded
   `packaging/systemd/repovec.target` source.
@@ -667,8 +671,12 @@ checked-in repovec target, daemon service files, and grepai indexer template:
   `packaging/systemd/repovecd.service` source.
 - `checked_in_repovec_mcpd_service() -> &'static str` returns the embedded
   `packaging/systemd/repovec-mcpd.service` source.
+- `checked_in_repovec_provision_service() -> &'static str` returns the embedded
+  `packaging/systemd/repovec-provision.service` source.
 - `checked_in_repovec_grepai_template() -> &'static str` returns the embedded
   `packaging/systemd/repovec-grepai@.service` source.
+- `CHECKED_IN_REPOVEC_PROVISION_SERVICE_PATH` names the repository path for the
+  checked-in `packaging/systemd/repovec-provision.service` unit.
 - `CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH` names the repository path for the
   checked-in `packaging/systemd/repovec-grepai@.service` template.
 - `validate_checked_in_systemd_units() -> Result<(), SystemdUnitError>`
@@ -699,6 +707,12 @@ This module validates static unit-file policy only. It must not call
 `systemctl`, start processes, read `/etc/systemd/system`, or otherwise perform
 runtime installation work.
 
+Four appliance units consume provisioning: `repovecd.service`,
+`repovec-mcpd.service`, `repovec-qdrant-api-key.service`, and the
+`qdrant.container` Quadlet. Each declares `Requires=repovec-provision.service`,
+which blocks its start if provisioning fails; `After=` alone only orders start
+jobs.
+
 Keep the three-argument `validate_systemd_units` API for callers that only need
 the base target and daemon contract. New callers that need the complete
 checked-in appliance layout should use
@@ -722,6 +736,15 @@ effects visible at call sites. `TracingQdrantQuadletObserver` is the production
 adapter that maps observer callbacks to `tracing` events. The unit type `()`
 implements `QdrantQuadletObserver` as a no-op sink for test and silent paths
 that should validate without telemetry overhead.
+
+Provisioning dependency callbacks are general:
+`missing_provisioning_dependency` reports a missing required provisioning unit,
+and `incorrect_provisioning_dependency` reports an incorrect dependency. Their
+default implementations forward the Qdrant API-key service case to the older
+`missing_api_key_provisioning_dependency` and
+`incorrect_api_key_provisioning_dependency` callbacks, respectively. This keeps
+existing observers source-compatible; observers can override the general
+callbacks to handle other provisioning dependencies as well.
 
 Qdrant Quadlet observer adapters follow these instrumentation conventions:
 
@@ -880,6 +903,130 @@ See [rstest BDD users guide](rstest-bdd-users-guide.md) and
 [Rust testing with rstest fixtures](rust-testing-with-rstest-fixtures.md) for
 the project-local testing guidance.
 
+Compile-fail fixtures for `repovec-core` belong in the single driver in
+`crates/repovec-core/tests/compile_time.rs`. `trybuild` drivers in one package
+share generated project state and fixture binary names, so parallel drivers can
+overwrite one another's state and produce misleading results. Add new fixtures
+to that driver's existing test case list.
+
+### 5.8 `directory_layout` validation surface
+
+The `directory_layout` module validates the checked-in assets that establish the
+`repovec` system user and its private on-disk directory tree. It follows the
+`systemd_units` pattern: pure, I/O-free parsing of embedded asset text with
+typed errors, a bidirectional drift guard, and inline snapshots.
+
+**Embedded assets and installed locations.** The module embeds two packaging
+inputs with `include_str!` and exposes their repository and installed paths:
+
+- `packaging/tmpfiles.d/repovec.conf` — installed to
+  `/usr/lib/tmpfiles.d/repovec.conf`. Exposed via
+  `checked_in_repovec_tmpfiles()`, `CHECKED_IN_REPOVEC_TMPFILES_PATH`, and
+  `INSTALLED_REPOVEC_TMPFILES_PATH`.
+- `packaging/sysusers.d/repovec.conf` — installed to
+  `/usr/lib/sysusers.d/repovec.conf`. Exposed via
+  `checked_in_repovec_sysusers()`, `CHECKED_IN_REPOVEC_SYSUSERS_PATH`, and
+  `INSTALLED_REPOVEC_SYSUSERS_PATH`.
+
+The canonical user identity is exposed as constants: `REPOVEC_USER` (`repovec`),
+`REPOVEC_HOME` (`/var/lib/repovec`), and `REPOVEC_SHELL` (`/usr/sbin/nologin`).
+
+**Validation entry points.** `validate_checked_in_directory_layout()` validates
+the two embedded assets; `validate_directory_layout(tmpfiles, sysusers)`
+validates caller-supplied asset text against the same contract. Both return
+`Result<(), DirectoryLayoutError>`, a `thiserror`-derived typed error enum
+whose variants carry a `Mode(u16)` newtype (rendered as `{:04o}`),
+`Utf8PathBuf` paths, `&'static str` expected values, and an `.asset()`
+discriminator for structured logging — the analogue of
+`SystemdUnitError::unit()`. The `NonExplicitField` and `InvalidField` variants
+are deliberately distinct: the first means the `-` placeholder was used where
+SI-5 requires an explicit value, the second means the value is present but
+unparsable, and the operator fix differs in each case.
+
+**Spec-table contract.** The per-directory mode/owner/group policy is a single
+spec table, `layout_contract(&RuntimePaths)`, inside `directory_layout` whose
+paths come from `RuntimePaths` (including the added `qdrant_storage_root()`
+accessor): the data root, `git-mirrors/`, `worktrees/`, and `.grepai/` are
+`0700 repovec:repovec` (SI-1); `qdrant-storage/` is `0700 root:root` (SI-2).
+The validator also checks the sysusers `u` line (SI-5 explicit fields; home
+`/var/lib/repovec`, shell `/usr/sbin/nologin`) and rejects any `/etc/repovec`
+entry (SI-4 single authority). `RuntimePaths` stays a pure path type — the
+policy lives in the spec table, not on `RuntimePaths`.
+
+**`repovec-provision.service` trigger.** The checked-in
+`packaging/systemd/repovec-provision.service` oneshot runs `systemd-sysusers`
+before `systemd-tmpfiles --create` at target start, so provisioning does not
+depend on a reboot. `repovec.target` declares
+`Wants=repovec-provision.service`, and the `systemd_units` validator rejects a
+target without it (the negative test covers this drift case). Every consuming
+unit — `repovecd.service`, `repovec-mcpd.service`,
+`repovec-qdrant-api-key.service`, and the `qdrant.container` Quadlet — declares
+`Requires=repovec-provision.service` alongside its ordering directive, because
+`After=` alone does not cancel a dependent start job when provisioning fails.
+The oneshot sets `RemainAfterExit=no`, so it returns to inactive after a
+successful run. A later `systemctl restart repovec.target` runs the idempotent
+provisioning commands again; an operator can also restart
+`repovec-provision.service` directly. The direct restart also restarts active
+consumers because they declare `Requires=repovec-provision.service`. These
+provide reapply paths after an asset update or directory drift. The
+`systemd_units` validator checks the ordered `ExecStart` sequence and both
+rerun settings, so an active-after-exit setting or an
+`[Unit] RefuseManualStop=` directive fails the gate. `RefuseManualStop=` is a
+`[Unit]` directive, and the validator rejects it under `[Service]` as well so a
+misplaced copy cannot mislead a reader. Details are in
+`docs/repovec-appliance-technical-design.md`, "Service layout".
+
+**Live pre-flight adapter and purity boundary.** Ownership of the real tree is
+checked separately by `directory_layout::live`, which stats the on-disk
+directories via `cap_std` and fails closed on any owner, group, mode, type, or
+missing-dir violation. It is a distinct, explicitly I/O-bound adapter: the pure
+validator parses embedded asset text only and never invokes `systemd-tmpfiles`,
+`systemd-sysusers`, `useradd`, `podman`, reads `/etc/passwd`, or touches the
+live filesystem. The live pre-flight is wired into
+`daemon_startup::validate_daemon_startup_contracts_with_live` after
+systemd-unit validation, surfaces as `DaemonStartupError::LiveLayout`, is
+logged with the violating path, and maps to the startup-failure exit code
+shared by `repovecd` and `repovec-mcpd`.
+
+The expected owner ids are resolved by name rather than assumed: the uid comes
+from `directory_layout::account::find_repovec_account` reading `/etc/passwd`,
+and the gid from `directory_layout::group::find_group_gid` reading
+`/etc/group`. Both lookups consult the database for their own account because
+`systemd-tmpfiles` resolves its group column through the group database;
+deriving the expected gid from the user's primary GID would reject a correctly
+provisioned tree on a host where the `repovec` user and group do not share a
+numeric id.
+
+The `passwd` record is parsed in full, not just for its uid, because
+`systemd-sysusers` reports an existing account as provisioned and leaves every
+column untouched. A host that already carried a `repovec` entry therefore keeps
+that uid, home, and shell whatever the checked-in asset declares, and
+`systemd-tmpfiles` will hand the data tree to whatever account the row names.
+`validate_repovec_account` therefore rejects a root uid, a home other than
+`/var/lib/repovec`, and a shell other than `/usr/sbin/nologin` before any
+directory is statted. The parse itself requires the full
+`name:password:uid:gid:gecos:home:shell` shape, so a truncated row is treated
+as absent rather than as a provisioned account.
+
+The mode comparison is exact, not a permission mask: a directory more
+restrictive than the contract is as unusable to the daemon as one that is too
+permissive. The mask is `0o7777` rather than `0o777`, so the set-user-ID,
+set-group-ID, and sticky bits are compared and reported too: `02700` does not
+satisfy a `0700` contract, and the diagnostic renders the observed mode as
+`2700` rather than `0700`.
+
+The tokenizer rejects a line that ends inside a quoted section, matching the
+`Syntax error.` that `systemd-sysusers` reports for the same input. Without
+that check the scan silently absorbed the remainder of the line, so a stray
+quote — for example a trailing `"` after the shell column — left the
+interpreted columns intact and the malformed declaration passed the static gate.
+
+The `sysusers.d` view also rejects columns after the optional shell field. For
+persistent `tmpfiles.d` `d` entries, the cleanup age must be omitted or `-`,
+and the unused argument must be omitted or `-`. This keeps time-based cleanup
+from deleting repository, worktree, or Qdrant state and rejects fields that
+systemd does not accept for a `d` entry.
+
 ## 6. Provisioning integration tests
 
 The Rust workspace's unit and behavioural tests cover the helper's contract on
@@ -896,12 +1043,28 @@ that CI runners typically do not grant.
 | --------------------------------------------- | ------------- | --------------------------------------------------------------------- |
 | `provisioning/test_qdrant_api_key_cmd_mox.py` | `cmd_mox`     | Python and the harness dependencies. No container runtime needed.     |
 | `provisioning/test_qdrant_api_key.py`         | `integration` | A Docker-compatible runtime able to host privileged Podman-in-Podman. |
+| `provisioning/test_directory_layout.py`       | `integration` | A container runtime able to run a Fedora image with systemd tools.    |
 
 The `cmd_mox` suite exercises the helper's external command orchestration by
 running the real shell script through a `PATH` populated with `cmd-mox` shims.
 The `integration` suite runs the real helper inside a privileged Fedora
 container managed by `testcontainers-python`, and uses rootful nested Podman to
 validate the full secret lifecycle.
+
+`provisioning/test_directory_layout.py` runs the checked-in `sysusers.d` and
+`tmpfiles.d` assets inside the same kind of container by invoking
+`systemd-sysusers` and then `systemd-tmpfiles --create` directly. That ordered
+pair is the exact lifecycle `repovec-provision.service` performs, but the
+container does not run systemd as PID 1 (`CMD ["sleep", "infinity"]`), so the
+suite does not start the unit. It asserts the resulting `var/lib/repovec` tree:
+the account exists with the documented home and nologin shell, the data tree is
+`repovec:repovec`, `qdrant-storage` is `root:root`, and every mode matches the
+contract. It then re-runs the pair to prove idempotence. The `/etc/repovec`
+contract (`0750 root:repovec`) belongs to the `repovec-qdrant-api-key` helper
+and is asserted by `provisioning/test_qdrant_api_key.py`, not by this suite.
+Asserting unit *activeness* and authenticated loopback gRPC still needs a real
+systemd host; those checks remain part of the manual acceptance procedure in
+the 1.3.3 execplan.
 
 ### 6.2 Prerequisites
 

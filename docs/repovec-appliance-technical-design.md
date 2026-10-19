@@ -346,17 +346,23 @@ Systemd manages the appliance lifecycle via a dedicated target:
 
 - `repovec.target`
   - wants: `qdrant.service` (Podman), `repovecd.service`,
-    `repovec-mcpd.service`, `cloudflared.service`
+    `repovec-mcpd.service`, `cloudflared.service`,
+    `repovec-provision.service`
   - wants: concrete per-repository indexer instances when later
     reconciliation work enables them
 
 Roadmap items `1.3.1` and `1.3.2` ship the static source files for the base
-target, daemon services, and grepai indexer template under `packaging/systemd/`:
+target, daemon services, and grepai indexer template under
+`packaging/systemd/`; roadmap item `1.3.3` ships the provisioning oneshot and
+the directory-layout assets:
 
 - `packaging/systemd/repovec.target`
 - `packaging/systemd/repovecd.service`
 - `packaging/systemd/repovec-mcpd.service`
 - `packaging/systemd/repovec-grepai@.service`
+- `packaging/systemd/repovec-provision.service`
+- `packaging/tmpfiles.d/repovec.conf`
+- `packaging/sysusers.d/repovec.conf`
 
 On an appliance host, install these units to `/etc/systemd/system/`. The
 existing Qdrant Quadlet remains installed to
@@ -366,6 +372,30 @@ uses. `repovecd.service` declares both `Requires=qdrant.service` and
 `After=qdrant.service`. `repovec-mcpd.service` declares
 `Requires=qdrant.service repovecd.service` and
 `After=qdrant.service repovecd.service`.
+
+`repovec-provision.service` is a target-start oneshot that runs
+`systemd-sysusers` on `/usr/lib/sysusers.d/repovec.conf` and then
+`systemd-tmpfiles --create` on `/usr/lib/tmpfiles.d/repovec.conf`, so the
+`repovec` system user and the `/var/lib/repovec` data tree exist before any
+dependent service starts — including on a freshly installed host that has not
+been rebooted. It sets `RemainAfterExit=no`, so it returns to inactive after a
+successful run and either `systemctl restart repovec.target` or
+`systemctl restart repovec-provision.service` re-applies the idempotent
+declarations after an asset update or directory drift. The unit must not set
+`[Unit] RefuseManualStop=`, which would refuse the direct repair path.
+Restarting the provisioning unit also restarts active consumers that require
+it. The contract, alternatives, and the `qdrant-storage` root-ownership
+dependency are recorded in
+[ADR-001: Provision the `repovec` system user and private directory tree](adr-001-repovec-directory-provisioning.md).
+
+Provisioning is a *requirement*, not an ordering hint. `After=` orders start
+jobs but does not cancel a dependent start job when the earlier unit fails, so
+every consuming unit — `repovecd.service`, `repovec-mcpd.service`,
+`repovec-qdrant-api-key.service`, and the `qdrant.container` Quadlet — carries
+`Requires=repovec-provision.service`, and the oneshot's own `Before=` line
+orders it ahead of each of them. A host where `systemd-sysusers` or
+`systemd-tmpfiles` fails therefore fails closed: the dependent daemons do not
+start against a missing account or an unprovisioned tree.
 
 `repovec-grepai@.service` is a systemd template for future concrete indexer
 instances. Each instance runs `/usr/bin/grepai watch` as the `repovec` user and

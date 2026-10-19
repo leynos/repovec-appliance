@@ -43,3 +43,12 @@ pub(super) fn service_directive(
 ) -> SystemdUnitError {
     SystemdUnitError::IncorrectServiceDirective { unit, key, expected, actual: actual.to_owned() }
 }
+
+pub(super) fn forbidden_directive(
+    unit: &'static str,
+    section: &'static str,
+    key: &'static str,
+    actual: &str,
+) -> SystemdUnitError {
+    SystemdUnitError::ForbiddenDirective { unit, section, key, actual: actual.to_owned() }
+}

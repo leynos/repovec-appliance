@@ -290,7 +290,7 @@ action; they are not quality targets.
   integration lifecycle and the absence of systemd as PID 1. The same commit
   carries the pending `mdtablefix` reflow that made the hosted `check-fmt` job
   fail at `f1d463d`. See Revision 8. PR #181 is closed as superseded by #186,
-  which carries the identical branch content plus this commit.
+  which carries this documentation correction and the prior implementation.
 
 - [x] SCOPE ESCALATION (2026-08-12): branch is at 17 non-snapshot code/asset
   files and ~1700 net lines vs the plan tolerance (24 files / roughly 1000 net
@@ -1379,6 +1379,26 @@ milestones and the capable-host integration result.
 
 ## Revision note
 
+Revision 9 (2026-10-19): completed the remaining parser and test review
+follow-up on the replacement PR branch.
+
+- **Unterminated asset quotes.** The sysusers shell-field and tmpfiles trailing
+  field now each have a mutation case that must return `MalformedLine`,
+  matching the tokenizer's fail-closed handling when a quote remains open at
+  end of line.
+- **Live identity mapping regression coverage.** Four near-identical checks
+  for repovec and privileged uid/gid selection now share one `rstest` table.
+  Each row displaces one id, checks the expected owner/group error, and pins
+  the violating directory. This keeps the production mapping checks while
+  removing duplicated test code.
+- The live startup tests exercise the injected boundary's check order, typed
+  `LiveLayout` error, Qdrant suppression, offending-path log, and exit status
+  1. The API-key service's provisioning dependency is guarded by its unit test.
+- The manual systemd acceptance procedure records host prerequisites,
+  SELinux enforcement, separate systemctl checks, and expected results. Full
+  systemd acceptance remains **unverified** until a privileged host run is
+  recorded.
+
 Revision 8 (2026-10-19): closed the two documentation findings CodeRabbit kept
 open after Revision 7, and cleared the hosted formatting failure.
 
@@ -1400,8 +1420,8 @@ open after Revision 7, and cleared the hosted formatting failure.
   execplan as `+10 -11`; the reflow is applied in the same commit. The other
   hosted jobs in run 39128549579 passed.
 - The branch now lives on `1-3-3-repovec-directory-layout-review`. PR #181 is
-  closed as superseded by PR #186, which carries the identical content plus
-  `d30236f`; no review work was discarded.
+  closed as superseded by PR #186, which carries the documentation correction
+  and the prior implementation; no review work was discarded.
 - Full systemd acceptance remains **unverified**; nothing in this revision
   changes that.
 

@@ -34,6 +34,43 @@ use crate::RuntimePaths;
 
 const DATA_CHILDREN: [&str; 5] = ["", "git-mirrors", "worktrees", ".grepai", "qdrant-storage"];
 
+#[derive(Clone, Copy)]
+enum IdentityExpectation {
+    RepovecUid,
+    RepovecGid,
+    PrivilegedUid,
+    PrivilegedGid,
+}
+
+impl IdentityExpectation {
+    fn relative_path(self) -> &'static str {
+        match self {
+            Self::RepovecUid | Self::RepovecGid => "var/lib/repovec",
+            Self::PrivilegedUid | Self::PrivilegedGid => "var/lib/repovec/qdrant-storage",
+        }
+    }
+
+    fn expected_description(self, ids: &LiveLayoutIds) -> String {
+        match self {
+            Self::RepovecUid => format!("repovec (uid {})", ids.repovec_uid),
+            Self::RepovecGid => format!("repovec (gid {})", ids.repovec_gid),
+            Self::PrivilegedUid => format!("root (uid {})", ids.privileged_uid),
+            Self::PrivilegedGid => format!("root (gid {})", ids.privileged_gid),
+        }
+    }
+
+    fn is_group(self) -> bool { matches!(self, Self::RepovecGid | Self::PrivilegedGid) }
+
+    fn displace(self, ids: &mut LiveLayoutIds, uid: u32, gid: u32) {
+        match self {
+            Self::RepovecUid => ids.repovec_uid = mismatched_id(uid),
+            Self::RepovecGid => ids.repovec_gid = mismatched_id(gid),
+            Self::PrivilegedUid => ids.privileged_uid = mismatched_id(uid),
+            Self::PrivilegedGid => ids.privileged_gid = mismatched_id(gid),
+        }
+    }
+}
+
 /// A sentinel id that can never equal `id`.
 ///
 /// `wrapping_add` is deliberate: a `saturating_sub(1).max(1)` sentinel collapses
@@ -197,78 +234,36 @@ fn layout_contract_maps_each_directory_to_its_ids() {
     assert_eq!(secrets.mode, 0o750);
 }
 
-/// Moving the privileged owner off the on-disk id must fail on
-/// `qdrant-storage`, proving that directory consults the privileged uid.
-#[test]
-fn storage_directory_uses_the_privileged_owner() {
+/// Keep the four runtime identity mappings independently regression-tested.
+#[rstest]
+#[case::repovec_uid(IdentityExpectation::RepovecUid)]
+#[case::repovec_gid(IdentityExpectation::RepovecGid)]
+#[case::privileged_uid(IdentityExpectation::PrivilegedUid)]
+#[case::privileged_gid(IdentityExpectation::PrivilegedGid)]
+fn each_directory_family_uses_its_expected_identity(#[case] expectation: IdentityExpectation) {
     let tree = LiveTree::new().expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     let mut ids = live_ids(uid, gid);
-    ids.privileged_uid = mismatched_id(uid);
-    let storage = expected_absolute(&tree, "var/lib/repovec/qdrant-storage").expect("utf8 path");
+    expectation.displace(&mut ids, uid, gid);
+    let expected_path = expected_absolute(&tree, expectation.relative_path()).expect("utf8 path");
 
     let result = verify_layout_for_ids(&tree.paths, ids);
 
-    let Err(LiveLayoutError::IncorrectOwner { violation }) = result else {
-        panic!("expected the storage owner violation, got {result:?}");
+    let Err(error) = result else {
+        panic!("expected an identity violation, got {result:?}");
     };
-    assert_eq!(violation.path, Utf8PathBuf::from(storage));
-    assert_eq!(violation.expected, format!("root (uid {})", ids.privileged_uid));
-}
-
-/// The same check for the privileged group.
-#[test]
-fn storage_directory_uses_the_privileged_group() {
-    let tree = LiveTree::new().expect("fixture tree");
-    let (uid, gid) = current_ids(&tree).expect("data root ids");
-    let mut ids = live_ids(uid, gid);
-    ids.privileged_gid = mismatched_id(gid);
-    let storage = expected_absolute(&tree, "var/lib/repovec/qdrant-storage").expect("utf8 path");
-
-    let result = verify_layout_for_ids(&tree.paths, ids);
-
-    let Err(LiveLayoutError::IncorrectGroup { violation }) = result else {
-        panic!("expected the storage group violation, got {result:?}");
+    assert_eq!(
+        matches!(&error, LiveLayoutError::IncorrectGroup { .. }),
+        expectation.is_group(),
+        "identity violation kind should match the displaced contract field",
+    );
+    let violation = match error {
+        LiveLayoutError::IncorrectOwner { violation }
+        | LiveLayoutError::IncorrectGroup { violation } => violation,
+        other => panic!("expected an identity violation, got {other:?}"),
     };
-    assert_eq!(violation.path, Utf8PathBuf::from(storage));
-    assert_eq!(violation.expected, format!("root (gid {})", ids.privileged_gid));
-}
-
-/// Moving the repovec owner off the on-disk id must fail on the data root,
-/// proving it does not consult the privileged uid.
-#[test]
-fn data_tree_uses_the_repovec_owner() {
-    let tree = LiveTree::new().expect("fixture tree");
-    let (uid, gid) = current_ids(&tree).expect("data root ids");
-    let mut ids = live_ids(uid, gid);
-    ids.repovec_uid = mismatched_id(uid);
-    let data_root = expected_absolute(&tree, "var/lib/repovec").expect("utf8 path");
-
-    let result = verify_layout_for_ids(&tree.paths, ids);
-
-    let Err(LiveLayoutError::IncorrectOwner { violation }) = result else {
-        panic!("expected the data owner violation, got {result:?}");
-    };
-    assert_eq!(violation.path, Utf8PathBuf::from(data_root));
-    assert_eq!(violation.expected, format!("repovec (uid {})", ids.repovec_uid));
-}
-
-/// The same check for the repovec group.
-#[test]
-fn data_tree_uses_the_repovec_group() {
-    let tree = LiveTree::new().expect("fixture tree");
-    let (uid, gid) = current_ids(&tree).expect("data root ids");
-    let mut ids = live_ids(uid, gid);
-    ids.repovec_gid = mismatched_id(gid);
-    let data_root = expected_absolute(&tree, "var/lib/repovec").expect("utf8 path");
-
-    let result = verify_layout_for_ids(&tree.paths, ids);
-
-    let Err(LiveLayoutError::IncorrectGroup { violation }) = result else {
-        panic!("expected the data group violation, got {result:?}");
-    };
-    assert_eq!(violation.path, Utf8PathBuf::from(data_root));
-    assert_eq!(violation.expected, format!("repovec (gid {})", ids.repovec_gid));
+    assert_eq!(violation.path, Utf8PathBuf::from(expected_path));
+    assert_eq!(violation.expected, expectation.expected_description(&ids));
 }
 
 #[test]

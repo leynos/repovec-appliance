@@ -122,6 +122,18 @@ const fn case(
     },
     "malformed line in tmpfiles.d/repovec.conf at 2: x /var/lib/repovec/bogus 0700 repovec repovec -",
 ))]
+#[case::tmpfiles_unterminated_quote(case(
+    Mutation::tmpfiles(
+        "d /var/lib/repovec/worktrees 0700 repovec repovec -",
+        "d /var/lib/repovec/worktrees 0700 repovec repovec - \"",
+    ),
+    DirectoryLayoutError::MalformedLine {
+        asset: "tmpfiles.d/repovec.conf",
+        line_number: 7,
+        line: "d /var/lib/repovec/worktrees 0700 repovec repovec - \"".to_owned(),
+    },
+    "malformed line in tmpfiles.d/repovec.conf at 7: d /var/lib/repovec/worktrees 0700 repovec repovec - \"",
+))]
 #[case::sysusers_missing_user(case(
     Mutation::sysusers(
         "u repovec - \"repovec appliance service user\" /var/lib/repovec /usr/sbin/nologin",
@@ -150,6 +162,18 @@ const fn case(
         actual: "/bin/bash".to_owned(),
     },
     "the repovec user shell must be /usr/sbin/nologin: /bin/bash",
+))]
+#[case::sysusers_unterminated_quote(case(
+    Mutation::sysusers(
+        "u repovec - \"repovec appliance service user\" /var/lib/repovec /usr/sbin/nologin",
+        "u repovec - \"repovec appliance service user\" /var/lib/repovec /usr/sbin/nologin\"",
+    ),
+    DirectoryLayoutError::MalformedLine {
+        asset: "sysusers.d/repovec.conf",
+        line_number: 1,
+        line: "u repovec - \"repovec appliance service user\" /var/lib/repovec /usr/sbin/nologin\"".to_owned(),
+    },
+    "malformed line in sysusers.d/repovec.conf at 1: u repovec - \"repovec appliance service user\" /var/lib/repovec /usr/sbin/nologin\"",
 ))]
 fn display_messages_are_operator_facing(#[case] case: DisplayCase) {
     let error = validate_mutation(case.mutation);

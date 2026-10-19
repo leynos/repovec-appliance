@@ -74,32 +74,96 @@ pub(super) enum ValidationScenario {
     GrepaiTemplateLogsStderrToFile,
 }
 
+#[derive(Clone, Copy)]
+enum ServiceUnit {
+    Repovecd,
+    Mcpd,
+}
+
+impl ServiceUnit {
+    fn file(self) -> UnitFile {
+        match self {
+            Self::Repovecd => UnitFile::Repovecd,
+            Self::Mcpd => UnitFile::Mcpd,
+        }
+    }
+
+    fn executable_pair(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Repovecd => ("/usr/bin/repovecd", "/usr/bin/otherd"),
+            Self::Mcpd => ("/usr/bin/repovec-mcpd", "/usr/bin/other-mcpd"),
+        }
+    }
+}
+
 impl ValidationScenario {
     pub(super) fn mutate(self, mut units: UnitSet) -> UnitSet {
-        match self {
+        if self.mutate_service_scenario(&mut units) {
+            return units;
+        }
+
+        if self.is_target_scenario() {
+            self.mutate_target(&mut units);
+        } else if self.is_provision_scenario() {
+            self.mutate_provision(&mut units);
+        } else if self.is_grepai_template_scenario() {
+            self.mutate_grepai_template(&mut units);
+        } else {
+            panic!("validation scenario is missing a mutation dispatcher");
+        }
+
+        units
+    }
+
+    fn is_target_scenario(self) -> bool {
+        matches!(
+            self,
             Self::InvalidLine
-            | Self::MissingTargetUnitSection
-            | Self::MissingTargetInstallSection
-            | Self::MissingTargetWantedBy
-            | Self::MissingTargetWantsQdrant
-            | Self::TargetUsesQdrantContainer
-            | Self::MissingTargetWantsRepovecd
-            | Self::MissingTargetWantsMcpd
-            | Self::MissingTargetWantsCloudflared
-            | Self::MissingTargetWantsProvision => self.mutate_target(&mut units),
+                | Self::MissingTargetUnitSection
+                | Self::MissingTargetInstallSection
+                | Self::MissingTargetWantedBy
+                | Self::MissingTargetWantsQdrant
+                | Self::TargetUsesQdrantContainer
+                | Self::MissingTargetWantsRepovecd
+                | Self::MissingTargetWantsMcpd
+                | Self::MissingTargetWantsCloudflared
+                | Self::MissingTargetWantsProvision
+        )
+    }
+
+    fn is_provision_scenario(self) -> bool {
+        matches!(
+            self,
             Self::MissingProvisionUnitSection
-            | Self::MissingProvisionServiceSection
-            | Self::MissingProvisionInstallSection
-            | Self::MissingProvisionWantedByTarget
-            | Self::MissingProvisionAfterSysusers
-            | Self::MissingProvisionBeforeRepovecd
-            | Self::WrongProvisionSysusersExecStart
-            | Self::SwappedProvisionExecStartOrder
-            | Self::ExtraProvisionExecStart
-            | Self::MissingProvisionType
-            | Self::ProvisionRemainsActive
-            | Self::ProvisionRefusesManualStop
-            | Self::ProvisionRefusesManualStopDisabled => self.mutate_provision(&mut units),
+                | Self::MissingProvisionServiceSection
+                | Self::MissingProvisionInstallSection
+                | Self::MissingProvisionWantedByTarget
+                | Self::MissingProvisionAfterSysusers
+                | Self::MissingProvisionBeforeRepovecd
+                | Self::WrongProvisionSysusersExecStart
+                | Self::SwappedProvisionExecStartOrder
+                | Self::ExtraProvisionExecStart
+                | Self::MissingProvisionType
+                | Self::ProvisionRemainsActive
+                | Self::ProvisionRefusesManualStop
+                | Self::ProvisionRefusesManualStopDisabled
+        )
+    }
+
+    fn mutate_service_scenario(self, units: &mut UnitSet) -> bool {
+        let Some(service) = self.service_unit() else {
+            return false;
+        };
+
+        if !self.mutate_shared_service_settings(units, service) {
+            self.mutate_service_dependencies(units, service);
+        }
+
+        true
+    }
+
+    fn service_unit(self) -> Option<ServiceUnit> {
+        match self {
             Self::PropertyBeforeSection
             | Self::MissingRepovecdServiceSection
             | Self::MissingRepovecdRequiresQdrant
@@ -110,7 +174,7 @@ impl ValidationScenario {
             | Self::RepovecdWrongUser
             | Self::RepovecdMissingGroup
             | Self::RepovecdWrongWorkingDirectory
-            | Self::RepovecdMissingEnvironment => self.mutate_repovecd(&mut units),
+            | Self::RepovecdMissingEnvironment => Some(ServiceUnit::Repovecd),
             Self::MissingMcpdServiceSection
             | Self::MissingMcpdRequiresQdrant
             | Self::MissingMcpdRequiresRepovecd
@@ -121,30 +185,35 @@ impl ValidationScenario {
             | Self::McpdWrongUser
             | Self::McpdMissingGroup
             | Self::McpdWrongWorkingDirectory
-            | Self::McpdMissingEnvironment => self.mutate_mcpd(&mut units),
-            Self::MissingGrepaiTemplateUnitSection
-            | Self::MissingGrepaiTemplateServiceSection
-            | Self::MissingGrepaiTemplateInstallSection
-            | Self::MissingGrepaiTemplateRequiresQdrant
-            | Self::MissingGrepaiTemplateRequiresRepovecd
-            | Self::MissingGrepaiTemplateAfterQdrant
-            | Self::MissingGrepaiTemplateAfterRepovecd
-            | Self::GrepaiTemplateUsesQdrantContainer
-            | Self::MissingGrepaiTemplatePartOfTarget
-            | Self::MissingGrepaiTemplateWantedByTarget
-            | Self::WrongGrepaiTemplateType
-            | Self::WrongGrepaiTemplateExecStart
-            | Self::GrepaiTemplateWrongUser
-            | Self::GrepaiTemplateMissingGroup
-            | Self::GrepaiTemplateWrongWorkingDirectory
-            | Self::GrepaiTemplateMissingEnvironment
-            | Self::GrepaiTemplateWrongRestartPolicy
-            | Self::GrepaiTemplateWrongRestartDelay
-            | Self::GrepaiTemplateLogsStdoutToFile
-            | Self::GrepaiTemplateLogsStderrToFile => self.mutate_grepai_template(&mut units),
+            | Self::McpdMissingEnvironment => Some(ServiceUnit::Mcpd),
+            _ => None,
         }
+    }
 
-        units
+    fn is_grepai_template_scenario(self) -> bool {
+        matches!(
+            self,
+            Self::MissingGrepaiTemplateUnitSection
+                | Self::MissingGrepaiTemplateServiceSection
+                | Self::MissingGrepaiTemplateInstallSection
+                | Self::MissingGrepaiTemplateRequiresQdrant
+                | Self::MissingGrepaiTemplateRequiresRepovecd
+                | Self::MissingGrepaiTemplateAfterQdrant
+                | Self::MissingGrepaiTemplateAfterRepovecd
+                | Self::GrepaiTemplateUsesQdrantContainer
+                | Self::MissingGrepaiTemplatePartOfTarget
+                | Self::MissingGrepaiTemplateWantedByTarget
+                | Self::WrongGrepaiTemplateType
+                | Self::WrongGrepaiTemplateExecStart
+                | Self::GrepaiTemplateWrongUser
+                | Self::GrepaiTemplateMissingGroup
+                | Self::GrepaiTemplateWrongWorkingDirectory
+                | Self::GrepaiTemplateMissingEnvironment
+                | Self::GrepaiTemplateWrongRestartPolicy
+                | Self::GrepaiTemplateWrongRestartDelay
+                | Self::GrepaiTemplateLogsStdoutToFile
+                | Self::GrepaiTemplateLogsStderrToFile
+        )
     }
 
     fn mutate_target(self, units: &mut UnitSet) {
@@ -245,87 +314,69 @@ impl ValidationScenario {
         }
     }
 
-    fn mutate_repovecd(self, units: &mut UnitSet) {
+    fn mutate_shared_service_settings(self, units: &mut UnitSet, service: ServiceUnit) -> bool {
+        let file = service.file();
+        let (executable, replacement) = service.executable_pair();
         match self {
-            Self::PropertyBeforeSection => {
-                units.replace_file(UnitFile::Repovecd, "Requires=qdrant.service\n[Unit]\n");
+            Self::MissingRepovecdServiceSection | Self::MissingMcpdServiceSection => {
+                units.remove_line(file, "[Service]\n");
             }
-            Self::MissingRepovecdServiceSection => {
-                units.remove_line(UnitFile::Repovecd, "[Service]\n");
+            Self::WrongRepovecdExecStart | Self::WrongMcpdExecStart => {
+                units.replace_token(file, executable, replacement);
             }
-            Self::MissingRepovecdRequiresQdrant => {
-                units.remove_line(UnitFile::Repovecd, "Requires=qdrant.service\n");
+            Self::RepovecdWrongUser | Self::McpdWrongUser => {
+                units.replace_token(file, "User=repovec", "User=root");
             }
-            Self::MissingRepovecdRequiresProvision => {
-                units.remove_line(UnitFile::Repovecd, "Requires=repovec-provision.service\n");
+            Self::RepovecdMissingGroup | Self::McpdMissingGroup => {
+                units.remove_line(file, "Group=repovec\n");
             }
-            Self::MissingRepovecdAfterQdrant => {
-                units.remove_line(UnitFile::Repovecd, "After=qdrant.service\n");
+            Self::RepovecdWrongWorkingDirectory | Self::McpdWrongWorkingDirectory => {
+                units.replace_token(
+                    file,
+                    "WorkingDirectory=/var/lib/repovec",
+                    "WorkingDirectory=/tmp",
+                );
             }
-            Self::RepovecdUsesQdrantContainerService => units.replace_token(
-                UnitFile::Repovecd,
-                "qdrant.service",
-                "qdrant.container.service",
-            ),
-            Self::WrongRepovecdExecStart => {
-                units.replace_token(UnitFile::Repovecd, "/usr/bin/repovecd", "/usr/bin/otherd");
+            Self::RepovecdMissingEnvironment | Self::McpdMissingEnvironment => {
+                units.remove_line(file, "Environment=HOME=/var/lib/repovec\n");
             }
-            Self::RepovecdWrongUser => {
-                units.replace_token(UnitFile::Repovecd, "User=repovec", "User=root");
-            }
-            Self::RepovecdMissingGroup => {
-                units.remove_line(UnitFile::Repovecd, "Group=repovec\n");
-            }
-            Self::RepovecdWrongWorkingDirectory => units.replace_token(
-                UnitFile::Repovecd,
-                "WorkingDirectory=/var/lib/repovec",
-                "WorkingDirectory=/tmp",
-            ),
-            Self::RepovecdMissingEnvironment => {
-                units.remove_line(UnitFile::Repovecd, "Environment=HOME=/var/lib/repovec\n");
-            }
-            _ => panic!("repovecd mutation called for non-repovecd scenario"),
+            _ => return false,
         }
+
+        true
     }
 
-    fn mutate_mcpd(self, units: &mut UnitSet) {
+    fn mutate_service_dependencies(self, units: &mut UnitSet, service: ServiceUnit) {
+        let file = service.file();
         match self {
-            Self::MissingMcpdServiceSection => {
-                units.remove_line(UnitFile::Mcpd, "[Service]\n");
+            Self::PropertyBeforeSection => {
+                units.replace_file(file, "Requires=qdrant.service\n[Unit]\n");
+            }
+            Self::MissingRepovecdRequiresQdrant => {
+                units.remove_line(file, "Requires=qdrant.service\n");
+            }
+            Self::MissingRepovecdRequiresProvision | Self::MissingMcpdRequiresProvision => {
+                units.remove_line(file, "Requires=repovec-provision.service\n");
+            }
+            Self::MissingRepovecdAfterQdrant => {
+                units.remove_line(file, "After=qdrant.service\n");
+            }
+            Self::RepovecdUsesQdrantContainerService => {
+                units.replace_token(file, "qdrant.service", "qdrant.container.service")
             }
             Self::MissingMcpdRequiresQdrant => {
-                units.remove_token(UnitFile::Mcpd, "Requires=", "qdrant.service");
+                units.remove_token(file, "Requires=", "qdrant.service");
             }
             Self::MissingMcpdRequiresRepovecd => {
-                units.remove_token(UnitFile::Mcpd, "Requires=", "repovecd.service");
-            }
-            Self::MissingMcpdRequiresProvision => {
-                units.remove_line(UnitFile::Mcpd, "Requires=repovec-provision.service\n");
+                units.remove_token(file, "Requires=", "repovecd.service");
             }
             Self::MissingMcpdAfterQdrant => {
-                units.remove_token(UnitFile::Mcpd, "After=", "qdrant.service");
+                units.remove_token(file, "After=", "qdrant.service");
             }
             Self::MissingMcpdAfterRepovecd => {
-                units.remove_token(UnitFile::Mcpd, "After=", "repovecd.service");
+                units.remove_token(file, "After=", "repovecd.service");
             }
-            Self::WrongMcpdExecStart => {
-                units.replace_token(UnitFile::Mcpd, "/usr/bin/repovec-mcpd", "/usr/bin/other-mcpd");
-            }
-            Self::McpdWrongUser => {
-                units.replace_token(UnitFile::Mcpd, "User=repovec", "User=root");
-            }
-            Self::McpdMissingGroup => {
-                units.remove_line(UnitFile::Mcpd, "Group=repovec\n");
-            }
-            Self::McpdWrongWorkingDirectory => units.replace_token(
-                UnitFile::Mcpd,
-                "WorkingDirectory=/var/lib/repovec",
-                "WorkingDirectory=/tmp",
-            ),
-            Self::McpdMissingEnvironment => {
-                units.remove_line(UnitFile::Mcpd, "Environment=HOME=/var/lib/repovec\n");
-            }
-            _ => panic!("repovec-mcpd mutation called for non-mcpd scenario"),
+            _ => panic!("service dependency mutation called for another scenario"),
         }
     }
 

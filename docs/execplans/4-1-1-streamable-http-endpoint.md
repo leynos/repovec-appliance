@@ -576,20 +576,20 @@ correlation, framing, bounds, and runtime wiring. **End state:** Injected test
 composition serves JSON POST, SSE POST, and GET SSE over loopback; production
 composition fails closed. Each exchange owns bounded response delivery. The SSE
 stream has no replay or session generation; the ADR records the accepted
-temporary gap against 2025-11-25 reconnect SHOULDs. Run `make check-fmt`,
-`make lint`, and `make test` sequentially after the milestone. The daemon's
-startup checks still run synchronously before the serve runtime starts.
-**Acceptance evidence:** BDD and socket tests observe expected headers, status,
-content type, complete JSON/SSE frames, correlation under duplicate IDs,
-resource-limit failures, closed production composition, and clean shutdown.
-**Conformance check:** Confirm versioned wire contract; no session, Origin, or
-stdio implementation leaked into this milestone; no unapproved public API,
-dependency, trust boundary, or persisted format; keep trace links current.
-**Recovery:** Revert adapter wiring while retaining tests and port contracts;
-remove disposable dependencies only when not selected. **Remaining gaps:**
-Authentication, strict Origin allowlist, session lifecycle/replay, grepai
-bridge, HTTPS deployment, and remote corpus queries. **Compatibility
-decision:** none.
+temporary gap against 2025-11-25 reconnection recommendations. Run
+`make check-fmt`, `make lint`, and `make test` sequentially after the
+milestone. The daemon's startup checks still run synchronously before the serve
+runtime starts. **Acceptance evidence:** BDD and socket tests observe expected
+headers, status, content type, complete JSON/SSE frames, correlation under
+duplicate IDs, resource-limit failures, closed production composition, and
+clean shutdown. **Conformance check:** Confirm versioned wire contract; no
+session, Origin, or stdio implementation leaked into this milestone; no
+unapproved public API, dependency, trust boundary, or persisted format; keep
+trace links current. **Recovery:** Revert adapter wiring while retaining tests
+and port contracts; remove disposable dependencies only when not selected.
+**Remaining gaps:** Authentication, strict Origin allowlist, session
+lifecycle/replay, grepai bridge, HTTPS deployment, and remote corpus queries.
+**Compatibility decision:** none.
 
 ### EP-M4 — documentation and acceptance
 

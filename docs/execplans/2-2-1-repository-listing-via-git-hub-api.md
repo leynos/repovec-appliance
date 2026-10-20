@@ -250,9 +250,9 @@ Follow the `Link` header's unique `rel="next"`; absence means completion even
 for a full page. A short or empty page with a next link must continue. Parse
 multiple header values and relation token lists, including other relations
 alongside `next`; malformed or ambiguous continuation is an error. A short
-hand-written comma split is insufficient for quoted link parameters. Use a
-small parser for the RFC 8288 Link field grammar, with quoted-string escapes
-and separators recognized by parser state. Preserve all link-values before
+handwritten comma split is insufficient for quoted link parameters. Use a small
+parser for the RFC 8288 Link field grammar, with quoted-string escapes and
+separators recognized by parser state. Preserve all link-values before
 selecting a continuation; an `anchor` parameter on a next link is an
 unsupported-context error, not a link to silently ignore. For duplicate `rel`
 parameters within one link-value, use only the first as RFC 8288 specifies.

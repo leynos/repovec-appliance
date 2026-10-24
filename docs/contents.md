@@ -22,6 +22,8 @@
 
 - [Roadmap](roadmap.md): staged implementation plan and task tracking for the
   appliance.
+- [Bare mirror creation and fetch ExecPlan](execplans/2-3-1-bare-mirror-creation-and-fetch.md):
+  proposed contracts and delivery plan for roadmap item `2.3.1`.
 - [GitHub device-flow OAuth client ExecPlan](execplans/2-1-1-implement-device-flow-oauth-client.md):
   pre-implementation plan for roadmap item `2.1.1`.
 - [GitHub device-flow OAuth client retrospective](execplans/2-1-1-implement-device-flow-oauth-client-retrospective.md):

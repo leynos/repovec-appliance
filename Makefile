@@ -108,7 +108,7 @@ markdownlint: spelling ## Lint Markdown files and enforce spelling
 	fi
 
 spelling: ## Enforce en-GB-oxendict spelling
-	$(TYPOS_CONFIG_BUILDER) gate --repository .
+	$(TYPOS_CONFIG_BUILDER) gate --repository . --scope all
 
 docs-lint: ## Backwards-compatible docs lint target
 	$(MAKE) markdownlint

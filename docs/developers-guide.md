@@ -223,12 +223,18 @@ as a test assertion on the SHA string.
 
 Every `ci.yml` job runs on Ubicloud, except on a pull request from a fork,
 which cannot obtain an Ubicloud runner and falls back to a GitHub-hosted one.
-Six jobs use `ubicloud-standard-2`; `lint` uses `ubicloud-standard-4`, for the
-reason given under "Right-sizing `lint`" below:
+So does a pull request Dependabot opened: hosted minutes cost nothing on a
+public repository, and Dependabot opens many pull requests, which therefore
+build cold. The guard tests the pull request's author, not `github.actor`,
+because the actor is whoever triggered the run, so a person pushing to a
+Dependabot branch would flip the runner. Six jobs use `ubicloud-standard-2`;
+`lint` uses `ubicloud-standard-4`, for the reason given under "Right-sizing
+`lint`" below:
 
 ```yaml
 runs-on: >-
-  ${{ github.event.pull_request.head.repo.fork
+  ${{ (github.event.pull_request.head.repo.fork
+  || github.event.pull_request.user.login == 'dependabot[bot]')
   && 'ubuntu-latest' || 'ubicloud-standard-2' }}
 ```
 
@@ -327,7 +333,8 @@ and runs in the `lint` job through `make test-workflow-contracts`. It reads
 every job's `runs-on` from the parsed document, so an embedded line break is a
 failure rather than something only GitHub sees. It compares the guard
 expression and both arms against exact strings, so a sibling field such as
-`head.repo.private` cannot stand in for `head.repo.fork`. It pins placement by
+`head.repo.private` cannot stand in for `head.repo.fork`, and `github.actor`
+cannot stand in for the Dependabot author. It pins placement by
 `(workflow, job id)` coordinate and compares the pinned set against the tree's
 jobs in both directions, so a new lane cannot appear unplaced. It requires a
 ceiling on every job that can select an Ubicloud label, whether or not that job

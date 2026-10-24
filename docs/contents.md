@@ -18,6 +18,9 @@
   maintainability and refactoring reference for contributors working in the
   codebase.
 
+- [MCP transport baseline decision](adr-002-mcp-transport-baseline.md): proposed
+  protocol version and security boundary for the HTTP transport.
+
 ## Plans and execution
 
 - [Roadmap](roadmap.md): staged implementation plan and task tracking for the
@@ -37,6 +40,9 @@
   service units.
 - [Migration notes for 0.2.0](migrations/0-2-0.md): compatibility guidance for
   callers updating to the Qdrant Quadlet observer trait-object API.
+
+- [Streamable HTTP endpoint ExecPlan](execplans/4-1-1-streamable-http-endpoint.md):
+  pre-implementation plan for roadmap item `4.1.1`.
 
 ## Reference and style
 

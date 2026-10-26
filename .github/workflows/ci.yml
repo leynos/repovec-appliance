@@ -71,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@d5fded1107ee6822fdbf9539d81ff18ce6ce073a
+        uses: leynos/shared-actions/.github/actions/setup-rust@0f3047d45d1371d8ae700c69e7bed42c4f8862a1
       - name: Build
         run: make build
 
@@ -87,11 +87,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@d5fded1107ee6822fdbf9539d81ff18ce6ce073a
+        uses: leynos/shared-actions/.github/actions/setup-rust@0f3047d45d1371d8ae700c69e7bed42c4f8862a1
       - name: Install mdtablefix
         # `make check-fmt` runs `mdtablefix --check --git`; 0.6.0 is the
         # first release with `--check` and `--git`.
-        uses: leynos/shared-actions/.github/actions/install-mdtablefix@d5fded1107ee6822fdbf9539d81ff18ce6ce073a
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@0f3047d45d1371d8ae700c69e7bed42c4f8862a1
         with:
           version: "0.6.1"
 
@@ -127,9 +127,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@d5fded1107ee6822fdbf9539d81ff18ce6ce073a
+        uses: leynos/shared-actions/.github/actions/setup-rust@0f3047d45d1371d8ae700c69e7bed42c4f8862a1
       - name: Install Whitaker
-        uses: leynos/shared-actions/.github/actions/install-whitaker@d5fded1107ee6822fdbf9539d81ff18ce6ce073a
+        uses: leynos/shared-actions/.github/actions/install-whitaker@0f3047d45d1371d8ae700c69e7bed42c4f8862a1
       - name: Lint
         run: make lint
       - name: Setup uv
@@ -140,7 +140,7 @@ jobs:
       - name: Install mdtablefix for workflow contracts
         # The selection contract exercises the real formatter in a scratch Git
         # repository; tool probes cover the other Make invocation boundaries.
-        uses: leynos/shared-actions/.github/actions/install-mdtablefix@d5fded1107ee6822fdbf9539d81ff18ce6ce073a
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@0f3047d45d1371d8ae700c69e7bed42c4f8862a1
         with:
           version: "0.6.1"
       - name: Setup Node for Markdown contracts
@@ -195,7 +195,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@d5fded1107ee6822fdbf9539d81ff18ce6ce073a
+        uses: leynos/shared-actions/.github/actions/setup-rust@0f3047d45d1371d8ae700c69e7bed42c4f8862a1
       - name: Setup uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
         with:
@@ -218,7 +218,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@d5fded1107ee6822fdbf9539d81ff18ce6ce073a
+        uses: leynos/shared-actions/.github/actions/setup-rust@0f3047d45d1371d8ae700c69e7bed42c4f8862a1
       - name: Build docs-gate helper
         shell: bash
         run: |
@@ -305,6 +305,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@d5fded1107ee6822fdbf9539d81ff18ce6ce073a
+        uses: leynos/shared-actions/.github/actions/setup-rust@0f3047d45d1371d8ae700c69e7bed42c4f8862a1
       - name: Validate checked-in systemd units
         run: make validate-systemd

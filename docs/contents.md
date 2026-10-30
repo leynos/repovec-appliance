@@ -20,6 +20,9 @@
 
 ## Plans and execution
 
+- [Token refresh and expiry handling ExecPlan](execplans/2-1-2-token-refresh-and-expiry-handling.md):
+  approval-gated implementation and verification plan for roadmap item `2.1.2`.
+
 - [Roadmap](roadmap.md): staged implementation plan and task tracking for the
   appliance.
 - [GitHub device-flow OAuth client ExecPlan](execplans/2-1-1-implement-device-flow-oauth-client.md):

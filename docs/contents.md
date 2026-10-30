@@ -20,6 +20,8 @@
 
 ## Plans and execution
 
+- [GitHub repository listing ExecPlan](execplans/2-2-1-repository-listing-via-git-hub-api.md):
+  pre-implementation plan for roadmap item `2.2.1`.
 - [Roadmap](roadmap.md): staged implementation plan and task tracking for the
   appliance.
 - [GitHub device-flow OAuth client ExecPlan](execplans/2-1-1-implement-device-flow-oauth-client.md):

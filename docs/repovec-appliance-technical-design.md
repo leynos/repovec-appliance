@@ -265,6 +265,13 @@ add/remove projects and start/stop corresponding indexers.
 
 ### MCP transport and security invariants
 
+The proposed
+[MCP transport baseline decision](adr-002-mcp-transport-baseline.md) records
+the protocol-version conflict and the bounded delivery of roadmap item 4.1.1.
+Its [execution plan](execplans/4-1-1-streamable-http-endpoint.md) awaits
+approval; the following describes the target architecture, not a shipped
+endpoint.
+
 repovec-mcpd implements MCP Streamable HTTP transport because MCP defines
 Streamable HTTP as the standard remote transport and describes requirements
 including:

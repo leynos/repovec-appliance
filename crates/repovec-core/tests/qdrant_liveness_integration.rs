@@ -45,8 +45,8 @@ fn live_qdrant_accepts_the_configured_api_key(ready_qdrant: Result<ReadyQdrant, 
     .expect("Tokio runtime should list Qdrant collections")
     .expect("configured API key should authenticate collection listing");
 
-    assert!(collections.collections.is_empty());
-    assert!(!report.version().is_empty());
+    assert_eq!(collections.collections, Vec::new());
+    assert_ne!(report.version(), "");
 }
 
 #[rstest]

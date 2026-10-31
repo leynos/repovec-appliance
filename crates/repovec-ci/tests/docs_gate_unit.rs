@@ -38,7 +38,7 @@ fn non_markdown_paths_skip_the_docs_gate(#[case] changed_file: &str) {
     assert!(!plan.should_run());
     assert!(!plan.nixie_required());
     assert_eq!(plan.reason(), DocsGateReason::NoDocumentationChanges);
-    assert_eq!(plan.matched_files(), []);
+    assert_eq!(plan.matched_files(), [] as [String; 0]);
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn empty_input_runs_the_docs_gate_conservatively() {
     assert!(plan.should_run());
     assert!(plan.nixie_required());
     assert_eq!(plan.reason(), DocsGateReason::MissingChangedFiles);
-    assert_eq!(plan.matched_files(), []);
+    assert_eq!(plan.matched_files(), [] as [String; 0]);
 }
 
 #[test]

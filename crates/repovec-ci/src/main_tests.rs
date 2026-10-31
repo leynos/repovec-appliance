@@ -78,7 +78,7 @@ fn no_arguments_default_to_changed_files_input() {
     let command = parse_args(std::iter::empty::<String>()).expect("empty args should parse");
 
     match command {
-        Command::DocsGate(Input::ChangedFiles(paths)) => assert!(paths.is_empty()),
+        Command::DocsGate(Input::ChangedFiles(paths)) => assert_eq!(paths, [] as [String; 0]),
         Command::Help | Command::DocsGate(_) | Command::SystemdGate => {
             panic!("empty args should default to ChangedFiles");
         }

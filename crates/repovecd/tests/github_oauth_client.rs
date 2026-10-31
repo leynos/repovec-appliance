@@ -31,8 +31,8 @@ fn oauth2_test_server_exercises_device_code_request_and_token_poll() {
         .request_device_code(&client_id, ["openid", "profile"])
         .expect("device-code request should succeed");
     assert_eq!(authorization.interval.as_secs(), 5);
-    assert!(!authorization.device_code.secret().is_empty());
-    assert!(!authorization.user_code.as_str().is_empty());
+    assert_ne!(authorization.device_code.secret(), "");
+    assert_ne!(authorization.user_code.as_str(), "");
 
     let pending = oauth_client
         .poll_token(&client_id, &authorization.device_code)
@@ -49,7 +49,7 @@ fn oauth2_test_server_exercises_device_code_request_and_token_poll() {
         panic!("approved device code should authorize");
     };
 
-    assert!(!token.secret().is_empty());
+    assert_ne!(token.secret(), "");
     assert!(token.scopes().iter().any(|scope| scope == "openid"));
     assert!(token.scopes().iter().any(|scope| scope == "profile"));
 }

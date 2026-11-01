@@ -9,6 +9,8 @@
   user-visible continuous integration (CI) and documentation-gate behaviour.
 - [Developers guide](developers-guide.md): maintainer workflow, quality gates,
   and repository automation policy.
+- [Coverage ownership](coverage-ownership.md): which lane measures coverage,
+  which workflow publishes it, and the verified gaps in baseline freshness.
 
 ## Design and architecture
 

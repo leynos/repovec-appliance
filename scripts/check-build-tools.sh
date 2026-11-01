@@ -54,18 +54,41 @@ check_mold() {
 # pinned nightly. Any absence is fatal, because the standard's parallel
 # frontend is a nightly-only flag.
 check_toolchain() {
-  local toolchain=$1
+  local toolchain=$1 host installed resolved
   if ! command -v rustup >/dev/null 2>&1; then
     note 'rustup not found on PATH; it is required to select the pinned nightly'
     note 'install it from https://rustup.rs'
     return 1
   fi
-  if ! rustup toolchain list | grep -q "^$toolchain"; then
-    note "toolchain $toolchain is not installed"
+  # The installed identity is `<channel>-<host triple>`, and only rustup knows
+  # the triple it resolved for this machine. A guessed suffix would disagree
+  # with rustup on a cross-compiled or renamed target.
+  if ! resolved=$(rustup show); then
+    note 'rustup show failed; cannot resolve the host triple'
+    return 1
+  fi
+  host=$(printf '%s\n' "$resolved" | awk -F': ' '/^Default host: / { print $2 }')
+  if [ -z "$host" ]; then
+    note 'rustup show did not report a default host triple'
+    return 1
+  fi
+  if ! installed=$(rustup toolchain list); then
+    note 'rustup toolchain list failed; cannot confirm the pinned toolchain'
+    return 1
+  fi
+  # Compare against the complete identity rather than a prefix: a custom
+  # toolchain named after the pin, such as `nightly-2026-03-12-custom`, would
+  # otherwise satisfy the check while the pinned host build stayed absent.
+  # Read the whole list before deciding so `pipefail` never sees a broken pipe
+  # from an early-exiting consumer.
+  if ! printf '%s\n' "$installed" |
+    awk -v expected="$toolchain-$host" '$1 == expected { found = 1 } END { exit !found }'
+  then
+    note "toolchain $toolchain for $host is not installed"
     note 'install it with: make install-build-tools'
     return 1
   fi
-  note "toolchain $toolchain available"
+  note "toolchain $toolchain for $host available"
 }
 
 # Run both checks unconditionally so a developer sees every missing piece in

@@ -21,7 +21,6 @@ Run via ``make test-workflow-contracts``.
 
 from __future__ import annotations
 
-import os
 import platform
 import re
 import shutil
@@ -56,6 +55,7 @@ REQUIRED_TOOLS = (
 )
 
 _TOOLCHAIN_RE = re.compile(r'^[ \t]*channel[ \t]*=[ \t]*"([^"]+)"', re.MULTILINE)
+_HOST_RE = re.compile(r"^host: (\S+)$", re.MULTILINE)
 
 
 def _tool_paths() -> dict[str, str]:
@@ -77,7 +77,22 @@ def _pinned_toolchain() -> str:
     return match.group(1)
 
 
-def _controlled_environment(tmp_path: Path) -> tuple[dict[str, str], str]:
+def _host_triple() -> str:
+    """Return the host triple the installed Rust compiler targets."""
+    rustc = shutil.which("rustc")
+    if rustc is not None:
+        completed = subprocess.run(
+            [rustc, "-vV"], capture_output=True, text=True, check=False
+        )
+        match = _HOST_RE.search(completed.stdout)
+        if completed.returncode == 0 and match is not None:
+            return match.group(1)
+    pytest.skip("cannot resolve the host triple to fake the toolchain identity")
+
+
+def _controlled_environment(
+    tmp_path: Path, *, toolchain_identity: str | None = None
+) -> tuple[dict[str, str], str]:
     """Build the isolated environment and return it with the make path."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -86,12 +101,20 @@ def _controlled_environment(tmp_path: Path) -> tuple[dict[str, str], str]:
 
     # Fake only the toolchain lookup. The preflight must reach the mold
     # check and fail there; a real rustup would make both halves fail and
-    # the assertion could pass on the wrong message.
+    # the assertion could pass on the wrong message. The fake reports the
+    # complete installed identity, and the host triple separately, exactly
+    # as rustup does.
+    host = _host_triple()
+    identity = toolchain_identity or f"{_pinned_toolchain()}-{host}"
     rustup = bin_dir / "rustup"
     rustup.write_text(
         "#!/bin/sh\n"
         'if [ "$1" = toolchain ] && [ "$2" = list ]; then\n'
-        f'  printf \'%s (active)\\n\' "{_pinned_toolchain()}"\n'
+        f"  printf '%s (active)\\n' \"{identity}\"\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = show ]; then\n'
+        f"  printf 'Default host: %s\\n' \"{host}\"\n"
         "  exit 0\n"
         "fi\n"
         "exit 1\n",
@@ -107,9 +130,7 @@ def _controlled_environment(tmp_path: Path) -> tuple[dict[str, str], str]:
     # ignored the preflight's status would run this and exit zero.
     cargo = tmp_path / "cargo-sentinel"
     cargo.write_text(
-        "#!/bin/sh\n"
-        ': > "$CARGO_MARKER"\n'
-        "exit 0\n",
+        '#!/bin/sh\n: > "$CARGO_MARKER"\nexit 0\n',
         encoding="utf-8",
     )
     cargo.chmod(0o755)
@@ -206,6 +227,36 @@ def test_the_preflight_passes_with_a_matching_mold(tmp_path: Path) -> None:
         f"the preflight should pass with a matching mold and toolchain:\n{output}"
     )
     assert "mold 2.41.0" in output, output
+
+
+def test_a_toolchain_that_only_extends_the_pin_is_not_accepted(tmp_path: Path) -> None:
+    """Scenario: a custom toolchain's name starts with the pinned channel.
+
+    Invariant: the check matches the complete installed identity, not a
+    prefix. A toolchain such as ``nightly-2026-03-12-custom`` must not
+    satisfy a pin that names the host build, because the parallel
+    frontend would then come from an unvetted compiler.
+    """
+    prefix_only = f"{_pinned_toolchain()}-custom"
+    environment, _ = _controlled_environment(tmp_path, toolchain_identity=prefix_only)
+
+    completed = subprocess.run(
+        [
+            "scripts/check-build-tools.sh",
+        ],
+        cwd=REPO_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = f"{completed.stdout}\n{completed.stderr}"
+    assert completed.returncode != 0, (
+        f"the preflight should reject a prefix-only toolchain match:\n{output}"
+    )
+    assert "is not installed" in output, (
+        f"the failure should name the missing toolchain identity:\n{output}"
+    )
 
 
 def test_the_standard_routes_still_dry_run_cleanly() -> None:

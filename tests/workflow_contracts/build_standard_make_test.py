@@ -150,6 +150,26 @@ def test_the_standard_survives_with_no_inherited_flags() -> None:
         )
 
 
+def test_inherited_metacharacters_reach_the_compiler_verbatim() -> None:
+    """Scenario: an inherited ``RUSTFLAGS`` carries shell metacharacters.
+
+    Invariant: the caller's flag text arrives unchanged. A double-quoted
+    assignment lets the shell re-parse an embedded ``"``, backtick or
+    ``$``, and expanding ``$(RUSTFLAGS)`` lets Make consume a literal
+    ``$`` as a variable reference before the shell ever sees it.
+    """
+    hostile = '-D warnings -Copt="a b" -Cvar=$HOME `date` it\'s'
+    lines = run_make_dry_run("build", rustflags=hostile)
+    invocations = cargo_invocations(lines)
+    assert len(invocations) == 1, f"expected one Cargo invocation, found {invocations}"
+
+    expected = f"{hostile} {' '.join(expected_standard_tokens())}"
+    assert invocations[0].environment["RUSTFLAGS"] == expected, (
+        "the inherited RUSTFLAGS should reach Cargo verbatim; "
+        f"expected {expected!r}, found {invocations[0].environment['RUSTFLAGS']!r}"
+    )
+
+
 def test_the_test_route_routes_both_gate_flag_groups_to_the_runner() -> None:
     """Scenario: the runner is invoked without one of its flag groups.
 

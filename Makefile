@@ -36,8 +36,10 @@ BUILD_HOST_OS := $(shell uname -s)
 STANDARD_RUSTFLAGS = $(STANDARD_THREADS_FLAG)$(if $(filter Linux,$(BUILD_HOST_OS)), $(STANDARD_MOLD_FLAG))
 # Make reads an exported `RUSTFLAGS` into this variable. Appending to it is
 # what keeps a caller's assignment -- CI's `-D warnings` in particular -- from
-# displacing the standard.
-INHERITED_RUSTFLAGS := $(strip $(RUSTFLAGS))
+# displacing the standard. `$(value ...)` returns the caller's text unexpanded:
+# expanding the variable first would consume a literal `$` as a Make reference
+# before the value could be quoted for the shell.
+INHERITED_RUSTFLAGS := $(strip $(value RUSTFLAGS))
 
 BASE_RUST_FLAGS ?= -D warnings
 BASE_RUSTDOC_FLAGS ?= -D warnings
@@ -53,21 +55,27 @@ CARGO_FLAGS ?= --all-targets --all-features
 CLIPPY_FLAGS ?= $(CARGO_FLAGS) -- $(WARNING_RUST_FLAGS)
 TEST_FLAGS ?= $(CARGO_FLAGS)
 DOCTEST_FLAGS ?= --workspace --all-features
+# Quote a value as one shell word. Single quotes keep every metacharacter the
+# caller might have passed -- `"`, a backtick, `$` -- literal, but a single
+# quote cannot appear inside them. The standard `'\''` idiom closes the word,
+# escapes the quote, and reopens it; `subst` performs that rewrite at Make
+# level so the shell only ever sees finished, escaped text.
+shell_quote = '$(subst ','\'',$1)'
 # Gate routes deny warnings and take the standard, appended to whatever
 # `RUSTFLAGS` the caller set. The value is expanded here rather than in the
 # shell so `make --dry-run` prints the flags actually used, which the workflow
 # contracts evaluate.
 GATE_RUSTFLAG_VALUE := $(strip $(INHERITED_RUSTFLAGS) $(EFFECTIVE_RUST_FLAGS))
-GATE_RUSTFLAGS = RUSTFLAGS="$(GATE_RUSTFLAG_VALUE)"
+GATE_RUSTFLAGS = RUSTFLAGS=$(call shell_quote,$(GATE_RUSTFLAG_VALUE))
 # A debug build keeps the caller's warning policy rather than imposing one,
 # but still takes the standard.
 DEBUG_RUSTFLAG_VALUE := $(strip $(INHERITED_RUSTFLAGS) $(STANDARD_RUSTFLAGS))
-DEBUG_RUSTFLAGS = RUSTFLAGS="$(DEBUG_RUSTFLAG_VALUE)"
+DEBUG_RUSTFLAGS = RUSTFLAGS=$(call shell_quote,$(DEBUG_RUSTFLAG_VALUE))
 # Release builds take neither the parallel frontend nor `mold`. Assigning
 # `RUSTFLAGS` at all -- even to an empty inherited value -- displaces the
 # configuration file's `rustflags` tables, which is the whole mechanism. This
 # route must not depend on the build tools being installed.
-RELEASE_RUSTFLAGS = RUSTFLAGS="$(INHERITED_RUSTFLAGS)"
+RELEASE_RUSTFLAGS = RUSTFLAGS=$(call shell_quote,$(INHERITED_RUSTFLAGS))
 # `-fuse-ld=mold` and `command -v mold` both resolve by PATH order, so the
 # pinned install prefix leads. An overridden BUILD_TOOLS_PREFIX is therefore
 # the prefix the linker actually comes from, not a hard-coded ~/.local.

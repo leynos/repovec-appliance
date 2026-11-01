@@ -205,6 +205,7 @@ def test_the_derivation_covers_every_compiling_make_target() -> None:
     """
     assert COMPILING_MAKE_TARGETS == {
         "build",
+        "build-docs-gate-helper",
         "test",
         "lint",
         "typecheck",

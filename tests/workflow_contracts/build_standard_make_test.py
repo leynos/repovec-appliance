@@ -46,7 +46,14 @@ from build_standard_probe import (
 )
 
 #: The routes the development standard covers, as Make target names.
-STANDARD_ROUTES = ("build", "test", "lint", "typecheck", "validate-systemd")
+STANDARD_ROUTES = (
+    "build",
+    "build-docs-gate-helper",
+    "test",
+    "lint",
+    "typecheck",
+    "validate-systemd",
+)
 
 #: Routes that must not depend on the build tools being installed.
 TOOL_FREE_ROUTES = ("release", "fmt", "check-fmt")

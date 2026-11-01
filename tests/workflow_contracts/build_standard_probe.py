@@ -73,7 +73,14 @@ COMPILING_CARGO_SUBCOMMANDS: Final = frozenset(
 #: prerequisite of ``check-build-tools`` in the Makefile, which the
 #: contract also asserts separately.
 COMPILING_MAKE_TARGETS: Final = frozenset(
-    {"build", "test", "lint", "typecheck", "validate-systemd"}
+    {
+        "build",
+        "build-docs-gate-helper",
+        "test",
+        "lint",
+        "typecheck",
+        "validate-systemd",
+    }
 )
 
 

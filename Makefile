@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie spelling validate-systemd integration-test integration-command-test test-workflow-contracts script-test install-build-tools check-build-tools _check-python _check-integration-prereqs _check-command-test-prereqs
+.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie spelling build-docs-gate-helper validate-systemd integration-test integration-command-test test-workflow-contracts script-test install-build-tools check-build-tools _check-python _check-integration-prereqs _check-command-test-prereqs
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
@@ -182,6 +182,9 @@ docs: ## Legacy docs target alias
 
 nixie: ## Validate Mermaid diagrams
 	$(NIXIE) --no-sandbox
+
+build-docs-gate-helper: ensure-cargo check-build-tools ## Build the repovec-ci docs-gate helper
+	$(DEBUG_RUSTFLAGS) $(CARGO) build --quiet -p repovec-ci
 
 validate-systemd: ensure-cargo check-build-tools ## Validate checked-in systemd unit contracts
 	$(DEBUG_RUSTFLAGS) $(CARGO) build --quiet -p repovec-ci

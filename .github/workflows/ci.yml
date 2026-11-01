@@ -228,10 +228,7 @@ jobs:
       - name: Install build standard
         run: make install-build-tools
       - name: Build docs-gate helper
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo build --quiet -p repovec-ci
+        run: make build-docs-gate-helper
       - name: Decide whether documentation gates should run
         id: docs_gate_plan
         shell: bash

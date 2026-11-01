@@ -216,6 +216,13 @@ def test_the_standard_routes_still_dry_run_cleanly() -> None:
     isolated failure above: a broken Makefile would otherwise make the
     failure test pass for the wrong reason.
     """
-    for target in ("build", "test", "lint", "typecheck", "validate-systemd"):
+    for target in (
+        "build",
+        "build-docs-gate-helper",
+        "test",
+        "lint",
+        "typecheck",
+        "validate-systemd",
+    ):
         lines = run_make_dry_run(target)
         assert lines, f"the {target} dry run should print a recipe"

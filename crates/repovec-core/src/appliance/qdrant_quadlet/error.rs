@@ -209,18 +209,23 @@ fn write_incorrect_api_key_secret(f: &mut fmt::Formatter<'_>, secret: &str) -> f
 /// must keep their original messages. Normalizing the four into one value keeps
 /// the message shapes in one place without collapsing the variants.
 struct DependencyFailure<'a> {
+    /// The systemd directive that carries the dependency.
     directive: &'a str,
+    /// The unit the directive must reference.
     expected: &'a str,
     /// The wrong unit the directive names, or `None` when it is absent.
     actual: Option<&'a str>,
+    /// Whether the message must use the fixed API-key provisioning wording.
     is_api_key: bool,
 }
 
 impl<'a> DependencyFailure<'a> {
+    /// Builds the failure for a directive the unit does not declare at all.
     const fn missing(directive: &'a str, expected: &'a str, is_api_key: bool) -> Self {
         Self { directive, expected, actual: None, is_api_key }
     }
 
+    /// Builds the failure for a directive that names a different unit.
     const fn incorrect(
         directive: &'a str,
         expected: &'a str,

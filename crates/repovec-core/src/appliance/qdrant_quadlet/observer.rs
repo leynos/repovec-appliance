@@ -163,6 +163,7 @@ pub trait QdrantQuadletObserver: Send + Sync {
 
 impl QdrantQuadletObserver for () {}
 
+/// Emits a validation warning on the shared Qdrant Quadlet log target.
 macro_rules! validation_warning {
     ($message:literal $(, $field:ident)*) => {
         warn!(target: LOG_TARGET, $($field,)* $message);

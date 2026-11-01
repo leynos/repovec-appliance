@@ -52,7 +52,7 @@ fn gecos() -> impl Strategy<Value = String> {
 ///
 /// An empty quoted field is generated on purpose: the tokenizer must preserve
 /// it as a column, because dropping it would shift the home and shell fields
-/// left and silently mis-read a syntactically valid declaration. The two halves
+/// left and silently misread a syntactically valid declaration. The two halves
 /// of the pair differ for that case because a quoted field's value is the text
 /// inside the quotes.
 fn uid_column() -> impl Strategy<Value = (String, String)> {

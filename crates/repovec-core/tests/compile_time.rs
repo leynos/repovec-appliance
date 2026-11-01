@@ -12,7 +12,7 @@
 //! `success: true` default. The run then fails with the misleading "expected
 //! test case to fail to compile, but it succeeded" (observed 2026-10-16).
 //! `trybuild` does take a lock around the generated project, but it is a
-//! best-effort mtime heartbeat and cannot be relied on to serialise drivers
+//! best-effort mtime heartbeat and cannot be relied on to serialize drivers
 //! under load.
 //!
 //! Keep exactly one driver in this package: add fixtures to the call below

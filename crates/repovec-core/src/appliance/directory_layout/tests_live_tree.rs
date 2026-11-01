@@ -4,10 +4,10 @@
 //! [`super::tests_live_tree_support`]; this module holds only the cases.
 //!
 //! A scratch tree cannot be chowned to root, so the on-disk cases seed all four
-//! expectations to the test process's ids. That uniformity would hide a
-//! mis-wired contract field, so two extra checks pin the mapping: the contract
-//! table itself is asserted with distinct ids, and each directory family is
-//! then re-verified with one expectation moved off the on-disk id.
+//! expectations to the test process's ids. That uniformity would hide an
+//! incorrectly wired contract field, so two extra checks pin the mapping: the
+//! contract table itself is asserted with distinct ids, and each directory
+//! family is then re-verified with one expectation moved off the on-disk id.
 
 use std::io;
 

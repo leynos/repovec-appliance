@@ -5,9 +5,9 @@
 
 use super::unit_set::{UnitFile, UnitSet};
 
-mod scenario_catalog;
+mod scenario_catalogue;
 
-pub(super) use scenario_catalog::ValidationScenario;
+pub(super) use scenario_catalogue::ValidationScenario;
 
 #[derive(Clone, Copy)]
 enum ServiceUnit {

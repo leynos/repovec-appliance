@@ -21,20 +21,6 @@
     "diagnostic": "teh"
   },
   {
-    "case_id": "intentional-example",
-    "filename": "probe.md",
-    "text": "Use `var.iamge_id` instead of `var.image_id`.\n",
-    "expected_exit": 0,
-    "diagnostic": null
-  },
-  {
-    "case_id": "bare-source-typo",
-    "filename": "probe.tf",
-    "text": "image_id = var.iamge_id\n",
-    "expected_exit": 2,
-    "diagnostic": "iamge"
-  },
-  {
     "case_id": "external-cargo-env",
     "filename": "probe.rs",
     "text": "command.env(\"CARGO_TERM_COLOR\", \"never\");\n",

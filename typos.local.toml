@@ -12,8 +12,15 @@ accepted = []
 
 [patterns]
 ignore = [
-  # The mold linker, named in the build standard and Cargo configuration.
-  '\bmold\b',
+  # The mold linker, named in the build standard and Cargo configuration. The
+  # checker's `regex` crate has no lookaround, so the delimiters are matched
+  # instead of asserted: most occurrences are subwords inside identifiers
+  # (`mold_version`, `check_mold`, `MOLD_FLAG`, `STANDARD_MOLD_FLAG`), where
+  # `\bmold\b` cannot match because `_` is a word character. Under `(?i)` the
+  # negated class also excludes capitals.
+  '(?im)(?:^|[^a-z])mold(?:[^a-z]|$)',
+  # GitHub's fixed `actions/upload-artifact` action name, quoted in a docstring.
+  '\bupload-artifact\b',
   # Official crate name in documentation.
   '`ratatui`',
   # Cargo's fixed environment-variable name, including its documentation.

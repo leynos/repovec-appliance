@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import TypedDict
 
@@ -103,7 +104,7 @@ def observed_spelling_inputs(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def test_real_make_gate_preserves_only_intended_external_spellings(
     tmp_path: Path,
     observed_spelling_inputs: Path,
-    record_property,
+    record_property: Callable[[str, object], None],
     case: PrecisionCase,
 ) -> None:
     """Replay the observed dictionary while UV resolves the pinned release."""

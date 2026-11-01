@@ -23,7 +23,20 @@ CACHE_FILES = (".typos-oxendict-base.toml", ".typos-oxendict-base.json")
 
 
 def child_environment(**values: str) -> dict[str, str]:
-    """Return explicit child settings without changing the parent environment."""
+    """Return explicit child settings without changing the parent environment.
+
+    The parent process is never mutated: a copy is filtered and extended.
+
+    Parameters
+    ----------
+    **values
+        Extra environment variables to add to, or replace in, the copy.
+
+    Returns
+    -------
+    dict[str, str]
+        A child environment with credential and Lody routing removed.
+    """
     environment = os.environ.copy()
     for key in tuple(environment):
         if key.startswith("GIT_CONFIG_") or key in {
@@ -41,7 +54,18 @@ def child_environment(**values: str) -> dict[str, str]:
 
 
 def spelling_tool_environment(directory: Path) -> dict[str, str]:
-    """Resolve the pinned release online while sharing the measured tool cache."""
+    """Resolve the pinned release online while sharing the measured tool cache.
+
+    Parameters
+    ----------
+    directory
+        Repository directory that owns the tool cache.
+
+    Returns
+    -------
+    dict[str, str]
+        Child environment that resolves the pinned release online.
+    """
     return child_environment(
         UV_CACHE_DIR=str(directory / ".uv-cache"),
         UV_TOOL_DIR=str(directory / ".uv-tools"),
@@ -50,7 +74,26 @@ def spelling_tool_environment(directory: Path) -> dict[str, str]:
 
 
 def initialize_probe(directory: Path, filename: str, text: str) -> None:
-    """Create an isolated Git repository with one non-ignored tracked input."""
+    """Create an isolated Git repository with one non-ignored tracked input.
+
+    Parameters
+    ----------
+    directory
+        Empty directory to initialize as an isolated Git repository.
+    filename
+        Repository-relative path of the tracked probe input.
+    text
+        Content to write to the probe input.
+
+    Raises
+    ------
+    RuntimeError
+        If Git reports the probe input as ignored or cannot inspect it.
+    subprocess.CalledProcessError
+        If initializing the repository or staging the input fails.
+    OSError
+        If the directory or probe input cannot be created.
+    """
     directory.mkdir()
     shutil.copyfile(ROOT / "typos.local.toml", directory / "typos.local.toml")
     probe = directory / filename
@@ -77,7 +120,24 @@ def run_spelling(
     overrides: tuple[str, ...] = (),
     environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Evaluate the real Make target and capture its failure-preserving result."""
+    """Evaluate the real Make target and capture its failure-preserving result.
+
+    Parameters
+    ----------
+    directory
+        Working directory for Make; the repository under test.
+    makefile
+        Makefile to evaluate.
+    overrides
+        Make variable assignments appended to the command line.
+    environment
+        Child environment; defaults to :func:`child_environment`.
+
+    Returns
+    -------
+    subprocess.CompletedProcess[str]
+        Completed Make invocation with combined standard output and error.
+    """
     return subprocess.run(
         ["make", "--no-print-directory", "-f", str(makefile), "spelling", *overrides],
         cwd=directory, env=environment or child_environment(),
@@ -86,7 +146,18 @@ def run_spelling(
 
 
 def write_recorder(directory: Path) -> Path:
-    """Supply the injectable UV seam with an argv recorder and controlled exit."""
+    """Supply the injectable UV seam with an argv recorder and controlled exit.
+
+    Parameters
+    ----------
+    directory
+        Directory in which to create the executable recorder.
+
+    Returns
+    -------
+    Path
+        Path to the executable recorder script.
+    """
     recorder = directory / "record-uv"
     recorder.write_text(
         f"#!{sys.executable}\n"
@@ -102,7 +173,22 @@ def write_recorder(directory: Path) -> Path:
 def recorded_arguments(
     directory: Path, *, makefile: Path = MAKEFILE, exit_code: int = 0,
 ) -> tuple[list[str], subprocess.CompletedProcess[str]]:
-    """Return evaluated builder arguments and the enclosing Make result."""
+    """Return evaluated builder arguments and the enclosing Make result.
+
+    Parameters
+    ----------
+    directory
+        Directory used for the recorder and its recorded arguments.
+    makefile
+        Makefile whose ``spelling`` recipe is evaluated.
+    exit_code
+        Exit status the recorder reports instead of running the builder.
+
+    Returns
+    -------
+    tuple[list[str], subprocess.CompletedProcess[str]]
+        The evaluated builder arguments and the enclosing Make result.
+    """
     recorder = write_recorder(directory)
     record = directory / "arguments.json"
     result = run_spelling(
@@ -113,7 +199,18 @@ def recorded_arguments(
 
 
 def write_offline_builder(directory: Path) -> Path:
-    """Reuse the measured dictionary without changing the Make target's argv."""
+    """Reuse the measured dictionary without changing the Make target's argv.
+
+    Parameters
+    ----------
+    directory
+        Directory in which to create the executable wrapper.
+
+    Returns
+    -------
+    Path
+        Path to the executable wrapper script.
+    """
     wrapper = directory / "builder-offline"
     wrapper.write_text(
         f"#!{sys.executable}\n"
@@ -133,7 +230,18 @@ def write_offline_builder(directory: Path) -> Path:
 
 
 def input_hashes(directory: Path) -> dict[str, str]:
-    """Record observed live inputs so a new shared input is distinguishable."""
+    """Record observed live inputs so a new shared input is distinguishable.
+
+    Parameters
+    ----------
+    directory
+        Repository whose measured input files are hashed.
+
+    Returns
+    -------
+    dict[str, str]
+        SHA-256 hex digests keyed by input filename.
+    """
     return {
         filename: hashlib.sha256((directory / filename).read_bytes()).hexdigest()
         for filename in (*CACHE_FILES, "typos.local.toml")

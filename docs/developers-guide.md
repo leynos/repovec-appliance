@@ -8,10 +8,14 @@ describes the repository-level build, test, lint, and continuous integration
 
 Run `make spelling` to enforce en-GB-oxendict spelling. Every run regenerates
 `typos.toml` from the live shared dictionary and the `typos.local.toml`
-overlay, then uses `--scope all` to check tracked repository files, including
-source, configuration and Markdown. Never edit generated entries by hand; add
-narrow repository-specific entries to `typos.local.toml` instead. Because the
-dictionary is live, `typos.toml` must never be drift checked in continuous
+overlay, then uses `--scope all` to check tracked files, including source,
+configuration and Markdown, subject to the exclusions configured in
+`typos.local.toml`. One exclusion is the authored negative fixture
+`tests/workflow_contracts/fixtures/spelling_precision_cases.json`; the contract
+tests materialize those examples separately in isolated repositories, so
+ordinary source and prose remain checked. Never edit generated entries by hand;
+add narrow repository-specific entries to `typos.local.toml` instead. Because
+the dictionary is live, `typos.toml` must never be drift checked in continuous
 integration. The builder refreshes its untracked dictionary cache only when the
 authoritative copy is newer, and a valid cache remains usable when the network
 is unavailable. The gate also enforces the exact phrase corrections that the

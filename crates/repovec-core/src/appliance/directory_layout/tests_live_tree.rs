@@ -298,24 +298,53 @@ fn missing_data_directory_is_reported(live_tree: Result<LiveTree, io::Error>) {
     assert_eq!(path, Utf8PathBuf::from(missing));
 }
 
-/// A missing required directory is reported, distinguishing it from a
-/// directory that exists but cannot be inspected.
+/// One seeded mode mismatch, named so the case table reads as data.
+struct ModeMismatchCase {
+    relative: &'static str,
+    seeded_mode: u32,
+    expected_mode: &'static str,
+    actual_mode: &'static str,
+}
+
+/// A mode mismatch on a required directory is reported with both spellings.
 #[rstest]
-#[case::mode_too_permissive("var/lib/repovec/git-mirrors", 0o750, "0700", "0750")]
-#[case::mode_too_restrictive("var/lib/repovec/git-mirrors", 0o500, "0700", "0500")]
-#[case::secrets_world_writable("etc/repovec", 0o0777, "0750", "0777")]
-#[case::set_group_id_bit("var/lib/repovec/git-mirrors", 0o2700, "0700", "2700")]
-#[case::sticky_bit("var/lib/repovec/git-mirrors", 0o1700, "0700", "1700")]
+#[case::mode_too_permissive(ModeMismatchCase {
+    relative: "var/lib/repovec/git-mirrors",
+    seeded_mode: 0o750,
+    expected_mode: "0700",
+    actual_mode: "0750",
+})]
+#[case::mode_too_restrictive(ModeMismatchCase {
+    relative: "var/lib/repovec/git-mirrors",
+    seeded_mode: 0o500,
+    expected_mode: "0700",
+    actual_mode: "0500",
+})]
+#[case::secrets_world_writable(ModeMismatchCase {
+    relative: "etc/repovec",
+    seeded_mode: 0o0777,
+    expected_mode: "0750",
+    actual_mode: "0777",
+})]
+#[case::set_group_id_bit(ModeMismatchCase {
+    relative: "var/lib/repovec/git-mirrors",
+    seeded_mode: 0o2700,
+    expected_mode: "0700",
+    actual_mode: "2700",
+})]
+#[case::sticky_bit(ModeMismatchCase {
+    relative: "var/lib/repovec/git-mirrors",
+    seeded_mode: 0o1700,
+    expected_mode: "0700",
+    actual_mode: "1700",
+})]
 fn incorrect_mode_is_reported(
-    #[case] relative: &str,
-    #[case] seeded_mode: u32,
-    #[case] expected: &str,
-    #[case] actual: &str,
+    #[case] case: ModeMismatchCase,
     live_tree: Result<LiveTree, io::Error>,
 ) {
     let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
-    tree.chmod(relative, seeded_mode).expect("seed mode mismatch");
+    tree.chmod(case.relative, case.seeded_mode).expect("seed mode mismatch");
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
 
@@ -324,10 +353,10 @@ fn incorrect_mode_is_reported(
     };
     assert_eq!(
         violation.path,
-        Utf8PathBuf::from(expected_absolute(&tree, relative).expect("utf8 path"))
+        Utf8PathBuf::from(expected_absolute(&tree, case.relative).expect("utf8 path"))
     );
-    assert_eq!(violation.expected, expected);
-    assert_eq!(violation.actual, actual);
+    assert_eq!(violation.expected, case.expected_mode);
+    assert_eq!(violation.actual, case.actual_mode);
 }
 
 #[rstest]

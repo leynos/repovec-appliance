@@ -27,10 +27,10 @@ fn find_helper_offset(needle: &str) -> Option<usize> { PROVISIONING_HELPER.find(
 /// test, so the panic points at the caller.
 #[track_caller]
 fn helper_offset(needle: &str) -> usize {
-    match find_helper_offset(needle) {
-        Some(offset) => offset,
-        None => panic!("helper should contain expected text: {needle:?}"),
-    }
+    let Some(offset) = find_helper_offset(needle) else {
+        panic!("helper should contain expected text: {needle:?}");
+    };
+    offset
 }
 
 /// Returns the byte offset of `needle` at or after `offset`, or `None` when
@@ -46,14 +46,14 @@ fn find_helper_offset_after(needle: &str, offset: usize) -> Option<usize> {
 /// ordering assertions; the panic points at the caller.
 #[track_caller]
 fn helper_offset_after(needle: &str, offset: usize) -> usize {
-    match find_helper_offset_after(needle, offset) {
-        Some(found) => found,
-        None => panic!(
+    let Some(found) = find_helper_offset_after(needle, offset) else {
+        panic!(
             "helper should contain expected text after offset: needle={needle:?}, \
              offset={offset}, helper_len={}",
             PROVISIONING_HELPER.len()
-        ),
-    }
+        );
+    };
+    found
 }
 
 /// Returns the `start..end` slice of `PROVISIONING_HELPER`, or `None` when the
@@ -68,14 +68,14 @@ fn find_helper_slice(start: usize, end: usize) -> Option<&'static str> {
 /// assertions; the panic points at the caller.
 #[track_caller]
 fn helper_slice(start: usize, end: usize) -> &'static str {
-    match find_helper_slice(start, end) {
-        Some(slice) => slice,
-        None => panic!(
+    let Some(slice) = find_helper_slice(start, end) else {
+        panic!(
             "helper slice should use valid byte boundaries: start={start}, end={end}, \
              helper_len={}",
             PROVISIONING_HELPER.len()
-        ),
-    }
+        );
+    };
+    slice
 }
 
 const PROVISIONING_SERVICE: &str =

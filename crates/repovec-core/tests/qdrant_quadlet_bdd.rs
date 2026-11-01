@@ -74,7 +74,7 @@ fn the_quadlet_is_validated(quadlet_world: &mut QuadletWorld) {
 ///
 /// Keeping the lookup pure lets every `then` step assert on the `Option`
 /// rather than panicking when the `when` step did not run.
-fn find_validation_result(world: &QuadletWorld) -> Option<&Result<(), QdrantQuadletError>> {
+const fn find_validation_result(world: &QuadletWorld) -> Option<&Result<(), QdrantQuadletError>> {
     world.validation_result.as_ref()
 }
 

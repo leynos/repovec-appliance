@@ -334,7 +334,7 @@ fn assert_scenario_steps_ran(directory_layout_world: &DirectoryLayoutWorld) {
 }
 
 /// Returns the validation outcome recorded by the `when` step, if any.
-fn find_validation_result(
+const fn find_validation_result(
     directory_layout_world: &DirectoryLayoutWorld,
 ) -> Option<&Result<(), DirectoryLayoutError>> {
     directory_layout_world.validation_result.as_ref()

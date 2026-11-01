@@ -352,7 +352,9 @@ fn assert_scenario_steps_ran(systemd_world: &SystemdWorld) {
 }
 
 /// Returns the validation outcome recorded by the `when` step, if any.
-fn find_validation_result(systemd_world: &SystemdWorld) -> Option<&Result<(), SystemdUnitError>> {
+const fn find_validation_result(
+    systemd_world: &SystemdWorld,
+) -> Option<&Result<(), SystemdUnitError>> {
     systemd_world.validation_result.as_ref()
 }
 

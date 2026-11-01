@@ -319,29 +319,37 @@ def load_cargo_config() -> dict[str, object]:
 
 def iter_keys(value: object, path: tuple[object, ...] = ()) -> list[tuple[object, ...]]:
     """Return every mapping key in a parsed TOML document with its path."""
-    keys: list[tuple[object, ...]] = []
     if isinstance(value, dict):
-        for key, child in value.items():
-            keys.append((*path, key))
-            keys.extend(iter_keys(child, (*path, key)))
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            keys.extend(iter_keys(child, (*path, index)))
-    return keys
+        return _descend(value.items(), path, is_keyed=True)
+    if isinstance(value, list):
+        return _descend(enumerate(value), path, is_keyed=False)
+    return []
+
+
+def _descend(
+    pairs, path: tuple[object, ...], *, is_keyed: bool
+) -> list[tuple[object, ...]]:
+    """Return each child's key, when keyed, followed by its nested keys."""
+    found = []
+    for component, child in pairs:
+        child_path = (*path, component)
+        declared = (child_path,) if is_keyed else ()
+        found += declared + tuple(iter_keys(child, child_path))
+    return found
 
 
 def iter_strings(value: object) -> list[str]:
     """Return every string value in a parsed TOML document."""
-    strings: list[str] = []
     if isinstance(value, dict):
-        for child in value.values():
-            strings.extend(iter_strings(child))
-    elif isinstance(value, list):
-        for child in value:
-            strings.extend(iter_strings(child))
-    elif isinstance(value, str):
-        strings.append(value)
-    return strings
+        return _descend_strings(value.values())
+    if isinstance(value, list):
+        return _descend_strings(value)
+    return [value] if isinstance(value, str) else []
+
+
+def _descend_strings(children) -> list[str]:
+    """Return every string nested inside the given children."""
+    return [found for child in children for found in iter_strings(child)]
 
 
 def run_block_lines(run_value: object) -> list[str]:

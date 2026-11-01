@@ -90,6 +90,25 @@ def _check_problems(
     ]
 
 
+def _names_token(value: object) -> bool:
+    """Return whether any scalar in the value names the CodeScene token."""
+    return any("cs_access_token" in folded(text) for text in scalars(value))
+
+
+def _job_scope(job: Step) -> Step:
+    """Return a job's fields other than the steps it runs."""
+    return {str(key): value for key, value in job.items() if key != "steps"}
+
+
+def _unkept_steps(job: Step, kept: list[Step]) -> list[Step]:
+    """Return a job's steps other than the ones allowed to hold the token."""
+    return [
+        step
+        for step in typ.cast("list[Step]", job.get("steps", []))
+        if not any(step is held for held in kept)
+    ]
+
+
 def _outside_the_two_steps(
     name: str, document: Document, kept: list[Step]
 ) -> list[str]:
@@ -98,21 +117,12 @@ def _outside_the_two_steps(
     Job- and workflow-scope scalars are read as well as the other steps, so a
     token in a job's ``env`` or a workflow's ``defaults`` is seen.
     """
-    for job in jobs(name, document).values():
-        outside_steps = {
-            str(key): value
-            for key, value in job.items()
-            if key != "steps"
-        }
-        if any("cs_access_token" in folded(text) for text in scalars(outside_steps)):
-            return [f"{name} puts CS_ACCESS_TOKEN in reach outside its two steps"]
-        for step in typ.cast("list[Step]", job.get("steps", [])):
-            if any(step is held for held in kept):
-                continue
-            if any("cs_access_token" in folded(text) for text in scalars(step)):
-                return [f"{name} puts CS_ACCESS_TOKEN in reach outside its two steps"]
-    top_level = {key: value for key, value in document.items() if key != "jobs"}
-    if any("cs_access_token" in folded(text) for text in scalars(top_level)):
+    publisher = list(jobs(name, document).values())
+    scopes: list[object] = [_job_scope(job) for job in publisher]
+    for job in publisher:
+        scopes.extend(_unkept_steps(job, kept))
+    scopes.append({key: value for key, value in document.items() if key != "jobs"})
+    if any(_names_token(scope) for scope in scopes):
         return [f"{name} puts CS_ACCESS_TOKEN in reach outside its two steps"]
     return []
 

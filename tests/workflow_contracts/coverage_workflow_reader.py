@@ -66,19 +66,21 @@ def read_documents(directory: Path = WORKFLOW_DIR) -> dict[str, Document]:
     """
     try:
         documents = read_workflows(directory)
-    except OSError as error:
-        message = f"cannot list workflows in {directory}: {error}"
-        raise WorkflowError(message) from error
-    except UnicodeDecodeError as error:
-        message = f"{directory}: a workflow cannot be read as UTF-8: {error}"
-        raise WorkflowError(message) from error
-    except yaml.YAMLError as error:
-        message = f"{directory}: a workflow cannot be read strictly: {error}"
-        raise WorkflowError(message) from error
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
+        raise WorkflowError(_listing_failure(directory, error)) from error
     if not documents:
         message = f"no workflows were read from {directory}"
         raise WorkflowError(message)
     return documents
+
+
+def _listing_failure(directory: Path, error: Exception) -> str:
+    """Return the message describing why the workflow directory was refused."""
+    if isinstance(error, UnicodeDecodeError):
+        return f"{directory}: a workflow cannot be read as UTF-8: {error}"
+    if isinstance(error, yaml.YAMLError):
+        return f"{directory}: a workflow cannot be read strictly: {error}"
+    return f"cannot list workflows in {directory}: {error}"
 
 
 def triggers(name: str, document: Document) -> dict[str, object]:

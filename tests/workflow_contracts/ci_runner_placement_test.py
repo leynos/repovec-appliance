@@ -135,6 +135,15 @@ UBICLOUD_PLACEMENT: typ.Final = {
     ("ci.yml", "lint"): ("ubicloud-standard-4", 30),
     ("ci.yml", "docs-gate"): ("ubicloud-standard-2", 30),
     ("ci.yml", "systemd-gate"): ("ubicloud-standard-2", 15),
+    ("ci.yml", "coverage"): ("ubicloud-standard-2", 25),
+}
+
+#: Ubicloud jobs that answer main alone and therefore carry no fork fallback.
+#: A pull request cannot start their workflow, so a fallback arm here would
+#: only make it possible to widen the lane to a caller nobody reviewed. Pinned
+#: by value for the same reason as the table above.
+MAIN_ONLY_PLACEMENT: typ.Final = {
+    ("coverage-main.yml", "coverage-upload"): ("ubicloud-standard-2", 25),
 }
 
 #: Jobs this repository does not place: thin callers of reusable workflows,
@@ -272,7 +281,7 @@ def test_every_job_is_pinned_by_coordinate() -> None:
     other assertion here.
     """
     observed = set(_jobs())
-    expected = set(UBICLOUD_PLACEMENT) | DELEGATED_JOBS
+    expected = set(UBICLOUD_PLACEMENT) | set(MAIN_ONLY_PLACEMENT) | DELEGATED_JOBS
     assert observed == expected, (
         "runner placement is pinned per job; unpinned jobs "
         f"{sorted(observed - expected)} and stale pins "
@@ -342,8 +351,34 @@ def test_the_runner_expression_is_exactly_the_reviewed_one(
 
 
 @pytest.mark.parametrize(
+    ("coordinate", "label"),
+    sorted((key, value[0]) for key, value in MAIN_ONLY_PLACEMENT.items()),
+    ids=_case_id,
+)
+def test_a_main_only_runner_is_exactly_the_reviewed_label(
+    coordinate: tuple[str, str], label: str
+) -> None:
+    """Scenario: a main-only lane acquires a fallback arm it cannot need.
+
+    Invariant: the declaration is the bare reviewed label. A fork fallback is
+    written for a pull request, which cannot start such a workflow; carrying
+    one would make widening the trigger look already provided for.
+    """
+    value = _runner_value(_jobs()[coordinate])
+    assert value == label, (
+        f"{coordinate[0]}:{coordinate[1]} runs on {value!r}; a main-only lane "
+        f"declares {label!r} with no fork-fallback expression"
+    )
+
+
+@pytest.mark.parametrize(
     ("coordinate", "minutes"),
-    sorted((key, value[1]) for key, value in UBICLOUD_PLACEMENT.items()),
+    sorted(
+        (
+            (key, value[1])
+            for key, value in {**UBICLOUD_PLACEMENT, **MAIN_ONLY_PLACEMENT}.items()
+        )
+    ),
     ids=_case_id,
 )
 def test_the_job_declares_its_reviewed_ceiling(

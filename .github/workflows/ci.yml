@@ -216,6 +216,45 @@ jobs:
       - name: Test
         run: make test
 
+  # Pull requests measure coverage locally: the generated report feeds their
+  # own ratchet check and is not published. Main owns the persistent baseline
+  # and the CodeScene upload in coverage-main.yml, so this job has no CodeScene
+  # host, client, uploader, token, or `codescene` environment. The selection
+  # below must match that publisher field for field; the coverage contracts
+  # under tests/workflow_contracts hold both halves.
+  coverage:
+    name: coverage
+    # The workflow also answers a push to main, where the publisher in
+    # coverage-main.yml owns the measurement and the baseline. Running this
+    # job there as well would measure twice and write the same baseline from
+    # two workflows, so the lane is confined to pull requests exactly.
+    if: github.event_name == 'pull_request'
+    runs-on: >-
+      ${{ (github.event.pull_request.head.repo.fork
+      || github.event.pull_request.user.login == 'dependabot[bot]')
+      && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@8e6a325765ba382691d1b1c65fcccf1fc1d1b00c
+      - name: Install build standard
+        run: make install-build-tools
+      - name: Generate coverage
+        uses: leynos/shared-actions/.github/actions/generate-coverage@8e6a325765ba382691d1b1c65fcccf1fc1d1b00c
+        with:
+          output-path: lcov.info
+          format: lcov
+          with-ratchet: 'true'
+          publish-artefact: 'false'
+          language: rust
+          all-targets: 'true'
+          all-features: 'true'
+
   docs-gate:
     name: docs-gate
     runs-on: >-

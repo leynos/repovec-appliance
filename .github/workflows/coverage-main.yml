@@ -1,0 +1,84 @@
+name: Coverage (main)
+
+# Main owns both persistent coverage outputs: the ratchet baseline and the
+# CodeScene upload. Pull requests generate coverage only for their own ratchet
+# check, in ci.yml; they neither publish a report nor contact CodeScene, and the
+# coverage contracts under tests/workflow_contracts hold both lanes to that
+# shape.
+#
+# The CodeScene call is what moves here, not the measurement: the shared
+# uploader pins the cs-coverage archive by digest, but the tool talks to
+# CodeScene's API and refuses to run when that answer changes shape. Keeping the
+# call on the trunk keeps such a change off every pull request's critical path.
+
+on:
+  push:
+    branches: [main]
+
+# Never cancelled, keyed on the ref alone, and declared once at workflow scope.
+# A cancelled run abandons its upload and its baseline write. GitHub treats the
+# same group on a workflow and one of its jobs as a deadlock and cancels the
+# job, so no job repeats it.
+#
+# The Dependabot automerge workflow merges with GITHUB_TOKEN, and such a merge
+# fires no push event. Those changes reach this publisher only at the next
+# ordinary push, so the ratchet baseline advances on push, not on merge. A
+# manual "Re-run jobs" keeps its run_id and republishes that commit's coverage,
+# but replaces no baseline unless the original run saved none.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  coverage-upload:
+    name: coverage-upload
+    # Main-only: no pull request can start this workflow, so it needs no fork
+    # fallback arm. The label is registered for actionlint in
+    # .github/actionlint.yaml.
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 25
+    # The CodeScene token lives in this environment, whose deployment policy
+    # admits `main` alone; the environment contract holds it to this job.
+    environment: codescene
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@8e6a325765ba382691d1b1c65fcccf1fc1d1b00c
+      # The coverage action runs the suite, whose Make preflight needs the
+      # pinned build tools. Install them before anything compiles.
+      - name: Install build standard
+        run: make install-build-tools
+      # The selection is the baseline every pull request's ratchet is measured
+      # against, so ci.yml's coverage step must match it field for field.
+      - name: Generate coverage
+        uses: leynos/shared-actions/.github/actions/generate-coverage@8e6a325765ba382691d1b1c65fcccf1fc1d1b00c
+        with:
+          output-path: lcov.info
+          format: lcov
+          with-ratchet: 'true'
+          publish-artefact: 'false'
+          language: rust
+          all-targets: 'true'
+          all-features: 'true'
+      # Actions evaluates the expression before the shell runs, so this writes
+      # `available=true` or `available=false` and binds the token nowhere. A
+      # repository without the secret skips the upload rather than failing.
+      - name: Check CodeScene token
+        id: codescene-token
+        run: echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      # The uploader is a composite action that would pass a step `env` to its
+      # nested steps, so the token travels only as its input. The ref check is
+      # the second boundary: it keeps the upload to main even if the workflow's
+      # trigger is widened.
+      - name: Upload coverage data to CodeScene
+        if: steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main'
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@8e6a325765ba382691d1b1c65fcccf1fc1d1b00c
+        with:
+          path: lcov.info
+          format: lcov
+          mode: upload
+          access-token: ${{ secrets.CS_ACCESS_TOKEN }}

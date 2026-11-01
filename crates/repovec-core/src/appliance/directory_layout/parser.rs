@@ -26,9 +26,13 @@ use crate::appliance::directory_layout::{DirectoryLayoutError, Mode};
 /// place rather than threaded through helper functions as a parameter clump.
 #[derive(Default)]
 struct Tokenizer {
+    /// Complete columns emitted so far, in source order.
     columns: Vec<String>,
+    /// The column currently being accumulated.
     current: String,
+    /// Whether the scan currently sits inside a quoted section.
     in_quotes: bool,
+    /// Whether the current column has begun, even if it is still empty.
     has_column: bool,
 }
 
@@ -124,9 +128,13 @@ fn malformed_line(asset: &'static str, line_number: usize, trimmed: &str) -> Dir
 
 /// A parsed `d` entry from the `tmpfiles.d` asset.
 pub(crate) struct TmpfilesEntry {
+    /// Absolute directory path declared by the entry.
     pub path: String,
+    /// Raw mode column, parsed by [`parse_mode`] when the entry is compared.
     pub mode: String,
+    /// Declared owning user name.
     pub user: String,
+    /// Declared owning group name.
     pub group: String,
 }
 
@@ -161,9 +169,13 @@ pub(crate) fn tmpfiles_entry(
 
 /// A parsed `u` line from the `sysusers.d` asset.
 pub(crate) struct SysusersUserLine {
+    /// Account name declared by the `u` line.
     pub name: String,
+    /// Raw uid column; `-` delegates allocation to systemd.
     pub uid: String,
+    /// Declared home directory.
     pub home: String,
+    /// Declared login shell, empty when the optional column is omitted.
     pub shell: String,
 }
 

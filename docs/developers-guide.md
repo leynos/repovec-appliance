@@ -21,6 +21,39 @@ represent.
 `typos-config-builder` release the gate runs (currently `v0.1.3`). Raise it
 together with the regenerated `typos.toml`, never on its own.
 
+## Development build standard
+
+Development, test, lint, docs and typecheck builds use the pinned `mold` linker
+and the parallel `rustc` frontend (`-Zthreads=8`). Both are the default rather
+than an opt-in: `.cargo/config.toml` applies to a bare `cargo build`, and the
+Make targets restate the flags for the paths that assign `RUSTFLAGS` themselves.
+
+Cargo reads a single `rustflags` source. A matching `[target.*]` table replaces
+`[build] rustflags`, and an externally assigned `RUSTFLAGS` replaces both, so
+the configuration repeats every flag that must survive. The Linux-only linker
+flag lives in a target table gated on `cfg(target_os = "linux")`; other
+platforms keep their platform default linker. Release builds are excluded
+deliberately: `make release` assigns `RUSTFLAGS` to displace the configuration
+and does not need the tools.
+
+The toolchain is the repository's own nightly from `rust-toolchain.toml`.
+Install the pinned `mold` release and that toolchain with:
+
+```sh
+make install-build-tools
+```
+
+`BUILD_TOOLS_PREFIX` selects the install prefix (default `$HOME/.local`). The
+Makefile puts that prefix's `bin` first on `PATH`, which is how `-fuse-ld=mold`
+finds the pinned binary. Verify an installation with `make check-build-tools`;
+every standard target runs the same check before compiling and fails with the
+installation command when a component is missing.
+
+CI runs `make install-build-tools` in each job that compiles or links Rust,
+after Rust setup and before the compiling step. Formatting and spelling do not
+install it. The contracts for the configuration, the Make routes and the CI
+placement live in `tests/workflow_contracts/`.
+
 ## Normative references
 
 - [Documentation contents](contents.md) if present

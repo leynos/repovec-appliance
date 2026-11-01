@@ -165,9 +165,7 @@ def test_only_compiling_jobs_install_the_build_tools() -> None:
     compiling jobs. The forward direction is the requirement; the
     reverse keeps an unnecessary download out of spelling and formatting.
     """
-    installing = {
-        name for name, job in _jobs().items() if _install_indexes(job)
-    }
+    installing = {name for name, job in _jobs().items() if _install_indexes(job)}
     assert installing == _compiling_jobs(), (
         "the jobs that install the build tools should be exactly the jobs "
         f"that compile Rust; installing={sorted(installing)}, "
@@ -211,8 +209,14 @@ def test_the_derivation_covers_every_compiling_make_target() -> None:
         "typecheck",
         "validate-systemd",
     }, f"the compiling Make targets changed: {sorted(COMPILING_MAKE_TARGETS)}"
-    assert "fmt" not in COMPILING_CARGO_SUBCOMMANDS
-    assert "metadata" not in COMPILING_CARGO_SUBCOMMANDS
+    assert "fmt" not in COMPILING_CARGO_SUBCOMMANDS, (
+        "the derivation should not treat `cargo fmt` as compiling the "
+        f"workspace; found {sorted(COMPILING_CARGO_SUBCOMMANDS)}"
+    )
+    assert "metadata" not in COMPILING_CARGO_SUBCOMMANDS, (
+        "the derivation should not treat `cargo metadata` as compiling the "
+        f"workspace; found {sorted(COMPILING_CARGO_SUBCOMMANDS)}"
+    )
 
 
 def test_make_and_cargo_detection_read_run_values() -> None:
@@ -231,8 +235,23 @@ def test_make_and_cargo_detection_read_run_values() -> None:
             "make validate-systemd",
         ]
     )
-    assert make_targets(run_value) == ["validate-systemd"]
-    assert cargo_subcommands(run_value) == ["build"]
-    assert run_value_compiles(run_value)
-    assert not run_value_compiles("# make lint is not run here")
-    assert not run_value_compiles("make install-build-tools")
+    assert make_targets(run_value) == ["validate-systemd"], (
+        "the Make detector should find only the command's target, not the "
+        f"target named in a comment; found {make_targets(run_value)}"
+    )
+    assert cargo_subcommands(run_value) == ["build"], (
+        "the Cargo detector should find only the command's subcommand; "
+        f"found {cargo_subcommands(run_value)}"
+    )
+    assert run_value_compiles(run_value), (
+        "a run value invoking `make validate-systemd` and `cargo build` "
+        f"should count as compiling; found {run_value!r}"
+    )
+    assert not run_value_compiles("# make lint is not run here"), (
+        "a comment naming a compiling Make target should not count as "
+        f"compiling; found {run_value!r}"
+    )
+    assert not run_value_compiles("make install-build-tools"), (
+        "`make install-build-tools` installs tools but does not compile the "
+        "workspace, so it should not count as a compiling run value"
+    )

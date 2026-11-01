@@ -21,6 +21,7 @@ import re
 import shlex
 import subprocess
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -268,8 +269,7 @@ def is_runner_invocation(invocation_: Invocation) -> bool:
     if "tool" in invocation_.arguments:
         return False
     return any(
-        argument == "scripts/run_rust_tests.py"
-        for argument in invocation_.arguments
+        argument == "scripts/run_rust_tests.py" for argument in invocation_.arguments
     )
 
 
@@ -334,10 +334,13 @@ def iter_keys(value: object, path: tuple[object, ...] = ()) -> list[tuple[object
 
 
 def _descend(
-    pairs, path: tuple[object, ...], *, is_keyed: bool
+    pairs: Iterable[tuple[object, object]],
+    path: tuple[object, ...],
+    *,
+    is_keyed: bool,
 ) -> list[tuple[object, ...]]:
     """Return each child's key, when keyed, followed by its nested keys."""
-    found = []
+    found: list[tuple[object, ...]] = []
     for component, child in pairs:
         child_path = (*path, component)
         declared = (child_path,) if is_keyed else ()
@@ -354,7 +357,7 @@ def iter_strings(value: object) -> list[str]:
     return [value] if isinstance(value, str) else []
 
 
-def _descend_strings(children) -> list[str]:
+def _descend_strings(children: Iterable[object]) -> list[str]:
     """Return every string nested inside the given children."""
     return [found for child in children for found in iter_strings(child)]
 

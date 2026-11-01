@@ -183,16 +183,30 @@ def test_the_test_route_routes_both_gate_flag_groups_to_the_runner() -> None:
     assert len(runners) == 1, f"expected one runner invocation, found {runners}"
     runner = runners[0]
 
-    assert option_value(runner, "cargo") == PROBE_CARGO
+    assert option_value(runner, "cargo") == PROBE_CARGO, (
+        f"the runner should receive --cargo={PROBE_CARGO!r}, found "
+        f"{option_value(runner, 'cargo')!r}"
+    )
     rust_flags = option_value(runner, "rust-flags")
-    assert rust_flags is not None
+    assert rust_flags is not None, (
+        "the test route should pass --rust-flags to the runner"
+    )
     for flag in [*WARNING_TOKENS, *expected_standard_tokens()]:
         assert flag in shlex.split(rust_flags), (
             f"the runner's --rust-flags {rust_flags!r} omit {flag!r}"
         )
-    assert option_value(runner, "test-flags") == "--all-targets --all-features"
-    assert option_value(runner, "doctest-flags") == "--workspace --all-features"
-    assert option_value(runner, "build-jobs") == ""
+    assert option_value(runner, "test-flags") == "--all-targets --all-features", (
+        "the runner's --test-flags should be '--all-targets --all-features', "
+        f"found {option_value(runner, 'test-flags')!r}"
+    )
+    assert option_value(runner, "doctest-flags") == "--workspace --all-features", (
+        "the runner's --doctest-flags should be '--workspace --all-features', "
+        f"found {option_value(runner, 'doctest-flags')!r}"
+    )
+    assert option_value(runner, "build-jobs") == "", (
+        "the runner's --build-jobs should be empty when BUILD_JOBS is unset, "
+        f"found {option_value(runner, 'build-jobs')!r}"
+    )
 
 
 def test_release_displaces_the_configuration_without_the_standard() -> None:

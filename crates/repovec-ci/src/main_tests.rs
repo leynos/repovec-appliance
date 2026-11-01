@@ -15,13 +15,11 @@ use super::{
 
 /// Decode captured CLI output strictly so snapshots cannot conceal invalid UTF-8.
 ///
-/// For example, the bytes in `b"ready"` produce `"ready"`; invalid bytes panic instead of
-/// substituting replacement characters.
-fn buffer_to_string(buffer: Vec<u8>) -> String {
-    match String::from_utf8(buffer) {
-        Ok(output) => output,
-        Err(error) => panic!("snapshot buffer should contain UTF-8: {error}"),
-    }
+/// For example, the bytes in `b"ready"` produce `Ok("ready")`; invalid bytes are
+/// reported rather than replaced with substitution characters, and each test
+/// body turns the error into a panic at the call site.
+fn buffer_to_string(buffer: Vec<u8>) -> Result<String, std::string::FromUtf8Error> {
+    String::from_utf8(buffer)
 }
 
 /// Protect the exact operator-facing help text and its snapshot against accidental CLI changes.
@@ -31,7 +29,7 @@ fn test_help_output() {
 
     print_usage(&mut buffer).expect("help output should be written");
 
-    let output = buffer_to_string(buffer);
+    let output = buffer_to_string(buffer).expect("help output should be valid UTF-8");
 
     assert_eq!(output, USAGE);
     assert_snapshot!("help_output", output);
@@ -46,7 +44,10 @@ fn test_changed_file_docs_output() {
 
     write_plan(&mut buffer, &plan).expect("plan output should be written");
 
-    assert_snapshot!("changed_file_docs_output", buffer_to_string(buffer));
+    assert_snapshot!(
+        "changed_file_docs_output",
+        buffer_to_string(buffer).expect("plan output should be valid UTF-8")
+    );
 }
 
 /// Keep an empty changed-path iterator conservative: missing inputs must not silently bypass
@@ -59,7 +60,10 @@ fn test_stdin_empty_output() {
 
     write_plan(&mut buffer, &plan).expect("plan output should be written");
 
-    assert_snapshot!("stdin_empty_output", buffer_to_string(buffer));
+    assert_snapshot!(
+        "stdin_empty_output",
+        buffer_to_string(buffer).expect("plan output should be valid UTF-8")
+    );
 }
 
 /// Preserve the parser diagnostic snapshot so unsupported flags remain understandable to operators.
@@ -175,7 +179,10 @@ fn systemd_gate_validates_real_checked_in_units() {
     run_systemd_gate(&mut buffer)
         .expect("checked-in systemd units must satisfy the appliance contract");
 
-    assert_snapshot!("systemd_gate_real_validation_success", buffer_to_string(buffer));
+    assert_snapshot!(
+        "systemd_gate_real_validation_success",
+        buffer_to_string(buffer).expect("gate output should be valid UTF-8")
+    );
 }
 
 /// Keep successful validation observable to operators through a stable confirmation line.
@@ -186,7 +193,10 @@ fn systemd_gate_writes_success_confirmation() {
     run_systemd_gate_with(&mut buffer, || Ok(()), || Ok(()))
         .expect("successful validation should write a confirmation line");
 
-    assert_snapshot!("systemd_gate_success_confirmation", buffer_to_string(buffer));
+    assert_snapshot!(
+        "systemd_gate_success_confirmation",
+        buffer_to_string(buffer).expect("gate output should be valid UTF-8")
+    );
 }
 
 /// Keep unit validation first and directory validation second in the CI gate.

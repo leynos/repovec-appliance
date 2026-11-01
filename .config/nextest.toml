@@ -1,0 +1,17 @@
+# Nextest configuration shared by the test lanes.
+#
+# `crates/repovec-core/tests/compile_time.rs` drives `trybuild`, which compiles
+# each UI fixture as its own crate and therefore rebuilds `repovec-core` and its
+# dependencies three times. Under `cargo llvm-cov` every one of those
+# compilation units is instrumented, so the default budget (60 s per period,
+# terminated after three periods) expires while the fixtures are still
+# compiling; nextest then reports a timeout rather than the assertion the test
+# exists to make (observed on PR #216, run 41348216522: 627 passed, 1 timed out
+# at 180 s).
+#
+# The test asserts compile failures and contributes no coverage, so it keeps a
+# longer budget instead of being skipped: skipping would stop measuring the one
+# contract that guards the opaque wrapper types.
+[[profile.default.overrides]]
+filter = 'test(=opaque_secrets_and_observer_bounds_fail_to_compile)'
+slow-timeout = { period = "120s", terminate-after = 5 }

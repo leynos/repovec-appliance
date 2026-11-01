@@ -57,6 +57,19 @@ none. This is a deliberate limit of the `push`-only trigger, not a reason to add
 `workflow_dispatch`: a dispatch cannot be confined to main by the trigger
 itself, and the upload's ref guard would then be the only boundary.
 
+### Instrumented fixture builds
+
+`repovec-core`'s `trybuild` driver compiles three UI fixtures, and each fixture
+build rebuilds the crate and its dependencies. Under instrumentation that build
+outlasts nextest's default budget of three 60-second periods, so the coverage
+run reports a timeout instead of the compile-failure assertion the test exists
+to make (measured on PR #216, run 41348216522: 627 passed, 1 timed out at 180
+s). `.config/nextest.toml` therefore allows that driver ten minutes, selected
+by its exact test name, and `nextest_budget_test.py` holds both the budget and
+the exactness of the selection. Skipping the driver in the coverage lane would
+be simpler and wrong: it is the only check that the opaque capability wrappers
+stay opaque.
+
 Evidence limits, recorded so that no later reader mistakes a skipped step for
 proof:
 
@@ -85,6 +98,7 @@ The rules read parsed workflows through `workflow_loader.py` and
 | Pull-request closure and CodeScene contacts | `coverage_pull_request_rules.py` |
 | Measurement parity and baseline writers     | `coverage_input_rules.py`        |
 | `codescene` environment placement           | `coverage_environment_rules.py`  |
+| Instrumented `trybuild` timeout budget      | `nextest_budget_test.py`         |
 
 ## Mutation proof
 
@@ -106,3 +120,5 @@ the mutation was reverted.
 | `environment` moved to a pull-request job                                 | `environment_violations`: reachable from a pull request       |
 | Empty workflow set                                                        | reader: no workflows were read                                |
 | Coverage input drift between the lanes                                    | `coverage_violations`: selection differs from the publisher's |
+| `terminate-after` returned to the measured failing value                  | `nextest_budget`: budget does not exceed the default          |
+| Override filter broadened to `all()`                                      | `nextest_budget`: must select `test(=…)` exactly              |

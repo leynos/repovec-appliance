@@ -131,16 +131,18 @@ mod tests {
     }
 
     #[test]
-    fn validate_and_trace_systemd_units_with_traces_success() -> Result<(), String> {
-        let (result, logs) = capture_logs(|| validate_and_trace_systemd_units_with(|| Ok(())))?;
+    fn validate_and_trace_systemd_units_with_traces_success() {
+        let (result, logs) = capture_logs(|| validate_and_trace_systemd_units_with(|| Ok(())))
+            .expect("capturing validation logs should succeed");
 
-        ensure(result == Ok(()), "validation should succeed")?;
+        ensure(result == Ok(()), "validation should succeed").expect("validation should succeed");
         ensure_log_line_contains(
             &logs,
             "TRACE",
             "systemd unit contract validated",
             "successful validation should emit the trace event",
         )
+        .expect("successful validation should emit the trace event");
     }
 
     #[test]
@@ -153,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn run_startup_validation_logs_structured_error_when_validation_fails() -> Result<(), String> {
+    fn run_startup_validation_logs_structured_error_when_validation_fails() {
         let (result, logs) = capture_logs(|| {
             run_startup_validation(|| {
                 Err(SystemdUnitError::MissingSection {
@@ -161,26 +163,31 @@ mod tests {
                     section: "Service",
                 })
             })
-        })?;
+        })
+        .expect("capturing validation logs should succeed");
 
-        ensure(result == Err(1), "startup validation should return exit code 1")?;
+        ensure(result == Err(1), "startup validation should return exit code 1")
+            .expect("startup validation should return exit code 1");
         ensure_log_line_contains(
             &logs,
             "ERROR",
             "unit=repovecd.service",
             "startup failure should log the failing unit",
-        )?;
+        )
+        .expect("startup failure should log the failing unit");
         ensure_log_line_contains(
             &logs,
             "ERROR",
             "error=repovecd.service is missing [Service]",
             "startup failure should log the validation error",
-        )?;
+        )
+        .expect("startup failure should log the validation error");
         ensure_log_line_contains(
             &logs,
             "ERROR",
             "systemd unit contract violation",
             "startup failure should log the fatal diagnostic",
         )
+        .expect("startup failure should log the fatal diagnostic");
     }
 }

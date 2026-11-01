@@ -2,8 +2,8 @@
 //!
 //! The fixture tree is built with `cap_std` operations only, matching the
 //! adapter itself and the `qdrant_liveness` test precedent, so the tests pass
-//! the `no_std_fs_operations` Whitaker gate without allowances. Helpers return
-//! `io::Result` so no `expect()` appears outside `#[test]` functions
+//! the `no_std_fs_operations` Whitaker gate without allowances. Helpers and
+//! fixtures return `io::Result` so no `expect()` appears outside a test body
 //! (`no_expect_outside_tests`).
 //!
 //! A scratch tree cannot be chowned to root, so the on-disk cases seed all four
@@ -20,7 +20,7 @@ use cap_std::{
     fs::{MetadataExt, PermissionsExt},
     fs_utf8::Dir,
 };
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use tempfile::TempDir;
 
 use super::{
@@ -118,6 +118,18 @@ impl LiveTree {
     }
 }
 
+/// Builds a scratch tree provisioned to the live-layout contract.
+///
+/// The fixture returns `io::Result` so the filesystem work stays fallible; each
+/// test body turns that error into a panic at the point of use.
+#[fixture]
+#[rustfmt::skip]
+fn live_tree() -> Result<LiveTree, io::Error> {
+    // Rustfmt collapsing this body to one line triggers `unused-braces`; keep an
+    // explicit block despite the terse body.
+    LiveTree::new()
+}
+
 fn set_mode(root: &Dir, relative: &str, mode: u32) -> Result<(), io::Error> {
     let permissions = cap_std::fs::Permissions::from_mode(mode);
     root.set_permissions(relative, permissions)
@@ -142,9 +154,9 @@ fn expected_absolute(tree: &LiveTree, relative: &str) -> Result<String, io::Erro
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "temp path is not UTF-8"))
 }
 
-#[test]
-fn pass_path_accepts_a_correctly_provisioned_tree() {
-    let tree = LiveTree::new().expect("fixture tree");
+#[rstest]
+fn pass_path_accepts_a_correctly_provisioned_tree(live_tree: Result<LiveTree, io::Error>) {
+    let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
@@ -160,9 +172,9 @@ fn pass_path_accepts_a_correctly_provisioned_tree() {
 /// proof the chain ran: the resolved account ids were applied, and the
 /// privileged directory was checked against root rather than against the
 /// `repovec` ids.
-#[test]
-fn database_resolution_reaches_the_directory_checks() {
-    let tree = LiveTree::new().expect("fixture tree");
+#[rstest]
+fn database_resolution_reaches_the_directory_checks(live_tree: Result<LiveTree, io::Error>) {
+    let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     let passwd = format!("repovec:x:{uid}:{gid}:repovec:/var/lib/repovec:/usr/sbin/nologin\n");
     let group = format!("repovec:x:{gid}:\n");
@@ -182,9 +194,11 @@ fn database_resolution_reaches_the_directory_checks() {
 /// A root-owned `repovec` account must stop the pre-flight even when the tree
 /// itself is contract-correct, because every unit that runs as `User=repovec`
 /// would otherwise run as root.
-#[test]
-fn database_resolution_rejects_an_unsafe_account_before_stating_any_directory() {
-    let tree = LiveTree::new().expect("fixture tree");
+#[rstest]
+fn database_resolution_rejects_an_unsafe_account_before_stating_any_directory(
+    live_tree: Result<LiveTree, io::Error>,
+) {
+    let tree = live_tree.expect("fixture tree");
     let passwd = "repovec:x:0:0:repovec:/var/lib/repovec:/usr/sbin/nologin\n";
 
     let result = verify_layout_from_databases(&tree.paths, passwd, "repovec:x:0:\n");
@@ -199,9 +213,9 @@ fn database_resolution_rejects_an_unsafe_account_before_stating_any_directory() 
 /// the contract table. It is the check that fails if either privileged
 /// directory is wired to the repovec ids, or if `qdrant-storage` is left in the
 /// data-tree family.
-#[test]
-fn layout_contract_maps_each_directory_to_its_ids() {
-    let tree = LiveTree::new().expect("fixture tree");
+#[rstest]
+fn layout_contract_maps_each_directory_to_its_ids(live_tree: Result<LiveTree, io::Error>) {
+    let tree = live_tree.expect("fixture tree");
     let ids =
         LiveLayoutIds { repovec_uid: 998, repovec_gid: 996, privileged_uid: 0, privileged_gid: 0 };
 
@@ -240,8 +254,11 @@ fn layout_contract_maps_each_directory_to_its_ids() {
 #[case::repovec_gid(IdentityExpectation::RepovecGid)]
 #[case::privileged_uid(IdentityExpectation::PrivilegedUid)]
 #[case::privileged_gid(IdentityExpectation::PrivilegedGid)]
-fn each_directory_family_uses_its_expected_identity(#[case] expectation: IdentityExpectation) {
-    let tree = LiveTree::new().expect("fixture tree");
+fn each_directory_family_uses_its_expected_identity(
+    #[case] expectation: IdentityExpectation,
+    live_tree: Result<LiveTree, io::Error>,
+) {
+    let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     let mut ids = live_ids(uid, gid);
     expectation.displace(&mut ids, uid, gid);
@@ -266,9 +283,9 @@ fn each_directory_family_uses_its_expected_identity(#[case] expectation: Identit
     assert_eq!(violation.expected, expectation.expected_description(&ids));
 }
 
-#[test]
-fn missing_data_directory_is_reported() {
-    let tree = LiveTree::new().expect("fixture tree");
+#[rstest]
+fn missing_data_directory_is_reported(live_tree: Result<LiveTree, io::Error>) {
+    let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     let missing = expected_absolute(&tree, "var/lib/repovec/worktrees").expect("utf8 path");
     tree.root.remove_dir_all("var/lib/repovec/worktrees").expect("worktrees should be removed");
@@ -294,8 +311,9 @@ fn incorrect_mode_is_reported(
     #[case] seeded_mode: u32,
     #[case] expected: &str,
     #[case] actual: &str,
+    live_tree: Result<LiveTree, io::Error>,
 ) {
-    let tree = LiveTree::new().expect("fixture tree");
+    let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     tree.chmod(relative, seeded_mode).expect("seed mode mismatch");
 
@@ -312,9 +330,9 @@ fn incorrect_mode_is_reported(
     assert_eq!(violation.actual, actual);
 }
 
-#[test]
-fn symlink_in_place_of_a_directory_is_reported() {
-    let tree = LiveTree::new().expect("fixture tree");
+#[rstest]
+fn symlink_in_place_of_a_directory_is_reported(live_tree: Result<LiveTree, io::Error>) {
+    let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     let replaced = expected_absolute(&tree, "var/lib/repovec/worktrees").expect("utf8 path");
     tree.root.remove_dir_all("var/lib/repovec/worktrees").expect("remove worktrees");
@@ -333,9 +351,9 @@ fn symlink_in_place_of_a_directory_is_reported() {
     assert_eq!(path, Utf8PathBuf::from(replaced));
 }
 
-#[test]
-fn regular_file_in_place_of_a_directory_is_reported() {
-    let tree = LiveTree::new().expect("fixture tree");
+#[rstest]
+fn regular_file_in_place_of_a_directory_is_reported(live_tree: Result<LiveTree, io::Error>) {
+    let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     let replaced = expected_absolute(&tree, "var/lib/repovec/worktrees").expect("utf8 path");
     tree.root.remove_dir_all("var/lib/repovec/worktrees").expect("remove worktrees");

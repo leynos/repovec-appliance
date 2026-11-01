@@ -261,36 +261,40 @@ fn in_memory_config_retains_endpoint_and_timeout_contract() {
 }
 
 #[test]
-fn liveness_success_observability_uses_a_bounded_metric() -> Result<(), String> {
+fn liveness_success_observability_uses_a_bounded_metric() {
     let config = QdrantLivenessConfig::new(
         TEST_QDRANT_ENDPOINT,
-        test_api_key().map_err(|error| error.to_string())?,
+        test_api_key().expect("test API key should be valid"),
         Duration::from_millis(7),
     );
     let result = Ok(QdrantLivenessReport::new("qdrant", "1.15.0", None::<String>));
     let ((), logs) = repovec_test_helpers::capture_logs(|| {
         let span = super::observability::qdrant_liveness_span(&config);
         super::observability::record_qdrant_liveness_result(&span, &config, &result);
-    })?;
+    })
+    .expect("capturing liveness logs should succeed");
 
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "DEBUG",
         "endpoint=\"http://127.0.0.1:6334\"",
         "success log should include the Qdrant endpoint",
-    )?;
+    )
+    .expect("success log should include the Qdrant endpoint");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "INFO",
         "metric.qdrant_liveness_success_total",
         "success should emit a metric event",
     )
+    .expect("success should emit a metric event");
 }
+
 #[test]
-fn liveness_failure_observability_includes_probe_context() -> Result<(), String> {
+fn liveness_failure_observability_includes_probe_context() {
     let config = QdrantLivenessConfig::new(
         TEST_QDRANT_ENDPOINT,
-        test_api_key().map_err(|error| error.to_string())?,
+        test_api_key().expect("test API key should be valid"),
         Duration::from_millis(7),
     );
     let result = Err(QdrantLivenessError::MissingApiKeyFile {
@@ -300,34 +304,43 @@ fn liveness_failure_observability_includes_probe_context() -> Result<(), String>
     let ((), logs) = repovec_test_helpers::capture_logs(|| {
         let span = super::observability::qdrant_liveness_span(&config);
         super::observability::record_qdrant_liveness_result(&span, &config, &result);
-    })?;
+    })
+    .expect("capturing liveness logs should succeed");
 
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "DEBUG",
         "endpoint=\"http://127.0.0.1:6334\"",
         "failure log should include the Qdrant endpoint",
-    )?;
+    )
+    .expect("failure log should include the Qdrant endpoint");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "DEBUG",
         "timeout_ms=7",
         "failure log should include the probe timeout",
-    )?;
+    )
+    .expect("failure log should include the probe timeout");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "DEBUG",
         "error_category=\"missing_api_key_file\"",
         "failure log should include the error category",
-    )?;
+    )
+    .expect("failure log should include the error category");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "INFO",
         "metric.qdrant_liveness_failure_total",
         "failure should emit a bounded metric event",
     )
+    .expect("failure should emit a bounded metric event");
 }
 
+/// Parses the fixed test API key.
+///
+/// Returns `Result` so each test body reports an unexpected parse failure at
+/// the point of use.
 fn test_api_key() -> Result<QdrantApiKey, QdrantLivenessError> { QdrantApiKey::parse(TEST_API_KEY) }
 
 #[test]

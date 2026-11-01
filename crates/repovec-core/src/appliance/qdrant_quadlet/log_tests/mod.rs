@@ -280,9 +280,19 @@ fn legacy_api_key_dependency_observer_callbacks_remain_supported() {
     assert_eq!(observer.incorrect_callbacks.load(Ordering::Relaxed), 1);
 }
 
+/// Returns the captured event whose `message` field equals `message`.
+///
+/// This is the pure query behind [`assert_event`]; a missing event is reported
+/// by the assertion wrapper rather than here.
+fn find_event<'events>(
+    events: &'events [CapturedEvent],
+    message: &str,
+) -> Option<&'events CapturedEvent> {
+    events.iter().find(|event| field_matches(event, "message", message))
+}
+
 fn assert_event(events: &[CapturedEvent], expected: ExpectedEvent) {
-    let Some(event) = events.iter().find(|event| field_matches(event, "message", expected.message))
-    else {
+    let Some(event) = find_event(events, expected.message) else {
         panic!("missing event `{}` in {events:#?}", expected.message);
     };
 

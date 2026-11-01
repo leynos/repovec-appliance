@@ -101,7 +101,7 @@ fn startup_runs_live_layout_check_between_the_other_two() {
 
 /// Retain the offending path in the operator log and map the failure to exit 1.
 #[test]
-fn live_layout_startup_failure_names_the_path_and_exits_1() -> Result<(), String> {
+fn live_layout_startup_failure_names_the_path_and_exits_1() {
     let (exit_code_result, logs) = repovec_test_helpers::capture_logs(|| {
         validate_daemon_startup_contracts_with_live(
             || Ok(()),
@@ -111,94 +111,108 @@ fn live_layout_startup_failure_names_the_path_and_exits_1() -> Result<(), String
         .err()
         .map(log_daemon_startup_error)
         .ok_or_else(|| "a live layout violation must abort the startup boundary".to_owned())
-    })?;
-    let exit_code = exit_code_result?;
+    })
+    .expect("capturing startup logs should succeed");
+    let exit_code = exit_code_result.expect("a live layout violation must abort the startup");
 
     repovec_test_helpers::ensure(
         exit_code == STARTUP_FAILURE_EXIT_CODE,
         "a live layout failure must map to the startup failure exit code",
-    )?;
+    )
+    .expect("a live layout failure must map to the startup failure exit code");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "ERROR",
         "path=/var/lib/repovec",
         "the live layout failure log must name the offending path",
-    )?;
+    )
+    .expect("the live layout failure log must name the offending path");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "ERROR",
         "live directory layout violation - aborting startup",
         "the live layout failure log must state that startup is aborting",
     )
+    .expect("the live layout failure log must state that startup is aborting");
 }
 
 /// The failure log carries the stable category so a dashboard can group
 /// failures without parsing free-form text or indexing on a host path.
 #[test]
-fn live_layout_failure_logs_a_bounded_category() -> Result<(), String> {
+fn live_layout_failure_logs_a_bounded_category() {
     let (exit_code, logs) = repovec_test_helpers::capture_logs(|| {
         log_daemon_startup_error(DaemonStartupError::LiveLayout(missing_data_root()))
-    })?;
+    })
+    .expect("capturing startup logs should succeed");
 
     repovec_test_helpers::ensure(
         exit_code == STARTUP_FAILURE_EXIT_CODE,
         "a live layout failure must map to the startup failure exit code",
-    )?;
+    )
+    .expect("a live layout failure must map to the startup failure exit code");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "ERROR",
         r#"error_category="missing_path""#,
         "the failure log must carry the bounded category",
     )
+    .expect("the failure log must carry the bounded category");
 }
 
 /// Ownership violations log both sides of the comparison, matching on disk
 /// against the contract, so an operator can tell a wrong uid from a wrong
 /// directory.
 #[test]
-fn live_layout_failure_logs_expected_and_actual_identity() -> Result<(), String> {
+fn live_layout_failure_logs_expected_and_actual_identity() {
     let (_, logs) = repovec_test_helpers::capture_logs(|| {
         log_daemon_startup_error(DaemonStartupError::LiveLayout(wrong_owner()))
-    })?;
+    })
+    .expect("capturing startup logs should succeed");
 
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "ERROR",
         r#"expected="root (uid 0)""#,
         "the failure log must name the expected owner",
-    )?;
+    )
+    .expect("the failure log must name the expected owner");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "ERROR",
         r#"actual="uid 998""#,
         "the failure log must name the observed owner",
-    )?;
+    )
+    .expect("the failure log must name the observed owner");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "ERROR",
         r#"error_category="incorrect_owner""#,
         "the failure log must carry the owner category",
     )
+    .expect("the failure log must carry the owner category");
 }
 
 /// The metric event carries only the category, never a path, so its label
 /// space stays bounded.
 #[test]
-fn live_layout_failure_emits_a_category_only_metric() -> Result<(), String> {
+fn live_layout_failure_emits_a_category_only_metric() {
     let (_, logs) = repovec_test_helpers::capture_logs(|| {
         log_daemon_startup_error(DaemonStartupError::LiveLayout(wrong_owner()))
-    })?;
+    })
+    .expect("capturing startup logs should succeed");
 
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "INFO",
         "metric.daemon_startup_live_layout_failure_total",
         "the metric event must be emitted",
-    )?;
+    )
+    .expect("the metric event must be emitted");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "INFO",
         r#"error_category="incorrect_owner""#,
         "the metric event must carry the category",
     )
+    .expect("the metric event must carry the category");
 }

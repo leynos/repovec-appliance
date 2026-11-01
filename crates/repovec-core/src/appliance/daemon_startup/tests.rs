@@ -12,6 +12,7 @@ use super::{
     log_daemon_startup_error, validate_daemon_startup_contracts_with,
     validate_qdrant_liveness_with_policy,
 };
+use crate::appliance::qdrant_liveness::test_support::transient_qdrant_result;
 
 /// Protect the successful startup path through both injected systemd and Qdrant checks.
 #[test]
@@ -22,47 +23,54 @@ fn startup_succeeds_when_validation_passes() {
 
 /// Keep both successful startup checks observable in debug logs for operational diagnosis.
 #[test]
-fn startup_logs_successful_validation() -> Result<(), String> {
+fn startup_logs_successful_validation() {
     let (result, logs) = repovec_test_helpers::capture_logs(|| {
         validate_daemon_startup_contracts_with(|| Ok(()), || async { Ok(()) })
-    })?;
+    })
+    .expect("capturing startup logs should succeed");
 
-    repovec_test_helpers::ensure(result.is_ok(), "startup should pass")?;
+    repovec_test_helpers::ensure(result.is_ok(), "startup should pass")
+        .expect("startup validation should succeed");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "DEBUG",
         "systemd unit contract validated at daemon startup",
         "startup should log systemd validation success",
-    )?;
+    )
+    .expect("startup should log systemd validation success");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "DEBUG",
         "Qdrant liveness validated",
         "startup should log Qdrant validation success",
     )
+    .expect("startup should log Qdrant validation success");
 }
 
 /// Exercise the production unit validator while injecting Qdrant success to avoid an unrelated
 /// service dependency.
 #[test]
-fn startup_runs_real_systemd_validation() -> Result<(), String> {
+fn startup_runs_real_systemd_validation() {
     let (result, logs) = repovec_test_helpers::capture_logs(|| {
         validate_daemon_startup_contracts_with(
             super::validate_and_trace_checked_in_units,
             || async { Ok(()) },
         )
-    })?;
+    })
+    .expect("capturing startup logs should succeed");
 
     repovec_test_helpers::ensure(
         result.is_ok(),
         "checked-in units and injected Qdrant liveness should pass",
-    )?;
+    )
+    .expect("startup with the real systemd validator should succeed");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "TRACE",
         "systemd unit contract validated",
         "startup should call the real systemd validator",
     )
+    .expect("startup should call the real systemd validator");
 }
 
 /// Ensure failed systemd validation prevents invoking the Qdrant liveness callback.
@@ -97,21 +105,24 @@ fn startup_returns_exit_code_1_when_validation_fails() {
 /// Retain the failing unit identity in error logs so operators can locate the broken service
 /// contract.
 #[test]
-fn startup_error_logging_preserves_systemd_unit_field() -> Result<(), String> {
+fn startup_error_logging_preserves_systemd_unit_field() {
     let (exit_code, logs) = repovec_test_helpers::capture_logs(|| {
         run_startup_with_systemd_error("repovec-mcpd.service")
-    })?;
+    })
+    .expect("capturing startup logs should succeed");
 
     repovec_test_helpers::ensure(
         exit_code == Err(STARTUP_FAILURE_EXIT_CODE),
         "startup error should map to exit code 1",
-    )?;
+    )
+    .expect("startup error should map to the failure exit code");
     repovec_test_helpers::ensure_log_line_contains(
         &logs,
         "ERROR",
         "unit=repovec-mcpd.service",
         "startup failure log should preserve the systemd unit field",
     )
+    .expect("startup failure log should preserve the systemd unit field");
 }
 
 /// Keep readiness timeouts classified as typed Qdrant startup failures.
@@ -205,16 +216,4 @@ fn assert_permanent_qdrant_error_fails_immediately(injected: QdrantLivenessError
     };
     assert_eq!(startup_error.to_string(), expected_error);
     assert_eq!(attempts.get(), 1);
-}
-
-/// Provide a deterministic unavailable-then-healthy sequence for retry assertions.
-///
-/// For example, attempt 0 returns `GrpcUnavailable`; attempt 1 returns `Ok(())`.
-fn transient_qdrant_result(attempt: i32) -> Result<(), QdrantLivenessError> {
-    match attempt {
-        0 => Err(QdrantLivenessError::GrpcUnavailable {
-            message: String::from("connection refused"),
-        }),
-        _ => Ok(()),
-    }
 }

@@ -85,11 +85,17 @@ const MEMBER_MANIFESTS: [(&str, &str); 7] = [
 ];
 
 /// Makefile lines that together scope Clippy to the whole workspace.
-const REQUIRED_MAKEFILE_LINES: [&str; 4] = [
+///
+/// The warning policy travels after `--` and the build standard travels in
+/// `GATE_RUSTFLAGS`, so both routes are pinned: a contract on only one of them
+/// would still pass after the other was dropped.
+const REQUIRED_MAKEFILE_LINES: [&str; 6] = [
     "BASE_RUST_FLAGS ?= -D warnings",
     "CARGO_FLAGS ?= --all-targets --all-features",
-    "CLIPPY_FLAGS ?= $(CARGO_FLAGS) -- $(EFFECTIVE_RUST_FLAGS)",
-    "$(CARGO) clippy --workspace $(CLIPPY_FLAGS)",
+    "WARNING_RUST_FLAGS := $(strip $(BASE_RUST_FLAGS) $(RUST_FLAGS))",
+    "EFFECTIVE_RUST_FLAGS := $(strip $(WARNING_RUST_FLAGS) $(STANDARD_RUSTFLAGS))",
+    "CLIPPY_FLAGS ?= $(CARGO_FLAGS) -- $(WARNING_RUST_FLAGS)",
+    "$(GATE_RUSTFLAGS) $(CARGO) clippy --workspace $(CLIPPY_FLAGS)",
 ];
 
 /// Parse an embedded manifest, naming the file in any parse failure.

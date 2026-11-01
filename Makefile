@@ -142,7 +142,7 @@ clean: ensure-cargo ## Remove build artefacts
 	$(CARGO) clean
 
 test: ensure-cargo check-build-tools script-test ## Run tests with warnings treated as errors
-	$(RUST_TEST_RUNNER) --cargo="$(CARGO)" --rust-flags="$(GATE_RUSTFLAG_VALUE)" --test-flags="$(TEST_FLAGS)" --doctest-flags="$(DOCTEST_FLAGS)" --build-jobs="$(BUILD_JOBS)"
+	$(RUST_TEST_RUNNER) --cargo="$(CARGO)" --rust-flags=$(call shell_quote,$(GATE_RUSTFLAG_VALUE)) --test-flags="$(TEST_FLAGS)" --doctest-flags="$(DOCTEST_FLAGS)" --build-jobs="$(BUILD_JOBS)"
 
 lint: ensure-cargo check-build-tools ## Run Clippy and the Whitaker Dylint suite with warnings denied
 	$(GATE_RUSTFLAGS) RUSTDOCFLAGS="$(EFFECTIVE_RUSTDOC_FLAGS)" $(CARGO) doc --no-deps --workspace

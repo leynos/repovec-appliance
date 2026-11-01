@@ -150,23 +150,56 @@ def test_the_standard_survives_with_no_inherited_flags() -> None:
         )
 
 
-def test_inherited_metacharacters_reach_the_compiler_verbatim() -> None:
+def _route_rustflags_text(target: str, hostile: str) -> str:
+    """Return the flag text one route hands downstream, after shell parsing.
+
+    The value is read back the way the consumer would see it: from the
+    ``RUSTFLAGS`` assignment for a direct Cargo route, and from the
+    runner's ``--rust-flags`` argument for the ``test`` route. Both are
+    split by ``shlex``, so anything the shell re-parsed along the way
+    shows up here as a changed string.
+    """
+    lines = run_make_dry_run(target, rustflags=hostile)
+    if target == "test":
+        runners = runner_invocations(lines)
+        assert len(runners) == 1, (
+            f"the test dry run should invoke the runner once, found {len(runners)}: "
+            f"{[runner.text for runner in runners]}"
+        )
+        rust_flags = option_value(runners[0], "rust-flags")
+        assert rust_flags is not None, (
+            "the test route should pass --rust-flags to the runner"
+        )
+        return rust_flags
+
+    invocations = cargo_invocations(lines)
+    assert len(invocations) == 1, f"expected one Cargo invocation, found {invocations}"
+    return invocations[0].environment["RUSTFLAGS"]
+
+
+@pytest.mark.parametrize("target", ("build", "test"))
+def test_inherited_metacharacters_reach_the_compiler_verbatim(target: str) -> None:
     """Scenario: an inherited ``RUSTFLAGS`` carries shell metacharacters.
 
     Invariant: the caller's flag text arrives unchanged. A double-quoted
     assignment lets the shell re-parse an embedded ``"``, backtick or
     ``$``, and expanding ``$(RUSTFLAGS)`` lets Make consume a literal
-    ``$`` as a variable reference before the shell ever sees it.
+    ``$`` as a variable reference before the shell ever sees it. The
+    ``test`` route hands the same text to the runner, whose ``--rust-flags``
+    argument must survive the same way.
+
+    ``build`` keeps the caller's warning policy and appends the standard;
+    ``test`` is a gate, so it also re-states ``-D warnings``. The hostile
+    text already contains a denial, which is why the gate route's expected
+    value repeats it.
     """
     hostile = '-D warnings -Copt="a b" -Cvar=$HOME `date` it\'s'
-    lines = run_make_dry_run("build", rustflags=hostile)
-    invocations = cargo_invocations(lines)
-    assert len(invocations) == 1, f"expected one Cargo invocation, found {invocations}"
-
-    expected = f"{hostile} {' '.join(expected_standard_tokens())}"
-    assert invocations[0].environment["RUSTFLAGS"] == expected, (
-        "the inherited RUSTFLAGS should reach Cargo verbatim; "
-        f"expected {expected!r}, found {invocations[0].environment['RUSTFLAGS']!r}"
+    gate_flags = [*WARNING_TOKENS] if target == "test" else []
+    expected = " ".join([hostile, *gate_flags, *expected_standard_tokens()])
+    found = _route_rustflags_text(target, hostile)
+    assert found == expected, (
+        f"the {target} route should carry the inherited RUSTFLAGS verbatim; "
+        f"expected {expected!r}, found {found!r}"
     )
 
 

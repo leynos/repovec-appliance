@@ -51,8 +51,11 @@ installation command when a component is missing.
 
 CI runs `make install-build-tools` in each job that compiles or links Rust,
 after Rust setup and before the compiling step. Formatting and spelling do not
-install it. The contracts for the configuration, the Make routes and the CI
-placement live in `tests/workflow_contracts/`.
+install it. The contracts for the configuration, the Make routes, the CI
+placement and the installer live in `tests/workflow_contracts/`. The installer
+contracts are hermetic: they drive the real script with the real checksum and
+archive tools over an archive the test builds, stubbing only the download, host
+detection and toolchain installation.
 
 ## Normative references
 

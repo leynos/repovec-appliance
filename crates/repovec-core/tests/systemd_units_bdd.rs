@@ -135,11 +135,7 @@ fn the_systemd_units_are_validated(systemd_world: &mut SystemdWorld) {
 
 #[then("the systemd unit set is accepted")]
 fn the_systemd_unit_set_is_accepted(systemd_world: &SystemdWorld) {
-    let Some(validation_result) = systemd_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
-    assert!(validation_result.is_ok());
+    assert!(find_validation_result(systemd_world).is_some_and(Result::is_ok));
 }
 
 /// Declares the `#[then]` steps that assert a specific contract violation.
@@ -355,14 +351,15 @@ fn assert_scenario_steps_ran(systemd_world: &SystemdWorld) {
     );
 }
 
-fn assert_validation_result(systemd_world: &SystemdWorld, expected: SystemdUnitError) {
-    let Some(validation_result) = systemd_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
+/// Returns the validation outcome recorded by the `when` step, if any.
+fn find_validation_result(systemd_world: &SystemdWorld) -> Option<&Result<(), SystemdUnitError>> {
+    systemd_world.validation_result.as_ref()
+}
 
+fn assert_validation_result(systemd_world: &SystemdWorld, expected: SystemdUnitError) {
     assert_eq!(
-        validation_result,
-        &Err(expected),
+        find_validation_result(systemd_world),
+        Some(&Err(expected)),
         "the validation step should reject the units with the expected contract error"
     );
 }

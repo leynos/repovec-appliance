@@ -62,11 +62,12 @@ fn the_token_endpoint_reports_an_expired_token(github_oauth_world: &mut GitHubOA
 
 #[when("the OAuth error is classified")]
 fn the_oauth_error_is_classified(github_oauth_world: &mut GitHubOAuthWorld) {
-    let Some(error) = github_oauth_world.oauth_error.as_ref() else {
-        panic!("an OAuth error should be supplied");
-    };
-    github_oauth_world.classified_outcome = classify_device_flow_error(*error);
-    github_oauth_world.has_classification = true;
+    // A missing error leaves the classification flag unset so the `then` step
+    // reports the missing setup through its assertion rather than a panic here.
+    if let Some(error) = github_oauth_world.oauth_error {
+        github_oauth_world.classified_outcome = classify_device_flow_error(error);
+        github_oauth_world.has_classification = true;
+    }
 }
 
 #[then("polling completes successfully")]
@@ -105,11 +106,12 @@ fn no_device_flow_polling_outcome_is_produced(github_oauth_world: &GitHubOAuthWo
 }
 
 fn apply_outcome(github_oauth_world: &mut GitHubOAuthWorld) {
-    let Some(outcome) = github_oauth_world.outcome.take() else {
-        panic!("a token endpoint outcome should be supplied");
-    };
-    github_oauth_world.decision =
-        Some(apply_poll_outcome(outcome, github_oauth_world.active_interval));
+    // A missing outcome leaves `decision` untouched, so the `then` step fails
+    // with its own assertion instead of a panic in this setup helper.
+    if let Some(outcome) = github_oauth_world.outcome.take() {
+        github_oauth_world.decision =
+            Some(apply_poll_outcome(outcome, github_oauth_world.active_interval));
+    }
 }
 
 scenarios!("tests/features/github_oauth.feature", fixtures = [github_oauth_world: GitHubOAuthWorld]);

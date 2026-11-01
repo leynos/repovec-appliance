@@ -29,16 +29,23 @@ pub(super) struct ParsedUnit {
     sections: BTreeMap<String, BTreeMap<String, Vec<String>>>,
 }
 
+/// The exact, membership, or absence rule a directive must satisfy.
 #[derive(Clone, Copy)]
 enum DirectiveRequirement {
+    /// The directive must carry exactly this value.
     Exact(&'static str),
+    /// The directive must include this value among its entries.
     Contains(&'static str),
+    /// The directive must not appear at all.
     Absent,
 }
 
+/// The command shape an `ExecStart=` directive must declare.
 #[derive(Clone, Copy)]
 enum ExecStartRequirement {
+    /// `ExecStart=` must declare exactly this one command.
     Single(&'static str),
+    /// `ExecStart=` must declare exactly this sequence, in this order.
     Sequence(&'static [&'static str]),
 }
 
@@ -247,6 +254,7 @@ impl ParsedUnit {
         )
     }
 
+    /// Applies the requirement and builds the matching typed error.
     fn require_directive_matching(
         &self,
         section: &'static str,

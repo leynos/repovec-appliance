@@ -8,19 +8,24 @@
 //! vocabulary in one reviewable place instead of scattering it through the
 //! validator entry points.
 
+/// The embedded `repovec.target` unit checked in under `packaging/systemd/`.
 const CHECKED_IN_REPOVEC_TARGET: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovec.target"));
+/// The embedded `repovecd.service` unit checked in under `packaging/systemd/`.
 const CHECKED_IN_REPOVECD_SERVICE: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovecd.service"));
+/// The embedded `repovec-mcpd.service` unit checked in under `packaging/systemd/`.
 const CHECKED_IN_REPOVEC_MCPD_SERVICE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../packaging/systemd/repovec-mcpd.service"
 ));
 
+/// The embedded `repovec-grepai@.service` template checked in under `packaging/systemd/`.
 const CHECKED_IN_REPOVEC_GREPAI_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../packaging/systemd/repovec-grepai@.service"
 ));
+/// The embedded `repovec-provision.service` unit checked in under `packaging/systemd/`.
 const CHECKED_IN_REPOVEC_PROVISION_SERVICE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../packaging/systemd/repovec-provision.service"

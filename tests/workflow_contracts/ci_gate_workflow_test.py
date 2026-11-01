@@ -90,6 +90,27 @@ def _condition(definition: dict[str, object]) -> object | None:
     return definition.get("if")
 
 
+def test_the_workflow_defaults_to_read_only_contents() -> None:
+    """Scenario: a new job forgets to declare its own token scope.
+
+    Invariant: the workflow-level floor is ``contents: read``. Every
+    current job declares its own permissions, so the floor does not
+    change their effective scope; it only stops a job that omits one from
+    inheriting the repository default, which may be wider.
+    """
+    workflow = _workflow()
+    assert workflow.get("permissions") == {"contents": "read"}, (
+        "the CI workflow should default to a read-only contents token; "
+        f"found {workflow.get('permissions')!r}"
+    )
+    for name in sorted(workflow.get("jobs", {})):
+        job = _job(name)
+        assert "permissions" in job, (
+            f"the {name} job should declare its own permissions rather than "
+            "rely on the workflow floor"
+        )
+
+
 def test_the_workflow_runs_on_pull_requests() -> None:
     """Scenario: the workflow stops triggering on pull requests.
 

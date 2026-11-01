@@ -1,5 +1,11 @@
 name: CI
 
+# Least-privilege floor. Every job declares its own permissions, so this
+# changes no job's effective token scope; it keeps a job that forgets to
+# declare one from inheriting the repository default.
+permissions:
+  contents: read
+
 'on':
   push:
     branches: [main]

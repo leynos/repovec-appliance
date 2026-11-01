@@ -193,6 +193,35 @@ def test_the_install_step_is_unconditional_and_exact() -> None:
             )
 
 
+def test_the_docs_gate_builds_its_helper_through_the_standard() -> None:
+    """Scenario: the helper build reverts to a bare Cargo invocation.
+
+    Invariant: the docs-gate job builds ``repovec-ci`` with the Make
+    target that composes the standard. A direct ``cargo build`` runs
+    under the ``RUSTFLAGS`` that ``setup-rust`` exports, which displaces
+    ``.cargo/config.toml`` and silently loses the parallel frontend and
+    mold.
+    """
+    runs = [str(step.get("run", "")).strip() for step in _steps(_jobs()["docs-gate"])]
+    assert "make build-docs-gate-helper" in runs, (
+        "the docs-gate job should build its helper with "
+        f"'make build-docs-gate-helper'; found {runs}"
+    )
+    bare_cargo = [
+        run
+        for run in runs
+        if any(
+            subcommand in COMPILING_CARGO_SUBCOMMANDS
+            for subcommand in cargo_subcommands(run)
+        )
+    ]
+    assert not bare_cargo, (
+        "the docs-gate job should not compile the workspace with Cargo "
+        f"directly, because setup-rust's RUSTFLAGS would displace the "
+        f"standard; found {bare_cargo}"
+    )
+
+
 def test_the_derivation_covers_every_compiling_make_target() -> None:
     """Scenario: a standard route is added and CI wiring is not reviewed.
 

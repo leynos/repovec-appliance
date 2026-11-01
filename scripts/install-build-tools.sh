@@ -18,6 +18,13 @@ MOLD_RELEASE_BASE_URL=${MOLD_RELEASE_BASE_URL:-https://github.com/rui314/mold/re
 CURL_CONNECT_TIMEOUT=${CURL_CONNECT_TIMEOUT:-15}
 CURL_MIN_BYTES_PER_SECOND=${CURL_MIN_BYTES_PER_SECOND:-1024}
 CURL_STALL_SECONDS=${CURL_STALL_SECONDS:-60}
+# Transient connection failures and retryable HTTP responses -- 408, 429 and
+# the 5xx range -- are retried a bounded number of times inside a bounded
+# window. `--retry` does not retry a 4xx such as a missing release, so a
+# permanent failure still costs one request rather than the whole budget.
+CURL_RETRIES=${CURL_RETRIES:-3}
+CURL_RETRY_DELAY_SECONDS=${CURL_RETRY_DELAY_SECONDS:-2}
+CURL_RETRY_MAX_SECONDS=${CURL_RETRY_MAX_SECONDS:-60}
 
 # The scratch directory the EXIT trap removes. A trap whose action is a string
 # is re-parsed by the shell when it fires, so a path containing a quote -- from
@@ -77,9 +84,13 @@ install_mold() {
   # simply hangs. The transfer bound is a stall detector rather than a
   # deadline: a plain `--max-time` would punish a slow-but-progressing link,
   # whereas `--speed-limit`/`--speed-time` only fire when throughput dies.
+  # Retries cover a transient network failure or a retryable status without
+  # turning a permanently broken release into an endless wait.
   curl --fail --silent --show-error --location \
     --connect-timeout "$CURL_CONNECT_TIMEOUT" \
     --speed-limit "$CURL_MIN_BYTES_PER_SECOND" --speed-time "$CURL_STALL_SECONDS" \
+    --retry "$CURL_RETRIES" --retry-delay "$CURL_RETRY_DELAY_SECONDS" \
+    --retry-max-time "$CURL_RETRY_MAX_SECONDS" --retry-connrefused \
     --output "$workdir/$name" "$url" ||
     fail "failed to download $name"
   verify_mold_archive "$workdir/$name" "$name"

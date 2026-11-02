@@ -118,22 +118,28 @@ const EXPECTATIONS: [Expectation; 3] = [
 /// that does not match the exact-mode contract the pure validator enforces.
 fn permission_bits(metadata: &Metadata) -> u32 { metadata.mode() & 0o7777 }
 
+/// Returns whether the directory's owner matches the contract.
 fn owner_is_satisfied(metadata: &Metadata, contract: DirectoryContract) -> bool {
     metadata.uid() == contract.owner_uid
 }
 
+/// Returns whether the directory's group matches the contract.
 fn group_is_satisfied(metadata: &Metadata, contract: DirectoryContract) -> bool {
     metadata.gid() == contract.owner_gid
 }
 
+/// Returns whether the directory's permission bits match the contract exactly.
 fn mode_is_satisfied(metadata: &Metadata, contract: DirectoryContract) -> bool {
     permission_bits(metadata) == u32::from(contract.mode)
 }
 
+/// Renders the observed owner uid for diagnostics.
 fn reported_owner(metadata: &Metadata) -> String { format!("uid {}", metadata.uid()) }
 
+/// Renders the observed group gid for diagnostics.
 fn reported_group(metadata: &Metadata) -> String { format!("gid {}", metadata.gid()) }
 
+/// Renders the observed permission bits in octal for diagnostics.
 fn reported_mode(metadata: &Metadata) -> String { format!("{:04o}", permission_bits(metadata)) }
 
 /// Verifies one directory against its ownership and permission contract.

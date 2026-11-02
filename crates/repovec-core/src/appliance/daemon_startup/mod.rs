@@ -163,6 +163,7 @@ where
     validate_qdrant_liveness_with(qdrant_liveness_check)
 }
 
+/// Runs the unit and live-layout checks in contract order.
 fn validate_systemd_and_live<S, L>(
     systemd_validator: S,
     live_layout_check: L,
@@ -176,6 +177,7 @@ where
     Ok(())
 }
 
+/// Maps a systemd unit contract failure into the startup error.
 fn check_systemd_units<S>(systemd_validator: S) -> Result<(), DaemonStartupError>
 where
     S: FnOnce() -> Result<(), SystemdUnitError>,
@@ -185,6 +187,7 @@ where
     Ok(())
 }
 
+/// Maps a live layout violation into the startup error.
 fn check_live_layout<L>(live_layout_check: L) -> Result<(), DaemonStartupError>
 where
     L: FnOnce() -> Result<(), LiveLayoutError>,

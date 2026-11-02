@@ -21,6 +21,7 @@
 //! responsibility of the separately carved-out pre-flight adapter.
 
 mod account;
+mod assets;
 mod directory_contract;
 mod error;
 mod group;
@@ -45,43 +46,33 @@ mod tests_proptest;
 #[cfg(test)]
 mod tests_support;
 
+use assets::{CHECKED_IN_REPOVEC_SYSUSERS, CHECKED_IN_REPOVEC_TMPFILES};
+pub use assets::{
+    CHECKED_IN_REPOVEC_SYSUSERS_PATH, CHECKED_IN_REPOVEC_TMPFILES_PATH,
+    INSTALLED_REPOVEC_SYSUSERS_PATH, INSTALLED_REPOVEC_TMPFILES_PATH, REPOVEC_HOME, REPOVEC_SHELL,
+    REPOVEC_USER,
+};
 use camino::{Utf8Path, Utf8PathBuf};
 pub use error::{DirectoryLayoutError, Mode};
 use error::{SYSUSERS_ASSET, TMPFILES_ASSET};
 
 use crate::RuntimePaths;
 
-const CHECKED_IN_REPOVEC_TMPFILES: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/tmpfiles.d/repovec.conf"));
-const CHECKED_IN_REPOVEC_SYSUSERS: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/sysusers.d/repovec.conf"));
-
-/// The repository path of the checked-in `tmpfiles.d` asset.
-pub const CHECKED_IN_REPOVEC_TMPFILES_PATH: &str = "packaging/tmpfiles.d/repovec.conf";
-/// The repository path of the checked-in `sysusers.d` asset.
-pub const CHECKED_IN_REPOVEC_SYSUSERS_PATH: &str = "packaging/sysusers.d/repovec.conf";
-/// The installed path of the `tmpfiles.d` asset on a systemd host.
-pub const INSTALLED_REPOVEC_TMPFILES_PATH: &str = "/usr/lib/tmpfiles.d/repovec.conf";
-/// The installed path of the `sysusers.d` asset on a systemd host.
-pub const INSTALLED_REPOVEC_SYSUSERS_PATH: &str = "/usr/lib/sysusers.d/repovec.conf";
-
-/// The canonical `repovec` system user and group names.
-pub const REPOVEC_USER: &str = "repovec";
-/// The canonical `repovec` home directory.
-pub const REPOVEC_HOME: &str = "/var/lib/repovec";
-/// The canonical nologin shell.
-pub const REPOVEC_SHELL: &str = "/usr/sbin/nologin";
-
 /// A single directory-entry expectation in the layout contract.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct DirectorySpec {
+    /// The absolute directory path the asset must declare.
     path: Utf8PathBuf,
+    /// The exact permission bits the directory must carry.
     mode: Mode,
+    /// The user name that must own the directory.
     owner: &'static str,
+    /// The group name that must own the directory.
     group: &'static str,
 }
 
 impl DirectorySpec {
+    /// Builds a contract entry from its path and required metadata.
     fn new(
         path: impl Into<Utf8PathBuf>,
         mode: Mode,
@@ -179,6 +170,7 @@ pub fn validate_directory_layout(
     validate_sysusers_entries(sysusers)
 }
 
+/// Checks every `d` entry against the contract and requires each contracted directory to appear.
 fn validate_tmpfiles_entries(
     tmpfiles: &str,
     paths: &RuntimePaths,
@@ -226,6 +218,7 @@ fn validate_tmpfiles_entries(
     Ok(())
 }
 
+/// Classifies an undeclared path as a forbidden secrets authority or an unexpected directory.
 fn unexpected_tmpfiles_path_error(
     path: &str,
     runtime_paths: &RuntimePaths,
@@ -241,6 +234,7 @@ fn unexpected_tmpfiles_path_error(
     }
 }
 
+/// Parses the mode column and compares the entry against the contract in reporting order.
 fn compare_spec(
     spec: &DirectorySpec,
     entry: &parser::TmpfilesEntry,
@@ -265,15 +259,17 @@ fn compare_spec(
 
 /// One field of a [`DirectorySpec`], expressed as data.
 ///
-/// The mode, owner, and group comparisons share a single decision—does the
-/// parsed entry satisfy the contract, and if not, what did the contract require
-/// against what the asset declares—and differ only in the predicate and the
-/// error variant. Holding those together lets the three run as one ordered pass
-/// rather than three near-identical functions.
+/// The mode, owner, and group comparisons share one decision—does the entry satisfy the
+/// contract, and if not, what the contract required against what the asset declares—and differ
+/// only in the predicate and the error variant. Holding them together runs the three as one
+/// ordered pass rather than three near-identical functions.
 #[derive(Clone, Copy)]
 enum SpecField {
+    /// The required owning user.
     Owner,
+    /// The required owning group.
     Group,
+    /// The required permission bits.
     Mode,
 }
 
@@ -328,9 +324,8 @@ const COMPARED_FIELDS: [SpecField; 3] = [SpecField::Owner, SpecField::Group, Spe
 
 /// Compares a parsed entry against a directory spec.
 ///
-/// `actual_mode` is the mode column already parsed by [`compare_spec`], which is
-/// what keeps the mode comparison total: the explicitness and syntax failures
-/// have been reported before this runs.
+/// `actual_mode` is the mode column already parsed by [`compare_spec`], which keeps the mode
+/// comparison total: the explicitness and syntax failures have been reported before this runs.
 fn compare_spec_against(
     spec: &DirectorySpec,
     entry: &parser::TmpfilesEntry,
@@ -345,6 +340,7 @@ fn compare_spec_against(
     })
 }
 
+/// Checks that the asset declares the canonical `repovec` account without a pinned uid.
 fn validate_sysusers_entries(sysusers: &str) -> Result<(), DirectoryLayoutError> {
     let mut found_user = false;
 

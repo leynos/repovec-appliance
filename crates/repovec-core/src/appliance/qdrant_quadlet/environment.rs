@@ -48,9 +48,13 @@ pub(super) fn split_environment_assignments(environment: &str) -> Vec<String> {
 /// rather than as a parameter clump shared between free functions.
 #[derive(Default)]
 struct EnvironmentScanner {
+    /// Assignments already completed and ready for the caller.
     assignments: Vec<String>,
+    /// The assignment currently being scanned.
     assignment: String,
+    /// The quote character enclosing the current value, when one is open.
     quote: Option<char>,
+    /// Whether the previous character escapes the next one inside a quoted value.
     is_escaped: bool,
 }
 

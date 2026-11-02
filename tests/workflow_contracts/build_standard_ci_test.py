@@ -8,10 +8,11 @@ leaves the command visible on its own line while never running it.
 
 The compiling jobs are derived rather than listed. A job compiles when a
 ``run`` value invokes a Make target that compiles or a Cargo subcommand
-that compiles. The set of jobs that install is then compared with that
-derived set in both directions, so a new compiling job without an
-install fails, and an install in a job that does not compile is reviewed
-rather than silently accepted.
+that compiles, or when a step calls the shared coverage action, which runs
+the suite from inside the action. The set of jobs that install is then
+compared with that derived set in both directions, so a new compiling job
+without an install fails, and an install in a job that does not compile is
+reviewed rather than silently accepted.
 
 The Make targets themselves are held to the same rule by
 ``build_standard_make_test.py``: each standard route reaches
@@ -48,7 +49,7 @@ INSTALL_COMMAND = "make install-build-tools"
 #: comparison alone would accept a new pairing without anyone deciding it
 #: belongs.
 EXPECTED_COMPILING_JOBS = frozenset(
-    {"build", "lint", "test", "docs-gate", "systemd-gate"}
+    {"build", "lint", "test", "docs-gate", "systemd-gate", "coverage"}
 )
 
 
@@ -75,12 +76,24 @@ def _steps(job: dict[object, object]) -> list[dict[object, object]]:
     return [step for step in steps if isinstance(step, dict)]
 
 
+def _compiles(step: dict[object, object]) -> bool:
+    """Return whether a step compiles Rust, directly or through an action.
+
+    The shared coverage action runs the suite itself, so its call site needs
+    the pinned tools before it runs even though the step has no ``run`` value
+    naming a compiling target.
+    """
+    return run_value_compiles(step.get("run")) or (
+        "generate-coverage" in str(step.get("uses", ""))
+    )
+
+
 def _compiling_jobs() -> set[str]:
     """Return every job whose steps compile or link Rust."""
     return {
         name
         for name, job in _jobs().items()
-        if any(run_value_compiles(step.get("run")) for step in _steps(job))
+        if any(_compiles(step) for step in _steps(job))
     }
 
 
@@ -95,11 +108,7 @@ def _install_indexes(job: dict[object, object]) -> list[int]:
 
 def _first_compiling_index(job: dict[object, object]) -> int:
     """Return the index of a job's first compiling step."""
-    return next(
-        index
-        for index, step in enumerate(_steps(job))
-        if run_value_compiles(step.get("run"))
-    )
+    return next(index for index, step in enumerate(_steps(job)) if _compiles(step))
 
 
 def _rust_setup_index(job: dict[object, object]) -> int | None:

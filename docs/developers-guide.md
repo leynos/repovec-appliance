@@ -458,6 +458,27 @@ each fail it. So do a second pull-request workflow named `ci` beside `CI`, and
 a reader that stops reading `.yaml` files, both of which the first version of
 the contract passed.
 
+### 2.4 Coverage ownership
+
+Coverage has two owners. Pull requests measure in `ci.yml`'s `coverage` job,
+guarded to `github.event_name == 'pull_request'` because the workflow also
+answers a push to `main`. The measurement feeds the pull request's own ratchet
+and is neither uploaded nor published. A push to `main` runs
+`coverage-main.yml`, the single publisher, which refreshes the ratchet baseline
+and uploads the report to CodeScene under the `codescene` environment.
+
+The two lanes must select the same measurement, at the same pin, or the ratchet
+compares one thing with another. The contracts under `tests/workflow_contracts`
+read both workflows and refuse: a pull request lane that reaches CodeScene or
+its token, directly or through a called workflow; a publisher that answers
+anything but a push to main, cancels itself, or binds the token outside the
+upload input; a lane whose selection drifts from the publisher's; and the
+`codescene` environment on any job but the uploader. Because the Dependabot
+automerge workflow merges with `GITHUB_TOKEN`, its merges fire no push event
+and the baseline advances only on the next ordinary push; see
+[Coverage ownership](coverage-ownership.md) for that gap, the evidence limits
+around the unverified secret, and the mutation proof for each clause.
+
 ## 3. CI policy helper
 
 ### 3.1 Public API

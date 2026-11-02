@@ -115,6 +115,14 @@ This repository is written in Rust and uses Cargo for building and dependency
 management. Contributors should follow these best practices when working on the
 project:
 
+- Install the development build standard once with `make install-build-tools`
+  before running local gates. `make build`, `make test`, `make lint`,
+  `make typecheck` and `make validate-systemd` use the parallel `rustc`
+  frontend configured in `.cargo/config.toml`, and on Linux also the pinned
+  `mold` linker; a bare `cargo build` on Linux therefore needs the pinned
+  `mold` on `PATH` too. Other platforms keep their platform linker.
+  `make release` deliberately uses neither and does not need the tools. See
+  "Development build standard" in `docs/developers-guide.md`.
 - Run `make check-fmt`, `make lint`, and `make test` before committing. These
   targets wrap the following commands, so contributors understand the exact
   behaviour and policy enforced:

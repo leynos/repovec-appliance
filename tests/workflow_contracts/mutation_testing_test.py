@@ -48,7 +48,17 @@ EXPECTED_WITH = {
     "paths": "crates/",
     "exclude-globs": "crates/repovec-test-helpers/**",
     "extra-args": "--all-features --test-workspace=true",
+    "install-mold": "true",
+    "setup-commands": (
+        'echo "RUSTFLAGS=-D warnings -Zthreads=8 -Clink-arg=-fuse-ld=mold" '
+        '>> "$GITHUB_ENV"'
+    ),
 }
+
+#: The flags the development build standard needs, restated in RUSTFLAGS
+#: because setup-rust exports RUSTFLAGS, which replaces every rustflags
+#: table in .cargo/config.toml.
+STANDARD_FLAGS = ("-D warnings", "-Zthreads=8", "-Clink-arg=-fuse-ld=mold")
 
 
 def _load() -> dict[str, object]:
@@ -144,4 +154,36 @@ def test_with_block_carries_the_caller_configuration() -> None:
     assert with_block == EXPECTED_WITH, (
         "jobs.mutation.with must be exactly the documented configuration "
         f"{EXPECTED_WITH!r}, got {with_block!r}"
+    )
+
+
+def test_with_block_preserves_the_development_build_standard() -> None:
+    """The caller installs mold and restates the standard in RUSTFLAGS.
+
+    ``setup-rust`` exports ``RUSTFLAGS``, and Cargo takes ``RUSTFLAGS`` over
+    every ``rustflags`` entry in ``.cargo/config.toml``. Without restating
+    the standard, cargo-mutants would compile mutants without the pinned
+    linker, the parallel frontend, or ``-D warnings``, so a run could pass
+    mutants the commit gates would reject.
+    """
+    with_block = _mutation_job(_load()).get("with")
+    assert isinstance(with_block, dict), "jobs.mutation.with is missing"
+
+    assert with_block.get("install-mold") == "true", (
+        "jobs.mutation.with['install-mold'] must be 'true' so -fuse-ld=mold "
+        f"resolves, got {with_block.get('install-mold')!r}"
+    )
+
+    setup_commands = with_block.get("setup-commands")
+    assert isinstance(setup_commands, str), (
+        "jobs.mutation.with['setup-commands'] must be a command string, got "
+        f"{setup_commands!r}"
+    )
+    for flag in STANDARD_FLAGS:
+        assert flag in setup_commands, (
+            f"setup-commands must preserve {flag!r}, got {setup_commands!r}"
+        )
+    assert '"$GITHUB_ENV"' in setup_commands, (
+        "setup-commands must export RUSTFLAGS through $GITHUB_ENV so the "
+        f"later cargo-mutants step inherits it, got {setup_commands!r}"
     )

@@ -13,6 +13,8 @@ accepted = ["ratatui"]
 
 [patterns]
 ignore = [
+  # The mold linker, named in the build standard and Cargo configuration.
+  '\bmold\b',
   # Inline code spans are masked; the shared dictionary does not mask them yet.
   '`[^`\n]+`',
 ]

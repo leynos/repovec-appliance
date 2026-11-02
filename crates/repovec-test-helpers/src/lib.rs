@@ -37,6 +37,10 @@ use repovec_core::appliance::systemd_units::{
 };
 use tracing_subscriber::fmt::MakeWriter;
 
+mod interest;
+
+pub use interest::anchor_interest_cache;
+
 /// Captures all `tracing` output emitted while `action` runs.
 ///
 /// Installs a temporary, plain-text `tracing` subscriber that writes every
@@ -53,6 +57,7 @@ pub fn capture_logs<T, F>(action: F) -> Result<(T, String), String>
 where
     F: FnOnce() -> T,
 {
+    anchor_interest_cache();
     let logs = CapturedLogs::default();
     let subscriber = tracing_subscriber::fmt()
         .with_ansi(false)

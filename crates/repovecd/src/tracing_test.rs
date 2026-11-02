@@ -6,6 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use repovec_test_helpers::anchor_interest_cache;
 use thiserror::Error;
 use tracing::Level;
 
@@ -13,6 +14,7 @@ pub(crate) fn capture_info_logs<F, R>(action: F) -> Result<(R, String), CaptureL
 where
     F: FnOnce() -> R,
 {
+    anchor_interest_cache();
     let captured = Arc::new(Mutex::new(Vec::new()));
     let writer = CapturedWriter(Arc::clone(&captured));
     let subscriber = tracing_subscriber::fmt()

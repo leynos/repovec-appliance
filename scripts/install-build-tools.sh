@@ -65,9 +65,10 @@ verify_mold_archive() {
 # Download, verify, and unpack the pinned mold release, or explain why the step
 # is being skipped on a platform mold does not support.
 install_mold() {
-  local version=$1 arch name url workdir
+  local version=$1 arch name url workdir host
   if ! is_linux; then
-    note "mold is Linux-only; skipping on $(uname -s), the platform linker is used instead"
+    host=$(host_os)
+    note "mold is Linux-only; skipping on $host, the platform linker is used instead"
     return 0
   fi
   arch=$(mold_arch)

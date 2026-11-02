@@ -87,13 +87,38 @@ pinned_toolchain() {
   printf '%s' "$value"
 }
 
+# The host operating system, resolved once and cached.
+#
+# A failed `uname -s` must abort rather than yield an empty string: an empty
+# OS compares unequal to Linux, so both entry points would silently skip the
+# pinned linker on a Linux host whose `uname` is broken. The cache also lets
+# callers report the captured value without running `uname` a second time.
+host_os() {
+  if [ -z "${BUILD_TOOLS_HOST_OS:-}" ]; then
+    BUILD_TOOLS_HOST_OS=$(uname -s) ||
+      fail "cannot determine the host operating system: uname -s failed"
+    [ -n "$BUILD_TOOLS_HOST_OS" ] ||
+      fail "cannot determine the host operating system: uname -s failed"
+  fi
+  printf '%s' "$BUILD_TOOLS_HOST_OS"
+}
+
 # Whether the host can use mold at all; it ships for Linux only.
-is_linux() { [ "$(uname -s)" = 'Linux' ]; }
+#
+# `host_os` runs in this shell rather than a command substitution so its
+# `fail` aborts the script instead of only a subshell.
+is_linux() {
+  host_os >/dev/null
+  [ "$BUILD_TOOLS_HOST_OS" = 'Linux' ]
+}
 
 # mold publishes per-architecture tarballs; map `uname -m` onto those names.
 mold_arch() {
   local machine
-  machine=$(uname -m)
+  machine=$(uname -m) ||
+    fail "cannot determine the host architecture: uname -m failed"
+  [ -n "$machine" ] ||
+    fail "cannot determine the host architecture: uname -m failed"
   case "$machine" in
     x86_64 | amd64) printf 'x86_64' ;;
     aarch64 | arm64) printf 'aarch64' ;;

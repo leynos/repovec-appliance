@@ -33,6 +33,12 @@ STANDARD_MOLD_FLAG ?= -Clink-arg=-fuse-ld=mold
 # `mold` ships for Linux only. macOS and Windows keep their platform linker,
 # matching the `cfg(target_os = "linux")` gate in `.cargo/config.toml`.
 BUILD_HOST_OS := $(shell uname -s)
+# A failed `uname -s` yields an empty value, which would silently select the
+# non-Linux flags. Stop at parse time instead: every route then fails with the
+# same diagnosis rather than building with the wrong linker.
+ifeq ($(strip $(BUILD_HOST_OS)),)
+$(error cannot determine the host operating system: uname -s failed)
+endif
 STANDARD_RUSTFLAGS = $(STANDARD_THREADS_FLAG)$(if $(filter Linux,$(BUILD_HOST_OS)), $(STANDARD_MOLD_FLAG))
 # Make reads an exported `RUSTFLAGS` into this variable. Appending to it is
 # what keeps a caller's assignment -- CI's `-D warnings` in particular -- from

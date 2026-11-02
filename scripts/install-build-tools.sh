@@ -18,10 +18,10 @@ MOLD_RELEASE_BASE_URL=${MOLD_RELEASE_BASE_URL:-https://github.com/rui314/mold/re
 CURL_CONNECT_TIMEOUT=${CURL_CONNECT_TIMEOUT:-15}
 CURL_MIN_BYTES_PER_SECOND=${CURL_MIN_BYTES_PER_SECOND:-1024}
 CURL_STALL_SECONDS=${CURL_STALL_SECONDS:-60}
-# Transient connection failures and retryable HTTP responses -- 408, 429 and
-# the 5xx range -- are retried a bounded number of times inside a bounded
-# window. `--retry` does not retry a 4xx such as a missing release, so a
-# permanent failure still costs one request rather than the whole budget.
+# The download is retried a bounded number of times inside a bounded window.
+# `CURL_RETRIES` counts additional attempts after the first, so the total is
+# `CURL_RETRIES + 1`. The loop is explicit rather than curl's `--retry` so
+# every attempt and outcome is observable as an event.
 CURL_RETRIES=${CURL_RETRIES:-3}
 CURL_RETRY_DELAY_SECONDS=${CURL_RETRY_DELAY_SECONDS:-2}
 CURL_RETRY_MAX_SECONDS=${CURL_RETRY_MAX_SECONDS:-60}
@@ -41,6 +41,35 @@ remove_workdir() {
 }
 
 trap remove_workdir EXIT
+
+# Milliseconds since the epoch, for bounded elapsed-time events.
+now_ms() { date +%s%3N; }
+
+# Emit one stable, bounded event line. Fields are positional key=value pairs;
+# callers must never pass a full URL or a credential.
+event() {
+  local name=$1
+  shift
+  printf 'build-tools: event=%s' "$name" >&2
+  local field
+  for field in "$@"; do
+    printf ' %s' "$field" >&2
+  done
+  printf '\n' >&2
+}
+
+# Milliseconds elapsed since a `now_ms` reading.
+elapsed_ms() {
+  local start=$1
+  printf '%s' "$(($(now_ms) - start))"
+}
+
+# The host component of a URL, for events that must not carry the full URL.
+url_host() {
+  local url=$1 rest
+  rest=${url#*://}
+  printf '%s' "${rest%%/*}"
+}
 
 # Verify the downloaded tarball against the single matching line in
 # SHA256SUMS. An unlisted artefact is a hard failure, never a silent skip.
@@ -62,10 +91,51 @@ verify_mold_archive() {
   note "verified $name against $MOLD_SHA256SUMS_FILE"
 }
 
+# Download the release with an explicit, bounded retry loop.
+#
+# curl's own `--retry` flags hide how many attempts ran and when each one
+# failed. An explicit loop makes every attempt observable as an event, and
+# keeps the overall window bounded by CURL_RETRY_MAX_SECONDS.
+download_mold() {
+  local version=$1 arch=$2 name=$3 url=$4 destination=$5
+  local attempt=1 max_attempts=$((CURL_RETRIES + 1))
+  local started deadline attempt_started status
+  started=$(now_ms)
+  deadline=$((started + CURL_RETRY_MAX_SECONDS * 1000))
+  while :; do
+    event mold_download_attempt \
+      "attempt=$attempt" "version=$version" "arch=$arch" \
+      "url_host=$(url_host "$url")"
+    attempt_started=$(now_ms)
+    if curl --fail --silent --show-error --location \
+      --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+      --speed-limit "$CURL_MIN_BYTES_PER_SECOND" --speed-time "$CURL_STALL_SECONDS" \
+      --output "$destination" "$url"; then
+      event mold_download_outcome "outcome=success" "attempt=$attempt" \
+        "elapsed_ms=$(elapsed_ms "$attempt_started")"
+      return 0
+    else
+      status=$?
+      event mold_download_outcome "outcome=failure" "attempt=$attempt" \
+        "elapsed_ms=$(elapsed_ms "$attempt_started")" \
+        "failure_category=curl_status_$status"
+    fi
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      return 1
+    fi
+    # Stop when the next attempt would start outside the overall window.
+    if [ "$(now_ms)" -ge "$deadline" ]; then
+      return 1
+    fi
+    sleep "$CURL_RETRY_DELAY_SECONDS"
+    attempt=$((attempt + 1))
+  done
+}
+
 # Download, verify, and unpack the pinned mold release, or explain why the step
 # is being skipped on a platform mold does not support.
 install_mold() {
-  local version=$1 arch name url workdir host
+  local version=$1 arch name url workdir host status
   if ! is_linux; then
     host=$(host_os)
     note "mold is Linux-only; skipping on $host, the platform linker is used instead"
@@ -85,23 +155,29 @@ install_mold() {
   # simply hangs. The transfer bound is a stall detector rather than a
   # deadline: a plain `--max-time` would punish a slow-but-progressing link,
   # whereas `--speed-limit`/`--speed-time` only fire when throughput dies.
-  # Retries cover a transient network failure or a retryable status without
-  # turning a permanently broken release into an endless wait.
-  curl --fail --silent --show-error --location \
-    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-    --speed-limit "$CURL_MIN_BYTES_PER_SECOND" --speed-time "$CURL_STALL_SECONDS" \
-    --retry "$CURL_RETRIES" --retry-delay "$CURL_RETRY_DELAY_SECONDS" \
-    --retry-max-time "$CURL_RETRY_MAX_SECONDS" --retry-connrefused \
-    --output "$workdir/$name" "$url" ||
+  # The retry loop above bounds the number of attempts and the overall window.
+  if ! download_mold "$version" "$arch" "$name" "$url" "$workdir/$name"; then
+    event mold_install_outcome "outcome=failure" "version=$version" \
+      "arch=$arch" "failure_category=download"
     fail "failed to download $name"
+  fi
   verify_mold_archive "$workdir/$name" "$name"
 
   # The tarball root is mold-<version>-<arch>-linux/{bin,lib,libexec}; strip it
   # so the tree merges into the prefix and `bin/mold` lands on PATH.
   mkdir -p "$BUILD_TOOLS_PREFIX"
-  tar --extract --gzip --strip-components=1 --directory "$BUILD_TOOLS_PREFIX" --file "$workdir/$name" ||
+  if tar --extract --gzip --strip-components=1 --directory "$BUILD_TOOLS_PREFIX" --file "$workdir/$name"; then
+    event mold_extract_outcome "outcome=success" "version=$version" "arch=$arch"
+  else
+    status=$?
+    event mold_extract_outcome "outcome=failure" "version=$version" \
+      "arch=$arch" "failure_category=tar_status_$status"
+    event mold_install_outcome "outcome=failure" "version=$version" \
+      "arch=$arch" "failure_category=extract"
     fail "failed to unpack $name into $BUILD_TOOLS_PREFIX"
+  fi
   note "installed mold $version into $BUILD_TOOLS_PREFIX"
+  event mold_install_outcome "outcome=success" "version=$version" "arch=$arch"
   # The Makefile prepends this prefix to PATH for every target; the hint
   # matters only when the script is invoked directly.
   note "put $BUILD_TOOLS_PREFIX/bin first on PATH when not using the make targets"
@@ -111,12 +187,24 @@ install_mold() {
 # `rust-toolchain.toml` already selects, installed eagerly so a missing one is
 # reported here rather than mid-build.
 install_toolchain() {
-  local toolchain=$1
-  command -v rustup >/dev/null 2>&1 ||
+  local toolchain=$1 started status
+  started=$(now_ms)
+  event toolchain_install_attempt "toolchain=$toolchain"
+  if ! command -v rustup >/dev/null 2>&1; then
+    event toolchain_install_outcome "outcome=failure" "toolchain=$toolchain" \
+      "elapsed_ms=$(elapsed_ms "$started")" "failure_category=rustup_not_found"
     fail 'rustup not found on PATH; install it from https://rustup.rs'
+  fi
   note "installing toolchain $toolchain"
-  rustup toolchain install "$toolchain" --profile minimal ||
+  if rustup toolchain install "$toolchain" --profile minimal; then
+    event toolchain_install_outcome "outcome=success" "toolchain=$toolchain" \
+      "elapsed_ms=$(elapsed_ms "$started")"
+  else
+    status=$?
+    event toolchain_install_outcome "outcome=failure" "toolchain=$toolchain" \
+      "elapsed_ms=$(elapsed_ms "$started")" "failure_category=rustup_status_$status"
     fail "failed to install toolchain $toolchain"
+  fi
 }
 
 # Install both halves. The linker step runs first so a checksum failure aborts

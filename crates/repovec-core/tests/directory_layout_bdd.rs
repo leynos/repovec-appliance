@@ -359,8 +359,10 @@ fn assert_validation_result(
     directory_layout_world: &DirectoryLayoutWorld,
     expected: DirectoryLayoutError,
 ) {
+    let expected_result = Err(expected);
     assert_eq!(
         find_validation_result(directory_layout_world),
-        Some(&Err(expected))
+        Some(&expected_result),
+        "the layout validation should report {expected_result:?}"
     );
 }

@@ -41,6 +41,15 @@ CLI, a strict lint baseline, and a CI pipeline that gates merges.
     once so later diffs reflect behaviour rather than style. The trybuild
     fixtures under `crates/repovec-core/tests/ui` are excluded because those
     tests assert on their exact text.
+  - Adopt the full estate lint table: `missing_assert_message` and
+    `missing_docs_in_private_items` for Clippy, `unknown_lints`,
+    `renamed_and_removed_lints`, and `unsafe_code = "forbid"` for rustc, and
+    the six rustdoc denies from `broken_intra_doc_links` to
+    `unescaped_backticks`. `make lint` builds the documentation with
+    `--cfg docsrs` so the rustdoc denies see the same configuration as the
+    published docs. No production source repair was needed: the earlier
+    documentation waves already cover every private item, and the one
+    test-source change is the assertion message the new row required.
   - Confirm `make lint` and `make check-fmt` pass with zero warnings.
   - Status: complete.
 - [ ] 1.1.3. Add CI gating pipeline

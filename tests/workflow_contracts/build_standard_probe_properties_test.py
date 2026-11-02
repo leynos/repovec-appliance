@@ -114,18 +114,24 @@ _TOKEN = st.text(
 
 def continued_lines(groups: list[list[str]]) -> list[str]:
     """Render token groups as Make-style continued recipe lines."""
-    lines: list[str] = []
-    for group in groups:
-        if not group:
-            lines.append("")
-            continue
-        chunks = [group[index : index + 2] for index in range(0, len(group), 2)]
-        for position, chunk in enumerate(chunks):
-            text = " ".join(shlex.quote(token) for token in chunk)
-            if position < len(chunks) - 1:
-                text += " \\"
-            lines.append(text)
-    return lines
+    return [line for group in groups for line in _group_lines(group)]
+
+
+def _group_lines(group: list[str]) -> list[str]:
+    """Render one group as its chunks, or a single blank line when empty."""
+    if not group:
+        return [""]
+    chunks = [group[index : index + 2] for index in range(0, len(group), 2)]
+    return [
+        _chunk_line(chunk, is_last=position == len(chunks) - 1)
+        for position, chunk in enumerate(chunks)
+    ]
+
+
+def _chunk_line(chunk: list[str], *, is_last: bool) -> str:
+    """Quote one token chunk, marking all but the last as continued."""
+    text = " ".join(shlex.quote(token) for token in chunk)
+    return text if is_last else text + " \\"
 
 
 @SETTINGS

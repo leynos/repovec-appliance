@@ -39,6 +39,8 @@ mod tests_live;
 #[cfg(test)]
 mod tests_live_tree;
 #[cfg(test)]
+mod tests_live_tree_support;
+#[cfg(test)]
 mod tests_proptest;
 #[cfg(test)]
 mod tests_support;

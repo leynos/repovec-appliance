@@ -50,7 +50,7 @@ INHERITED_RUSTFLAGS := $(strip $(value RUSTFLAGS))
 BASE_RUST_FLAGS ?= -D warnings
 BASE_RUSTDOC_FLAGS ?= -D warnings
 RUST_FLAGS ?=
-RUSTDOC_FLAGS ?=
+RUSTDOC_FLAGS ?= --cfg docsrs
 # The warning policy before the standard is composed in. Clippy receives this
 # after `--`; the standard reaches every crate through `RUSTFLAGS` instead, so
 # a linker flag is not repeated as an explicit compiler argument.

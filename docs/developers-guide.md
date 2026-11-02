@@ -45,8 +45,17 @@ make install-build-tools
 
 `BUILD_TOOLS_PREFIX` selects the install prefix (default `$HOME/.local`). The
 Makefile puts that prefix's `bin` first on `PATH`, which is how `-fuse-ld=mold`
-finds the pinned binary. Verify an installation with `make check-build-tools`;
-every standard target runs the same check before compiling and fails with the
+finds the pinned binary. Only the Make targets prepend
+`$BUILD_TOOLS_PREFIX/bin`; a bare `cargo` invocation on Linux does not, so it
+needs the prefix on `PATH` explicitly:
+
+```sh
+export PATH="$BUILD_TOOLS_PREFIX/bin:$PATH"
+```
+
+Here `BUILD_TOOLS_PREFIX` names the installation prefix, defaulting to
+`$HOME/.local`. Verify an installation with `make check-build-tools`; every
+standard target runs the same check before compiling and fails with the
 installation command when a component is missing.
 
 CI runs `make install-build-tools` in each job that compiles or links Rust,

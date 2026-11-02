@@ -4,6 +4,45 @@ This guide is for contributors and operators who need to understand the
 user-visible behaviour of repovec-appliance and its repository automation. It
 focuses on what a user can expect to happen, not on the internal crate layout.
 
+## Development build tools
+
+> **Migration note (0.2.0).** The development workflow now requires the
+> pinned `mold` linker. After updating to 0.2.0, run
+> `make install-build-tools` once before the local gates. Without it,
+> `make build`, `make test`, and the other standard targets stop with an
+> installation hint instead of falling back to the platform linker.
+
+The development workflow uses the pinned `mold` linker and the parallel `rustc`
+frontend. Both are the default for development builds, so install the tools
+once before running the local gates:
+
+```sh
+make install-build-tools
+```
+
+The command downloads the `mold` release pinned in `tools/mold/VERSION`
+(currently `2.41.0`), verifies it against `tools/mold/SHA256SUMS`, unpacks it
+under `$HOME/.local`, and installs the nightly toolchain named in
+`rust-toolchain.toml`. Set `BUILD_TOOLS_PREFIX` to install somewhere else:
+
+```sh
+make install-build-tools BUILD_TOOLS_PREFIX="$HOME/.local/repovec-tools"
+```
+
+`mold` is required on Linux only. Other platforms keep their platform linker
+and the preflight does not fail there. Verify an installation, and see which
+component is missing or mismatched, with:
+
+```sh
+make check-build-tools
+```
+
+The preflight runs automatically before `make build`, `make test`, `make lint`,
+`make typecheck`, `make validate-systemd`, and `make build-docs-gate-helper`.
+Release builds are the deliberate exception: `make release` skips the
+development standard and does not need the tools, so a release packager does
+not have to install them.
+
 ## Documentation gate decisions
 
 When a change reaches continuous integration (CI), the workflow decides whether

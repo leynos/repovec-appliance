@@ -1,8 +1,11 @@
-.PHONY: help all clean test build release lint whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie spelling build-docs-gate-helper validate-systemd integration-test integration-command-test test-workflow-contracts script-test install-build-tools check-build-tools _check-python _check-integration-prereqs _check-command-test-prereqs
+.PHONY: help all clean test build release lint lint-clippy lint-whitaker whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie spelling build-docs-gate-helper validate-systemd integration-test integration-command-test test-workflow-contracts script-test install-build-tools check-build-tools _check-python _check-integration-prereqs _check-command-test-prereqs
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
 WHITAKER ?= whitaker
+# The reviewed route checks every workspace package; a narrower default
+# would let the gate pass while an unvisited member broke the suite.
+WHITAKER_PACKAGES ?= --workspace
 PYTHON ?= python3
 INTEGRATION_TESTS_DIR ?= integration-tests
 PYTEST_FLAGS ?=
@@ -111,8 +114,9 @@ TYPOS_CONFIG_BUILDER = $(UV_ENV) $(UV) tool run --python 3.14 --from \
 CMD_MOX_VERSION ?= 0.2.0
 CYCLOPTS_VERSION ?= 4.25.0
 PLUMBUM_VERSION ?= 2.0.2
-SCRIPT_PY_SRCS := scripts/run_rust_tests.py scripts/tests/test_run_rust_tests.py
-SCRIPT_COVERAGE_ARGS := --cov=run_rust_tests --cov-fail-under=90
+SCRIPT_PY_SRCS := scripts/run_rust_tests.py scripts/tests/test_run_rust_tests.py \
+	scripts/run_whitaker.py scripts/tests/test_run_whitaker.py
+SCRIPT_COVERAGE_ARGS := --cov=run_rust_tests --cov=run_whitaker --cov-fail-under=90
 # The runner's own dependencies travel in its uv script block; they are
 # repeated here because the test process imports it as a module rather
 # than launching it as a script.
@@ -124,6 +128,9 @@ SCRIPT_PYTEST = PYTHONPATH=scripts $(UV_ENV) $(UV) run --no-project \
 # One command, so no gate status can be discarded by a later one. The
 # sequencing and its failure handling live in the script, under test.
 RUST_TEST_RUNNER = $(UV_ENV) $(UV) run --python 3.13 scripts/run_rust_tests.py
+# Likewise one command: the script resolves Whitaker, fails when it is
+# absent, and propagates the suite's status, so the recipe cannot skip.
+WHITAKER_RUNNER = $(UV_ENV) $(UV) run --python 3.13 scripts/run_whitaker.py
 
 ensure-cargo: ## Validate cargo toolchain is available for Rust targets
 	@if { command -v "$(CARGO)" >/dev/null 2>&1 || test -x "$(CARGO)"; } then \
@@ -153,17 +160,23 @@ clean: ensure-cargo ## Remove build artefacts
 test: ensure-cargo check-build-tools script-test ## Run tests with warnings treated as errors
 	$(RUST_TEST_RUNNER) --cargo="$(CARGO)" --rust-flags=$(call shell_quote,$(GATE_RUSTFLAG_VALUE)) --test-flags="$(TEST_FLAGS)" --doctest-flags="$(DOCTEST_FLAGS)" --build-jobs="$(BUILD_JOBS)"
 
-lint: ensure-cargo check-build-tools ## Run Clippy and the Whitaker Dylint suite with warnings denied
+# A prerequisite list is unordered under `make -j`, so `lint` sequences the
+# two routes with recursive make. Each recipe line is a separate shell and
+# Make stops at the first rejection, so the Whitaker route cannot start
+# before the Clippy route has passed. Recursive make is used rather than
+# GNU Make 4.4's `.WAIT` because the Ubuntu 24.04 CI runners ship Make 4.3.
+lint: ## Run cargo doc, Clippy and the Whitaker Dylint suite
+	$(MAKE) lint-clippy
+	$(MAKE) lint-whitaker
+
+lint-clippy: ensure-cargo check-build-tools ## Run cargo doc and Clippy with warnings denied
 	$(GATE_RUSTFLAGS) RUSTDOCFLAGS="$(EFFECTIVE_RUSTDOC_FLAGS)" $(CARGO) doc --no-deps --workspace
 	$(GATE_RUSTFLAGS) $(CARGO) clippy --workspace $(CLIPPY_FLAGS)
-	$(MAKE) whitaker-lint
 
-whitaker-lint: ## Run the Whitaker Dylint suite when available
-	@if command -v "$(WHITAKER)" >/dev/null 2>&1; then \
-		$(GATE_RUSTFLAGS) $(WHITAKER) --all -- $(CARGO_FLAGS); \
-	else \
-		echo "whitaker not found on PATH; skipping whitaker lint. Install whitaker to run this check."; \
-	fi
+lint-whitaker: ## Run the Whitaker Dylint suite over every workspace package
+	$(GATE_RUSTFLAGS) $(WHITAKER_RUNNER) --whitaker="$(WHITAKER)" --packages="$(WHITAKER_PACKAGES)" --cargo-flags="$(CARGO_FLAGS)"
+
+whitaker-lint: lint-whitaker ## Backwards-compatible alias for lint-whitaker
 
 typecheck: ensure-cargo check-build-tools ## Type-check without building
 	$(GATE_RUSTFLAGS) $(CARGO) check $(CARGO_FLAGS)
@@ -227,10 +240,10 @@ integration-test: _check-integration-prereqs ## Run testcontainers-based provisi
 integration-command-test: _check-command-test-prereqs ## Run cmd-mox-based command-contract tests
 	cd $(INTEGRATION_TESTS_DIR) && "$(PYTHON)" -m pytest -m cmd_mox provisioning $(PYTEST_FLAGS)
 
-script-test: ## Validate the Rust test-gate runner script
+script-test: ## Validate the gate runner scripts
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated --target-version py313 --check $(SCRIPT_PY_SRCS)
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated --target-version py313 $(SCRIPT_PY_SRCS)
-	@$(SCRIPT_PYTEST) scripts/tests/test_run_rust_tests.py -c /dev/null --rootdir=. -p no:cacheprovider -p cmd_mox.pytest_plugin --no-cmd-mox-auto-lifecycle $(SCRIPT_COVERAGE_ARGS)
+	@$(SCRIPT_PYTEST) scripts/tests/test_run_rust_tests.py scripts/tests/test_run_whitaker.py -c /dev/null --rootdir=. -p no:cacheprovider -p cmd_mox.pytest_plugin --no-cmd-mox-auto-lifecycle $(SCRIPT_COVERAGE_ARGS)
 
 test-workflow-contracts: ## Validate the mutation-testing caller contract
 	uv run --with 'pytest>=8' --with 'pyyaml>=6' --with 'hypothesis>=6' pytest tests/workflow_contracts -q

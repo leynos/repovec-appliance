@@ -129,31 +129,37 @@ project:
   - `make check-fmt` executes:
 
     ```sh
-    cargo fmt --workspace -- --check
+    cargo fmt --all -- --check
+    mdtablefix --check <tablefix selection> <tablefix rules>
     ```
 
-    validating formatting across the entire workspace without modifying files.
-    **Note:** This project uses nightly rustfmt to enable unstable formatting
-    options (`group_imports` and `imports_granularity` in `rustfmt.toml`).
-    The `rust-toolchain.toml` file enforces the nightly toolchain, so the
-    correct rustfmt version is automatically selected.
+    validating Rust and Markdown table formatting across the workspace without
+    modifying files. **Note:** This project uses nightly rustfmt to enable the
+    estate formatting profile, including the unstable options in
+    `rustfmt.toml`. The `rust-toolchain.toml` file enforces the nightly
+    toolchain, so the correct rustfmt version is automatically selected.
   - `make lint` executes:
 
     ```sh
+    cargo doc --no-deps --workspace
     cargo clippy --workspace --all-targets --all-features -- -D warnings
+    make whitaker-lint
     ```
 
-    linting every target with all features enabled and denying all Clippy
-    warnings.
+    building the documentation with `--cfg docsrs` and `-D warnings`, linting
+    every target with all features enabled and denying all Clippy warnings,
+    and then running the Whitaker Dylint suite. The Whitaker leg reports that
+    it is skipping when `whitaker` is not on `PATH`.
   - `make test` executes:
 
     ```sh
-    cargo test --workspace
+    uv run --python 3.13 scripts/run_rust_tests.py <gate flags>
     ```
 
-    running the full workspace test suite. Use `make fmt`
-    (`cargo fmt --workspace`) to apply formatting fixes reported by the
-    formatter check.
+    running the full workspace test suite through the tested runner, with
+    warnings denied. Use `make fmt` (which runs `cargo fmt --all`,
+    `mdtablefix --in-place`, and `markdownlint-cli2 --fix`) to apply the
+    formatting fixes reported by the formatter check.
 - Clippy warnings MUST be disallowed.
 - Fix any warnings emitted during tests in the code itself rather than
   silencing them.

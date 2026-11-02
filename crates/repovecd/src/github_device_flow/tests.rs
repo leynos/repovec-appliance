@@ -71,45 +71,50 @@ fn slow_down_increases_the_next_sleep(
     );
 }
 
-#[rstest]
-fn access_denied_stops_without_storing_a_token(
-    login_request: DeviceFlowLoginRequest,
-    recording_sleeper: RecordingSleeper,
-) {
-    let api = FakeApi::new(vec![TokenPollOutcome::AccessDenied]);
-    let store = FakeStore::new();
-
-    let runtime = DeviceFlowRuntime::new(&api, &store, &recording_sleeper);
-    let result = complete_device_flow(&runtime, &login_request, |_| {});
-
-    assert!(matches!(
-        result,
-        Err(DeviceFlowRunError::Terminal(
-            TerminalDeviceFlowError::AccessDenied
-        )),
-    ));
-    assert!(store.tokens.borrow().is_empty());
+/// The adapter response, terminal error, and post-condition one case pins.
+struct TerminalCase {
+    api: FakeApi,
+    expected_error: TerminalDeviceFlowError,
+    assert_post_condition: fn(&FakeStore, &RecordingSleeper),
 }
 
 #[rstest]
-fn local_expiry_stops_polling_before_the_next_sleep_would_exceed_the_deadline(
+#[case::access_denied(TerminalCase {
+    api: FakeApi::new(vec![TokenPollOutcome::AccessDenied]),
+    expected_error: TerminalDeviceFlowError::AccessDenied,
+    assert_post_condition: token_store_is_empty,
+})]
+#[case::local_expiry(TerminalCase {
+    api: FakeApi::new(vec![TokenPollOutcome::AuthorizationPending])
+        .with_expires_in(Duration::from_secs(4)),
+    expected_error: TerminalDeviceFlowError::ExpiredToken,
+    assert_post_condition: no_sleep_before_the_deadline,
+})]
+fn terminal_outcomes_stop_without_side_effects(
     login_request: DeviceFlowLoginRequest,
     recording_sleeper: RecordingSleeper,
+    #[case] case: TerminalCase,
 ) {
-    let api = FakeApi::new(vec![TokenPollOutcome::AuthorizationPending])
-        .with_expires_in(Duration::from_secs(4));
     let store = FakeStore::new();
 
-    let runtime = DeviceFlowRuntime::new(&api, &store, &recording_sleeper);
+    let runtime = DeviceFlowRuntime::new(&case.api, &store, &recording_sleeper);
     let result = complete_device_flow(&runtime, &login_request, |_| {});
 
     assert!(matches!(
         result,
-        Err(DeviceFlowRunError::Terminal(
-            TerminalDeviceFlowError::ExpiredToken
-        )),
+        Err(DeviceFlowRunError::Terminal(error)) if error == case.expected_error
     ));
-    assert!(recording_sleeper.sleeps.borrow().is_empty());
+    (case.assert_post_condition)(&store, &recording_sleeper);
+}
+
+/// Access denial must not leave a token behind.
+fn token_store_is_empty(store: &FakeStore, _sleeper: &RecordingSleeper) {
+    assert!(store.tokens.borrow().is_empty());
+}
+
+/// Local expiry must be detected before another sleep is attempted.
+fn no_sleep_before_the_deadline(_store: &FakeStore, sleeper: &RecordingSleeper) {
+    assert!(sleeper.sleeps.borrow().is_empty());
 }
 
 #[rstest]

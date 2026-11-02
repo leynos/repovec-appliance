@@ -50,13 +50,16 @@ INHERITED_RUSTFLAGS := $(strip $(value RUSTFLAGS))
 BASE_RUST_FLAGS ?= -D warnings
 BASE_RUSTDOC_FLAGS ?= -D warnings
 RUST_FLAGS ?=
-RUSTDOC_FLAGS ?= --cfg docsrs
+RUSTDOC_FLAGS ?=
 # The warning policy before the standard is composed in. Clippy receives this
 # after `--`; the standard reaches every crate through `RUSTFLAGS` instead, so
 # a linker flag is not repeated as an explicit compiler argument.
 WARNING_RUST_FLAGS := $(strip $(BASE_RUST_FLAGS) $(RUST_FLAGS))
 EFFECTIVE_RUST_FLAGS := $(strip $(WARNING_RUST_FLAGS) $(STANDARD_RUSTFLAGS))
-EFFECTIVE_RUSTDOC_FLAGS := $(strip $(BASE_RUSTDOC_FLAGS) $(RUSTDOC_FLAGS))
+# `--cfg docsrs` is part of the gate's contract rather than a caller default:
+# the rustdoc denies must see the same configuration as the published docs, so
+# an explicit empty `RUSTDOC_FLAGS` must not remove it. Caller flags are kept.
+EFFECTIVE_RUSTDOC_FLAGS := $(strip $(BASE_RUSTDOC_FLAGS) $(RUSTDOC_FLAGS) --cfg docsrs)
 CARGO_FLAGS ?= --all-targets --all-features
 CLIPPY_FLAGS ?= $(CARGO_FLAGS) -- $(WARNING_RUST_FLAGS)
 TEST_FLAGS ?= $(CARGO_FLAGS)

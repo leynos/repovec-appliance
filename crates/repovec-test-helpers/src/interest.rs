@@ -70,7 +70,6 @@ impl Subscriber for AlwaysInterested {
 mod tests {
     use std::{sync::mpsc, thread};
 
-    use super::anchor_interest_cache;
     use crate::{capture_logs, ensure_log_line_contains};
 
     /// The text of the probe event. It appears only in this module, so no

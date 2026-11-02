@@ -183,6 +183,23 @@ and fails if any recipe chains two gate commands in one shell invocation without
 exempt, because a non-zero status there is an answer rather than a rejection.
 Both are mutation-proven.
 
+### 1.3 Formatting workflow
+
+Rust formatting uses the nightly `rustfmt` selected by `rust-toolchain.toml`.
+The toolchain pin supplies the formatter, so contributors do not install or
+select a separate nightly. `rustfmt.toml` carries the shared estate options,
+including the unstable features that require nightly, import grouping and
+granularity, comment wrapping, and string formatting.
+
+`make fmt` applies the formatter across the workspace, and `make check-fmt`
+validates the same files without modifying them. Both targets also handle
+Markdown tables. Run `make check-fmt` before proposing a change; run `make fmt`
+to apply the formatting it reports.
+
+`rustfmt.toml` excludes `crates/repovec-core/tests/ui` through its `ignore`
+list. A trybuild-style test asserts on the exact text of those fixtures, so
+formatting them would change what the test proves.
+
 ## 2. GitHub Actions gate set
 
 The repository CI workflow exposes seven stable, required job names:

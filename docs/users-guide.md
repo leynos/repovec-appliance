@@ -23,14 +23,18 @@ make install-build-tools
 The command downloads the `mold` release pinned in `tools/mold/VERSION`
 (currently `2.41.0`), verifies it against `tools/mold/SHA256SUMS`, unpacks it
 under `$HOME/.local`, and installs the nightly toolchain named in
-`rust-toolchain.toml`. Set `BUILD_TOOLS_PREFIX` to install somewhere else:
+`rust-toolchain.toml`. Set `BUILD_TOOLS_PREFIX` to install somewhere else, and
+export it for the check as well so both commands look at the same prefix:
 
 ```sh
-make install-build-tools BUILD_TOOLS_PREFIX="$HOME/.local/repovec-tools"
+export BUILD_TOOLS_PREFIX="$HOME/.local/repovec-tools"
+make install-build-tools
+make check-build-tools
 ```
 
-`mold` is required on Linux only. Other platforms keep their platform linker
-and the preflight does not fail there. Verify an installation, and see which
+`mold` is required on Linux only. Other platforms keep their platform linker:
+the preflight skips its `mold` check there, but its `rustup` and pinned
+toolchain checks still run and can fail. Verify an installation, and see which
 component is missing or mismatched, with:
 
 ```sh

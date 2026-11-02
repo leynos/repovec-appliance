@@ -31,3 +31,10 @@ jobs:
       # library crates are covered by dependent crates' tests, so run
       # the full workspace suite against each mutant.
       extra-args: "--all-features --test-workspace=true"
+      # The development build standard lives in .cargo/config.toml, but
+      # setup-rust exports RUSTFLAGS, and Cargo takes RUSTFLAGS over every
+      # rustflags table. Install the pinned mold and restate the standard
+      # in RUSTFLAGS so mutants are compiled and gated exactly as the
+      # commit gates compile them.
+      install-mold: "true"
+      setup-commands: 'echo "RUSTFLAGS=-D warnings -Zthreads=8 -Clink-arg=-fuse-ld=mold" >> "$GITHUB_ENV"'

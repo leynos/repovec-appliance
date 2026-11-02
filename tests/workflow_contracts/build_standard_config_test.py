@@ -190,6 +190,10 @@ def test_the_checksum_list_names_both_archives_for_the_pinned_version() -> None:
     assert all(len(row) == 2 for row in rows), (
         f"every checksum row should be '<digest>  <name>', found {rows}"
     )
+    assert len(rows) == len(EXPECTED_ARCHIVES), (
+        "tools/mold/SHA256SUMS should hold one row per published archive; "
+        f"expected {len(EXPECTED_ARCHIVES)}, found {len(rows)} in {rows}"
+    )
 
     digests = {name: digest for digest, name in rows}
     assert digests == EXPECTED_ARCHIVES, (

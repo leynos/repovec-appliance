@@ -50,6 +50,7 @@ finds the pinned binary. Only the Make targets prepend
 needs the prefix on `PATH` explicitly:
 
 ```sh
+BUILD_TOOLS_PREFIX="${BUILD_TOOLS_PREFIX:-$HOME/.local}"
 export PATH="$BUILD_TOOLS_PREFIX/bin:$PATH"
 ```
 

@@ -4,26 +4,25 @@
 //! compose the repovec appliance's Qdrant and systemd contracts at startup or
 //! during tests:
 //!
-//! - [`qdrant_quadlet`] validates the checked-in Qdrant Quadlet container
-//!   definition (`packaging/systemd/qdrant.container`), enforcing the pinned
-//!   image reference, loopback-only REST and gRPC port bindings, storage mount,
-//!   Podman auto-update policy, and API-key provisioning contract.
+//! - [`qdrant_quadlet`] validates the checked-in Qdrant Quadlet container definition
+//!   (`packaging/systemd/qdrant.container`), enforcing the pinned image reference, loopback-only
+//!   REST and gRPC port bindings, storage mount, Podman auto-update policy, and API-key
+//!   provisioning contract.
 //!
-//! - [`systemd_units`] validates the checked-in repovec systemd unit files
-//!   (`repovec.target`, `repovecd.service`, and `repovec-mcpd.service`),
-//!   enforcing dependency ordering, install targets, service identity, and
-//!   `ExecStart` paths against the appliance service-layout contract.
+//! - [`systemd_units`] validates the checked-in repovec systemd unit files (`repovec.target`,
+//!   `repovecd.service`, and `repovec-mcpd.service`), enforcing dependency ordering, install
+//!   targets, service identity, and `ExecStart` paths against the appliance service-layout
+//!   contract.
 //!
-//! - [`qdrant_liveness`] validates the live Qdrant gRPC endpoint using the
-//!   stored appliance API key.
+//! - [`qdrant_liveness`] validates the live Qdrant gRPC endpoint using the stored appliance API
+//!   key.
 //!
-//! - [`directory_layout`] validates the checked-in `sysusers.d` and
-//!   `tmpfiles.d` assets that provision the `repovec` system user and its
-//!   private on-disk tree, and exposes the live ownership pre-flight used by
-//!   [`daemon_startup`].
+//! - [`directory_layout`] validates the checked-in `sysusers.d` and `tmpfiles.d` assets that
+//!   provision the `repovec` system user and its private on-disk tree, and exposes the live
+//!   ownership pre-flight used by [`daemon_startup`].
 //!
-//! - [`daemon_startup`] composes [`systemd_units`], [`directory_layout`], and
-//!   [`qdrant_liveness`] during daemon startup.
+//! - [`daemon_startup`] composes [`systemd_units`], [`directory_layout`], and [`qdrant_liveness`]
+//!   during daemon startup.
 //!
 //! The submodules compose the appliance surface: [`qdrant_quadlet`] covers the
 //! Podman/Quadlet layer, [`systemd_units`] covers the systemd service

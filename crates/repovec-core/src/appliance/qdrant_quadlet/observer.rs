@@ -206,7 +206,10 @@ impl QdrantQuadletObserver for TracingQdrantQuadletObserver {
     }
 
     fn missing_image(&self, expected_image: &str) {
-        validation_warning!("qdrant quadlet validation failed: missing image", expected_image);
+        validation_warning!(
+            "qdrant quadlet validation failed: missing image",
+            expected_image
+        );
     }
 
     fn image_not_fully_qualified(&self, image: &str, expected_image: &str) {

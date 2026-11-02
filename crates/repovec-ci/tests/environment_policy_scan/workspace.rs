@@ -26,7 +26,10 @@ fn no_source_file_allows_a_policy_lint() {
     for source_root in SOURCE_ROOTS {
         let sources = rust_sources(&root.join(source_root), source_root)
             .expect("workspace sources should be readable");
-        assert!(!sources.is_empty(), "{source_root} should contain Rust sources to scan");
+        assert!(
+            !sources.is_empty(),
+            "{source_root} should contain Rust sources to scan"
+        );
         for (path, contents) in sources {
             let offending = suppressed_lints(&contents)
                 .unwrap_or_else(|error| panic!("{path} should parse as Rust: {error}"));
@@ -38,8 +41,8 @@ fn no_source_file_allows_a_policy_lint() {
 
     assert!(
         offences.is_empty(),
-        "no source may allow a protected lint; use an item-scoped \
-         #[expect(..., reason = \"...\")] at a composition root instead:\n{}",
+        "no source may allow a protected lint; use an item-scoped #[expect(..., reason = \
+         \"...\")] at a composition root instead:\n{}",
         offences.join("\n")
     );
 }
@@ -60,7 +63,9 @@ fn the_scan_reads_the_workspace_sources() {
         sources.len()
     );
     assert!(
-        sources.iter().any(|(path, _)| path.as_str().ends_with("repovec-ci/src/lib.rs")),
+        sources
+            .iter()
+            .any(|(path, _)| path.as_str().ends_with("repovec-ci/src/lib.rs")),
         "the scan should reach each crate's root module"
     );
 }
@@ -77,7 +82,10 @@ fn a_missing_source_root_is_an_error_not_an_empty_scan() {
     let error = rust_sources(&root.join("no-such-root"), "no-such-root")
         .expect_err("a missing root must not read as an empty scan");
 
-    assert!(error.contains("no-such-root"), "the error should name the path, got {error:?}");
+    assert!(
+        error.contains("no-such-root"),
+        "the error should name the path, got {error:?}"
+    );
 }
 
 /// Scenario: a file under a source root does not parse as Rust.
@@ -90,7 +98,10 @@ fn a_source_that_is_not_rust_is_an_error() {
     let error = suppressed_lints("this is not Rust {\n")
         .expect_err("unparsable input must not read as a clean file");
 
-    assert!(error.starts_with("parse: "), "the error should name the parse failure, got {error:?}");
+    assert!(
+        error.starts_with("parse: "),
+        "the error should name the parse failure, got {error:?}"
+    );
 }
 
 /// Scenario: a source root holds a symlink, spelled as a directory and as a
@@ -121,10 +132,14 @@ fn a_symlink_under_a_source_root_is_an_error(#[case] link: &str, #[case] target:
     let tree = Dir::open_ambient_dir(base, ambient_authority())
         .expect("the temporary directory should open");
 
-    tree.create_dir_all("outside").expect("the outside directory should be created");
-    tree.write("outside/policy.rs", "// outside\n").expect("the outside source should be written");
-    tree.create_dir_all("crates/inner").expect("the crate directory should be created");
-    tree.write("crates/inner/lib.rs", "// inner\n").expect("the scanned source should be written");
+    tree.create_dir_all("outside")
+        .expect("the outside directory should be created");
+    tree.write("outside/policy.rs", "// outside\n")
+        .expect("the outside source should be written");
+    tree.create_dir_all("crates/inner")
+        .expect("the crate directory should be created");
+    tree.write("crates/inner/lib.rs", "// inner\n")
+        .expect("the scanned source should be written");
 
     // The link is made with `std`, not through the `Dir` handle, because the
     // capability API will not create one whose target leaves the sandbox, and
@@ -137,5 +152,8 @@ fn a_symlink_under_a_source_root_is_an_error(#[case] link: &str, #[case] target:
     let error =
         rust_sources(&root, "crates").expect_err("a symlink must not be stepped over in silence");
 
-    assert!(error.contains(link), "the error should name the link, got {error:?}");
+    assert!(
+        error.contains(link),
+        "the error should name the link, got {error:?}"
+    );
 }

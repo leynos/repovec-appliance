@@ -33,7 +33,9 @@ use std::{
 };
 
 use repovec_core::appliance::systemd_units::{
-    SystemdUnitError, run_startup_validation, validate_and_trace_checked_in_units,
+    SystemdUnitError,
+    run_startup_validation,
+    validate_and_trace_checked_in_units,
 };
 use tracing_subscriber::fmt::MakeWriter;
 
@@ -79,7 +81,11 @@ where
 ///
 /// Returns `Err(message.to_owned())` when `condition` is `false`.
 pub fn ensure(condition: bool, message: &str) -> Result<(), String> {
-    if condition { Ok(()) } else { Err(message.to_owned()) }
+    if condition {
+        Ok(())
+    } else {
+        Err(message.to_owned())
+    }
 }
 
 /// Asserts that some log line contains both the given `level` token and
@@ -98,7 +104,9 @@ pub fn ensure_log_line_contains(
     needle: &str,
     message: &str,
 ) -> Result<(), String> {
-    let found = logs.lines().any(|line| line.contains(level) && line.contains(needle));
+    let found = logs
+        .lines()
+        .any(|line| line.contains(level) && line.contains(needle));
     ensure(found, &format!("{message}: {logs}"))
 }
 
@@ -120,7 +128,10 @@ where
 /// Returns an error when startup validation unexpectedly fails.
 pub fn assert_startup_succeeds_when_validation_passes() -> Result<(), String> {
     let result = run_startup_validation(|| Ok(()));
-    ensure(result.is_ok(), "startup should return Ok when validation passes")
+    ensure(
+        result.is_ok(),
+        "startup should return Ok when validation passes",
+    )
 }
 
 /// Verifies that successful startup validation emits an operator-visible log.
@@ -132,7 +143,10 @@ pub fn assert_startup_succeeds_when_validation_passes() -> Result<(), String> {
 pub fn assert_startup_logs_successful_validation() -> Result<(), String> {
     let (result, logs) = startup_with_captured_logs(|| Ok(()))?;
 
-    ensure(result.is_ok(), "startup should return Ok when validation passes")?;
+    ensure(
+        result.is_ok(),
+        "startup should return Ok when validation passes",
+    )?;
     ensure_log_line_contains(
         &logs,
         "DEBUG",
@@ -151,7 +165,10 @@ pub fn assert_startup_logs_successful_validation() -> Result<(), String> {
 #[cfg(feature = "snapshots")]
 pub fn assert_startup_success_log_snapshot() -> Result<(), String> {
     let (result, logs) = startup_with_captured_logs(validate_and_trace_checked_in_units)?;
-    ensure(result.is_ok(), "startup should return Ok when validation passes")?;
+    ensure(
+        result.is_ok(),
+        "startup should return Ok when validation passes",
+    )?;
     insta::assert_snapshot!("startup_success_log", logs);
     Ok(())
 }
@@ -166,8 +183,14 @@ pub fn assert_startup_success_log_snapshot() -> Result<(), String> {
 #[cfg(feature = "snapshots")]
 pub fn assert_startup_failure_log_snapshot(unit: &'static str) -> Result<(), String> {
     let (result, logs) = startup_with_captured_logs(|| missing_section_error(unit))?;
-    ensure(result == Err(1), "startup should return Err(1) on validation failure")?;
-    insta::assert_snapshot!(format!("startup_failure_log_{}", unit.replace('.', "_")), logs);
+    ensure(
+        result == Err(1),
+        "startup should return Err(1) on validation failure",
+    )?;
+    insta::assert_snapshot!(
+        format!("startup_failure_log_{}", unit.replace('.', "_")),
+        logs
+    );
     Ok(())
 }
 
@@ -180,7 +203,10 @@ pub fn assert_startup_failure_log_snapshot(unit: &'static str) -> Result<(), Str
 pub fn assert_startup_runs_real_checked_in_validation() -> Result<(), String> {
     let (result, logs) = startup_with_captured_logs(validate_and_trace_checked_in_units)?;
 
-    ensure(result.is_ok(), "checked-in units should pass daemon startup validation")?;
+    ensure(
+        result.is_ok(),
+        "checked-in units should pass daemon startup validation",
+    )?;
     ensure_log_line_contains(
         &logs,
         "TRACE",
@@ -209,7 +235,10 @@ where
 {
     let (result, logs) = capture_logs(startup)?;
 
-    ensure(result.is_ok(), "checked-in units should pass daemon startup validation")?;
+    ensure(
+        result.is_ok(),
+        "checked-in units should pass daemon startup validation",
+    )?;
     ensure_log_line_contains(
         &logs,
         "TRACE",
@@ -233,7 +262,10 @@ pub fn assert_startup_returns_exit_code_1_when_validation_fails(
     unit: &'static str,
 ) -> Result<(), String> {
     let result = run_startup_validation(|| missing_section_error(unit));
-    ensure(result == Err(1), "startup should return Err(1) on validation failure")
+    ensure(
+        result == Err(1),
+        "startup should return Err(1) on validation failure",
+    )
 }
 
 /// Verifies startup validation emits structured failure diagnostics.
@@ -245,7 +277,10 @@ pub fn assert_startup_returns_exit_code_1_when_validation_fails(
 pub fn assert_startup_logs_structured_validation_failure(unit: &'static str) -> Result<(), String> {
     let (result, logs) = startup_with_captured_logs(|| missing_section_error(unit))?;
 
-    ensure(result == Err(1), "startup should return Err(1) on validation failure")?;
+    ensure(
+        result == Err(1),
+        "startup should return Err(1) on validation failure",
+    )?;
     let unit_needle = format!("unit={unit}");
     ensure_log_line_contains(
         &logs,
@@ -285,7 +320,9 @@ impl CapturedLogs {
             .buffer
             .lock()
             .map_err(|_| "captured log buffer should not be poisoned".to_owned())?;
-        std::str::from_utf8(&buffer).map(ToOwned::to_owned).map_err(|error| error.to_string())
+        std::str::from_utf8(&buffer)
+            .map(ToOwned::to_owned)
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -297,8 +334,10 @@ struct CapturedLogWriter {
 
 impl Write for CapturedLogWriter {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        let mut buffer =
-            self.buffer.lock().map_err(|_| io::Error::other("captured log buffer poisoned"))?;
+        let mut buffer = self
+            .buffer
+            .lock()
+            .map_err(|_| io::Error::other("captured log buffer poisoned"))?;
         buffer.extend_from_slice(bytes);
         Ok(bytes.len())
     }
@@ -310,7 +349,9 @@ impl<'writer> MakeWriter<'writer> for CapturedLogs {
     type Writer = CapturedLogWriter;
 
     fn make_writer(&'writer self) -> Self::Writer {
-        CapturedLogWriter { buffer: Arc::clone(&self.buffer) }
+        CapturedLogWriter {
+            buffer: Arc::clone(&self.buffer),
+        }
     }
 }
 
@@ -319,5 +360,8 @@ impl<'writer> MakeWriter<'writer> for CapturedLogs {
 /// For example, `"repovec.service"` returns `Err(MissingSection { section:
 /// "Service", .. })` for startup logging and exit-code assertions.
 const fn missing_section_error(unit: &'static str) -> Result<(), SystemdUnitError> {
-    Err(SystemdUnitError::MissingSection { unit, section: "Service" })
+    Err(SystemdUnitError::MissingSection {
+        unit,
+        section: "Service",
+    })
 }

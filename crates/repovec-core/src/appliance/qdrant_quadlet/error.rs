@@ -10,10 +10,15 @@
 use std::{error::Error, fmt};
 
 use super::{
-    QDRANT_API_KEY_SERVICE, REQUIRED_GRPC_PORT, REQUIRED_IMAGE, REQUIRED_REST_PORT,
+    QDRANT_API_KEY_SERVICE,
+    REQUIRED_GRPC_PORT,
+    REQUIRED_IMAGE,
+    REQUIRED_REST_PORT,
     REQUIRED_STORAGE_TARGET,
     platform_bindings::{
-        REQUIRED_AUTO_UPDATE_POLICY, REQUIRED_SELINUX_OPTION, REQUIRED_STORAGE_SOURCE,
+        REQUIRED_AUTO_UPDATE_POLICY,
+        REQUIRED_SELINUX_OPTION,
+        REQUIRED_STORAGE_SOURCE,
     },
 };
 
@@ -132,11 +137,17 @@ impl fmt::Display for QdrantQuadletError {
                 write!(f, "invalid quadlet line {line_number}: {line}")
             }
             Self::PropertyBeforeSection { line_number, line } => {
-                write!(f, "quadlet property before section on line {line_number}: {line}")
+                write!(
+                    f,
+                    "quadlet property before section on line {line_number}: {line}"
+                )
             }
             Self::MissingImage => f.write_str("missing Image= entry in [Container]"),
             Self::ImageNotFullyQualified { image } => {
-                write!(f, "image reference must be fully qualified and tagged: {image}")
+                write!(
+                    f,
+                    "image reference must be fully qualified and tagged: {image}"
+                )
             }
             Self::UnexpectedImage { image } => {
                 write!(f, "image reference must remain {REQUIRED_IMAGE}: {image}")
@@ -148,33 +159,49 @@ impl fmt::Display for QdrantQuadletError {
                 write!(f, "missing PublishPort={REQUIRED_GRPC_PORT} in [Container]")
             }
             Self::PortNotBoundToLoopback { port, publish_port } => {
-                write!(f, "port {port} must be published on 127.0.0.1 only: {publish_port}")
+                write!(
+                    f,
+                    "port {port} must be published on 127.0.0.1 only: {publish_port}"
+                )
             }
             Self::MissingStorageMount => f.write_str("missing persistent Qdrant storage mount"),
             Self::IncorrectStorageSource { source } => {
-                write!(f, "storage source must be {REQUIRED_STORAGE_SOURCE}: {source}")
+                write!(
+                    f,
+                    "storage source must be {REQUIRED_STORAGE_SOURCE}: {source}"
+                )
             }
             Self::IncorrectStorageTarget { target } => {
-                write!(f, "storage target must be {REQUIRED_STORAGE_TARGET}: {target}")
+                write!(
+                    f,
+                    "storage target must be {REQUIRED_STORAGE_TARGET}: {target}"
+                )
             }
             Self::MissingSelinuxRelabel { volume } => write_selinux_relabel(f, volume),
             Self::MissingAutoUpdate => f.write_str("missing AutoUpdate= entry in [Container]"),
             Self::IncorrectAutoUpdate { auto_update } => {
-                write!(f, "AutoUpdate must remain {REQUIRED_AUTO_UPDATE_POLICY}: {auto_update}")
+                write!(
+                    f,
+                    "AutoUpdate must remain {REQUIRED_AUTO_UPDATE_POLICY}: {auto_update}"
+                )
             }
             Self::MissingApiKeyProvisioningDependency { directive } => {
                 DependencyFailure::missing(directive, QDRANT_API_KEY_SERVICE, true).fmt(f)
             }
-            Self::IncorrectApiKeyProvisioningDependency { directive, dependency } => {
-                DependencyFailure::incorrect(directive, QDRANT_API_KEY_SERVICE, dependency, true)
-                    .fmt(f)
-            }
-            Self::MissingUnitDependency { directive, expected } => {
-                DependencyFailure::missing(directive, expected, false).fmt(f)
-            }
-            Self::IncorrectUnitDependency { directive, expected, actual } => {
-                DependencyFailure::incorrect(directive, expected, actual, false).fmt(f)
-            }
+            Self::IncorrectApiKeyProvisioningDependency {
+                directive,
+                dependency,
+            } => DependencyFailure::incorrect(directive, QDRANT_API_KEY_SERVICE, dependency, true)
+                .fmt(f),
+            Self::MissingUnitDependency {
+                directive,
+                expected,
+            } => DependencyFailure::missing(directive, expected, false).fmt(f),
+            Self::IncorrectUnitDependency {
+                directive,
+                expected,
+                actual,
+            } => DependencyFailure::incorrect(directive, expected, actual, false).fmt(f),
             Self::MissingApiKeySecret => write_missing_api_key_secret(f),
             Self::IncorrectApiKeySecret { secret } => write_incorrect_api_key_secret(f, secret),
             Self::InlineApiKeyEnvironmentDisallowed { .. } => f.write_str(
@@ -186,19 +213,26 @@ impl fmt::Display for QdrantQuadletError {
 
 /// Writes the diagnostic for a storage mount without the relabel option.
 fn write_selinux_relabel(f: &mut fmt::Formatter<'_>, volume: &str) -> fmt::Result {
-    write!(f, "storage mount must include SELinux relabel :{REQUIRED_SELINUX_OPTION}: {volume}")
+    write!(
+        f,
+        "storage mount must include SELinux relabel :{REQUIRED_SELINUX_OPTION}: {volume}"
+    )
 }
 
 /// Writes the diagnostic for an absent API-key `Secret=` entry.
 fn write_missing_api_key_secret(f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY")
+    write!(
+        f,
+        "missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY"
+    )
 }
 
 /// Writes the diagnostic for a `Secret=` entry wired to the wrong target.
 fn write_incorrect_api_key_secret(f: &mut fmt::Formatter<'_>, secret: &str) -> fmt::Result {
     write!(
         f,
-        "Qdrant API-key secret must be repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
+        "Qdrant API-key secret must be \
+         repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
     )
 }
 
@@ -222,7 +256,12 @@ struct DependencyFailure<'a> {
 impl<'a> DependencyFailure<'a> {
     /// Builds the failure for a directive the unit does not declare at all.
     const fn missing(directive: &'a str, expected: &'a str, is_api_key: bool) -> Self {
-        Self { directive, expected, actual: None, is_api_key }
+        Self {
+            directive,
+            expected,
+            actual: None,
+            is_api_key,
+        }
     }
 
     /// Builds the failure for a directive that names a different unit.
@@ -232,7 +271,12 @@ impl<'a> DependencyFailure<'a> {
         actual: &'a str,
         is_api_key: bool,
     ) -> Self {
-        Self { directive, expected, actual: Some(actual), is_api_key }
+        Self {
+            directive,
+            expected,
+            actual: Some(actual),
+            is_api_key,
+        }
     }
 
     /// Writes the operator-facing message for this failure.

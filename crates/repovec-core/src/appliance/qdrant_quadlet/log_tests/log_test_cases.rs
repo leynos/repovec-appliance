@@ -31,7 +31,10 @@ pub(super) fn property_before_section() -> LogScenario {
         expected: event(
             Level::ERROR,
             "qdrant quadlet validation rejected property before section",
-            &[("line_number", "1"), ("redacted_line", "Environment=<redacted>")],
+            &[
+                ("line_number", "1"),
+                ("redacted_line", "Environment=<redacted>"),
+            ],
         ),
     }
 }
@@ -67,7 +70,10 @@ pub(super) fn image_not_pinned() -> LogScenario {
         expected: event(
             Level::WARN,
             "qdrant quadlet validation failed: image is not fully qualified and pinned",
-            &[("image", "qdrant/qdrant:latest"), ("expected_image", "docker.io/qdrant/qdrant:v1")],
+            &[
+                ("image", "qdrant/qdrant:latest"),
+                ("expected_image", "docker.io/qdrant/qdrant:v1"),
+            ],
         ),
     }
 }
@@ -97,7 +103,10 @@ pub(super) fn duplicate_image() -> LogScenario {
         expected: event(
             Level::WARN,
             "qdrant quadlet validation failed: unexpected image",
-            &[("image", "docker.io/qdrant/qdrant:v1,docker.io/qdrant/qdrant:v2")],
+            &[(
+                "image",
+                "docker.io/qdrant/qdrant:v1,docker.io/qdrant/qdrant:v2",
+            )],
         ),
     }
 }
@@ -127,11 +136,21 @@ fn missing_publish(
 }
 
 pub(super) fn rest_port_not_loopback() -> LogScenario {
-    port_not_loopback("rest_port_not_loopback", "127.0.0.1:6333:6333", "0.0.0.0:6333:6333", "6333")
+    port_not_loopback(
+        "rest_port_not_loopback",
+        "127.0.0.1:6333:6333",
+        "0.0.0.0:6333:6333",
+        "6333",
+    )
 }
 
 pub(super) fn grpc_port_not_loopback() -> LogScenario {
-    port_not_loopback("grpc_port_not_loopback", "127.0.0.1:6334:6334", "0.0.0.0:6334:6334", "6334")
+    port_not_loopback(
+        "grpc_port_not_loopback",
+        "127.0.0.1:6334:6334",
+        "0.0.0.0:6334:6334",
+        "6334",
+    )
 }
 
 fn port_not_loopback(
@@ -146,7 +165,11 @@ fn port_not_loopback(
         expected: event(
             Level::WARN,
             "qdrant quadlet validation failed: publish port is not bound to loopback",
-            &[("port", port), ("publish_port", publish_port), ("expected_publish_port", from)],
+            &[
+                ("port", port),
+                ("publish_port", publish_port),
+                ("expected_publish_port", from),
+            ],
         ),
     }
 }
@@ -154,8 +177,10 @@ fn port_not_loopback(
 pub(super) fn missing_storage_mount() -> LogScenario {
     LogScenario {
         snapshot_name: "missing_storage_mount",
-        contents: canonical()
-            .replace("Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n", ""),
+        contents: canonical().replace(
+            "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
+            "",
+        ),
         expected: event(
             Level::WARN,
             "qdrant quadlet validation failed: missing storage mount",
@@ -189,8 +214,10 @@ pub(super) fn malformed_storage_mount() -> LogScenario {
 pub(super) fn incorrect_storage_source() -> LogScenario {
     LogScenario {
         snapshot_name: "incorrect_storage_source",
-        contents: canonical()
-            .replace("/var/lib/repovec/qdrant-storage", "/var/lib/other/qdrant-storage"),
+        contents: canonical().replace(
+            "/var/lib/repovec/qdrant-storage",
+            "/var/lib/other/qdrant-storage",
+        ),
         expected: event(
             Level::WARN,
             "qdrant quadlet validation failed: incorrect storage source",
@@ -209,7 +236,10 @@ pub(super) fn incorrect_storage_target() -> LogScenario {
         expected: event(
             Level::WARN,
             "qdrant quadlet validation failed: incorrect storage target",
-            &[("storage_target", "/srv/qdrant"), ("expected_target", "/qdrant/storage")],
+            &[
+                ("storage_target", "/srv/qdrant"),
+                ("expected_target", "/qdrant/storage"),
+            ],
         ),
     }
 }
@@ -245,7 +275,10 @@ pub(super) fn incorrect_auto_update() -> LogScenario {
         expected: event(
             Level::WARN,
             "qdrant quadlet validation failed: incorrect auto-update policy",
-            &[("auto_update", "local"), ("expected_auto_update", "registry")],
+            &[
+                ("auto_update", "local"),
+                ("expected_auto_update", "registry"),
+            ],
         ),
     }
 }

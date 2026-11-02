@@ -18,34 +18,60 @@ use std::{
     collections::BTreeMap,
     fmt,
     sync::{
-        Arc, Mutex,
+        Arc,
+        Mutex,
         atomic::{AtomicUsize, Ordering},
     },
 };
 
 use insta::assert_debug_snapshot;
 use log_test_cases::{
-    bearer_assignment_before_section, duplicate_image, grpc_port_not_loopback, image_not_pinned,
-    incorrect_auto_update, incorrect_storage_source, incorrect_storage_target, invalid_line,
-    malformed_storage_mount, missing_auto_update, missing_grpc_publish, missing_image,
-    missing_rest_publish, missing_selinux_relabel, missing_storage_mount, property_before_section,
-    rest_port_not_loopback, unexpected_image,
+    bearer_assignment_before_section,
+    duplicate_image,
+    grpc_port_not_loopback,
+    image_not_pinned,
+    incorrect_auto_update,
+    incorrect_storage_source,
+    incorrect_storage_target,
+    invalid_line,
+    malformed_storage_mount,
+    missing_auto_update,
+    missing_grpc_publish,
+    missing_image,
+    missing_rest_publish,
+    missing_selinux_relabel,
+    missing_storage_mount,
+    property_before_section,
+    rest_port_not_loopback,
+    unexpected_image,
 };
 use log_test_dependency_cases::{
-    incorrect_after_dependency, incorrect_api_key_secret, incorrect_provision_dependency,
-    incorrect_requires_dependency, inline_api_key_environment, missing_after_dependency,
-    missing_api_key_secret, missing_requires_dependency,
+    incorrect_after_dependency,
+    incorrect_api_key_secret,
+    incorrect_provision_dependency,
+    incorrect_requires_dependency,
+    inline_api_key_environment,
+    missing_after_dependency,
+    missing_api_key_secret,
+    missing_requires_dependency,
 };
 use rstest::rstest;
 use tracing::{
-    Event, Level, Subscriber,
+    Event,
+    Level,
+    Subscriber,
     field::{Field, Visit},
 };
 use tracing_subscriber::{Layer, layer::Context, prelude::*};
 
 use super::{
-    CHECKED_IN_QDRANT_QUADLET_PATH, LOG_TARGET, QdrantQuadletError, QdrantQuadletObserver,
-    TracingQdrantQuadletObserver, checked_in_qdrant_quadlet, validate_checked_in_qdrant_quadlet,
+    CHECKED_IN_QDRANT_QUADLET_PATH,
+    LOG_TARGET,
+    QdrantQuadletError,
+    QdrantQuadletObserver,
+    TracingQdrantQuadletObserver,
+    checked_in_qdrant_quadlet,
+    validate_checked_in_qdrant_quadlet,
     validate_qdrant_quadlet,
 };
 
@@ -99,19 +125,23 @@ struct EventVisitor {
 
 impl Visit for EventVisitor {
     fn record_str(&mut self, field: &Field, value: &str) {
-        self.fields.insert(field.name().to_owned(), value.to_owned());
+        self.fields
+            .insert(field.name().to_owned(), value.to_owned());
     }
 
     fn record_i64(&mut self, field: &Field, value: i64) {
-        self.fields.insert(field.name().to_owned(), value.to_string());
+        self.fields
+            .insert(field.name().to_owned(), value.to_string());
     }
 
     fn record_u64(&mut self, field: &Field, value: u64) {
-        self.fields.insert(field.name().to_owned(), value.to_string());
+        self.fields
+            .insert(field.name().to_owned(), value.to_string());
     }
 
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        self.fields.insert(field.name().to_owned(), format!("{value:?}"));
+        self.fields
+            .insert(field.name().to_owned(), format!("{value:?}"));
     }
 }
 
@@ -196,7 +226,10 @@ fn parser_redacts_nested_environment_assignment_event_shape() {
     });
 
     assert_event(&events, scenario.expected);
-    assert_debug_snapshot!("parser_redacts_nested_environment_assignment_event_shape", events);
+    assert_debug_snapshot!(
+        "parser_redacts_nested_environment_assignment_event_shape",
+        events
+    );
 }
 
 #[rstest]
@@ -261,10 +294,15 @@ impl QdrantQuadletObserver for LegacyApiKeyDependencyObserver {
 fn legacy_api_key_dependency_observer_callbacks_remain_supported() {
     let observer = LegacyApiKeyDependencyObserver::default();
     let canonical = canonical();
-    let missing_contents = canonical
-        .replace("Requires=repovec-qdrant-api-key.service repovec-provision.service\n", "");
+    let missing_contents = canonical.replace(
+        "Requires=repovec-qdrant-api-key.service repovec-provision.service\n",
+        "",
+    );
     let missing = validate_qdrant_quadlet(&missing_contents, &observer);
-    assert!(matches!(missing, Err(QdrantQuadletError::MissingApiKeyProvisioningDependency { .. })));
+    assert!(matches!(
+        missing,
+        Err(QdrantQuadletError::MissingApiKeyProvisioningDependency { .. })
+    ));
     assert_eq!(observer.missing_callbacks.load(Ordering::Relaxed), 1);
 
     let incorrect_contents = canonical.replace(
@@ -288,7 +326,9 @@ fn find_event<'events>(
     events: &'events [CapturedEvent],
     message: &str,
 ) -> Option<&'events CapturedEvent> {
-    events.iter().find(|event| field_matches(event, "message", message))
+    events
+        .iter()
+        .find(|event| field_matches(event, "message", message))
 }
 
 fn assert_event(events: &[CapturedEvent], expected: ExpectedEvent) {
@@ -299,7 +339,10 @@ fn assert_event(events: &[CapturedEvent], expected: ExpectedEvent) {
     assert_eq!(event.level, expected.level);
     assert_eq!(event.target, LOG_TARGET);
     for (field, value) in expected.fields {
-        assert!(field_matches(event, field, value), "missing field {field}={value} in {event:#?}");
+        assert!(
+            field_matches(event, field, value),
+            "missing field {field}={value} in {event:#?}"
+        );
     }
 }
 

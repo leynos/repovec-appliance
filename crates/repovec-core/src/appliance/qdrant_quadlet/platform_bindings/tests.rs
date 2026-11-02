@@ -6,8 +6,12 @@ use proptest::prelude::*;
 use rstest::rstest;
 
 use super::{
-    REQUIRED_SELINUX_OPTION, REQUIRED_STORAGE_SOURCE, has_required_selinux_relabel_option,
-    published_container_port, storage_mount_candidate, validate_storage_mount,
+    REQUIRED_SELINUX_OPTION,
+    REQUIRED_STORAGE_SOURCE,
+    has_required_selinux_relabel_option,
+    published_container_port,
+    storage_mount_candidate,
+    validate_storage_mount,
 };
 use crate::appliance::qdrant_quadlet::{observer::QdrantQuadletObserver, parser::ParsedQuadlet};
 
@@ -70,7 +74,10 @@ fn storage_mount_candidate_returns_original_volume_and_split_parts() {
         storage_mount_candidate(volume).expect("required storage mount should match");
 
     assert_eq!(candidate, volume);
-    assert_eq!(parts, vec!["/var/lib/repovec/qdrant-storage", "/qdrant/storage", "rw,Z"]);
+    assert_eq!(
+        parts,
+        vec!["/var/lib/repovec/qdrant-storage", "/qdrant/storage", "rw,Z"]
+    );
 }
 
 #[test]
@@ -121,7 +128,11 @@ fn has_required_selinux_relabel_option_matches_split_trimmed_case_sensitive_toke
     ];
 
     for (options, expected) in cases {
-        assert_eq!(has_required_selinux_relabel_option(options), *expected, "options: {options:?}");
+        assert_eq!(
+            has_required_selinux_relabel_option(options),
+            *expected,
+            "options: {options:?}"
+        );
     }
 }
 

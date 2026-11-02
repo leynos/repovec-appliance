@@ -10,7 +10,8 @@ pub mod github_oauth;
 /// Relative filename for the encrypted GitHub OAuth bearer credential.
 pub const GITHUB_OAUTH_TOKEN_CREDENTIAL_FILE: &str = "github-oauth-token.cred";
 
-/// Service types: daemons (`Repovecd`, `RepovecMcpd`), terminal UI (`RepovecTui`), and CLI (`Repovectl`).
+/// Service types: daemons (`Repovecd`, `RepovecMcpd`), terminal UI (`RepovecTui`), and CLI
+/// (`Repovectl`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServiceKind {
     /// The repository control-plane daemon.
@@ -75,11 +76,17 @@ impl RuntimePaths {
     ///     Utf8PathBuf::from("/var/lib/repovec"),
     /// );
     ///
-    /// assert_eq!(paths.git_mirrors_root().as_str(), "/var/lib/repovec/git-mirrors");
+    /// assert_eq!(
+    ///     paths.git_mirrors_root().as_str(),
+    ///     "/var/lib/repovec/git-mirrors"
+    /// );
     /// ```
     #[must_use]
     pub const fn new(config_root: Utf8PathBuf, data_root: Utf8PathBuf) -> Self {
-        Self { config_root, data_root }
+        Self {
+            config_root,
+            data_root,
+        }
     }
 
     /// Returns the standard appliance runtime layout.
@@ -95,7 +102,10 @@ impl RuntimePaths {
     /// ```
     #[must_use]
     pub fn appliance_defaults() -> Self {
-        Self::new(Utf8PathBuf::from("/etc/repovec"), Utf8PathBuf::from("/var/lib/repovec"))
+        Self::new(
+            Utf8PathBuf::from("/etc/repovec"),
+            Utf8PathBuf::from("/var/lib/repovec"),
+        )
     }
 
     /// Returns the configuration directory root.
@@ -162,7 +172,10 @@ impl RuntimePaths {
     ///
     /// let paths = RuntimePaths::appliance_defaults();
     ///
-    /// assert_eq!(paths.git_mirrors_root().as_str(), "/var/lib/repovec/git-mirrors");
+    /// assert_eq!(
+    ///     paths.git_mirrors_root().as_str(),
+    ///     "/var/lib/repovec/git-mirrors"
+    /// );
     /// ```
     #[must_use]
     pub fn git_mirrors_root(&self) -> Utf8PathBuf { self.data_child("git-mirrors") }
@@ -176,7 +189,10 @@ impl RuntimePaths {
     ///
     /// let paths = RuntimePaths::appliance_defaults();
     ///
-    /// assert_eq!(paths.worktrees_root().as_str(), "/var/lib/repovec/worktrees");
+    /// assert_eq!(
+    ///     paths.worktrees_root().as_str(),
+    ///     "/var/lib/repovec/worktrees"
+    /// );
     /// ```
     #[must_use]
     pub fn worktrees_root(&self) -> Utf8PathBuf { self.data_child("worktrees") }
@@ -236,13 +252,21 @@ mod tests {
 
     #[test]
     fn runtime_paths_expand_from_the_data_root() {
-        let paths =
-            RuntimePaths::new(Utf8PathBuf::from("/tmp/config"), Utf8PathBuf::from("/srv/repovec"));
+        let paths = RuntimePaths::new(
+            Utf8PathBuf::from("/tmp/config"),
+            Utf8PathBuf::from("/srv/repovec"),
+        );
 
-        assert_eq!(paths.git_mirrors_root().as_str(), "/srv/repovec/git-mirrors");
+        assert_eq!(
+            paths.git_mirrors_root().as_str(),
+            "/srv/repovec/git-mirrors"
+        );
         assert_eq!(paths.worktrees_root().as_str(), "/srv/repovec/worktrees");
         assert_eq!(paths.grepai_root().as_str(), "/srv/repovec/.grepai");
-        assert_eq!(paths.qdrant_storage_root().as_str(), "/srv/repovec/qdrant-storage");
+        assert_eq!(
+            paths.qdrant_storage_root().as_str(),
+            "/srv/repovec/qdrant-storage"
+        );
         assert_eq!(
             paths.github_oauth_token_credential().as_str(),
             "/tmp/config/github-oauth-token.cred",

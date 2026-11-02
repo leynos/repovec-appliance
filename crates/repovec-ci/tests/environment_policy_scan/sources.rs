@@ -21,7 +21,9 @@ pub const SOURCE_EXTENSION: &str = "rs";
 
 /// Return the repository root, from this crate's manifest directory.
 pub fn repository_root() -> Utf8PathBuf {
-    Utf8PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+    Utf8PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
 }
 
 /// Collect every `.rs` file under one root, depth first.
@@ -59,13 +61,18 @@ pub fn rust_sources(root: &Utf8Path, relative: &str) -> Result<Vec<(Utf8PathBuf,
     let mut sources = Vec::new();
 
     while let Some((current, prefix)) = pending.pop_front() {
-        let entries = current.entries().map_err(|error| format!("read {prefix}: {error}"))?;
+        let entries = current
+            .entries()
+            .map_err(|error| format!("read {prefix}: {error}"))?;
         for candidate in entries {
             let entry = candidate.map_err(|error| format!("entry under {prefix}: {error}"))?;
-            let name = entry.file_name().map_err(|error| format!("name: {error}"))?;
+            let name = entry
+                .file_name()
+                .map_err(|error| format!("name: {error}"))?;
             let path = prefix.join(&name);
-            let file_type =
-                entry.file_type().map_err(|error| format!("type of {path}: {error}"))?;
+            let file_type = entry
+                .file_type()
+                .map_err(|error| format!("type of {path}: {error}"))?;
             if file_type.is_symlink() {
                 return Err(format!(
                     concat!(
@@ -76,8 +83,9 @@ pub fn rust_sources(root: &Utf8Path, relative: &str) -> Result<Vec<(Utf8PathBuf,
                 ));
             }
             if file_type.is_dir() {
-                let child =
-                    current.open_dir(&name).map_err(|error| format!("open {path}: {error}"))?;
+                let child = current
+                    .open_dir(&name)
+                    .map_err(|error| format!("open {path}: {error}"))?;
                 pending.push_back((child, path));
             } else if path.extension() == Some(SOURCE_EXTENSION) {
                 let contents = current

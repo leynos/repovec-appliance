@@ -7,8 +7,16 @@
 //! decisions necessary, and the mutations that prove them.
 
 use syn::{
-    AttrStyle, Attribute, Macro, Meta, MetaList, Path, Token, ext::IdentExt,
-    punctuated::Punctuated, visit::Visit,
+    AttrStyle,
+    Attribute,
+    Macro,
+    Meta,
+    MetaList,
+    Path,
+    Token,
+    ext::IdentExt,
+    punctuated::Punctuated,
+    visit::Visit,
 };
 
 use crate::tokens::{includes_a_scanned_path, suppressions_in_tokens, transcriber_arms};
@@ -88,12 +96,14 @@ impl<'ast> Visit<'ast> for AttributeCollector {
         match render_path(&mac.path).as_str() {
             "macro_rules" => {
                 for transcriber in transcriber_arms(&mac.tokens) {
-                    self.from_macros.extend(suppressions_in_tokens(&transcriber));
+                    self.from_macros
+                        .extend(suppressions_in_tokens(&transcriber));
                 }
             }
             "include" if !includes_a_scanned_path(&mac.tokens) => {
                 let rendered = format!("include!({})", mac.tokens);
-                self.from_macros.push((INCLUDED_SOURCE.to_owned(), rendered));
+                self.from_macros
+                    .push((INCLUDED_SOURCE.to_owned(), rendered));
             }
             _ => {}
         }
@@ -240,7 +250,11 @@ fn suppressed_by_cfg_attr(list: &MetaList, scope: Scope) -> Vec<String> {
     let Ok(nested) = list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated) else {
         return Vec::new();
     };
-    nested.iter().skip(1).flat_map(|meta| suppressed_by_meta(meta, scope)).collect()
+    nested
+        .iter()
+        .skip(1)
+        .flat_map(|meta| suppressed_by_meta(meta, scope))
+        .collect()
 }
 
 /// Render an attribute roughly as written, for a failure message.

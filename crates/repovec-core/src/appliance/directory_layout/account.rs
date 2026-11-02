@@ -83,7 +83,11 @@ pub(crate) fn find_repovec_account(passwd: &str) -> Option<RepovecAccount> {
         let _gecos = columns.next()?;
         let home = columns.next()?;
         let shell = columns.next()?;
-        Some(RepovecAccount { uid, home: home.to_owned(), shell: shell.to_owned() })
+        Some(RepovecAccount {
+            uid,
+            home: home.to_owned(),
+            shell: shell.to_owned(),
+        })
     })
 }
 

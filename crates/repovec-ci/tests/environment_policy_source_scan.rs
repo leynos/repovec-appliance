@@ -47,23 +47,22 @@
 //!
 //! - `#![allow(clippy::disallowed_methods)]` in a crate root fails
 //!   `no_source_file_allows_a_policy_lint`;
-//! - `#![allow(clippy::style)]`, naming the group rather than the lint,
-//!   fails it;
+//! - `#![allow(clippy::style)]`, naming the group rather than the lint, fails it;
 //! - `#![cfg_attr(all(), allow(clippy::disallowed_methods))]` fails it;
 //! - `#![allow(clippy::all)]` spread over several lines fails it;
 //! - `#[allow(warnings)]` on an item fails it;
-//! - `#![allow(clippy::restriction)]`, which silences the guard lint
-//!   rather than the policy lint, fails it;
-//! - an `allow` emitted from a `macro_rules!` arm fails it, and so does
-//!   one two macro definitions deep;
-//! - a crate-scoped `#![expect(clippy::disallowed_methods)]` fails it,
-//!   as does the same reached through an inner `cfg_attr`;
-//! - the raw spellings `#![r#allow(...)]` and `clippy::r#style` fail it,
-//!   both being spellings Clippy honours;
-//! - an item-scoped `#[expect(..., reason = "...")]` must and does keep
-//!   passing, since it is the form the taxonomy sanctions;
-//! - `#[allow(clippy::alloc_instead_of_core)]` must and does keep
-//!   passing, as does attribute-shaped text inside a macro argument.
+//! - `#![allow(clippy::restriction)]`, which silences the guard lint rather than the policy lint,
+//!   fails it;
+//! - an `allow` emitted from a `macro_rules!` arm fails it, and so does one two macro definitions
+//!   deep;
+//! - a crate-scoped `#![expect(clippy::disallowed_methods)]` fails it, as does the same reached
+//!   through an inner `cfg_attr`;
+//! - the raw spellings `#![r#allow(...)]` and `clippy::r#style` fail it, both being spellings
+//!   Clippy honours;
+//! - an item-scoped `#[expect(..., reason = "...")]` must and does keep passing, since it is the
+//!   form the taxonomy sanctions;
+//! - `#[allow(clippy::alloc_instead_of_core)]` must and does keep passing, as does attribute-shaped
+//!   text inside a macro argument.
 //!
 //! That last case is the one that keeps this contract honest. Its name
 //! begins with `clippy::all`, so an earlier draft comparing lint names
@@ -154,7 +153,11 @@ type Failure = Box<dyn std::error::Error>;
 
 /// Return `Err` carrying `message` when `condition` does not hold.
 fn ensure_that(condition: bool, message: String) -> Result<(), Failure> {
-    if condition { Ok(()) } else { Err(message.into()) }
+    if condition {
+        Ok(())
+    } else {
+        Err(message.into())
+    }
 }
 
 /// Return `Ok` when `source` yields exactly one finding, naming `expected`.
@@ -174,7 +177,10 @@ fn one_offence(source: &str, expected: &str) -> Result<(), Failure> {
 /// Return `Ok` when `source` yields no finding.
 fn no_offence(source: &str) -> Result<(), Failure> {
     let found = suppressed_lints(source)?;
-    ensure_that(found.is_empty(), format!("{source:?} must yield no finding, got {found:?}"))
+    ensure_that(
+        found.is_empty(),
+        format!("{source:?} must yield no finding, got {found:?}"),
+    )
 }
 
 /// Scenario: each lint in the protected set is suppressed at crate scope.
@@ -206,39 +212,33 @@ fn every_protected_lint_is_reported(#[case] lint: &str) -> Result<(), Failure> {
 /// being caught is named in the failure rather than hidden behind an earlier
 /// one.
 ///
-/// - `nested_in_cfg_attr`: Clippy honours the nested `allow` and
-///   `clippy::allow_attributes` does not report it, so a scan looking for a
-///   line beginning `#![allow(` misses it. The condition is not evaluated.
-/// - `lint_group`: Clippy places `disallowed_methods` in `style`, so the group
-///   switches the policy off while never naming the lint.
-/// - `spacing_and_a_parenthesis`: a fixed opener misses the spaced form, and
-///   counting raw parentheses ends the attribute early at the one inside the
-///   reason string.
-/// - `from_a_macro_arm` and `two_macro_arms_deep`: `syn` keeps an arm's body an
-///   opaque token stream, so the attribute never reaches `visit_attribute`,
-///   while Clippy expands and honours it.
-/// - `crate_scoped_expect` and `crate_scoped_expect_in_cfg_attr`: at crate
-///   scope `expect` behaves as an `allow`, since any one call beneath it
-///   fulfils it, and the scope belongs to the outermost attribute.
-/// - `raw_attribute` and `raw_lint`: Clippy honours `r#allow` and
-///   `clippy::r#style` exactly as it honours the plain spellings.
-/// - `forwarded_from_a_macro_argument`: `#[$attr]` names no lint and does not
-///   parse as a `Meta`, while the invocation carries no `#`, so neither half is
-///   visible on its own. The finding names no lint either, because none is
-///   written.
-/// - `included_from_an_unscanned_file`: `include!` resolves a path, not a
-///   module, and rustc parses the target as Rust whatever its extension, so a
-///   suppression can sit in a file the scan never reads.
-/// - `included_from_a_computed_path`: a target assembled by `concat!` and `env!`
-///   cannot be resolved here. Only one string literal is accepted, and this is
-///   the case that says so.
-/// - `included_outside_the_scanned_tree` and `included_from_an_absolute_path`:
-///   `include!` resolves relative to the including file, and the scan walks
-///   only the source roots, so a parent component or a root escapes it while
-///   still ending in `.rs`.
-/// - `included_from_a_concatenated_path`: every literal in it names a path the
-///   scan would read, so only the rule that requires the target to be one
-///   literal refuses it.
+/// - `nested_in_cfg_attr`: Clippy honours the nested `allow` and `clippy::allow_attributes` does
+///   not report it, so a scan looking for a line beginning `#![allow(` misses it. The condition is
+///   not evaluated.
+/// - `lint_group`: Clippy places `disallowed_methods` in `style`, so the group switches the policy
+///   off while never naming the lint.
+/// - `spacing_and_a_parenthesis`: a fixed opener misses the spaced form, and counting raw
+///   parentheses ends the attribute early at the one inside the reason string.
+/// - `from_a_macro_arm` and `two_macro_arms_deep`: `syn` keeps an arm's body an opaque token
+///   stream, so the attribute never reaches `visit_attribute`, while Clippy expands and honours it.
+/// - `crate_scoped_expect` and `crate_scoped_expect_in_cfg_attr`: at crate scope `expect` behaves
+///   as an `allow`, since any one call beneath it fulfils it, and the scope belongs to the
+///   outermost attribute.
+/// - `raw_attribute` and `raw_lint`: Clippy honours `r#allow` and `clippy::r#style` exactly as it
+///   honours the plain spellings.
+/// - `forwarded_from_a_macro_argument`: `#[$attr]` names no lint and does not parse as a `Meta`,
+///   while the invocation carries no `#`, so neither half is visible on its own. The finding names
+///   no lint either, because none is written.
+/// - `included_from_an_unscanned_file`: `include!` resolves a path, not a module, and rustc parses
+///   the target as Rust whatever its extension, so a suppression can sit in a file the scan never
+///   reads.
+/// - `included_from_a_computed_path`: a target assembled by `concat!` and `env!` cannot be resolved
+///   here. Only one string literal is accepted, and this is the case that says so.
+/// - `included_outside_the_scanned_tree` and `included_from_an_absolute_path`: `include!` resolves
+///   relative to the including file, and the scan walks only the source roots, so a parent
+///   component or a root escapes it while still ending in `.rs`.
+/// - `included_from_a_concatenated_path`: every literal in it names a path the scan would read, so
+///   only the rule that requires the target to be one literal refuses it.
 #[rstest]
 #[case::nested_in_cfg_attr(
     "#![cfg_attr(all(), allow(clippy::disallowed_methods, reason = \"x\"))]\n",
@@ -265,7 +265,10 @@ fn every_protected_lint_is_reported(#[case] lint: &str) -> Result<(), Failure> {
     "#![cfg_attr(all(), expect(clippy::disallowed_methods, reason = \"x\"))]\n",
     "clippy::disallowed_methods"
 )]
-#[case::raw_attribute("#![r#allow(clippy::disallowed_methods)]\n", "clippy::disallowed_methods")]
+#[case::raw_attribute(
+    "#![r#allow(clippy::disallowed_methods)]\n",
+    "clippy::disallowed_methods"
+)]
 #[case::raw_lint("#![allow(clippy::r#style)]\n", "clippy::style")]
 #[case::forwarded_from_a_macro_argument(
     include_str!("fixtures/env_policy_samples/forwarded_attribute.rs.txt"),
@@ -307,7 +310,9 @@ fn a_suppression_is_an_offence(
 /// push contributors towards `allow`, which never warns at any scope.
 #[test]
 fn a_sanctioned_expect_is_not_an_offence() -> Result<(), Failure> {
-    no_offence(include_str!("fixtures/env_policy_samples/sanctioned_item_expect.rs.txt"))
+    no_offence(include_str!(
+        "fixtures/env_policy_samples/sanctioned_item_expect.rs.txt"
+    ))
 }
 
 /// Scenario: attribute-shaped text in a string literal, a macro argument and a
@@ -335,22 +340,18 @@ fn attribute_shaped_text_is_not_an_attribute(#[case] source: &str) -> Result<(),
 /// rule would produce if it were drawn one step wider, and a contract that
 /// reports a false positive gets switched off.
 ///
-/// - `consumed_macro_argument`: `consume!(#[allow(clippy::style)])` hands an
-///   attribute to a macro that discards it. Only a `macro_rules!` transcriber
-///   is scanned, never an invocation's arguments and never a matcher, because
-///   nothing in either is necessarily written out.
-/// - `forwarded_doc_and_derive`: `#[doc = $doc]` and `#[derive($trait)]` fail to
-///   parse as a `Meta` exactly as `#[$attr]` does, and forwarding attributes is
-///   ordinary in code-generating macros.
+/// - `consumed_macro_argument`: `consume!(#[allow(clippy::style)])` hands an attribute to a macro
+///   that discards it. Only a `macro_rules!` transcriber is scanned, never an invocation's
+///   arguments and never a matcher, because nothing in either is necessarily written out.
+/// - `forwarded_doc_and_derive`: `#[doc = $doc]` and `#[derive($trait)]` fail to parse as a `Meta`
+///   exactly as `#[$attr]` does, and forwarding attributes is ordinary in code-generating macros.
 /// - `included_scanned_file`, `included_scanned_raw_literal` and
-///   `included_scanned_escaped_literal`: each names a literal `.rs` path the
-///   scan already reads. Two are spelled `r"support.rs"` and `"support\x2Ers"`,
-///   whose decoded value ends in `.rs` while their spelling does not, and
-///   `included_scanned_subdirectory` descends without escaping, which keeps the
-///   escape rule from rejecting every path that has a separator in it.
-/// - `matcher_only_attribute`: a `macro_rules!` arm matches
-///   `#[allow(clippy::style)]` and its transcriber emits only `$item`, so the
-///   attribute is consumed rather than written out.
+///   `included_scanned_escaped_literal`: each names a literal `.rs` path the scan already reads.
+///   Two are spelled `r"support.rs"` and `"support\x2Ers"`, whose decoded value ends in `.rs` while
+///   their spelling does not, and `included_scanned_subdirectory` descends without escaping, which
+///   keeps the escape rule from rejecting every path that has a separator in it.
+/// - `matcher_only_attribute`: a `macro_rules!` arm matches `#[allow(clippy::style)]` and its
+///   transcriber emits only `$item`, so the attribute is consumed rather than written out.
 #[rstest]
 #[case::consumed_macro_argument(include_str!(
     "fixtures/env_policy_samples/consumed_macro_argument.rs.txt"

@@ -19,7 +19,12 @@ fn world() -> PolicyWorld {
     let changed_files = Vec::new();
     let mermaid_files = BTreeSet::new();
     let unreadable_files = BTreeSet::new();
-    PolicyWorld { changed_files, mermaid_files, unreadable_files, plan: None }
+    PolicyWorld {
+        changed_files,
+        mermaid_files,
+        unreadable_files,
+        plan: None,
+    }
 }
 
 #[given("the changed file list contains {path}")]
@@ -76,22 +81,27 @@ fn nixie_skips(world: &PolicyWorld) {
 
 #[then(expr = "the conservative fallback count is {count}")]
 fn fallback_count(world: &PolicyWorld, count: usize) {
-    assert_eq!(plan(world).map(|plan| plan.conservative_fallback_files().len()), Some(count));
+    assert_eq!(
+        plan(world).map(|plan| plan.conservative_fallback_files().len()),
+        Some(count)
+    );
 }
 
 #[then(expr = "the conservative fallback list contains {path}")]
 fn fallback_list_contains(world: &PolicyWorld, path: String) {
-    assert!(
-        plan(world).is_some_and(|plan| plan
-            .conservative_fallback_files()
+    assert!(plan(world).is_some_and(|plan| {
+        plan.conservative_fallback_files()
             .iter()
-            .any(|item| item == &path))
-    );
+            .any(|item| item == &path)
+    }));
 }
 
 #[then(expr = "the docs gate reason is {reason}")]
 fn docs_gate_reason(world: &PolicyWorld, reason: String) {
-    assert_eq!(plan(world).map(|plan| plan.reason().as_str()), Some(reason.as_str()));
+    assert_eq!(
+        plan(world).map(|plan| plan.reason().as_str()),
+        Some(reason.as_str())
+    );
 }
 
 #[then(expr = "the docs gate matches {path}")]
@@ -106,7 +116,10 @@ const fn plan(world: &PolicyWorld) -> Option<&DocsGatePlan> { world.plan.as_ref(
     name = "Markdown-only changes trigger the docs gate"
 )]
 fn markdown_changes_trigger_docs_gate(world: PolicyWorld) {
-    assert_eq!(plan(&world).map(DocsGatePlan::reason), Some(DocsGateReason::DocumentationChanged));
+    assert_eq!(
+        plan(&world).map(DocsGatePlan::reason),
+        Some(DocsGateReason::DocumentationChanged)
+    );
 }
 
 #[scenario(
@@ -160,5 +173,8 @@ fn unreadable_markdown_triggers_fallback(world: PolicyWorld) {
     name = "Missing changed-file input runs the docs gate conservatively"
 )]
 fn missing_input_runs_docs_gate(world: PolicyWorld) {
-    assert_eq!(plan(&world).map(DocsGatePlan::reason), Some(DocsGateReason::MissingChangedFiles));
+    assert_eq!(
+        plan(&world).map(DocsGatePlan::reason),
+        Some(DocsGateReason::MissingChangedFiles)
+    );
 }

@@ -5,7 +5,10 @@ use proptest::prelude::*;
 use super::{line_tokens, redact_line};
 
 fn non_whitespace_content(value: &str) -> String {
-    value.chars().filter(|character| !character.is_ascii_whitespace()).collect()
+    value
+        .chars()
+        .filter(|character| !character.is_ascii_whitespace())
+        .collect()
 }
 
 prop_compose! {

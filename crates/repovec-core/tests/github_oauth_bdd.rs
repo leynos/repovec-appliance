@@ -3,8 +3,13 @@
 use std::time::Duration;
 
 use repovec_core::github_oauth::{
-    AccessToken, DeviceFlowErrorCode, PollDecision, TerminalDeviceFlowError, TokenPollOutcome,
-    apply_poll_outcome, classify_device_flow_error,
+    AccessToken,
+    DeviceFlowErrorCode,
+    PollDecision,
+    TerminalDeviceFlowError,
+    TokenPollOutcome,
+    apply_poll_outcome,
+    classify_device_flow_error,
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenarios, then, when};
@@ -22,7 +27,10 @@ struct GitHubOAuthWorld {
 #[fixture]
 fn github_oauth_world() -> GitHubOAuthWorld {
     let active_interval = Duration::ZERO;
-    GitHubOAuthWorld { active_interval, ..Default::default() }
+    GitHubOAuthWorld {
+        active_interval,
+        ..Default::default()
+    }
 }
 
 #[given("the active polling interval is 5 seconds")]
@@ -37,8 +45,10 @@ fn the_oauth_error_is_temporarily_unavailable(github_oauth_world: &mut GitHubOAu
 
 #[when("the token endpoint returns an access token")]
 fn the_token_endpoint_returns_an_access_token(github_oauth_world: &mut GitHubOAuthWorld) {
-    github_oauth_world.outcome =
-        Some(TokenPollOutcome::Authorized(AccessToken::new("gho_secret", ["repo"])));
+    github_oauth_world.outcome = Some(TokenPollOutcome::Authorized(AccessToken::new(
+        "gho_secret",
+        ["repo"],
+    )));
     apply_outcome(github_oauth_world);
 }
 
@@ -72,14 +82,19 @@ fn the_oauth_error_is_classified(github_oauth_world: &mut GitHubOAuthWorld) {
 
 #[then("polling completes successfully")]
 fn polling_completes_successfully(github_oauth_world: &GitHubOAuthWorld) {
-    assert!(matches!(github_oauth_world.decision, Some(PollDecision::Complete(_))));
+    assert!(matches!(
+        github_oauth_world.decision,
+        Some(PollDecision::Complete(_))
+    ));
 }
 
 #[then("the next polling interval is 10 seconds")]
 fn the_next_polling_interval_is_10_seconds(github_oauth_world: &GitHubOAuthWorld) {
     assert_eq!(
         github_oauth_world.decision,
-        Some(PollDecision::Continue { next_interval: Duration::from_secs(10) }),
+        Some(PollDecision::Continue {
+            next_interval: Duration::from_secs(10)
+        }),
     );
 }
 
@@ -109,8 +124,10 @@ fn apply_outcome(github_oauth_world: &mut GitHubOAuthWorld) {
     // A missing outcome leaves `decision` untouched, so the `then` step fails
     // with its own assertion instead of a panic in this setup helper.
     if let Some(outcome) = github_oauth_world.outcome.take() {
-        github_oauth_world.decision =
-            Some(apply_poll_outcome(outcome, github_oauth_world.active_interval));
+        github_oauth_world.decision = Some(apply_poll_outcome(
+            outcome,
+            github_oauth_world.active_interval,
+        ));
     }
 }
 

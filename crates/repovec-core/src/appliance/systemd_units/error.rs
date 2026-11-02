@@ -125,26 +125,55 @@ impl SystemdUnitError {
 impl fmt::Display for SystemdUnitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidLine { unit, line_number, line } => {
+            Self::InvalidLine {
+                unit,
+                line_number,
+                line,
+            } => {
                 write!(f, "invalid systemd line in {unit} at {line_number}: {line}")
             }
-            Self::PropertyBeforeSection { unit, line_number, line } => {
-                write!(f, "systemd property before section in {unit} on line {line_number}: {line}")
+            Self::PropertyBeforeSection {
+                unit,
+                line_number,
+                line,
+            } => {
+                write!(
+                    f,
+                    "systemd property before section in {unit} on line {line_number}: {line}"
+                )
             }
             Self::MissingSection { unit, section } => {
                 write!(f, "{unit} is missing [{section}]")
             }
-            Self::MissingDependency { unit, section, key, dependency } => {
+            Self::MissingDependency {
+                unit,
+                section,
+                key,
+                dependency,
+            } => {
                 write!(f, "{unit} is missing {key}={dependency} in [{section}]")
             }
-            Self::UsesQuadletSourceDependency { unit, section, key, dependency } => write!(
+            Self::UsesQuadletSourceDependency {
+                unit,
+                section,
+                key,
+                dependency,
+            } => write!(
                 f,
                 "{unit} must depend on qdrant.service, not {dependency}, in [{section}] {key}",
             ),
-            Self::IncorrectExecStart { unit, expected, actual } => {
+            Self::IncorrectExecStart {
+                unit,
+                expected,
+                actual,
+            } => {
                 write!(f, "{unit} must use ExecStart={expected}: {actual}")
             }
-            Self::IncorrectExecStartSequence { unit, expected, actual } => {
+            Self::IncorrectExecStartSequence {
+                unit,
+                expected,
+                actual,
+            } => {
                 write!(
                     f,
                     "{unit} must declare ExecStart={} in order: {}",
@@ -152,10 +181,23 @@ impl fmt::Display for SystemdUnitError {
                     actual.join(", ")
                 )
             }
-            Self::IncorrectServiceDirective { unit, key, expected, actual } => {
-                write!(f, "{unit} must have {key}={expected} in [Service]: {actual}")
+            Self::IncorrectServiceDirective {
+                unit,
+                key,
+                expected,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "{unit} must have {key}={expected} in [Service]: {actual}"
+                )
             }
-            Self::ForbiddenDirective { unit, section, key, actual } => {
+            Self::ForbiddenDirective {
+                unit,
+                section,
+                key,
+                actual,
+            } => {
                 write!(f, "{unit} must not declare {key} in [{section}]: {actual}")
             }
         }
@@ -183,7 +225,10 @@ mod tests {
                 line_number: 1,
                 line: "User=repovec".to_owned(),
             },
-            SystemdUnitError::MissingSection { unit: "repovec-mcpd.service", section: "Service" },
+            SystemdUnitError::MissingSection {
+                unit: "repovec-mcpd.service",
+                section: "Service",
+            },
             SystemdUnitError::MissingDependency {
                 unit: "repovec.target",
                 section: "Unit",

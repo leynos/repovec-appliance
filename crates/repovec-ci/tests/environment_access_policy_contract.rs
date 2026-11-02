@@ -14,13 +14,11 @@
 //!
 //! - deleting the `std::env::var_os` entry from `clippy.toml` fails
 //!   `clippy_policy_names_every_prohibited_environment_method`;
-//! - lowering the workspace `disallowed_methods` level from `deny` to `warn`
-//!   fails `workspace_lint_table_denies_disallowed_methods`;
-//! - deleting the `[lints] workspace = true` block from
-//!   `crates/repovec-core/Cargo.toml` fails
-//!   `every_workspace_member_inherits_the_workspace_lint_table` (setting the
-//!   key to `false` is not a usable mutation; Cargo rejects the manifest
-//!   before any test runs);
+//! - lowering the workspace `disallowed_methods` level from `deny` to `warn` fails
+//!   `workspace_lint_table_denies_disallowed_methods`;
+//! - deleting the `[lints] workspace = true` block from `crates/repovec-core/Cargo.toml` fails
+//!   `every_workspace_member_inherits_the_workspace_lint_table` (setting the key to `false` is not
+//!   a usable mutation; Cargo rejects the manifest before any test runs);
 //! - dropping `crates/repovectl` from `MEMBER_MANIFESTS` fails
 //!   `contract_covers_every_declared_workspace_member`;
 //! - dropping `--all-targets` from the Makefile's `CARGO_FLAGS` fails
@@ -57,30 +55,51 @@ const REQUIRED_ENVIRONMENT_METHODS: [(&str, &str); 6] = [
 
 /// Workspace member manifests, keyed by the path the workspace declares.
 const MEMBER_MANIFESTS: [(&str, &str); 7] = [
-    ("crates/repovec-ci", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))),
+    (
+        "crates/repovec-ci",
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")),
+    ),
     (
         "crates/repovec-core",
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../repovec-core/Cargo.toml")),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../repovec-core/Cargo.toml"
+        )),
     ),
     (
         "crates/repovec-mcpd",
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../repovec-mcpd/Cargo.toml")),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../repovec-mcpd/Cargo.toml"
+        )),
     ),
     (
         "crates/repovec-test-helpers",
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../repovec-test-helpers/Cargo.toml")),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../repovec-test-helpers/Cargo.toml"
+        )),
     ),
     (
         "crates/repovec-tui",
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../repovec-tui/Cargo.toml")),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../repovec-tui/Cargo.toml"
+        )),
     ),
     (
         "crates/repovecd",
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../repovecd/Cargo.toml")),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../repovecd/Cargo.toml"
+        )),
     ),
     (
         "crates/repovectl",
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../repovectl/Cargo.toml")),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../repovectl/Cargo.toml"
+        )),
     ),
 ];
 
@@ -116,7 +135,10 @@ fn disallowed_entries(policy: &Value) -> Result<Vec<(String, String)>, String> {
                 .get("path")
                 .and_then(Value::as_str)
                 .ok_or_else(|| format!("disallowed-methods entry {entry} should carry a path"))?;
-            let reason = entry.get("reason").and_then(Value::as_str).unwrap_or_default();
+            let reason = entry
+                .get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             Ok((path.to_owned(), reason.to_owned()))
         })
         .collect()
@@ -194,7 +216,10 @@ fn contract_covers_every_declared_workspace_member() {
         .collect();
     let covered: BTreeSet<&str> = MEMBER_MANIFESTS.iter().map(|(member, _)| *member).collect();
 
-    assert_eq!(declared, covered, "every workspace member must be covered by this contract");
+    assert_eq!(
+        declared, covered,
+        "every workspace member must be covered by this contract"
+    );
 }
 
 /// Scenario: a member crate replaces the inherited lint table with its own.
@@ -205,10 +230,16 @@ fn contract_covers_every_declared_workspace_member() {
 fn every_workspace_member_inherits_the_workspace_lint_table() {
     for (member, contents) in MEMBER_MANIFESTS {
         let manifest = parse_toml(member, contents).expect("member manifest should parse");
-        let inherits =
-            manifest.get("lints").and_then(|lints| lints.get("workspace")).and_then(Value::as_bool);
+        let inherits = manifest
+            .get("lints")
+            .and_then(|lints| lints.get("workspace"))
+            .and_then(Value::as_bool);
 
-        assert_eq!(inherits, Some(true), "{member} must inherit the workspace lint table");
+        assert_eq!(
+            inherits,
+            Some(true),
+            "{member} must inherit the workspace lint table"
+        );
     }
 }
 
@@ -220,6 +251,9 @@ fn every_workspace_member_inherits_the_workspace_lint_table() {
 #[test]
 fn lint_gate_covers_every_workspace_target_and_feature() {
     for line in REQUIRED_MAKEFILE_LINES {
-        assert!(contains_line(MAKEFILE, line), "the Makefile must contain the line {line:?}");
+        assert!(
+            contains_line(MAKEFILE, line),
+            "the Makefile must contain the line {line:?}"
+        );
     }
 }

@@ -44,7 +44,8 @@ mod tests_proptest;
 mod tests_proptest_strategies;
 
 use api_key::{
-    validate_api_key_secret, validate_no_inline_api_key_environment,
+    validate_api_key_secret,
+    validate_no_inline_api_key_environment,
     validate_provisioning_dependency,
 };
 pub use error::QdrantQuadletError;
@@ -53,8 +54,10 @@ use parser::ParsedQuadlet;
 use platform_bindings::validate_platform_bindings;
 
 /// The repository's embedded Qdrant Quadlet definition used for startup validation.
-const CHECKED_IN_QDRANT_QUADLET: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/qdrant.container"));
+const CHECKED_IN_QDRANT_QUADLET: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packaging/systemd/qdrant.container"
+));
 
 /// The repository path of the checked-in Qdrant Quadlet definition.
 pub const CHECKED_IN_QDRANT_QUADLET_PATH: &str = "packaging/systemd/qdrant.container";
@@ -116,15 +119,16 @@ pub const fn checked_in_qdrant_quadlet() -> &'static str { CHECKED_IN_QDRANT_QUA
 ///
 /// # Parameters
 ///
-/// - `observer`: Receives validation lifecycle and contract-violation events.
-///   Pass [`TracingQdrantQuadletObserver`] to emit structured `tracing` events,
-///   or `&()` when validation should use the no-op observer sink.
+/// - `observer`: Receives validation lifecycle and contract-violation events. Pass
+///   [`TracingQdrantQuadletObserver`] to emit structured `tracing` events, or `&()` when validation
+///   should use the no-op observer sink.
 ///
 /// # Examples
 ///
 /// ```rust,no_run
 /// use repovec_core::appliance::qdrant_quadlet::{
-///     TracingQdrantQuadletObserver, validate_checked_in_qdrant_quadlet,
+///     TracingQdrantQuadletObserver,
+///     validate_checked_in_qdrant_quadlet,
 /// };
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -148,15 +152,16 @@ pub fn validate_checked_in_qdrant_quadlet(
 /// # Parameters
 ///
 /// - `contents`: The Quadlet source to parse and validate.
-/// - `observer`: Receives validation lifecycle and contract-violation events.
-///   Pass [`TracingQdrantQuadletObserver`] to emit structured `tracing` events,
-///   or `&()` when validation should use the no-op observer sink.
+/// - `observer`: Receives validation lifecycle and contract-violation events. Pass
+///   [`TracingQdrantQuadletObserver`] to emit structured `tracing` events, or `&()` when validation
+///   should use the no-op observer sink.
 ///
 /// # Examples
 ///
 /// ```rust,no_run
 /// use repovec_core::appliance::qdrant_quadlet::{
-///     TracingQdrantQuadletObserver, validate_qdrant_quadlet,
+///     TracingQdrantQuadletObserver,
+///     validate_qdrant_quadlet,
 /// };
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -215,18 +220,24 @@ fn validate_required_image(
         DirectiveValues::Single(image) => image,
         DirectiveValues::Duplicate(duplicate_image_values) => {
             observer.unexpected_image(&duplicate_image_values, REQUIRED_IMAGE);
-            return Err(QdrantQuadletError::UnexpectedImage { image: duplicate_image_values });
+            return Err(QdrantQuadletError::UnexpectedImage {
+                image: duplicate_image_values,
+            });
         }
     };
 
     if !is_fully_qualified_and_pinned(image) {
         observer.image_not_fully_qualified(image, REQUIRED_IMAGE);
-        return Err(QdrantQuadletError::ImageNotFullyQualified { image: image.to_owned() });
+        return Err(QdrantQuadletError::ImageNotFullyQualified {
+            image: image.to_owned(),
+        });
     }
 
     if image != REQUIRED_IMAGE {
         observer.unexpected_image(image, REQUIRED_IMAGE);
-        return Err(QdrantQuadletError::UnexpectedImage { image: image.to_owned() });
+        return Err(QdrantQuadletError::UnexpectedImage {
+            image: image.to_owned(),
+        });
     }
 
     Ok(())

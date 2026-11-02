@@ -7,7 +7,9 @@ use insta::assert_snapshot;
 use rstest::{fixture, rstest};
 
 use super::{
-    QdrantQuadletError, checked_in_qdrant_quadlet, validate_checked_in_qdrant_quadlet,
+    QdrantQuadletError,
+    checked_in_qdrant_quadlet,
+    validate_checked_in_qdrant_quadlet,
     validate_qdrant_quadlet,
 };
 
@@ -60,15 +62,13 @@ impl ValidationScenario {
             Self::WrongFullyQualifiedImage => {
                 canonical.replace("docker.io/qdrant/qdrant:v1", "docker.io/other/image:v2")
             }
-            Self::DuplicateImageValues => {
-                canonical.replace(
+            Self::DuplicateImageValues => canonical.replace(
+                "Image=docker.io/qdrant/qdrant:v1\n",
+                concat!(
                     "Image=docker.io/qdrant/qdrant:v1\n",
-                    concat!(
-                        "Image=docker.io/qdrant/qdrant:v1\n",
-                        "Image=docker.io/qdrant/qdrant:v2\n",
-                    ),
-                )
-            }
+                    "Image=docker.io/qdrant/qdrant:v2\n",
+                ),
+            ),
             Self::MissingRestPublish => canonical.replace("PublishPort=127.0.0.1:6333:6333\n", ""),
             Self::MissingGrpcPublish => canonical.replace("PublishPort=127.0.0.1:6334:6334\n", ""),
             Self::RestPublishNotLoopback => {
@@ -76,16 +76,22 @@ impl ValidationScenario {
             }
             Self::ConflictingRestPublishDuplicate => canonical.replace(
                 "PublishPort=127.0.0.1:6333:6333\n",
-                concat!("PublishPort=127.0.0.1:6333:6333\n", "PublishPort=0.0.0.0:6333:6333\n",),
+                concat!(
+                    "PublishPort=127.0.0.1:6333:6333\n",
+                    "PublishPort=0.0.0.0:6333:6333\n",
+                ),
             ),
             Self::GrpcPublishNotLoopback => {
                 canonical.replace("127.0.0.1:6334:6334", "0.0.0.0:6334:6334")
             }
-            Self::StorageVolumeMissing => {
-                canonical.replace("Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n", "")
-            }
-            Self::StorageSourceWrong => canonical
-                .replace("/var/lib/repovec/qdrant-storage", "/var/lib/other/qdrant-storage"),
+            Self::StorageVolumeMissing => canonical.replace(
+                "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
+                "",
+            ),
+            Self::StorageSourceWrong => canonical.replace(
+                "/var/lib/repovec/qdrant-storage",
+                "/var/lib/other/qdrant-storage",
+            ),
             Self::StorageTargetWrong => canonical.replace("/qdrant/storage:Z", "/srv/qdrant:Z"),
             Self::SelinuxRelabelMissing => {
                 canonical.replace(":/qdrant/storage:Z", ":/qdrant/storage")
@@ -98,8 +104,10 @@ impl ValidationScenario {
                 "AutoUpdate=registry\n",
                 concat!("AutoUpdate=registry\n", "AutoUpdate=local\n"),
             ),
-            Self::RestPublishMalformed => canonical
-                .replace("PublishPort=127.0.0.1:6333:6333\n", "PublishPort=not-a-mapping\n"),
+            Self::RestPublishMalformed => canonical.replace(
+                "PublishPort=127.0.0.1:6333:6333\n",
+                "PublishPort=not-a-mapping\n",
+            ),
             Self::GrpcPublishMalformed => canonical.replace(
                 "PublishPort=127.0.0.1:6334:6334\n",
                 "PublishPort=still-not-three-fields\n",
@@ -179,16 +187,16 @@ impl ValidationScenario {
             Self::StorageSourceWrong => QdrantQuadletError::IncorrectStorageSource {
                 source: String::from("/var/lib/other/qdrant-storage"),
             },
-            Self::StorageTargetWrong => {
-                QdrantQuadletError::IncorrectStorageTarget { target: String::from("/srv/qdrant") }
-            }
+            Self::StorageTargetWrong => QdrantQuadletError::IncorrectStorageTarget {
+                target: String::from("/srv/qdrant"),
+            },
             Self::SelinuxRelabelMissing => QdrantQuadletError::MissingSelinuxRelabel {
                 volume: String::from("/var/lib/repovec/qdrant-storage:/qdrant/storage"),
             },
             Self::AutoUpdateMissing => QdrantQuadletError::MissingAutoUpdate,
-            Self::AutoUpdateWrongValue => {
-                QdrantQuadletError::IncorrectAutoUpdate { auto_update: String::from("local") }
-            }
+            Self::AutoUpdateWrongValue => QdrantQuadletError::IncorrectAutoUpdate {
+                auto_update: String::from("local"),
+            },
             Self::DuplicateAutoUpdateValues => QdrantQuadletError::IncorrectAutoUpdate {
                 auto_update: String::from("registry,local"),
             },
@@ -239,7 +247,8 @@ fn validated_qdrant_quadlet_violations_match_expected_variant_and_diagnostic_sna
     let input = scenario.mutated_contents(&qdrant_quadlet_contents);
     let Err(err) = validate_qdrant_quadlet(&input, &()) else {
         panic!(
-            "expected {scenario:?} validation to fail — input parsed as valid Quadlet:\n---\n{input}\n---",
+            "expected {scenario:?} validation to fail — input parsed as valid \
+             Quadlet:\n---\n{input}\n---",
         );
     };
 

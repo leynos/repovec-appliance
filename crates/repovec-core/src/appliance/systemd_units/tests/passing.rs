@@ -8,8 +8,11 @@
 //! four-unit and checked-in validation helpers.
 
 use super::super::{
-    checked_in_repovec_grepai_template, checked_in_repovec_mcpd_service, checked_in_repovec_target,
-    checked_in_repovecd_service, validate_checked_in_systemd_units,
+    checked_in_repovec_grepai_template,
+    checked_in_repovec_mcpd_service,
+    checked_in_repovec_target,
+    checked_in_repovecd_service,
+    validate_checked_in_systemd_units,
     validate_systemd_units_with_grepai_template,
 };
 
@@ -23,7 +26,10 @@ fn assert_mutated_service(original: &str, service_name: &str) -> String {
         "Environment=HOME=/var/lib/repovec\n",
         "Environment=HOME=/var/lib/repovec\nEnvironment=SOME_OTHER_VAR=value\n",
     );
-    assert_ne!(mutated, original, "replacement should mutate the {service_name} service");
+    assert_ne!(
+        mutated, original,
+        "replacement should mutate the {service_name} service"
+    );
     mutated
 }
 
@@ -42,7 +48,10 @@ fn semicolon_comments_are_ignored() {
     );
     let target =
         original_target.replace("[Unit]\n", "[Unit]\n; systemd accepts semicolon comments\n");
-    assert_ne!(target, original_target, "replacement should mutate the target");
+    assert_ne!(
+        target, original_target,
+        "replacement should mutate the target"
+    );
 
     validate_systemd_units_with_grepai_template(
         &target,

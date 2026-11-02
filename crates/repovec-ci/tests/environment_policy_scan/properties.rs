@@ -17,14 +17,13 @@
 //! Mutation-proved on 2026-09-14, each applied alone to `scan.rs` and run
 //! through the build:
 //!
-//! - dropping the `"expect" if scope == Scope::Crate` arm from
-//!   `suppressed_by_meta` fails
+//! - dropping the `"expect" if scope == Scope::Crate` arm from `suppressed_by_meta` fails
 //!   `a_protected_lint_is_reported_in_every_offending_form`;
-//! - collecting an empty token stream in place of each macro body, so every
-//!   helper stays used and the mutant compiles, fails it too;
+//! - collecting an empty token stream in place of each macro body, so every helper stays used and
+//!   the mutant compiles, fails it too;
 //! - comparing lint names with `contains` rather than by path fails
-//!   `an_unprotected_lint_is_never_reported`, on the two generated names that
-//!   begin with the text of a protected one.
+//!   `an_unprotected_lint_is_never_reported`, on the two generated names that begin with the text
+//!   of a protected one.
 
 use proptest::prelude::*;
 
@@ -67,7 +66,10 @@ enum OffendingForm {
 
 /// Spell a lint path with every segment as a raw identifier.
 fn as_raw(lint: &str) -> String {
-    lint.split("::").map(|segment| format!("r#{segment}")).collect::<Vec<_>>().join("::")
+    lint.split("::")
+        .map(|segment| format!("r#{segment}"))
+        .collect::<Vec<_>>()
+        .join("::")
 }
 
 impl OffendingForm {

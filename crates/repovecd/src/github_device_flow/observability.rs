@@ -12,7 +12,10 @@ use super::{CompletedDeviceFlow, DeviceFlowLoginRequest, DeviceFlowRunError};
 /// A request with two scopes enters `github_device_flow.complete` with
 /// `scope_count=2`.
 pub(super) fn device_flow_span(request: &DeviceFlowLoginRequest) -> Span {
-    info_span!("github_device_flow.complete", scope_count = request.scopes.len())
+    info_span!(
+        "github_device_flow.complete",
+        scope_count = request.scopes.len()
+    )
 }
 
 /// Records the start counter for a device-flow login.

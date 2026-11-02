@@ -116,7 +116,8 @@ fn record_qdrant_liveness_failure_metric(span: &Span, error: &QdrantLivenessErro
 /// use std::time::Duration;
 ///
 /// use repovec_core::appliance::qdrant_liveness::{
-///     qdrant_liveness_error_category, QdrantLivenessError,
+///     QdrantLivenessError,
+///     qdrant_liveness_error_category,
 /// };
 ///
 /// let error = QdrantLivenessError::Timeout {

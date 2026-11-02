@@ -9,7 +9,13 @@ use insta::assert_snapshot;
 use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
 
 use super::{
-    Command, Input, USAGE, parse_args, print_usage, run_systemd_gate, run_systemd_gate_with,
+    Command,
+    Input,
+    USAGE,
+    parse_args,
+    print_usage,
+    run_systemd_gate,
+    run_systemd_gate_with,
     write_plan,
 };
 
@@ -146,7 +152,10 @@ fn changed_file_flags_collect_all_paths() {
 
     match command {
         Command::DocsGate(Input::ChangedFiles(paths)) => {
-            assert_eq!(paths, vec!["docs/users-guide.md", ".markdownlint-cli2.jsonc"]);
+            assert_eq!(
+                paths,
+                vec!["docs/users-guide.md", ".markdownlint-cli2.jsonc"]
+            );
         }
         Command::Help | Command::DocsGate(_) | Command::SystemdGate => {
             panic!("changed-file flags should yield ChangedFiles");
@@ -167,7 +176,11 @@ fn systemd_gate_rejects_changed_file_flags() {
     };
 
     assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
-    assert!(error.to_string().contains("unsupported argument for systemd-gate"));
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported argument for systemd-gate")
+    );
 }
 
 /// Keep the real systemd command wired to shipped unit validation rather than a test-only success
@@ -236,8 +249,14 @@ fn systemd_gate_propagates_unit_validation_error() {
         },
     );
 
-    assert!(result.is_err(), "unit validation failure must propagate as Err");
-    assert!(!layout_called.get(), "layout validation must follow unit validation");
+    assert!(
+        result.is_err(),
+        "unit validation failure must propagate as Err"
+    );
+    assert!(
+        !layout_called.get(),
+        "layout validation must follow unit validation"
+    );
     assert!(buffer.is_empty(), "no output should be written on failure");
     let Err(error) = result else {
         panic!("unit validation failure must propagate as Err");
@@ -260,8 +279,14 @@ fn systemd_gate_propagates_directory_layout_validation_error() {
         || Err(io::Error::other("/var/lib/repovec has mode 0755")),
     );
 
-    assert!(result.is_err(), "layout validation failure must propagate as Err");
-    assert!(units_called.get(), "unit validation must run before layout validation");
+    assert!(
+        result.is_err(),
+        "layout validation failure must propagate as Err"
+    );
+    assert!(
+        units_called.get(),
+        "unit validation must run before layout validation"
+    );
     assert!(buffer.is_empty(), "no output should be written on failure");
     let Err(error) = result else {
         panic!("layout validation failure must propagate as Err");
@@ -292,7 +317,11 @@ fn stdin_and_changed_file_are_mutually_exclusive() {
     };
 
     assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
-    assert!(error.to_string().contains("--stdin cannot be combined with --changed-file"));
+    assert!(
+        error
+            .to_string()
+            .contains("--stdin cannot be combined with --changed-file")
+    );
 }
 
 /// Keep usage guidance attached to unknown-option errors so callers can recover from invalid CLI

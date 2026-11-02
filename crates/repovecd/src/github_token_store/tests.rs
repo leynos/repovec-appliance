@@ -18,8 +18,13 @@ use rstest::{fixture, rstest};
 use thiserror::Error;
 
 use super::{
-    CommandOutput, CommandRunner, CredentialEncryptor, EncryptedGitHubTokenStore,
-    SystemdCredsEncryptor, SystemdCredsError, TokenStoreError,
+    CommandOutput,
+    CommandRunner,
+    CredentialEncryptor,
+    EncryptedGitHubTokenStore,
+    SystemdCredsEncryptor,
+    SystemdCredsError,
+    TokenStoreError,
 };
 use crate::tracing_test::capture_info_logs;
 
@@ -79,7 +84,10 @@ struct RecordingRunner {
 
 impl RecordingRunner {
     fn new() -> Self {
-        Self { calls: Rc::new(RefCell::new(Vec::new())), stdins: Rc::new(RefCell::new(Vec::new())) }
+        Self {
+            calls: Rc::new(RefCell::new(Vec::new())),
+            stdins: Rc::new(RefCell::new(Vec::new())),
+        }
     }
 
     fn calls(&self) -> Vec<Vec<String>> { self.calls.borrow().clone() }
@@ -106,7 +114,10 @@ impl CommandRunner for RecordingRunner {
             .collect::<Vec<_>>();
         self.calls.borrow_mut().push(collected.clone());
         self.stdins.borrow_mut().push(stdin.to_vec());
-        if collected.last().is_none_or(|output_path| output_path != "-") {
+        if collected
+            .last()
+            .is_none_or(|output_path| output_path != "-")
+        {
             return Ok(CommandOutput {
                 status_code: Some(2),
                 stderr: b"missing stdout marker".to_vec(),
@@ -165,7 +176,9 @@ fn load_decrypts_the_stored_token(
     let fixture = stored_token?;
     let token = fixture.store.load_token()?;
     if token.secret() != "gho_secret" {
-        return Err(StoredTokenFixtureError::WrongLoadedToken(token.secret().to_owned()));
+        return Err(StoredTokenFixtureError::WrongLoadedToken(
+            token.secret().to_owned(),
+        ));
     }
     Ok(())
 }
@@ -208,7 +221,11 @@ fn build_stored_token() -> Result<StoredTokenFixture, StoredTokenFixtureError> {
 
     store.store_token(&AccessToken::new("gho_secret", ["repo"]))?;
 
-    Ok(StoredTokenFixture { _tempdir: tempdir, root, store })
+    Ok(StoredTokenFixture {
+        _tempdir: tempdir,
+        root,
+        store,
+    })
 }
 
 #[test]
@@ -216,10 +233,18 @@ fn systemd_creds_encryptor_does_not_pass_token_as_an_argument() {
     let runner = RecordingRunner::new();
     let encryptor = SystemdCredsEncryptor::new(runner.clone());
 
-    let encrypted = encryptor.encrypt(b"gho_secret").expect("token should encrypt");
+    let encrypted = encryptor
+        .encrypt(b"gho_secret")
+        .expect("token should encrypt");
 
     assert_eq!(encrypted, b"ciphertext");
-    assert!(runner.calls().iter().flatten().all(|arg| !arg.contains("gho_secret")));
+    assert!(
+        runner
+            .calls()
+            .iter()
+            .flatten()
+            .all(|arg| !arg.contains("gho_secret"))
+    );
     assert_eq!(runner.stdins(), [b"gho_secret".to_vec()]);
 }
 
@@ -228,7 +253,9 @@ fn systemd_creds_encryptor_reads_input_from_stdin() {
     let runner = RecordingRunner::new();
     let encryptor = SystemdCredsEncryptor::new(runner.clone());
 
-    encryptor.encrypt(b"gho_secret").expect("token should encrypt");
+    encryptor
+        .encrypt(b"gho_secret")
+        .expect("token should encrypt");
 
     assert_eq!(
         runner.calls(),
@@ -246,15 +273,15 @@ fn systemd_creds_decrypt_uses_the_credential_name_binding() {
     let runner = RecordingRunner::new();
     let encryptor = SystemdCredsEncryptor::new(runner.clone());
 
-    let decrypted = encryptor.decrypt(b"ciphertext").expect("token should decrypt");
+    let decrypted = encryptor
+        .decrypt(b"ciphertext")
+        .expect("token should decrypt");
 
     assert_eq!(decrypted, b"ciphertext");
-    assert!(
-        runner
-            .calls()
-            .iter()
-            .any(|args| args.iter().any(|arg| arg == "--name=repovec-github-oauth-token"))
-    );
+    assert!(runner.calls().iter().any(|args| {
+        args.iter()
+            .any(|arg| arg == "--name=repovec-github-oauth-token")
+    }));
 }
 
 #[test]

@@ -143,7 +143,10 @@ where
 {
     validate_units()?;
     validate_layout()?;
-    writeln!(out, "checked-in systemd units and directory layout satisfy the appliance contract")?;
+    writeln!(
+        out,
+        "checked-in systemd units and directory layout satisfy the appliance contract"
+    )?;
     out.flush()
 }
 
@@ -163,7 +166,11 @@ fn write_plan(out: &mut impl io::Write, plan: &DocsGatePlan) -> io::Result<()> {
         "conservative_fallback_files_count={}",
         plan.conservative_fallback_files().len()
     )?;
-    writeln!(out, "conservative_fallback_files={}", plan.conservative_fallback_files().join(","))?;
+    writeln!(
+        out,
+        "conservative_fallback_files={}",
+        plan.conservative_fallback_files().join(",")
+    )?;
     out.flush()
 }
 

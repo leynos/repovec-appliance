@@ -18,7 +18,11 @@ pub(super) fn normalize_path(path: &str) -> Option<String> {
         return None;
     }
 
-    Some(trimmed.strip_prefix("./").map_or_else(|| trimmed.to_owned(), str::to_owned))
+    Some(
+        trimmed
+            .strip_prefix("./")
+            .map_or_else(|| trimmed.to_owned(), str::to_owned),
+    )
 }
 
 /// Identifies Markdown files and documentation-tool configuration inputs.
@@ -45,7 +49,9 @@ pub(super) fn is_markdown_path(path: &str) -> bool {
 /// For example, `".markdownlint-cli2.jsonc"` matches; an unrelated JSON file
 /// does not.
 pub(super) fn is_docs_tooling_config_path(path: &str) -> bool {
-    DOCS_TOOLING_CONFIG_PATHS.iter().any(|known_path| path.eq_ignore_ascii_case(known_path))
+    DOCS_TOOLING_CONFIG_PATHS
+        .iter()
+        .any(|known_path| path.eq_ignore_ascii_case(known_path))
 }
 
 /// Reads a documentation file through the repository-rooted directory handle.
@@ -54,11 +60,12 @@ pub(super) fn is_docs_tooling_config_path(path: &str) -> bool {
 /// `Absent`; a missing or unreadable path returns `Unknown` so validation can
 /// proceed conservatively.
 pub(super) fn path_contains_mermaid(root: &Dir, path: &str) -> MermaidDetection {
-    root.read_to_string(Utf8Path::new(path)).map_or(MermaidDetection::Unknown, |contents| {
-        if contents.contains("```mermaid") {
-            MermaidDetection::Present
-        } else {
-            MermaidDetection::Absent
-        }
-    })
+    root.read_to_string(Utf8Path::new(path))
+        .map_or(MermaidDetection::Unknown, |contents| {
+            if contents.contains("```mermaid") {
+                MermaidDetection::Present
+            } else {
+                MermaidDetection::Absent
+            }
+        })
 }

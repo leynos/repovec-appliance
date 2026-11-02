@@ -29,7 +29,11 @@ const fn case(
     expected: DirectoryLayoutError,
     display: &'static str,
 ) -> DisplayCase {
-    DisplayCase { mutation, expected, display }
+    DisplayCase {
+        mutation,
+        expected,
+        display,
+    }
 }
 
 #[rstest]

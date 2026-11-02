@@ -7,11 +7,21 @@ pub(super) fn missing(
     key: &'static str,
     dependency: &'static str,
 ) -> SystemdUnitError {
-    SystemdUnitError::MissingDependency { unit, section: "Unit", key, dependency }
+    SystemdUnitError::MissingDependency {
+        unit,
+        section: "Unit",
+        key,
+        dependency,
+    }
 }
 
 pub(super) fn missing_install(unit: &'static str, dependency: &'static str) -> SystemdUnitError {
-    SystemdUnitError::MissingDependency { unit, section: "Install", key: "WantedBy", dependency }
+    SystemdUnitError::MissingDependency {
+        unit,
+        section: "Install",
+        key: "WantedBy",
+        dependency,
+    }
 }
 
 pub(super) fn quadlet_source(
@@ -32,7 +42,11 @@ pub(super) fn exec_start(
     expected: &'static str,
     actual: &str,
 ) -> SystemdUnitError {
-    SystemdUnitError::IncorrectExecStart { unit, expected, actual: actual.to_owned() }
+    SystemdUnitError::IncorrectExecStart {
+        unit,
+        expected,
+        actual: actual.to_owned(),
+    }
 }
 
 pub(super) fn service_directive(
@@ -41,7 +55,12 @@ pub(super) fn service_directive(
     expected: &'static str,
     actual: &str,
 ) -> SystemdUnitError {
-    SystemdUnitError::IncorrectServiceDirective { unit, key, expected, actual: actual.to_owned() }
+    SystemdUnitError::IncorrectServiceDirective {
+        unit,
+        key,
+        expected,
+        actual: actual.to_owned(),
+    }
 }
 
 pub(super) fn forbidden_directive(
@@ -50,5 +69,10 @@ pub(super) fn forbidden_directive(
     key: &'static str,
     actual: &str,
 ) -> SystemdUnitError {
-    SystemdUnitError::ForbiddenDirective { unit, section, key, actual: actual.to_owned() }
+    SystemdUnitError::ForbiddenDirective {
+        unit,
+        section,
+        key,
+        actual: actual.to_owned(),
+    }
 }

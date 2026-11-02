@@ -7,7 +7,9 @@
 use std::cell::Cell;
 
 use super::{
-    DaemonStartupError, STARTUP_FAILURE_EXIT_CODE, log_daemon_startup_error,
+    DaemonStartupError,
+    STARTUP_FAILURE_EXIT_CODE,
+    log_daemon_startup_error,
     validate_daemon_startup_contracts_with_live,
 };
 use crate::appliance::directory_layout::live::{LiveLayoutError, LiveLayoutViolation};
@@ -18,7 +20,9 @@ use crate::appliance::directory_layout::live::{LiveLayoutError, LiveLayoutViolat
 /// against a different root. The path is carried through to the log line, so
 /// each assertion can name it rather than matching on text alone.
 fn missing_data_root() -> LiveLayoutError {
-    LiveLayoutError::MissingPath { path: "/var/lib/repovec".into() }
+    LiveLayoutError::MissingPath {
+        path: "/var/lib/repovec".into(),
+    }
 }
 
 /// Build an ownership violation with distinct expected and observed ids.
@@ -96,7 +100,10 @@ fn startup_runs_live_layout_check_between_the_other_two() {
     );
 
     assert!(result.is_ok());
-    assert_eq!(observed.into_inner(), vec![Step::Systemd, Step::LiveLayout, Step::Qdrant]);
+    assert_eq!(
+        observed.into_inner(),
+        vec![Step::Systemd, Step::LiveLayout, Step::Qdrant]
+    );
 }
 
 /// Retain the offending path in the operator log and map the failure to exit 1.

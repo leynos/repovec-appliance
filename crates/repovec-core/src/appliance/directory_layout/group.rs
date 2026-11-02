@@ -59,7 +59,8 @@ pub(crate) fn group_database_text() -> Result<String, GroupLookupError> {
     let etc =
         Dir::open_ambient_dir("/etc", ambient_authority()).map_err(GroupLookupError::Unreadable)?;
 
-    etc.read_to_string("group").map_err(GroupLookupError::Unreadable)
+    etc.read_to_string("group")
+        .map_err(GroupLookupError::Unreadable)
 }
 
 /// Resolves the `repovec` gid from group-database text that has already been

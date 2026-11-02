@@ -55,16 +55,28 @@ fn empty_input_runs_the_docs_gate_conservatively() {
 #[test]
 fn mixed_input_returns_only_markdown_matches() {
     let plan = evaluate_docs_gate_with(
-        ["crates/repovec-core/src/lib.rs", "./docs/roadmap.md", "README.md", ""],
+        [
+            "crates/repovec-core/src/lib.rs",
+            "./docs/roadmap.md",
+            "README.md",
+            "",
+        ],
         |path| {
-            if path == "README.md" { MermaidDetection::Present } else { MermaidDetection::Absent }
+            if path == "README.md" {
+                MermaidDetection::Present
+            } else {
+                MermaidDetection::Absent
+            }
         },
     );
 
     assert!(plan.should_run());
     assert!(plan.nixie_required());
     assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
-    assert_eq!(plan.matched_files(), &["docs/roadmap.md".to_owned(), "README.md".to_owned()]);
+    assert_eq!(
+        plan.matched_files(),
+        &["docs/roadmap.md".to_owned(), "README.md".to_owned()]
+    );
 }
 
 #[test]
@@ -83,21 +95,29 @@ fn unreadable_markdown_requests_nixie_conservatively() {
     assert!(plan.docs_gate_required());
     assert!(plan.nixie_required());
     assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
-    assert_eq!(plan.conservative_fallback_files(), &["docs/users-guide.md".to_owned()]);
+    assert_eq!(
+        plan.conservative_fallback_files(),
+        &["docs/users-guide.md".to_owned()]
+    );
 }
 
 #[test]
 fn unreadable_markdown_is_recorded_even_after_nixie_is_already_required() {
-    let plan =
-        evaluate_docs_gate_with([".markdownlint-cli2.jsonc", "docs/users-guide.md"], |path| {
+    let plan = evaluate_docs_gate_with(
+        [".markdownlint-cli2.jsonc", "docs/users-guide.md"],
+        |path| {
             if path == "docs/users-guide.md" {
                 MermaidDetection::Unknown
             } else {
                 MermaidDetection::Absent
             }
-        });
+        },
+    );
 
     assert!(plan.docs_gate_required());
     assert!(plan.nixie_required());
-    assert_eq!(plan.conservative_fallback_files(), &["docs/users-guide.md".to_owned()]);
+    assert_eq!(
+        plan.conservative_fallback_files(),
+        &["docs/users-guide.md".to_owned()]
+    );
 }

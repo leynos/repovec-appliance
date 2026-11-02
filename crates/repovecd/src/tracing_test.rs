@@ -25,7 +25,10 @@ where
         .finish();
 
     let result = tracing::subscriber::with_default(subscriber, action);
-    let bytes = captured.lock().map_err(|_| CaptureLogsError::Poisoned)?.clone();
+    let bytes = captured
+        .lock()
+        .map_err(|_| CaptureLogsError::Poisoned)?
+        .clone();
     let logs = String::from_utf8(bytes)?;
     Ok((result, logs))
 }

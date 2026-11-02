@@ -12,8 +12,15 @@ use rstest::{fixture, rstest};
 use thiserror::Error;
 
 use super::{
-    DeviceAuthorization, DeviceFlowApi, DeviceFlowLoginRequest, DeviceFlowRunError,
-    DeviceFlowRuntime, Sleeper, TerminalDeviceFlowError, TokenStore, complete_device_flow,
+    DeviceAuthorization,
+    DeviceFlowApi,
+    DeviceFlowLoginRequest,
+    DeviceFlowRunError,
+    DeviceFlowRuntime,
+    Sleeper,
+    TerminalDeviceFlowError,
+    TokenStore,
+    complete_device_flow,
 };
 use crate::tracing_test::capture_info_logs;
 
@@ -47,11 +54,17 @@ impl FakeApi {
     }
 
     fn request_fails(error: FakeApiError) -> Self {
-        Self { request_error: Some(error), ..Self::new(Vec::new()) }
+        Self {
+            request_error: Some(error),
+            ..Self::new(Vec::new())
+        }
     }
 
     fn poll_fails(error: FakeApiError) -> Self {
-        Self { poll_error: Some(error), ..Self::new(Vec::new()) }
+        Self {
+            poll_error: Some(error),
+            ..Self::new(Vec::new())
+        }
     }
 }
 
@@ -104,10 +117,18 @@ struct FakeStore {
 }
 
 impl FakeStore {
-    fn new() -> Self { Self { tokens: RefCell::new(Vec::new()), error: None } }
+    fn new() -> Self {
+        Self {
+            tokens: RefCell::new(Vec::new()),
+            error: None,
+        }
+    }
 
     fn failing(error: FakeStoreError) -> Self {
-        Self { tokens: RefCell::new(Vec::new()), error: Some(error) }
+        Self {
+            tokens: RefCell::new(Vec::new()),
+            error: Some(error),
+        }
     }
 }
 
@@ -160,7 +181,10 @@ fn happy_path_stores_the_authorized_token(
 
     assert_eq!(result.prompt.user_code.as_str(), "ABCD-1234");
     assert_eq!(result.token.secret(), "gho_secret");
-    assert_eq!(store.tokens.borrow().as_slice(), [AccessToken::new("gho_secret", ["repo"])]);
+    assert_eq!(
+        store.tokens.borrow().as_slice(),
+        [AccessToken::new("gho_secret", ["repo"])]
+    );
     assert_eq!(
         *recording_sleeper.sleeps.borrow(),
         [Duration::from_secs(5), Duration::from_secs(5)]
@@ -200,7 +224,9 @@ fn access_denied_stops_without_storing_a_token(
 
     assert!(matches!(
         result,
-        Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::AccessDenied)),
+        Err(DeviceFlowRunError::Terminal(
+            TerminalDeviceFlowError::AccessDenied
+        )),
     ));
     assert!(store.tokens.borrow().is_empty());
 }
@@ -219,7 +245,9 @@ fn local_expiry_stops_polling_before_the_next_sleep_would_exceed_the_deadline(
 
     assert!(matches!(
         result,
-        Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::ExpiredToken)),
+        Err(DeviceFlowRunError::Terminal(
+            TerminalDeviceFlowError::ExpiredToken
+        )),
     ));
     assert!(recording_sleeper.sleeps.borrow().is_empty());
 }
@@ -229,7 +257,10 @@ fn expiry_uses_the_injected_clock(login_request: DeviceFlowLoginRequest) {
     let api = FakeApi::new(vec![TokenPollOutcome::AuthorizationPending])
         .with_expires_in(Duration::from_secs(9));
     let store = FakeStore::new();
-    let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
+    let sleeper = RecordingSleeper {
+        sleeps: RefCell::new(Vec::new()),
+        events: None,
+    };
     let started_at = Instant::now()
         .checked_add(Duration::from_secs(60))
         .expect("test instant should support adding one minute");
@@ -241,7 +272,9 @@ fn expiry_uses_the_injected_clock(login_request: DeviceFlowLoginRequest) {
 
     assert!(matches!(
         result,
-        Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::ExpiredToken)),
+        Err(DeviceFlowRunError::Terminal(
+            TerminalDeviceFlowError::ExpiredToken
+        )),
     ));
     assert!(sleeper.sleeps.borrow().is_empty());
 }
@@ -251,7 +284,10 @@ fn local_expiry_emits_terminal_metric(login_request: DeviceFlowLoginRequest) {
     let api = FakeApi::new(vec![TokenPollOutcome::AuthorizationPending])
         .with_expires_in(Duration::from_secs(4));
     let store = FakeStore::new();
-    let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
+    let sleeper = RecordingSleeper {
+        sleeps: RefCell::new(Vec::new()),
+        events: None,
+    };
     let runtime = DeviceFlowRuntime::new(&api, &store, &sleeper);
 
     let (result, logs) =
@@ -260,7 +296,9 @@ fn local_expiry_emits_terminal_metric(login_request: DeviceFlowLoginRequest) {
 
     assert!(matches!(
         result,
-        Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::ExpiredToken)),
+        Err(DeviceFlowRunError::Terminal(
+            TerminalDeviceFlowError::ExpiredToken
+        )),
     ));
     assert!(logs.contains("metric.github_device_flow_terminal_total"));
     assert!(logs.contains("expired_token"));
@@ -271,8 +309,10 @@ fn prompt_is_presented_before_first_sleep_or_poll(login_request: DeviceFlowLogin
     let events = Rc::new(RefCell::new(Vec::new()));
     let api = FakeApi::new(vec![TokenPollOutcome::AccessDenied]).with_events(Rc::clone(&events));
     let store = FakeStore::new();
-    let sleeper =
-        RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: Some(Rc::clone(&events)) };
+    let sleeper = RecordingSleeper {
+        sleeps: RefCell::new(Vec::new()),
+        events: Some(Rc::clone(&events)),
+    };
 
     let runtime = DeviceFlowRuntime::new(&api, &store, &sleeper);
     let result = complete_device_flow(&runtime, &login_request, |prompt| {
@@ -282,7 +322,9 @@ fn prompt_is_presented_before_first_sleep_or_poll(login_request: DeviceFlowLogin
 
     assert!(matches!(
         result,
-        Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::AccessDenied)),
+        Err(DeviceFlowRunError::Terminal(
+            TerminalDeviceFlowError::AccessDenied
+        )),
     ));
     assert_eq!(*events.borrow(), ["prompt", "sleep", "poll"]);
 }
@@ -299,18 +341,25 @@ fn reused_sleeper_starts_expiry_clock_per_login(
 
     assert!(matches!(
         first_result,
-        Err(DeviceFlowRunError::Terminal(TerminalDeviceFlowError::AccessDenied)),
+        Err(DeviceFlowRunError::Terminal(
+            TerminalDeviceFlowError::AccessDenied
+        )),
     ));
 
-    let second_api =
-        FakeApi::new(vec![TokenPollOutcome::Authorized(AccessToken::new("gho_secret", ["repo"]))])
-            .with_expires_in(Duration::from_secs(6));
+    let second_api = FakeApi::new(vec![TokenPollOutcome::Authorized(AccessToken::new(
+        "gho_secret",
+        ["repo"],
+    ))])
+    .with_expires_in(Duration::from_secs(6));
     let second_runtime = DeviceFlowRuntime::new(&second_api, &store, &recording_sleeper);
     let second_result = complete_device_flow(&second_runtime, &login_request, |_| {});
 
     let completed = second_result.expect("second login should complete");
     assert_eq!(completed.token.secret(), "gho_secret");
-    assert_eq!(store.tokens.borrow().as_slice(), [AccessToken::new("gho_secret", ["repo"])]);
+    assert_eq!(
+        store.tokens.borrow().as_slice(),
+        [AccessToken::new("gho_secret", ["repo"])]
+    );
 }
 
 #[rstest]
@@ -335,7 +384,10 @@ fn adapter_errors_are_propagated(
     #[case] store: FakeStore,
     #[case] expected_error: ExpectedRunError,
 ) {
-    let sleeper = RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None };
+    let sleeper = RecordingSleeper {
+        sleeps: RefCell::new(Vec::new()),
+        events: None,
+    };
     let runtime = DeviceFlowRuntime::new(&api, &store, &sleeper);
     let result = complete_device_flow(&runtime, &login_request, |_| {});
 
@@ -360,10 +412,16 @@ enum ExpectedRunError {
 
 #[fixture]
 fn login_request() -> DeviceFlowLoginRequest {
-    DeviceFlowLoginRequest { client_id: ClientId::new("client"), scopes: vec!["repo".into()] }
+    DeviceFlowLoginRequest {
+        client_id: ClientId::new("client"),
+        scopes: vec!["repo".into()],
+    }
 }
 
 #[fixture]
 fn recording_sleeper() -> RecordingSleeper {
-    RecordingSleeper { sleeps: RefCell::new(Vec::new()), events: None }
+    RecordingSleeper {
+        sleeps: RefCell::new(Vec::new()),
+        events: None,
+    }
 }

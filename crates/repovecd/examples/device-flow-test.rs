@@ -24,9 +24,14 @@ impl CredentialEncryptor for ExampleEncryptor {
     }
 
     fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, Self::Error> {
-        let encrypted = ciphertext.strip_prefix(b"example-encrypted:").ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "missing example encryption prefix")
-        })?;
+        let encrypted = ciphertext
+            .strip_prefix(b"example-encrypted:")
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "missing example encryption prefix",
+                )
+            })?;
         Ok(encrypted.iter().rev().copied().collect())
     }
 }

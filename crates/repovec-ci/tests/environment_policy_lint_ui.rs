@@ -32,7 +32,11 @@ const REPORTED_METHODS: [(&str, &str); 6] = [
 ];
 
 /// Return the repository root, which is where `clippy.toml` lives.
-fn repository_root() -> PathBuf { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..") }
+fn repository_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+}
 
 /// Return the fixture package manifest.
 fn fixture_manifest() -> PathBuf {
@@ -61,7 +65,10 @@ fn lint_fixture(target_directory: &TempDir) -> Result<String, String> {
         .arg("clippy::disallowed_methods")
         .env("CLIPPY_CONF_DIR", repository_root())
         .env("CARGO_TARGET_DIR", target_directory.path())
-        .env("CARGO_BUILD_BUILD_DIR", target_directory.path().join("build"))
+        .env(
+            "CARGO_BUILD_BUILD_DIR",
+            target_directory.path().join("build"),
+        )
         .env("RUSTFLAGS", "")
         .env("CARGO_TERM_COLOR", "never")
         .output()
@@ -102,7 +109,10 @@ fn every_prohibited_environment_method_is_reported_with_its_remedy() {
 
     for (method, remedy) in REPORTED_METHODS {
         let block = diagnostic_block(&diagnostics, method);
-        assert!(block.is_some(), "Clippy should report {method}; diagnostics were:\n{diagnostics}");
+        assert!(
+            block.is_some(),
+            "Clippy should report {method}; diagnostics were:\n{diagnostics}"
+        );
         assert!(
             block.is_some_and(|reported| reported.contains(remedy)),
             "the {method} diagnostic should carry the remedy {remedy:?}; its block was:\n{block:?}"

@@ -81,7 +81,8 @@ impl ParsedUnit {
     /// Parses section headers and directives, returning the first malformed-line error.
     ///
     /// For example, `parse("demo.service", "[Service]\nUser=repovec")` stores the service
-    /// directive; a property before any section returns [`SystemdUnitError::PropertyBeforeSection`].
+    /// directive; a property before any section returns
+    /// [`SystemdUnitError::PropertyBeforeSection`].
     pub(super) fn parse(unit: &'static str, contents: &str) -> Result<Self, SystemdUnitError> {
         let mut sections = BTreeMap::<String, BTreeMap<String, Vec<String>>>::new();
         let mut current_section: Option<&str> = None;
@@ -101,7 +102,11 @@ impl ParsedUnit {
                     current_section = Some(section);
                 }
                 ParsedLine::KeyValue(key_value) => {
-                    let context = LineContext { unit, line_number, line };
+                    let context = LineContext {
+                        unit,
+                        line_number,
+                        line,
+                    };
                     insert_key_value(&context, current_section, &mut sections, &key_value)?;
                 }
             }
@@ -115,7 +120,10 @@ impl ParsedUnit {
         if self.sections.contains_key(section) {
             Ok(())
         } else {
-            Err(SystemdUnitError::MissingSection { unit: self.unit, section })
+            Err(SystemdUnitError::MissingSection {
+                unit: self.unit,
+                section,
+            })
         }
     }
 
@@ -145,7 +153,12 @@ impl ParsedUnit {
             return Ok(());
         }
 
-        Err(SystemdUnitError::MissingDependency { unit: self.unit, section, key, dependency })
+        Err(SystemdUnitError::MissingDependency {
+            unit: self.unit,
+            section,
+            key,
+            dependency,
+        })
     }
 
     /// Requires exactly one `ExecStart` value equal to `expected`.
@@ -285,9 +298,12 @@ impl ParsedUnit {
                     actual,
                 })
             }
-            DirectiveRequirement::Absent => {
-                Err(SystemdUnitError::ForbiddenDirective { unit: self.unit, section, key, actual })
-            }
+            DirectiveRequirement::Absent => Err(SystemdUnitError::ForbiddenDirective {
+                unit: self.unit,
+                section,
+                key,
+                actual,
+            }),
         }
     }
 
@@ -306,7 +322,10 @@ impl ParsedUnit {
     ///
     /// For example, querying `("Service", "User")` returns the stored `User` values.
     fn values(&self, section: &str, key: &str) -> &[String] {
-        self.sections.get(section).and_then(|entries| entries.get(key)).map_or(&[], Vec::as_slice)
+        self.sections
+            .get(section)
+            .and_then(|entries| entries.get(key))
+            .map_or(&[], Vec::as_slice)
     }
 }
 
@@ -315,7 +334,10 @@ impl ParsedUnit {
 /// For example, a single `/usr/bin/repovecd` value matches that one-item
 /// expectation, while an additional command does not.
 fn exec_start_values_match(values: &[String], expected: &[&str]) -> bool {
-    values.iter().map(String::as_str).eq(expected.iter().copied())
+    values
+        .iter()
+        .map(String::as_str)
+        .eq(expected.iter().copied())
 }
 
 /// Classifies a trimmed line as ignored, a section, or a key/value directive.

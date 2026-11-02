@@ -7,11 +7,10 @@
 //!
 //! ## Validation Entry Points
 //!
-//! - [`validate_checked_in_directory_layout`] validates the two embedded
-//!   packaging assets shipped in the repository.
-//! - [`validate_directory_layout`] validates caller-supplied asset text. Use it
-//!   in tests or tooling that needs to analyse asset contents sourced outside
-//!   the checked-in files.
+//! - [`validate_checked_in_directory_layout`] validates the two embedded packaging assets shipped
+//!   in the repository.
+//! - [`validate_directory_layout`] validates caller-supplied asset text. Use it in tests or tooling
+//!   that needs to analyse asset contents sourced outside the checked-in files.
 //!
 //! ## Contract Scope
 //!
@@ -48,8 +47,12 @@ mod tests_support;
 
 use assets::{CHECKED_IN_REPOVEC_SYSUSERS, CHECKED_IN_REPOVEC_TMPFILES};
 pub use assets::{
-    CHECKED_IN_REPOVEC_SYSUSERS_PATH, CHECKED_IN_REPOVEC_TMPFILES_PATH,
-    INSTALLED_REPOVEC_SYSUSERS_PATH, INSTALLED_REPOVEC_TMPFILES_PATH, REPOVEC_HOME, REPOVEC_SHELL,
+    CHECKED_IN_REPOVEC_SYSUSERS_PATH,
+    CHECKED_IN_REPOVEC_TMPFILES_PATH,
+    INSTALLED_REPOVEC_SYSUSERS_PATH,
+    INSTALLED_REPOVEC_TMPFILES_PATH,
+    REPOVEC_HOME,
+    REPOVEC_SHELL,
     REPOVEC_USER,
 };
 use camino::{Utf8Path, Utf8PathBuf};
@@ -79,7 +82,12 @@ impl DirectorySpec {
         owner: &'static str,
         group: &'static str,
     ) -> Self {
-        Self { path: path.into(), mode, owner, group }
+        Self {
+            path: path.into(),
+            mode,
+            owner,
+            group,
+        }
     }
 }
 
@@ -87,8 +95,18 @@ impl DirectorySpec {
 fn layout_contract(paths: &RuntimePaths) -> Vec<DirectorySpec> {
     vec![
         DirectorySpec::new(paths.data_root(), Mode(0o700), REPOVEC_USER, REPOVEC_USER),
-        DirectorySpec::new(paths.git_mirrors_root(), Mode(0o700), REPOVEC_USER, REPOVEC_USER),
-        DirectorySpec::new(paths.worktrees_root(), Mode(0o700), REPOVEC_USER, REPOVEC_USER),
+        DirectorySpec::new(
+            paths.git_mirrors_root(),
+            Mode(0o700),
+            REPOVEC_USER,
+            REPOVEC_USER,
+        ),
+        DirectorySpec::new(
+            paths.worktrees_root(),
+            Mode(0o700),
+            REPOVEC_USER,
+            REPOVEC_USER,
+        ),
         DirectorySpec::new(paths.grepai_root(), Mode(0o700), REPOVEC_USER, REPOVEC_USER),
         DirectorySpec::new(paths.qdrant_storage_root(), Mode(0o700), "root", "root"),
     ]
@@ -185,8 +203,10 @@ fn validate_tmpfiles_entries(
         };
 
         let path = entry.path.as_str();
-        let Some((index, spec)) =
-            contract.iter().enumerate().find(|(_, spec)| spec.path.as_str() == path)
+        let Some((index, spec)) = contract
+            .iter()
+            .enumerate()
+            .find(|(_, spec)| spec.path.as_str() == path)
         else {
             // A config-root entry violates the single-authority invariant (SI-4):
             // the libexec helper owns /etc/repovec, so the tmpfiles asset must
@@ -211,7 +231,9 @@ fn validate_tmpfiles_entries(
     // on every run, and it is the first one in the documented layout.
     for (spec, is_satisfied) in contract.iter().zip(&satisfied) {
         if !is_satisfied {
-            return Err(DirectoryLayoutError::MissingDirectoryEntry { path: spec.path.clone() });
+            return Err(DirectoryLayoutError::MissingDirectoryEntry {
+                path: spec.path.clone(),
+            });
         }
     }
 
@@ -228,9 +250,13 @@ fn unexpected_tmpfiles_path_error(
     // second authority for the secrets file.
     let candidate = Utf8Path::new(path);
     if candidate.starts_with(runtime_paths.config_root()) {
-        DirectoryLayoutError::ForbiddenSecretsEntry { path: candidate.to_path_buf() }
+        DirectoryLayoutError::ForbiddenSecretsEntry {
+            path: candidate.to_path_buf(),
+        }
     } else {
-        DirectoryLayoutError::UnexpectedDirectoryEntry { path: candidate.to_path_buf() }
+        DirectoryLayoutError::UnexpectedDirectoryEntry {
+            path: candidate.to_path_buf(),
+        }
     }
 }
 
@@ -363,7 +389,9 @@ fn validate_sysusers_entries(sysusers: &str) -> Result<(), DirectoryLayoutError>
         // numeric uid would make provisioning depend on that number being free
         // on the host, which the appliance does not control.
         if entry.uid != "-" {
-            return Err(DirectoryLayoutError::SysusersPinnedUid { actual: entry.uid.clone() });
+            return Err(DirectoryLayoutError::SysusersPinnedUid {
+                actual: entry.uid.clone(),
+            });
         }
 
         if entry.home != REPOVEC_HOME {
@@ -381,5 +409,9 @@ fn validate_sysusers_entries(sysusers: &str) -> Result<(), DirectoryLayoutError>
         }
     }
 
-    if found_user { Ok(()) } else { Err(DirectoryLayoutError::SysusersMissingUser) }
+    if found_user {
+        Ok(())
+    } else {
+        Err(DirectoryLayoutError::SysusersMissingUser)
+    }
 }

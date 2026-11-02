@@ -6,8 +6,13 @@
 //! auto-update policy.
 
 use super::{
-    CONTAINER_SECTION, QdrantQuadletError, QdrantQuadletObserver, REQUIRED_GRPC_PORT,
-    REQUIRED_REST_PORT, REQUIRED_STORAGE_TARGET, parser::ParsedQuadlet,
+    CONTAINER_SECTION,
+    QdrantQuadletError,
+    QdrantQuadletObserver,
+    REQUIRED_GRPC_PORT,
+    REQUIRED_REST_PORT,
+    REQUIRED_STORAGE_TARGET,
+    parser::ParsedQuadlet,
 };
 
 /// The host path where the appliance stores Qdrant's persistent data.
@@ -94,8 +99,9 @@ fn validate_required_port(
         return Err(binding.missing_error);
     }
 
-    if let Some(publish_port) =
-        matching_publish_ports.iter().find(|port| **port != binding.required_binding)
+    if let Some(publish_port) = matching_publish_ports
+        .iter()
+        .find(|port| **port != binding.required_binding)
     {
         observer.publish_port_not_bound_to_loopback(
             binding.container_port,
@@ -137,15 +143,19 @@ fn validate_storage_mount(
     let mut last_candidate_error = None;
     let mut missing_storage_mount_volume = None;
 
-    for (volume, parts) in volumes.iter().filter_map(|volume| storage_mount_candidate(volume)) {
+    for (volume, parts) in volumes
+        .iter()
+        .filter_map(|volume| storage_mount_candidate(volume))
+    {
         let Some(source) = parts.first().copied() else {
             missing_storage_mount_volume = Some(volume);
             last_candidate_error = Some(QdrantQuadletError::MissingStorageMount);
             continue;
         };
         if source != REQUIRED_STORAGE_SOURCE {
-            last_candidate_error =
-                Some(QdrantQuadletError::IncorrectStorageSource { source: source.to_owned() });
+            last_candidate_error = Some(QdrantQuadletError::IncorrectStorageSource {
+                source: source.to_owned(),
+            });
             continue;
         }
 
@@ -155,14 +165,19 @@ fn validate_storage_mount(
             continue;
         };
         if target != REQUIRED_STORAGE_TARGET {
-            last_candidate_error =
-                Some(QdrantQuadletError::IncorrectStorageTarget { target: target.to_owned() });
+            last_candidate_error = Some(QdrantQuadletError::IncorrectStorageTarget {
+                target: target.to_owned(),
+            });
             continue;
         }
 
-        if !parts.get(2..).is_some_and(has_required_selinux_relabel_option) {
-            last_candidate_error =
-                Some(QdrantQuadletError::MissingSelinuxRelabel { volume: volume.to_owned() });
+        if !parts
+            .get(2..)
+            .is_some_and(has_required_selinux_relabel_option)
+        {
+            last_candidate_error = Some(QdrantQuadletError::MissingSelinuxRelabel {
+                volume: volume.to_owned(),
+            });
             continue;
         }
 
@@ -222,9 +237,12 @@ fn has_required_selinux_relabel_option(options: &[&str]) -> bool {
 /// parts; an unrelated volume returns `None`.
 fn storage_mount_candidate(volume: &str) -> Option<(&str, Vec<&str>)> {
     let parts = volume.split(':').collect::<Vec<_>>();
-    let has_required_source =
-        parts.first().is_some_and(|source| *source == REQUIRED_STORAGE_SOURCE);
-    let has_required_target = parts.get(1).is_some_and(|target| *target == REQUIRED_STORAGE_TARGET);
+    let has_required_source = parts
+        .first()
+        .is_some_and(|source| *source == REQUIRED_STORAGE_SOURCE);
+    let has_required_target = parts
+        .get(1)
+        .is_some_and(|target| *target == REQUIRED_STORAGE_TARGET);
 
     (has_required_source || has_required_target).then_some((volume, parts))
 }
@@ -255,7 +273,9 @@ fn validate_auto_update(
 
     if auto_update != REQUIRED_AUTO_UPDATE_POLICY {
         observer.incorrect_auto_update(auto_update, REQUIRED_AUTO_UPDATE_POLICY);
-        return Err(QdrantQuadletError::IncorrectAutoUpdate { auto_update: auto_update.clone() });
+        return Err(QdrantQuadletError::IncorrectAutoUpdate {
+            auto_update: auto_update.clone(),
+        });
     }
 
     Ok(())

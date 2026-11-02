@@ -7,7 +7,9 @@
 //! violating input is built.
 
 use crate::appliance::directory_layout::{
-    DirectoryLayoutError, checked_in_repovec_sysusers, checked_in_repovec_tmpfiles,
+    DirectoryLayoutError,
+    checked_in_repovec_sysusers,
+    checked_in_repovec_tmpfiles,
     validate_directory_layout,
 };
 
@@ -25,11 +27,21 @@ pub(super) struct Mutation {
 
 impl Mutation {
     pub(super) const fn tmpfiles(from: &'static str, to: &'static str) -> Self {
-        Self { tmpfiles_from: Some(from), tmpfiles_to: to, sysusers_from: None, sysusers_to: "" }
+        Self {
+            tmpfiles_from: Some(from),
+            tmpfiles_to: to,
+            sysusers_from: None,
+            sysusers_to: "",
+        }
     }
 
     pub(super) const fn sysusers(from: &'static str, to: &'static str) -> Self {
-        Self { tmpfiles_from: None, tmpfiles_to: "", sysusers_from: Some(from), sysusers_to: to }
+        Self {
+            tmpfiles_from: None,
+            tmpfiles_to: "",
+            sysusers_from: Some(from),
+            sysusers_to: to,
+        }
     }
 
     fn apply(self, tmpfiles: &mut String, sysusers: &mut String) {
@@ -52,7 +64,10 @@ impl Mutation {
 
 /// Returns the unmutated checked-in asset pair.
 pub(super) fn checked_in() -> (String, String) {
-    (checked_in_repovec_tmpfiles().to_owned(), checked_in_repovec_sysusers().to_owned())
+    (
+        checked_in_repovec_tmpfiles().to_owned(),
+        checked_in_repovec_sysusers().to_owned(),
+    )
 }
 
 /// Asserts that applying `mutation` yields exactly `expected`.

@@ -12,7 +12,11 @@ use super::{QDRANT_API_KEY_ENVIRONMENT_VARIABLE, QDRANT_API_KEY_SECRET, QDRANT_A
 
 macro_rules! include_packaging_asset {
     ($path:literal) => {
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/", $path))
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../packaging/",
+            $path
+        ))
     };
 }
 
@@ -37,7 +41,9 @@ fn helper_offset(needle: &str) -> usize {
 /// either the boundary or the needle is invalid.
 fn find_helper_offset_after(needle: &str, offset: usize) -> Option<usize> {
     let suffix = PROVISIONING_HELPER.get(offset..)?;
-    suffix.find(needle).map(|relative_offset| offset + relative_offset)
+    suffix
+        .find(needle)
+        .map(|relative_offset| offset + relative_offset)
 }
 
 /// Asserts that `needle` occurs in `PROVISIONING_HELPER` after `offset`.
@@ -105,8 +111,8 @@ fn provisioning_service_runs_the_packaged_helper_once() {
 fn api_key_service_requires_provisioning() {
     assert!(
         PROVISIONING_SERVICE.contains("Requires=repovec-provision.service"),
-        "repovec-qdrant-api-key.service must require repovec-provision.service; \
-         Before= alone is only an ordering constraint"
+        "repovec-qdrant-api-key.service must require repovec-provision.service; Before= alone is \
+         only an ordering constraint"
     );
 }
 
@@ -260,7 +266,9 @@ fn provisioning_helper_defines_required_functions_with_correct_implementations()
     assert!(!trap_sites.is_empty(), "expected trap handlers after flock");
     for pos in trap_sites {
         let suffix = helper_slice(pos, PROVISIONING_HELPER.len());
-        let line_end = suffix.find('\n').map_or(PROVISIONING_HELPER.len(), |n| pos + n);
+        let line_end = suffix
+            .find('\n')
+            .map_or(PROVISIONING_HELPER.len(), |n| pos + n);
         let trap_line = helper_slice(pos, line_end);
         assert!(
             trap_line.contains("release_lock"),
@@ -271,7 +279,10 @@ fn provisioning_helper_defines_required_functions_with_correct_implementations()
 
 /// Collects all byte offsets of `needle` in `PROVISIONING_HELPER`.
 fn all_helper_offsets(needle: &str) -> Vec<usize> {
-    PROVISIONING_HELPER.match_indices(needle).map(|(i, _)| i).collect()
+    PROVISIONING_HELPER
+        .match_indices(needle)
+        .map(|(i, _)| i)
+        .collect()
 }
 
 proptest! {
@@ -318,9 +329,18 @@ fn key_generation_call_site_is_inside_locked_critical_section() {
 fn flock_precedes_every_mutable_operation() {
     let flock_pos = helper_offset("flock 9");
     let mutable_ops = [
-        ("podman secret inspect", helper_offset("podman secret inspect \"${SECRET_NAME}\"")),
-        ("podman secret rm", helper_offset("podman secret rm \"${SECRET_NAME}\"")),
-        ("podman secret create", helper_offset("podman secret create \"${SECRET_NAME}\"")),
+        (
+            "podman secret inspect",
+            helper_offset("podman secret inspect \"${SECRET_NAME}\""),
+        ),
+        (
+            "podman secret rm",
+            helper_offset("podman secret rm \"${SECRET_NAME}\""),
+        ),
+        (
+            "podman secret create",
+            helper_offset("podman secret create \"${SECRET_NAME}\""),
+        ),
         (
             "generate_key_file",
             helper_offset_after(
@@ -330,7 +350,10 @@ fn flock_precedes_every_mutable_operation() {
         ),
     ];
     for (name, op_pos) in mutable_ops {
-        assert!(flock_pos < op_pos, "flock at {flock_pos} must precede {name} at {op_pos}");
+        assert!(
+            flock_pos < op_pos,
+            "flock at {flock_pos} must precede {name} at {op_pos}"
+        );
     }
 }
 
@@ -342,8 +365,14 @@ fn fail_closed_path_logs_error_and_exits_non_zero() {
     let failure_log = helper_offset_after("log \"podman secret removal failed:", else_branch);
     let failure_exit = helper_offset_after("exit 1", failure_log);
 
-    assert!(else_branch < failure_log, "fail-closed else branch must precede its error log");
-    assert!(failure_log < failure_exit, "error log must precede exit 1 on the fail-closed path");
+    assert!(
+        else_branch < failure_log,
+        "fail-closed else branch must precede its error log"
+    );
+    assert!(
+        failure_log < failure_exit,
+        "error log must precede exit 1 on the fail-closed path"
+    );
 }
 
 #[test]

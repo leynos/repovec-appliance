@@ -16,7 +16,8 @@ fn parsed_account(line: &str) -> Result<super::account::RepovecAccount, String> 
 
 #[test]
 fn find_repovec_account_parses_a_contract_correct_entry() {
-    let sample = "root:x:0:0:root:/root:/bin/bash\nrepovec:x:998:996:repovec appliance service user:/var/lib/repovec:/usr/sbin/nologin\n";
+    let sample = "root:x:0:0:root:/root:/bin/bash\nrepovec:x:998:996:repovec appliance service \
+                  user:/var/lib/repovec:/usr/sbin/nologin\n";
 
     let account = parsed_account(sample).expect("repovec account");
 
@@ -37,8 +38,8 @@ fn find_repovec_account_returns_none_when_absent() {
 fn find_repovec_account_ignores_a_prefix_match_on_the_name() {
     // `repovec-backup` contains `repovec` as a prefix; the lookup compares the
     // whole name column so the earlier row cannot stand in for the account.
-    let sample = "repovec-backup:x:997:997:backup:/srv/backup:/usr/sbin/nologin\n\
-                  repovec:x:998:996:repovec appliance service user:/var/lib/repovec:/usr/sbin/nologin\n";
+    let sample = "repovec-backup:x:997:997:backup:/srv/backup:/usr/sbin/nologin\nrepovec:x:998:\
+                  996:repovec appliance service user:/var/lib/repovec:/usr/sbin/nologin\n";
 
     let account = parsed_account(sample).expect("repovec account");
 
@@ -80,7 +81,10 @@ fn validate_repovec_account_rejects_a_login_capable_shell() {
 
     let error = validate_repovec_account(&account).expect_err("shell violation");
 
-    assert_eq!(error.to_string(), "the repovec user shell must be /usr/sbin/nologin: /bin/bash");
+    assert_eq!(
+        error.to_string(),
+        "the repovec user shell must be /usr/sbin/nologin: /bin/bash"
+    );
 }
 
 #[test]
@@ -92,6 +96,9 @@ fn validate_repovec_account_rejects_a_mismatched_home() {
 
     let error = validate_repovec_account(&account).expect_err("home violation");
 
-    assert_eq!(error.to_string(), "the repovec user home must be /var/lib/repovec: /home/repovec");
+    assert_eq!(
+        error.to_string(),
+        "the repovec user home must be /var/lib/repovec: /home/repovec"
+    );
     assert_eq!(error.path(), None);
 }

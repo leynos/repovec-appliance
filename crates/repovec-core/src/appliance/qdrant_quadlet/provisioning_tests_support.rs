@@ -55,7 +55,11 @@ pub(super) fn helper_offset_after(needle: &str, offset: usize) -> usize {
                 "helper should contain expected text after offset: needle={needle:?}, ",
                 "offset={offset}, helper_len={}",
             ),
-            PROVISIONING_HELPER.len()
+            // A format string that comes from `concat!` cannot capture names
+            // implicitly, so the arguments are named explicitly.
+            PROVISIONING_HELPER.len(),
+            needle = needle,
+            offset = offset
         );
     };
     found
@@ -79,7 +83,11 @@ pub(super) fn helper_slice(start: usize, end: usize) -> &'static str {
                 "helper slice should use valid byte boundaries: start={start}, end={end}, ",
                 "helper_len={}",
             ),
-            PROVISIONING_HELPER.len()
+            // A format string that comes from `concat!` cannot capture names
+            // implicitly, so the arguments are named explicitly.
+            PROVISIONING_HELPER.len(),
+            start = start,
+            end = end
         );
     };
     slice

@@ -23,6 +23,10 @@ fn assert_mutated_service(original: &str, service_name: &str) -> String {
             "expected checked-in {service_name} service to contain ",
             "'Environment=HOME=/var/lib/repovec\\n' but got: {original}",
         ),
+        // A format string that comes from `concat!` cannot capture names
+        // implicitly, so the arguments are named explicitly.
+        service_name = service_name,
+        original = original,
     );
     let mutated = original.replace(
         "Environment=HOME=/var/lib/repovec\n",

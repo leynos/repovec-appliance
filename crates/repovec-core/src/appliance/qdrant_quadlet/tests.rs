@@ -249,10 +249,16 @@ fn validated_qdrant_quadlet_violations_match_expected_variant_and_diagnostic_sna
 ) {
     let input = scenario.mutated_contents(&qdrant_quadlet_contents);
     let Err(err) = validate_qdrant_quadlet(&input, &()) else {
-        panic!(concat!(
-            "expected {scenario:?} validation to fail — input parsed as valid ",
-            "Quadlet:\n---\n{input}\n---",
-        ));
+        panic!(
+            concat!(
+                "expected {scenario:?} validation to fail — input parsed as valid ",
+                "Quadlet:\n---\n{input}\n---",
+            ),
+            // A format string that comes from `concat!` cannot capture names
+            // implicitly, so the arguments are named explicitly.
+            scenario = scenario,
+            input = input,
+        );
     };
 
     assert_eq!(err, scenario.expected_error());

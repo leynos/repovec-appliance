@@ -99,11 +99,18 @@ fn info_terminal_total(outcome: &'static str) {
 ///
 /// An increase on attempt 2 from 5 to 10 seconds reports those three values.
 fn info_slow_down(attempt: u64, previous_interval_seconds: u64, next_interval_seconds: u64) {
-    info!(concat!(
-        "github_device_flow.slow_down attempt={attempt} ",
-        "previous_interval_seconds={previous_interval_seconds} ",
-        "next_interval_seconds={next_interval_seconds}",
-    ));
+    info!(
+        concat!(
+            "github_device_flow.slow_down attempt={attempt} ",
+            "previous_interval_seconds={previous_interval_seconds} ",
+            "next_interval_seconds={next_interval_seconds}",
+        ),
+        // A format string that comes from `concat!` cannot capture names
+        // implicitly, so the arguments are named explicitly.
+        attempt = attempt,
+        previous_interval_seconds = previous_interval_seconds,
+        next_interval_seconds = next_interval_seconds,
+    );
 }
 
 /// Increments the counter for server-requested polling slowdowns.

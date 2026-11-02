@@ -47,8 +47,9 @@ CLI, a strict lint baseline, and a CI pipeline that gates merges.
     the six rustdoc denies from `broken_intra_doc_links` to
     `unescaped_backticks`. `make lint` builds the documentation with
     `--cfg docsrs` so the rustdoc denies see the same configuration as the
-    published docs. No source repair was needed: the earlier documentation
-    waves already cover every private item.
+    published docs. No production source repair was needed: the earlier
+    documentation waves already cover every private item, and the one
+    test-source change is the assertion message the new row required.
   - Confirm `make lint` and `make check-fmt` pass with zero warnings.
   - Status: complete.
 - [ ] 1.1.3. Add CI gating pipeline

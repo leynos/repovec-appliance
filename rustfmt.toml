@@ -1,9 +1,17 @@
-edition = "2024"
-# Nightly rustfmt is required for the project's single-line function and
-# crate-granularity import-grouping policy.
+# Nightly rustfmt is required: `unstable_features` gates the unstable options
+# below, and `rust-toolchain.toml` pins the nightly channel that provides them.
 unstable_features = true
-fn_single_line = true
-group_imports = "StdExternalCrate"
+comment_width = 100
+format_code_in_doc_comments = true
 imports_granularity = "Crate"
-newline_style = "Unix"
-use_small_heuristics = "Max"
+imports_layout = "HorizontalVertical"
+wrap_comments = true
+group_imports = "StdExternalCrate"
+use_try_shorthand = true
+hex_literal_case = "Lower"
+format_strings = true
+format_macro_matchers = true
+fn_single_line = true
+condense_wildcard_suffixes = true
+use_field_init_shorthand = true
+ignore = ["crates/repovec-core/tests/ui"]

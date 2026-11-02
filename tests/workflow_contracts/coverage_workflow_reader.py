@@ -280,6 +280,13 @@ def continues_on_error(mapping: dict[str, object]) -> bool:
     -------
     bool
         True when ``continue-on-error`` is set to any value other than false.
+
+    Examples
+    --------
+    >>> continues_on_error({"continue-on-error": True})
+    True
+    >>> continues_on_error({"run": "make test"})
+    False
     """
     return mapping.get("continue-on-error", False) is not False
 
@@ -306,6 +313,13 @@ def holding_job(name: str, document: Document, step: Step) -> dict[str, object]:
     StopIteration
         If the step is not part of any job in the document, which means the
         caller holds a step from another reading.
+
+    Examples
+    --------
+    >>> document = {"jobs": {"build": {"steps": [{"run": "make test"}]}}}
+    >>> step = document["jobs"]["build"]["steps"][0]
+    >>> holding_job("ci.yml", document, step) is document["jobs"]["build"]
+    True
     """
     return next(
         job

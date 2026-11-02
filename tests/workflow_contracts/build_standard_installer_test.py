@@ -1,202 +1,30 @@
 """Hermetic coverage for the build-tools installer.
 
-``scripts/install-build-tools.sh`` downloads a pinned mold release, verifies
-it against ``tools/mold/SHA256SUMS``, unpacks it under a prefix, and installs
-the pinned toolchain. Nothing in that list is safe to exercise against the
-network or a developer's real toolchain, so these tests drive the real
-script with the real ``sha256sum`` and ``tar`` over a tarball the test
-builds, and put stubs for ``curl``, ``uname`` and ``rustup`` on PATH.
+The shared fixtures live in ``build_standard_installer_support``: they build
+a real tarball, seed the pin files, and put stubs for ``curl``, ``uname`` and
+``rustup`` on PATH. These tests use them to exercise the installer's success
+and failure paths without touching the network or a developer's toolchain.
 
-Covering the real checksum and extraction steps is deliberate: a stub
-``sha256sum`` would accept any digest, and a stub ``tar`` would accept any
-archive layout, so the two properties the installer exists to guarantee --
-that a wrong artefact is refused and that the archive's root is stripped --
-would go untested.
-
-The installer's scratch directory is reported through ``TMPDIR``, which
-each test points at an otherwise empty directory. That makes cleanup
-observable: a successful run and a rejected run must both leave nothing
-behind.
+Run via ``make test-workflow-contracts``.
 """
 
 from __future__ import annotations
 
 import hashlib
-import io
-import os
-import shutil
-import subprocess
-import tarfile
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Final
 
 import pytest
 
-from build_standard_probe import SUBPROCESS_TIMEOUT_SECONDS
+from build_standard_installer_support import (
+    ARCHIVE_NAME,
+    ARCHIVE_ROOT,
+    MOLD_PAYLOAD,
+    MOLD_VERSION,
+    TOOLCHAIN,
+    Installer,
+    installer,
+)
 
-REPO_ROOT: Final = Path(__file__).resolve().parents[2]
-INSTALLER_PATH: Final = REPO_ROOT / "scripts" / "install-build-tools.sh"
-BASH: Final = shutil.which("bash") or "/usr/bin/bash"
-
-MOLD_VERSION: Final = "9.9.9"
-TOOLCHAIN: Final = "nightly-2026-11-01"
-ARCHIVE_ROOT: Final = f"mold-{MOLD_VERSION}-x86_64-linux"
-ARCHIVE_NAME: Final = f"{ARCHIVE_ROOT}.tar.gz"
-
-#: The payload the test puts at the archive's ``bin/mold``. Its content is
-#: asserted after extraction, so a run that unpacks nothing, or unpacks to
-#: the wrong depth, fails here rather than passing on an empty prefix.
-MOLD_PAYLOAD: Final = b"#!/bin/sh\necho 'mold 9.9.9 (fake)'\n"
-
-
-@dataclass(frozen=True)
-class Installer:
-    """One prepared hermetic installer environment.
-
-    Attributes
-    ----------
-    root
-        The test's private directory; every other path lives below it.
-    prefix
-        The ``BUILD_TOOLS_PREFIX`` the installer unpacks into.
-    scratch
-        The ``TMPDIR`` the installer's ``mktemp -d`` must clean up.
-    log
-        Where the stubs record the invocations they receive.
-    """
-
-    root: Path
-    prefix: Path
-    scratch: Path
-    log: Path
-
-    def environment(self) -> dict[str, str]:
-        """Return the child environment, pinned to stubs and test paths."""
-        environment = os.environ.copy()
-        environment.update(
-            {
-                "PATH": f"{self.root / 'stub'}:/usr/bin:/bin",
-                "HOME": str(self.root / "home"),
-                "TMPDIR": str(self.scratch),
-                "BUILD_TOOLS_PREFIX": str(self.prefix),
-                "MOLD_VERSION_FILE": str(self.root / "VERSION"),
-                "MOLD_SHA256SUMS_FILE": str(self.root / "SHA256SUMS"),
-                "RUST_TOOLCHAIN_FILE": str(self.root / "rust-toolchain.toml"),
-                "MOLD_RELEASE_BASE_URL": "https://mold.example.invalid/releases",
-                "CURL_CONNECT_TIMEOUT": "1",
-                "CURL_STALL_SECONDS": "1",
-                "CURL_RETRIES": "0",
-                "CURL_RETRY_DELAY_SECONDS": "0",
-                "CURL_RETRY_MAX_SECONDS": "1",
-                "STUB_TARBALL": str(self.root / ARCHIVE_NAME),
-                "STUB_LOG": str(self.log),
-            }
-        )
-        return environment
-
-    def run(self) -> subprocess.CompletedProcess[str]:
-        """Run the installer and return its completed process."""
-        return subprocess.run(
-            [BASH, str(INSTALLER_PATH)],
-            cwd=self.root,
-            env=self.environment(),
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=SUBPROCESS_TIMEOUT_SECONDS,
-        )
-
-    def recorded(self) -> list[str]:
-        """Return the stub invocations recorded so far."""
-        if not self.log.exists():
-            return []
-        return self.log.read_text(encoding="utf-8").splitlines()
-
-
-def write_stub(path: Path, body: str) -> None:
-    """Write one executable stub script."""
-    path.write_text(f"#!/usr/bin/env bash\nset -euo pipefail\n{body}", encoding="utf-8")
-    path.chmod(0o755)
-
-
-def build_archive(path: Path) -> str:
-    """Write the release tarball and return its digest.
-
-    The archive mirrors the real release's layout: a single versioned root
-    holding ``bin/mold``. The installer must strip that root, so the
-    extracted path is ``<prefix>/bin/mold``.
-    """
-    with tarfile.open(path, "w:gz") as archive:
-        member = tarfile.TarInfo(f"{ARCHIVE_ROOT}/bin/mold")
-        member.size = len(MOLD_PAYLOAD)
-        member.mode = 0o755
-        archive.addfile(member, io.BytesIO(MOLD_PAYLOAD))
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def install_stubs(root: Path) -> None:
-    """Put the three stubs the installer calls on PATH.
-
-    ``curl`` copies a prebuilt archive instead of downloading it, so the
-    checksum and extraction steps still run against real tools. ``uname``
-    reports Linux x86_64 regardless of the host, which keeps the chosen
-    archive name deterministic. ``rustup`` records its arguments and
-    succeeds, since installing a real toolchain is the one step that must
-    not happen here.
-    """
-    stub = root / "stub"
-    stub.mkdir()
-    write_stub(
-        stub / "curl",
-        """out=
-while [ "$#" -gt 0 ]; do
-  case $1 in
-    --output) out=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-printf 'curl %s\\n' "$*" >> "$STUB_LOG"
-cp -- "$STUB_TARBALL" "$out"
-""",
-    )
-    write_stub(
-        stub / "uname",
-        """case ${1:-} in
-  -m) printf 'x86_64\\n' ;;
-  *) printf 'Linux\\n' ;;
-esac
-""",
-    )
-    write_stub(stub / "rustup", 'printf \'rustup %s\\n\' "$*" >> "$STUB_LOG"\n')
-
-
-def build_installer(tmp_path: Path) -> Installer:
-    """Seed every file the installer reads and return the environment."""
-    prefix = tmp_path / "prefix"
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    (tmp_path / "home").mkdir()
-
-    digest = build_archive(tmp_path / ARCHIVE_NAME)
-    (tmp_path / "VERSION").write_text(f"{MOLD_VERSION}\n", encoding="utf-8")
-    (tmp_path / "SHA256SUMS").write_text(
-        f"{digest}  {ARCHIVE_NAME}\n", encoding="utf-8"
-    )
-    (tmp_path / "rust-toolchain.toml").write_text(
-        f'[toolchain]\nchannel = "{TOOLCHAIN}"\n', encoding="utf-8"
-    )
-    install_stubs(tmp_path)
-
-    return Installer(
-        root=tmp_path, prefix=prefix, scratch=scratch, log=tmp_path / "log"
-    )
-
-
-@pytest.fixture
-def installer(tmp_path: Path) -> Installer:
-    """A prepared installer environment for one test."""
-    return build_installer(tmp_path)
+__all__ = ["installer"]
 
 
 def test_installs_the_pinned_mold_release(installer: Installer) -> None:
@@ -227,6 +55,32 @@ def test_installs_the_pinned_mold_release(installer: Installer) -> None:
     ), (
         f"expected the installer to report installing mold {MOLD_VERSION} "
         f"into {installer.prefix}, got: {completed.stderr}"
+    )
+
+
+def test_downloads_the_pinned_url(installer: Installer) -> None:
+    """Scenario: the download URL is built from the pin and the host arch.
+
+    Invariant: curl receives the complete URL, including the pinned version
+    and the architecture ``uname -m`` selected. The stub records its original
+    argv, so a URL lost behind ``--output`` parsing would fail here.
+    """
+    completed = installer.run()
+
+    assert completed.returncode == 0, completed.stderr
+    expected_url = (
+        f"https://mold.example.invalid/releases/v{MOLD_VERSION}/"
+        f"mold-{MOLD_VERSION}-x86_64-linux.tar.gz"
+    )
+    curl_lines = [line for line in installer.recorded() if line.startswith("curl ")]
+    assert len(curl_lines) == 1, (
+        f"expected one curl invocation, recorded: {installer.recorded()}"
+    )
+    assert "--output" in curl_lines[0], (
+        f"the recorded argv should retain --output: {curl_lines[0]}"
+    )
+    assert curl_lines[0].endswith(expected_url), (
+        f"expected the download URL {expected_url!r}, recorded: {curl_lines[0]}"
     )
 
 
@@ -308,6 +162,145 @@ def test_rejects_an_unverifiable_archive(
     )
     assert not any("rustup" in line for line in installer.recorded()), (
         "the toolchain should not be installed after a rejected archive"
+    )
+    assert list(installer.scratch.iterdir()) == [], (
+        "the scratch directory should be removed on the failure path"
+    )
+
+
+def test_fails_when_the_download_fails(installer: Installer) -> None:
+    """Scenario: curl cannot fetch the release.
+
+    Invariant: the installer exits non-zero with the download diagnostic,
+    unpacks nothing, does not install a toolchain, and removes its scratch
+    directory. A failed download must not look like a partial success.
+    """
+    completed = installer.run({"STUB_CURL_FAIL_TIMES": "99"})
+
+    assert completed.returncode != 0, completed.stdout + completed.stderr
+    assert "failed to download" in completed.stderr, completed.stderr
+    assert not (installer.prefix / "bin" / "mold").exists(), (
+        "a failed download must not reach the prefix"
+    )
+    assert not any("rustup" in line for line in installer.recorded()), (
+        "the toolchain should not be installed after a failed download"
+    )
+    assert list(installer.scratch.iterdir()) == [], (
+        "the scratch directory should be removed on the failure path"
+    )
+
+
+def test_fails_when_the_archive_cannot_be_unpacked(installer: Installer) -> None:
+    """Scenario: the checksum matches a file that is not a gzip tarball.
+
+    Invariant: verification passes, extraction fails, and the installer
+    reports the unpack failure without leaving a binary in the prefix or
+    installing a toolchain. A checksum proves the bytes are the expected
+    download, not that they are a usable archive.
+    """
+    tarball = installer.root / ARCHIVE_NAME
+    tarball.write_bytes(b"this is not a gzip tarball")
+    digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
+    (installer.root / "SHA256SUMS").write_text(
+        f"{digest}  {ARCHIVE_NAME}\n", encoding="utf-8"
+    )
+
+    completed = installer.run()
+
+    assert completed.returncode != 0, completed.stdout + completed.stderr
+    assert "failed to unpack" in completed.stderr, completed.stderr
+    assert not (installer.prefix / "bin" / "mold").exists(), (
+        "a failed extraction must not leave a binary in the prefix"
+    )
+    assert not any("rustup" in line for line in installer.recorded()), (
+        "the toolchain should not be installed after a failed extraction"
+    )
+    assert list(installer.scratch.iterdir()) == [], (
+        "the scratch directory should be removed on the failure path"
+    )
+
+
+def test_fails_when_rustup_is_missing(installer: Installer) -> None:
+    """Scenario: mold installs but rustup is absent.
+
+    Invariant: the installer exits non-zero with the rustup diagnostic. The
+    linker step runs first, so mold is already installed; that ordering is
+    deliberate, because a checksum failure should abort before spending time
+    on a toolchain download. The scratch directory is still removed.
+    """
+    (installer.root / "stub" / "rustup").unlink()
+
+    completed = installer.run()
+
+    assert completed.returncode != 0, completed.stdout + completed.stderr
+    assert "rustup not found on PATH" in completed.stderr, completed.stderr
+    assert (installer.prefix / "bin" / "mold").is_file(), (
+        "the linker step runs before the toolchain step, so mold should be "
+        "installed even when rustup is missing"
+    )
+    assert list(installer.scratch.iterdir()) == [], (
+        "the scratch directory should be removed on the failure path"
+    )
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    (
+        (None, "missing version pin"),
+        ("", "empty version pin"),
+        ("1.2.3\n4.5.6\n", "expected one line in version pin"),
+        ("1.2 3\n", "version pin contains whitespace"),
+    ),
+)
+def test_rejects_an_invalid_pin(
+    installer: Installer, content: str | None, expected: str
+) -> None:
+    """Scenario: the mold version pin is unusable.
+
+    Invariant: a missing, empty, multi-line, or internally spaced pin aborts
+    before any download. Silently trimming or concatenating such a file would
+    build a nonsensical URL and hide the broken pin.
+    """
+    version_file = installer.root / "VERSION"
+    if content is None:
+        version_file.unlink()
+    else:
+        version_file.write_text(content, encoding="utf-8")
+
+    completed = installer.run()
+
+    assert completed.returncode != 0, completed.stdout + completed.stderr
+    assert expected in completed.stderr, completed.stderr
+    assert not (installer.prefix / "bin" / "mold").exists(), (
+        "an invalid pin must not reach the download step"
+    )
+    assert not any("rustup" in line for line in installer.recorded()), (
+        "the toolchain should not be installed after an invalid pin"
+    )
+    assert list(installer.scratch.iterdir()) == [], (
+        "the scratch directory should be removed on the failure path"
+    )
+
+
+def test_rejects_an_unsupported_architecture(installer: Installer) -> None:
+    """Scenario: ``uname -m`` reports a machine mold does not publish for.
+
+    Invariant: the installer names the unsupported machine and aborts before
+    downloading. Falling through with an empty architecture would request a
+    tarball that cannot exist.
+    """
+    completed = installer.run({"STUB_UNAME_MACHINE": "riscv64"})
+
+    assert completed.returncode != 0, completed.stdout + completed.stderr
+    assert (
+        "unsupported architecture for the pinned mold release: riscv64"
+        in completed.stderr
+    ), completed.stderr
+    assert not (installer.prefix / "bin" / "mold").exists(), (
+        "an unsupported architecture must not reach the download step"
+    )
+    assert not any("rustup" in line for line in installer.recorded()), (
+        "the toolchain should not be installed after an unsupported architecture"
     )
     assert list(installer.scratch.iterdir()) == [], (
         "the scratch directory should be removed on the failure path"

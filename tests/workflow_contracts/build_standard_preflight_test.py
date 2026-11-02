@@ -244,6 +244,37 @@ def test_the_preflight_passes_with_a_matching_mold(tmp_path: Path) -> None:
     assert f"mold {pinned_version}" in output, output
 
 
+def test_an_unusable_mold_is_rejected(tmp_path: Path) -> None:
+    """Scenario: a mold on PATH cannot report its version.
+
+    Invariant: the preflight fails and names the unusable binary. A truncated
+    download or an unresolved shared library would otherwise surface as an
+    empty version and a confusing drift warning, or as a linker failure deep
+    inside Cargo.
+    """
+    environment, _ = _controlled_environment(tmp_path)
+    fake_mold = Path(environment["PATH"]) / "mold"
+    fake_mold.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    fake_mold.chmod(0o755)
+
+    completed = subprocess.run(
+        [
+            "scripts/check-build-tools.sh",
+        ],
+        cwd=REPO_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
+    )
+    output = f"{completed.stdout}\n{completed.stderr}"
+    assert completed.returncode != 0, output
+    assert "cannot report its version" in output, (
+        f"the failure should name the unusable mold:\n{output}"
+    )
+
+
 def test_a_toolchain_that_only_extends_the_pin_is_not_accepted(tmp_path: Path) -> None:
     """Scenario: a custom toolchain's name starts with the pinned channel.
 

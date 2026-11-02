@@ -43,7 +43,11 @@ impl ValidationScenario {
                 units.remove_token(UnitFile::GrepaiTemplate, "After=", "repovecd.service");
             }
             Self::GrepaiTemplateUsesQdrantContainer => {
-                units.replace_token(UnitFile::GrepaiTemplate, "qdrant.service", "qdrant.container");
+                units.replace_token(
+                    UnitFile::GrepaiTemplate,
+                    "qdrant.service",
+                    "qdrant.container",
+                );
             }
             Self::MissingGrepaiTemplatePartOfTarget => {
                 units.remove_line(UnitFile::GrepaiTemplate, "PartOf=repovec.target\n");

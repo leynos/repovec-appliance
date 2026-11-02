@@ -6,7 +6,8 @@ use rstest::rstest;
 
 use super::tests_support::{Mutation, assert_mutation, checked_in};
 use crate::appliance::directory_layout::{
-    DirectoryLayoutError, Mode,
+    DirectoryLayoutError,
+    Mode,
     parser::{ModeParseError, parse_mode, tmpfiles_entry},
     validate_directory_layout,
 };

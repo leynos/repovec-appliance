@@ -22,7 +22,11 @@ impl QdrantStartupLivenessPolicy {
     /// Creates a startup liveness policy from explicit timing values.
     #[must_use]
     pub const fn new(readiness_timeout: Duration, poll_interval: Duration) -> Self {
-        Self { readiness_timeout, poll_interval, endpoint: DEFAULT_QDRANT_GRPC_ENDPOINT }
+        Self {
+            readiness_timeout,
+            poll_interval,
+            endpoint: DEFAULT_QDRANT_GRPC_ENDPOINT,
+        }
     }
 
     /// Returns the maximum time spent waiting for transient readiness failures.
@@ -120,8 +124,9 @@ fn record_startup_liveness_timeout(
     last_transient_error: Option<QdrantLivenessError>,
     policy: QdrantStartupLivenessPolicy,
 ) -> Result<(), QdrantLivenessError> {
-    let error = last_transient_error
-        .unwrap_or_else(|| QdrantLivenessError::Timeout { timeout: policy.readiness_timeout() });
+    let error = last_transient_error.unwrap_or_else(|| QdrantLivenessError::Timeout {
+        timeout: policy.readiness_timeout(),
+    });
     record_startup_liveness_failure(context, &error);
     Err(error)
 }

@@ -35,6 +35,12 @@ CLI, a strict lint baseline, and a CI pipeline that gates merges.
   - Ensure rustfmt runs as `nightly` so `fn_single_line = true`,
     `group_imports`, and `imports_granularity` remain available under the
     project's formatting policy.
+  - Align `rustfmt.toml` with the shared Rust estate profile, adding
+    `format_strings`, `format_code_in_doc_comments`, `condense_wildcard_suffixes`,
+    and the rest of the fourteen shared options, and reformat the workspace
+    once so later diffs reflect behaviour rather than style. The trybuild
+    fixtures under `crates/repovec-core/tests/ui` are excluded because those
+    tests assert on their exact text.
   - Confirm `make lint` and `make check-fmt` pass with zero warnings.
   - Status: complete.
 - [ ] 1.1.3. Add CI gating pipeline

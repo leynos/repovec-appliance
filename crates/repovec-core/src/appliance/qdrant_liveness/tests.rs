@@ -1,65 +1,30 @@
 //! Unit tests for Qdrant liveness domain values and file adapters.
 
-use std::{
-    sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::time::Duration;
 
 use camino::Utf8PathBuf;
-use cap_std::{ambient_authority, fs_utf8::Dir};
 use proptest::prelude::*;
 use qdrant_client::qdrant::HealthCheckReply;
 use rstest::rstest;
 
 use super::{
-    DEFAULT_QDRANT_LIVENESS_TIMEOUT, QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError,
+    DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+    QdrantApiKey,
+    QdrantLivenessConfig,
+    QdrantLivenessError,
     QdrantLivenessReport,
     adapter::{
-        build_qdrant_client, is_authentication_failure_code, is_authentication_failure_status,
+        build_qdrant_client,
+        is_authentication_failure_code,
+        is_authentication_failure_status,
     },
     load_qdrant_api_key,
 };
 
-const TEST_QDRANT_ENDPOINT: &str = "http://127.0.0.1:6334";
-const TEST_API_KEY: &str = "repovec-test-qdrant-api-key";
+#[path = "tests_support.rs"]
+mod support;
 
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-struct TempKeyFile {
-    path: Utf8PathBuf,
-    dir_name: String,
-}
-
-impl TempKeyFile {
-    fn create(contents: &str) -> Result<Self, std::io::Error> {
-        let temp_root = temp_root();
-        let root = Dir::open_ambient_dir(&temp_root, ambient_authority())?;
-        let dir_name = unique_temp_dir_name();
-        root.create_dir(&dir_name)?;
-        root.write(format!("{dir_name}/qdrant-api-key"), contents)?;
-
-        Ok(Self { path: temp_root.join(&dir_name).join("qdrant-api-key"), dir_name })
-    }
-}
-
-impl Drop for TempKeyFile {
-    fn drop(&mut self) {
-        let temp_root = temp_root();
-        let Ok(root) = Dir::open_ambient_dir(&temp_root, ambient_authority()) else {
-            return;
-        };
-        if root.remove_dir_all(&self.dir_name).is_err() {}
-    }
-}
-
-fn temp_root() -> Utf8PathBuf { Utf8PathBuf::from("/tmp") }
-
-fn unique_temp_dir_name() -> String {
-    let count = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO);
-
-    format!("repovec-qdrant-liveness-{}-{}-{count}", std::process::id(), elapsed.as_nanos())
-}
+use support::{TEST_API_KEY, TEST_QDRANT_ENDPOINT, TempKeyFile, temp_root, unique_temp_dir_name};
 
 #[rstest]
 #[case("0123456789abcdef")]
@@ -74,7 +39,10 @@ fn api_key_accepts_grpc_metadata_values(#[case] value: &str) {
 #[rstest]
 #[case("")]
 fn api_key_rejects_empty_values(#[case] value: &str) {
-    assert!(matches!(QdrantApiKey::parse(value), Err(QdrantLivenessError::EmptyApiKey)));
+    assert!(matches!(
+        QdrantApiKey::parse(value),
+        Err(QdrantLivenessError::EmptyApiKey)
+    ));
 }
 
 #[rstest]
@@ -84,7 +52,10 @@ fn api_key_rejects_empty_values(#[case] value: &str) {
 #[case("abc\u{7f}")]
 #[case("abc\u{80}")]
 fn api_key_rejects_invalid_metadata_values(#[case] value: &str) {
-    assert!(matches!(QdrantApiKey::parse(value), Err(QdrantLivenessError::InvalidApiKey)));
+    assert!(matches!(
+        QdrantApiKey::parse(value),
+        Err(QdrantLivenessError::InvalidApiKey)
+    ));
 }
 
 #[test]
@@ -141,7 +112,10 @@ fn load_qdrant_api_key_maps_unreadable_paths() {
     let error = load_qdrant_api_key(temp_root().as_path())
         .expect_err("directory path should be unreadable");
 
-    assert!(matches!(error, QdrantLivenessError::UnreadableApiKeyFile { .. }));
+    assert!(matches!(
+        error,
+        QdrantLivenessError::UnreadableApiKeyFile { .. }
+    ));
 }
 
 #[test]
@@ -196,8 +170,11 @@ fn liveness_report_accepts_health_reply_with_version() {
 
 #[test]
 fn liveness_report_rejects_health_reply_without_version() {
-    let reply =
-        HealthCheckReply { title: String::from("qdrant"), version: String::new(), commit: None };
+    let reply = HealthCheckReply {
+        title: String::from("qdrant"),
+        version: String::new(),
+        commit: None,
+    };
 
     let error = QdrantLivenessReport::try_from(reply)
         .expect_err("health reply without version should fail");
@@ -267,7 +244,11 @@ fn liveness_success_observability_uses_a_bounded_metric() {
         test_api_key().expect("test API key should be valid"),
         Duration::from_millis(7),
     );
-    let result = Ok(QdrantLivenessReport::new("qdrant", "1.15.0", None::<String>));
+    let result = Ok(QdrantLivenessReport::new(
+        "qdrant",
+        "1.15.0",
+        None::<String>,
+    ));
     let ((), logs) = repovec_test_helpers::capture_logs(|| {
         let span = super::observability::qdrant_liveness_span(&config);
         super::observability::record_qdrant_liveness_result(&span, &config, &result);
@@ -355,8 +336,12 @@ fn qdrant_liveness_error_display_matches_contract() {
         },
         QdrantLivenessError::EmptyApiKey,
         QdrantLivenessError::InvalidApiKey,
-        QdrantLivenessError::InvalidEndpoint { endpoint: String::from("not a uri") },
-        QdrantLivenessError::Timeout { timeout: Duration::from_millis(250) },
+        QdrantLivenessError::InvalidEndpoint {
+            endpoint: String::from("not a uri"),
+        },
+        QdrantLivenessError::Timeout {
+            timeout: Duration::from_millis(250),
+        },
         QdrantLivenessError::AuthenticationFailed,
         QdrantLivenessError::GrpcUnavailable {
             message: String::from("transport error: connection refused"),

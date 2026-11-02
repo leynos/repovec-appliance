@@ -9,6 +9,18 @@ mod scenario_catalogue;
 
 pub(super) use scenario_catalogue::ValidationScenario;
 
+/// The provision unit with its `[Service]` section removed.
+const MISSING_PROVISION_SERVICE_SECTION: &str = concat!(
+    "[Unit]\n",
+    "Wants=systemd-sysusers.service\n",
+    "After=systemd-sysusers.service\n",
+    "Before=repovec-qdrant-api-key.service qdrant.service repovecd.service ",
+    "repovec-mcpd.service\n",
+    "\n",
+    "[Install]\n",
+    "WantedBy=repovec.target\n",
+);
+
 #[derive(Clone, Copy)]
 enum ServiceUnit {
     Repovecd,
@@ -191,14 +203,14 @@ impl ValidationScenario {
             Self::MissingProvisionUnitSection => {
                 units.replace_file(
                     UnitFile::Provision,
-                    "[Service]\nType=oneshot\nRemainAfterExit=no\n\n[Install]\nWantedBy=repovec.target\n",
+                    concat!(
+                        "[Service]\nType=oneshot\nRemainAfterExit=no\n\n[Install]\n",
+                        "WantedBy=repovec.target\n",
+                    ),
                 );
             }
             Self::MissingProvisionServiceSection => {
-                units.replace_file(
-                    UnitFile::Provision,
-                    "[Unit]\nWants=systemd-sysusers.service\nAfter=systemd-sysusers.service\nBefore=repovec-qdrant-api-key.service qdrant.service repovecd.service repovec-mcpd.service\n\n[Install]\nWantedBy=repovec.target\n",
-                );
+                units.replace_file(UnitFile::Provision, MISSING_PROVISION_SERVICE_SECTION);
             }
             Self::MissingProvisionInstallSection => {
                 units.remove_line(UnitFile::Provision, "[Install]\n");
@@ -222,10 +234,12 @@ impl ValidationScenario {
                 UnitFile::Provision,
                 concat!(
                     "ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf\n",
-                    "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf\n",
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create ",
+                    "/usr/lib/tmpfiles.d/repovec.conf\n",
                 ),
                 concat!(
-                    "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf\n",
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create ",
+                    "/usr/lib/tmpfiles.d/repovec.conf\n",
                     "ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf\n",
                 ),
             ),
@@ -233,7 +247,8 @@ impl ValidationScenario {
                 UnitFile::Provision,
                 "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf\n",
                 concat!(
-                    "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf\n",
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create ",
+                    "/usr/lib/tmpfiles.d/repovec.conf\n",
                     "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/extra.conf\n",
                 ),
             ),
@@ -356,7 +371,10 @@ impl ValidationScenario {
                 "WorkingDirectory=/var/lib/repovec",
             ),
             Self::GrepaiTemplateMissingEnvironment => {
-                units.remove_line(UnitFile::GrepaiTemplate, "Environment=HOME=/var/lib/repovec\n");
+                units.remove_line(
+                    UnitFile::GrepaiTemplate,
+                    "Environment=HOME=/var/lib/repovec\n",
+                );
             }
             Self::GrepaiTemplateWrongRestartPolicy => units.replace_token(
                 UnitFile::GrepaiTemplate,

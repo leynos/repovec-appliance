@@ -1,7 +1,10 @@
 //! Behavioural tests for the checked-in repovec directory-layout contract.
 
 use repovec_core::appliance::directory_layout::{
-    DirectoryLayoutError, Mode, checked_in_repovec_sysusers, checked_in_repovec_tmpfiles,
+    DirectoryLayoutError,
+    Mode,
+    checked_in_repovec_sysusers,
+    checked_in_repovec_tmpfiles,
     validate_directory_layout,
 };
 use rstest::fixture;
@@ -17,7 +20,11 @@ struct DirectoryLayoutWorld {
 #[fixture]
 fn directory_layout_world() -> DirectoryLayoutWorld {
     let validation_result = None;
-    DirectoryLayoutWorld { tmpfiles: String::new(), sysusers: String::new(), validation_result }
+    DirectoryLayoutWorld {
+        tmpfiles: String::new(),
+        sysusers: String::new(),
+        validation_result,
+    }
 }
 
 #[given("the checked-in repovec layout assets")]
@@ -39,7 +46,9 @@ fn the_worktrees_directory_entry_is_removed_from_the_tmpfiles_asset(
 fn an_unexpected_directory_entry_is_added_to_the_tmpfiles_asset(
     directory_layout_world: &mut DirectoryLayoutWorld,
 ) {
-    directory_layout_world.tmpfiles.push_str("d /var/lib/repovec/cache 0700 repovec repovec -\n");
+    directory_layout_world
+        .tmpfiles
+        .push_str("d /var/lib/repovec/cache 0700 repovec repovec -\n");
 }
 
 #[given("the worktrees directory mode is widened to 0750")]
@@ -86,29 +95,35 @@ fn the_worktrees_directory_mode_is_replaced_with_the_default_token(
 fn an_etc_repovec_entry_is_added_to_the_tmpfiles_asset(
     directory_layout_world: &mut DirectoryLayoutWorld,
 ) {
-    directory_layout_world.tmpfiles.push_str("d /etc/repovec 0750 root repovec -\n");
+    directory_layout_world
+        .tmpfiles
+        .push_str("d /etc/repovec 0750 root repovec -\n");
 }
 
 #[given("a malformed line is inserted into the tmpfiles asset")]
 fn a_malformed_line_is_inserted_into_the_tmpfiles_asset(
     directory_layout_world: &mut DirectoryLayoutWorld,
 ) {
-    directory_layout_world.tmpfiles.push_str("bogus line with not enough fields\n");
+    directory_layout_world
+        .tmpfiles
+        .push_str("bogus line with not enough fields\n");
 }
 
 #[given("the sysusers home path is changed away from /var/lib/repovec")]
 fn the_sysusers_home_path_is_changed_away_from_var_lib_repovec(
     directory_layout_world: &mut DirectoryLayoutWorld,
 ) {
-    directory_layout_world.sysusers = directory_layout_world
-        .sysusers
-        .replace("/var/lib/repovec /usr/sbin/nologin", "/home/repovec /usr/sbin/nologin");
+    directory_layout_world.sysusers = directory_layout_world.sysusers.replace(
+        "/var/lib/repovec /usr/sbin/nologin",
+        "/home/repovec /usr/sbin/nologin",
+    );
 }
 
 #[given("the sysusers shell is changed to /bin/bash")]
 fn the_sysusers_shell_is_changed_to_bin_bash(directory_layout_world: &mut DirectoryLayoutWorld) {
-    directory_layout_world.sysusers =
-        directory_layout_world.sysusers.replace("/usr/sbin/nologin", "/bin/bash");
+    directory_layout_world.sysusers = directory_layout_world
+        .sysusers
+        .replace("/usr/sbin/nologin", "/bin/bash");
 }
 
 #[when("the directory-layout assets are validated")]
@@ -344,5 +359,8 @@ fn assert_validation_result(
     directory_layout_world: &DirectoryLayoutWorld,
     expected: DirectoryLayoutError,
 ) {
-    assert_eq!(find_validation_result(directory_layout_world), Some(&Err(expected)));
+    assert_eq!(
+        find_validation_result(directory_layout_world),
+        Some(&Err(expected))
+    );
 }

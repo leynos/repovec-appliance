@@ -9,11 +9,15 @@
 //! validator entry points.
 
 /// The embedded `tmpfiles.d` asset validated by the checked-in entry point.
-pub(super) const CHECKED_IN_REPOVEC_TMPFILES: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/tmpfiles.d/repovec.conf"));
+pub(super) const CHECKED_IN_REPOVEC_TMPFILES: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packaging/tmpfiles.d/repovec.conf"
+));
 /// The embedded `sysusers.d` asset validated by the checked-in entry point.
-pub(super) const CHECKED_IN_REPOVEC_SYSUSERS: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/sysusers.d/repovec.conf"));
+pub(super) const CHECKED_IN_REPOVEC_SYSUSERS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packaging/sysusers.d/repovec.conf"
+));
 
 /// The repository path of the checked-in `tmpfiles.d` asset.
 pub const CHECKED_IN_REPOVEC_TMPFILES_PATH: &str = "packaging/tmpfiles.d/repovec.conf";

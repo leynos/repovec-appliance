@@ -5,8 +5,11 @@ use std::{error::Error, fmt, future::Future, time::Duration};
 use super::{
     directory_layout::live::{LiveLayoutError, verify_live_layout},
     qdrant_liveness::{
-        QdrantLivenessConfig, QdrantLivenessError, QdrantStartupLivenessPolicy,
-        check_qdrant_liveness, wait_for_qdrant_startup_liveness,
+        QdrantLivenessConfig,
+        QdrantLivenessError,
+        QdrantStartupLivenessPolicy,
+        check_qdrant_liveness,
+        wait_for_qdrant_startup_liveness,
     },
     systemd_units::{SystemdUnitError, validate_and_trace_checked_in_units},
 };
@@ -119,11 +122,13 @@ pub fn validate_daemon_startup_contracts() -> Result<(), DaemonStartupError> {
 /// path available for the operator log:
 ///
 /// ```no_run
-/// use repovec_core::RuntimePaths;
-/// use repovec_core::appliance::daemon_startup::{
-///     DaemonStartupError, validate_daemon_startup_contracts_with_live,
+/// use repovec_core::{
+///     RuntimePaths,
+///     appliance::{
+///         daemon_startup::{DaemonStartupError, validate_daemon_startup_contracts_with_live},
+///         directory_layout::live::{LiveLayoutIds, verify_layout_for_ids},
+///     },
 /// };
-/// use repovec_core::appliance::directory_layout::live::{LiveLayoutIds, verify_layout_for_ids};
 ///
 /// let paths = RuntimePaths::appliance_defaults();
 /// let ids = LiveLayoutIds {

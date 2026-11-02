@@ -20,7 +20,11 @@ pub(super) fn info_token_poll_outcome(span: &Span, outcome: &TokenPollOutcome) {
 /// For example, an `OK` response records status `200` and its duration.
 pub(super) fn info_http_request(span: &Span, status: StatusCode, started_at: Instant) {
     info_status(span, "metric.github_oauth_http_request_total", status);
-    info_duration(span, "metric.github_oauth_http_request_duration_ms", started_at);
+    info_duration(
+        span,
+        "metric.github_oauth_http_request_duration_ms",
+        started_at,
+    );
 }
 
 /// Emits status and elapsed-time events for a token-poll HTTP request.

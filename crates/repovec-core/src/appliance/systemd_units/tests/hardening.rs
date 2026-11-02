@@ -4,8 +4,11 @@ use rstest::rstest;
 
 use super::{
     super::{
-        GREPAI_BOOLEAN_HARDENING_DIRECTIVES, GREPAI_HARDENING_DIRECTIVES,
-        GREPAI_RESTRICT_ADDRESS_FAMILIES, REPOVEC_GREPAI_TEMPLATE_UNIT, SystemdUnitError,
+        GREPAI_BOOLEAN_HARDENING_DIRECTIVES,
+        GREPAI_HARDENING_DIRECTIVES,
+        GREPAI_RESTRICT_ADDRESS_FAMILIES,
+        REPOVEC_GREPAI_TEMPLATE_UNIT,
+        SystemdUnitError,
     },
     unit_set::{UnitFile, UnitSet, checked_in_unit_set},
 };

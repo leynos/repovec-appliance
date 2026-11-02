@@ -18,7 +18,10 @@
 use std::sync::OnceLock;
 
 use tracing::{
-    Dispatch, Event, Metadata, Subscriber,
+    Dispatch,
+    Event,
+    Metadata,
+    Subscriber,
     span::{Attributes, Id, Record},
 };
 
@@ -94,12 +97,20 @@ mod tests {
 
         let ((), logs) = capture_logs(move || {
             let worker = thread::spawn(move || {
-                register_rx.recv().expect("the capture should signal the worker to register");
+                register_rx
+                    .recv()
+                    .expect("the capture should signal the worker to register");
                 emit_probe();
-                done_tx.send(()).expect("the worker should report completion");
+                done_tx
+                    .send(())
+                    .expect("the worker should report completion");
             });
-            register_tx.send(()).expect("the worker should be waiting to register");
-            done_rx.recv().expect("the worker should finish registering the callsite");
+            register_tx
+                .send(())
+                .expect("the worker should be waiting to register");
+            done_rx
+                .recv()
+                .expect("the worker should finish registering the callsite");
             emit_probe();
             worker.join().expect("the worker should join");
         })

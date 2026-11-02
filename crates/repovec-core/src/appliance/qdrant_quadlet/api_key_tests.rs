@@ -33,8 +33,10 @@ fn multi_assignment_inline_api_key_environment() -> String {
 }
 
 fn api_key_secret_missing() -> String {
-    qdrant_quadlet_contents()
-        .replace("Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n", "")
+    qdrant_quadlet_contents().replace(
+        "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+        "",
+    )
 }
 
 fn api_key_secret_name_is_wrong() -> String {
@@ -42,8 +44,10 @@ fn api_key_secret_name_is_wrong() -> String {
 }
 
 fn api_key_secret_target_is_wrong() -> String {
-    qdrant_quadlet_contents()
-        .replace("target=QDRANT__SERVICE__API_KEY", "target=QDRANT__SERVICE__READ_ONLY_API_KEY")
+    qdrant_quadlet_contents().replace(
+        "target=QDRANT__SERVICE__API_KEY",
+        "target=QDRANT__SERVICE__READ_ONLY_API_KEY",
+    )
 }
 
 fn api_key_secret_type_is_wrong() -> String {
@@ -61,8 +65,10 @@ fn api_key_secret_type_is_contradictory() -> String {
 }
 
 fn api_key_requires_dependency_missing() -> String {
-    qdrant_quadlet_contents()
-        .replace("Requires=repovec-qdrant-api-key.service repovec-provision.service\n", "")
+    qdrant_quadlet_contents().replace(
+        "Requires=repovec-qdrant-api-key.service repovec-provision.service\n",
+        "",
+    )
 }
 
 fn api_key_after_dependency_missing() -> String {
@@ -77,8 +83,10 @@ fn api_key_requires_dependency_wrong() -> String {
 }
 
 fn api_key_after_dependency_wrong() -> String {
-    qdrant_quadlet_contents()
-        .replace("After=repovec-qdrant-api-key.service", "After=network-online.target")
+    qdrant_quadlet_contents().replace(
+        "After=repovec-qdrant-api-key.service",
+        "After=network-online.target",
+    )
 }
 
 /// The `Requires=` directive keeps the API-key service but loses the
@@ -114,7 +122,11 @@ struct ApiKeyCase {
 
 /// Builds a case that must be rejected with `expected`.
 fn case(contents: String, reason: &'static str, expected: QdrantQuadletError) -> ApiKeyCase {
-    ApiKeyCase { contents, reason, expected }
+    ApiKeyCase {
+        contents,
+        reason,
+        expected,
+    }
 }
 
 #[rstest]

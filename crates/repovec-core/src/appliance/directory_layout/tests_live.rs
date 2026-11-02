@@ -26,7 +26,12 @@ fn resolution_from_databases_uses_the_group_database_not_the_user_gid() {
 
     assert_eq!(
         ids,
-        LiveLayoutIds { repovec_uid: 998, repovec_gid: 996, privileged_uid: 0, privileged_gid: 0 }
+        LiveLayoutIds {
+            repovec_uid: 998,
+            repovec_gid: 996,
+            privileged_uid: 0,
+            privileged_gid: 0
+        }
     );
 }
 
@@ -64,7 +69,10 @@ fn resolution_rejects_an_unsafe_account_before_resolving_the_group() {
 
     let result = resolve_ids_from_databases(passwd, "repovec:x:996:\n");
 
-    assert!(matches!(result, Err(LiveLayoutError::RepovecUserIsRoot { uid: 0 })));
+    assert!(matches!(
+        result,
+        Err(LiveLayoutError::RepovecUserIsRoot { uid: 0 })
+    ));
 }
 
 /// A pre-existing account with the wrong home is rejected, because
@@ -91,34 +99,74 @@ fn resolution_rejects_a_login_shell() {
 
     assert!(matches!(
         result,
-        Err(LiveLayoutError::RepovecShellIncorrect { expected: "/usr/sbin/nologin", .. })
+        Err(LiveLayoutError::RepovecShellIncorrect {
+            expected: "/usr/sbin/nologin",
+            ..
+        })
     ));
 }
 
 /// Every variant carries a stable, bounded category for metrics and logs.
 #[test]
 fn every_error_variant_has_a_stable_category() {
-    let violation = || LiveLayoutViolation {
-        path: Utf8PathBuf::from("/var/lib/repovec"),
-        expected: "repovec (uid 998)".to_owned(),
-        actual: "uid 0".to_owned(),
-    };
-    let cases = [
-        (LiveLayoutError::RepovecUserNotFound, "repovec_user_not_found"),
-        (LiveLayoutError::RepovecGroupNotFound, "repovec_group_not_found"),
-        (LiveLayoutError::RepovecUserIsRoot { uid: 0 }, "repovec_user_is_root"),
+    for (error, expected) in category_cases() {
+        assert_eq!(error.category(), expected);
+    }
+}
+
+/// Pairs each error variant with the category it must keep reporting.
+fn category_cases() -> [(LiveLayoutError, &'static str); 11] {
+    [
         (
-            LiveLayoutError::RepovecHomeIncorrect { expected: "/a", actual: "/b".to_owned() },
+            LiveLayoutError::RepovecUserNotFound,
+            "repovec_user_not_found",
+        ),
+        (
+            LiveLayoutError::RepovecGroupNotFound,
+            "repovec_group_not_found",
+        ),
+        (
+            LiveLayoutError::RepovecUserIsRoot { uid: 0 },
+            "repovec_user_is_root",
+        ),
+        (
+            LiveLayoutError::RepovecHomeIncorrect {
+                expected: "/a",
+                actual: "/b".to_owned(),
+            },
             "repovec_home_incorrect",
         ),
         (
-            LiveLayoutError::RepovecShellIncorrect { expected: "/a", actual: "/b".to_owned() },
+            LiveLayoutError::RepovecShellIncorrect {
+                expected: "/a",
+                actual: "/b".to_owned(),
+            },
             "repovec_shell_incorrect",
         ),
-        (LiveLayoutError::MissingPath { path: "/var/lib/repovec".into() }, "missing_path"),
-        (LiveLayoutError::IncorrectMode { violation: violation() }, "incorrect_mode"),
-        (LiveLayoutError::IncorrectOwner { violation: violation() }, "incorrect_owner"),
-        (LiveLayoutError::IncorrectGroup { violation: violation() }, "incorrect_group"),
+        (
+            LiveLayoutError::MissingPath {
+                path: "/var/lib/repovec".into(),
+            },
+            "missing_path",
+        ),
+        (
+            LiveLayoutError::IncorrectMode {
+                violation: sample_violation(),
+            },
+            "incorrect_mode",
+        ),
+        (
+            LiveLayoutError::IncorrectOwner {
+                violation: sample_violation(),
+            },
+            "incorrect_owner",
+        ),
+        (
+            LiveLayoutError::IncorrectGroup {
+                violation: sample_violation(),
+            },
+            "incorrect_group",
+        ),
         (
             LiveLayoutError::UnreadablePath {
                 path: "/var/lib/repovec".into(),
@@ -126,11 +174,21 @@ fn every_error_variant_has_a_stable_category() {
             },
             "unreadable_path",
         ),
-        (LiveLayoutError::NotADirectory { path: "/var/lib/repovec".into() }, "not_a_directory"),
-    ];
+        (
+            LiveLayoutError::NotADirectory {
+                path: "/var/lib/repovec".into(),
+            },
+            "not_a_directory",
+        ),
+    ]
+}
 
-    for (error, expected) in cases {
-        assert_eq!(error.category(), expected);
+/// Builds a representative filesystem violation for category coverage.
+fn sample_violation() -> LiveLayoutViolation {
+    LiveLayoutViolation {
+        path: Utf8PathBuf::from("/var/lib/repovec"),
+        expected: "repovec (uid 998)".to_owned(),
+        actual: "uid 0".to_owned(),
     }
 }
 
@@ -152,8 +210,14 @@ fn diagnostic_values_preserve_expected_and_actual() {
 /// inventing one.
 #[test]
 fn diagnostic_values_are_empty_when_nothing_was_observed() {
-    assert_eq!(LiveLayoutError::MissingPath { path: "/a".into() }.diagnostic_values(), ("", ""));
-    assert_eq!(LiveLayoutError::RepovecUserNotFound.diagnostic_values(), ("", ""));
+    assert_eq!(
+        LiveLayoutError::MissingPath { path: "/a".into() }.diagnostic_values(),
+        ("", "")
+    );
+    assert_eq!(
+        LiveLayoutError::RepovecUserNotFound.diagnostic_values(),
+        ("", "")
+    );
 }
 
 /// Pin the operator-facing rendering and path accessor for an ownership
@@ -167,7 +231,10 @@ fn error_display_and_path_are_operator_facing() {
     };
     let error = LiveLayoutError::IncorrectOwner { violation };
 
-    assert_eq!(error.to_string(), "/var/lib/repovec must be owned by repovec (uid 1000): uid 0");
+    assert_eq!(
+        error.to_string(),
+        "/var/lib/repovec must be owned by repovec (uid 1000): uid 0"
+    );
     assert_eq!(error.path(), Some("/var/lib/repovec"));
 }
 
@@ -179,7 +246,10 @@ fn unreadable_database_display_names_the_database() {
         source: std::io::Error::from(std::io::ErrorKind::PermissionDenied),
     };
 
-    assert_eq!(error.to_string(), "cannot inspect /etc/passwd: permission denied");
+    assert_eq!(
+        error.to_string(),
+        "cannot inspect /etc/passwd: permission denied"
+    );
     assert_eq!(error.category(), "unreadable_path");
 }
 

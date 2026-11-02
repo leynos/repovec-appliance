@@ -3,7 +3,12 @@
 use std::time::Duration;
 
 use repovec_core::github_oauth::{
-    AccessToken, ClientId, DeviceAuthorization, TerminalDeviceFlowError, TokenPollOutcome, UserCode,
+    AccessToken,
+    ClientId,
+    DeviceAuthorization,
+    TerminalDeviceFlowError,
+    TokenPollOutcome,
+    UserCode,
 };
 use thiserror::Error;
 use tracing::info;
@@ -144,7 +149,12 @@ where
     #[doc = include_str!("examples/runtime_new.rsdoc")]
     #[must_use]
     pub const fn new(api: &'a A, store: &'a T, sleeper: &'a S) -> Self {
-        Self { api, store, sleeper, clock: &STD_MONOTONIC_CLOCK }
+        Self {
+            api,
+            store,
+            sleeper,
+            clock: &STD_MONOTONIC_CLOCK,
+        }
     }
 
     /// Creates a runtime adapter bundle with an explicit clock.
@@ -156,7 +166,12 @@ where
         sleeper: &'a S,
         clock: &'a dyn MonotonicClock,
     ) -> Self {
-        Self { api, store, sleeper, clock }
+        Self {
+            api,
+            store,
+            sleeper,
+            clock,
+        }
     }
 }
 
@@ -223,7 +238,10 @@ where
     S: Sleeper,
     P: FnOnce(&DeviceLoginPrompt),
 {
-    info!(scope_count = request.scopes.len(), "requesting GitHub device code");
+    info!(
+        scope_count = request.scopes.len(),
+        "requesting GitHub device code"
+    );
     let authorization = runtime
         .api
         .request_device_code(&request.client_id, &request.scopes)
@@ -249,7 +267,10 @@ where
     T: TokenStore,
     S: Sleeper,
 {
-    runtime.store.store(token).map_err(DeviceFlowRunError::Storage)?;
+    runtime
+        .store
+        .store(token)
+        .map_err(DeviceFlowRunError::Storage)?;
     info!("metric.github_device_flow_storage_success_total");
     Ok(())
 }

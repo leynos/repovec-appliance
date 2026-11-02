@@ -8,13 +8,10 @@
 //!
 //! The contract checked here mirrors the spec table in `mod.rs`:
 //!
-//! - the data tree (`/var/lib/repovec` and its `git-mirrors/`, `worktrees/`,
-//!   `.grepai/` children) must be directories owned by the `repovec` user and
-//!   group with mode `0700` (SI-1);
-//! - `qdrant-storage` must be a directory owned `root:root` with mode `0700`
-//!   (SI-2);
-//! - `/etc/repovec` must be a directory owned `root`, group `repovec`, with
-//!   mode `0750` (SI-3).
+//! - the data tree (`/var/lib/repovec` and its `git-mirrors/`, `worktrees/`, `.grepai/` children)
+//!   must be directories owned by the `repovec` user and group with mode `0700` (SI-1);
+//! - `qdrant-storage` must be a directory owned `root:root` with mode `0700` (SI-2);
+//! - `/etc/repovec` must be a directory owned `root`, group `repovec`, with mode `0750` (SI-3).
 //!
 //! Both account names are resolved through their own databases: the uid from
 //! `/etc/passwd` and the gid from `/etc/group`. `systemd-tmpfiles` resolves its
@@ -150,11 +147,15 @@ impl LiveLayoutError {
             Self::MissingPath { path }
             | Self::UnreadablePath { path, .. }
             | Self::NotADirectory { path }
-            | Self::IncorrectMode { violation: LiveLayoutViolation { path, .. } }
-            | Self::IncorrectOwner { violation: LiveLayoutViolation { path, .. } }
-            | Self::IncorrectGroup { violation: LiveLayoutViolation { path, .. } } => {
-                Some(path.as_str())
+            | Self::IncorrectMode {
+                violation: LiveLayoutViolation { path, .. },
             }
+            | Self::IncorrectOwner {
+                violation: LiveLayoutViolation { path, .. },
+            }
+            | Self::IncorrectGroup {
+                violation: LiveLayoutViolation { path, .. },
+            } => Some(path.as_str()),
         }
     }
 
@@ -216,8 +217,10 @@ impl LiveLayoutError {
 /// # Examples
 ///
 /// ```no_run
-/// use repovec_core::RuntimePaths;
-/// use repovec_core::appliance::directory_layout::live::{LiveLayoutIds, verify_layout_for_ids};
+/// use repovec_core::{
+///     RuntimePaths,
+///     appliance::directory_layout::live::{LiveLayoutIds, verify_layout_for_ids},
+/// };
 ///
 /// let ids = LiveLayoutIds {
 ///     repovec_uid: 998,
@@ -285,5 +288,9 @@ pub(crate) fn layout_contracts(
 
 /// Maps the two names used by `DirectorySpec` to their independently resolved ids.
 fn id_for(name: &str, repovec: u32, privileged: u32) -> u32 {
-    if name == super::REPOVEC_USER { repovec } else { privileged }
+    if name == super::REPOVEC_USER {
+        repovec
+    } else {
+        privileged
+    }
 }

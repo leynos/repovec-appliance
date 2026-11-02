@@ -78,19 +78,19 @@ pub(super) fn auto_update_policy() -> impl Strategy<Value = String> { "[a-z]+" }
 /// Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z
 /// ```
 pub(super) fn valid_quadlet_base() -> String {
-    String::from(
-        "[Unit]\n\
-         Requires=repovec-qdrant-api-key.service repovec-provision.service\n\
-         After=repovec-qdrant-api-key.service\n\
-         \n\
-         [Container]\n\
-         Image=docker.io/qdrant/qdrant:v1\n\
-         AutoUpdate=registry\n\
-         Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n\
-         PublishPort=127.0.0.1:6333:6333\n\
-         PublishPort=127.0.0.1:6334:6334\n\
-         Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
-    )
+    String::from(concat!(
+        "[Unit]\n",
+        "Requires=repovec-qdrant-api-key.service repovec-provision.service\n",
+        "After=repovec-qdrant-api-key.service\n",
+        "\n",
+        "[Container]\n",
+        "Image=docker.io/qdrant/qdrant:v1\n",
+        "AutoUpdate=registry\n",
+        "Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY\n",
+        "PublishPort=127.0.0.1:6333:6333\n",
+        "PublishPort=127.0.0.1:6334:6334\n",
+        "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
+    ))
 }
 
 /// Generates valid insertion indices for generated Quadlet edits.

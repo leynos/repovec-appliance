@@ -16,7 +16,11 @@ pub(super) fn event(
     message: &'static str,
     fields: &[(&'static str, &'static str)],
 ) -> ExpectedEvent {
-    ExpectedEvent { level, message, fields: fields.to_vec() }
+    ExpectedEvent {
+        level,
+        message,
+        fields: fields.to_vec(),
+    }
 }
 
 /// Builds a scenario whose Quadlet is the canonical asset with `line` removed.
@@ -25,5 +29,9 @@ pub(super) fn without_line(
     line: &str,
     expected: ExpectedEvent,
 ) -> LogScenario {
-    LogScenario { snapshot_name, contents: canonical().replace(line, ""), expected }
+    LogScenario {
+        snapshot_name,
+        contents: canonical().replace(line, ""),
+        expected,
+    }
 }

@@ -2,53 +2,82 @@
 
 use crate::appliance::systemd_units::SystemdUnitError;
 
-pub(super) fn missing(
-    unit: &'static str,
-    key: &'static str,
-    dependency: &'static str,
-) -> SystemdUnitError {
-    SystemdUnitError::MissingDependency { unit, section: "Unit", key, dependency }
+/// Declares constructors that fill a [`SystemdUnitError`] variant from test
+/// fixtures.
+///
+/// The six constructors differ only in the variant they build and in which
+/// fixture fields are owned, so the shared wrapper is written once here rather
+/// than repeated around each struct literal.
+macro_rules! unit_error_constructors {
+    ($(
+        $name:ident($($parameter:ident: $type:ty,)*) -> $variant:ident {
+            $($field:ident: $value:expr,)*
+        }
+    )*) => {
+        $(
+            pub(super) fn $name($($parameter: $type),*) -> SystemdUnitError {
+                SystemdUnitError::$variant { $($field: $value),* }
+            }
+        )*
+    };
 }
 
-pub(super) fn missing_install(unit: &'static str, dependency: &'static str) -> SystemdUnitError {
-    SystemdUnitError::MissingDependency { unit, section: "Install", key: "WantedBy", dependency }
-}
-
-pub(super) fn quadlet_source(
-    unit: &'static str,
-    key: &'static str,
-    dependency: &str,
-) -> SystemdUnitError {
-    SystemdUnitError::UsesQuadletSourceDependency {
-        unit,
+unit_error_constructors! {
+    missing(
+        unit: &'static str,
+        key: &'static str,
+        dependency: &'static str,
+    ) -> MissingDependency {
+        unit: unit,
         section: "Unit",
-        key,
+        key: key,
+        dependency: dependency,
+    }
+    missing_install(unit: &'static str, dependency: &'static str,) -> MissingDependency {
+        unit: unit,
+        section: "Install",
+        key: "WantedBy",
+        dependency: dependency,
+    }
+    quadlet_source(
+        unit: &'static str,
+        key: &'static str,
+        dependency: &str,
+    ) -> UsesQuadletSourceDependency {
+        unit: unit,
+        section: "Unit",
+        key: key,
         dependency: dependency.to_owned(),
     }
-}
-
-pub(super) fn exec_start(
-    unit: &'static str,
-    expected: &'static str,
-    actual: &str,
-) -> SystemdUnitError {
-    SystemdUnitError::IncorrectExecStart { unit, expected, actual: actual.to_owned() }
-}
-
-pub(super) fn service_directive(
-    unit: &'static str,
-    key: &'static str,
-    expected: &'static str,
-    actual: &str,
-) -> SystemdUnitError {
-    SystemdUnitError::IncorrectServiceDirective { unit, key, expected, actual: actual.to_owned() }
-}
-
-pub(super) fn forbidden_directive(
-    unit: &'static str,
-    section: &'static str,
-    key: &'static str,
-    actual: &str,
-) -> SystemdUnitError {
-    SystemdUnitError::ForbiddenDirective { unit, section, key, actual: actual.to_owned() }
+    exec_start(
+        unit: &'static str,
+        expected: &'static str,
+        actual: &str,
+    ) -> IncorrectExecStart {
+        unit: unit,
+        expected: expected,
+        actual: actual.to_owned(),
+    }
+    service_directive(
+        unit: &'static str,
+        key: &'static str,
+        expected: &'static str,
+        actual: &str,
+    ) -> IncorrectServiceDirective {
+        unit: unit,
+        key: key,
+        expected: expected,
+        actual: actual.to_owned(),
+    }
+    forbidden_directive(
+        unit: &'static str,
+        section: &'static str,
+        key: &'static str,
+        actual: &str,
+    ) -> ForbiddenDirective {
+        unit: unit,
+        section: section,
+        key: key,
+        actual: actual.to_owned(),
+    }
 }

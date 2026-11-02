@@ -18,10 +18,9 @@
 //! - widening `is_forwarded` to every unparsable attribute body fails
 //!   `a_construction_that_only_resembles_a_route_is_not_an_offence::
 //!   case_2_forwarded_doc_and_derive`;
-//! - walking every macro's whole token stream, as this contract did before,
-//!   fails the consumed-argument and matcher-only cases;
-//! - walking a `macro_rules!` matcher as well as its transcriber fails the
-//!   matcher-only case.
+//! - walking every macro's whole token stream, as this contract did before, fails the
+//!   consumed-argument and matcher-only cases;
+//! - walking a `macro_rules!` matcher as well as its transcriber fails the matcher-only case.
 //!
 //! The `include!` rule keeps its own record on
 //! [`includes_a_scanned_path`], which is where its three mutations live.
@@ -51,7 +50,10 @@ fn is_forwarded(body: &TokenStream) -> bool {
     match body.clone().into_iter().next() {
         Some(TokenTree::Punct(punct)) => punct.as_char() == '$',
         Some(TokenTree::Ident(ident)) => {
-            matches!(ident.unraw().to_string().as_str(), "allow" | "expect" | "cfg_attr")
+            matches!(
+                ident.unraw().to_string().as_str(),
+                "allow" | "expect" | "cfg_attr"
+            )
         }
         Some(TokenTree::Group(_) | TokenTree::Literal(_)) | None => false,
     }
@@ -95,21 +97,18 @@ fn is_forwarded(body: &TokenStream) -> bool {
 /// Mutation proof, recorded 2026-09-15 and re-run against the shared extension
 /// comparison; each applied alone here and run through the build:
 ///
-/// - reading the rendered literal for a `"` opener and a `.rs"` close, as this
-///   contract did before, fails the raw-literal and escaped-literal cases of
+/// - reading the rendered literal for a `"` opener and a `.rs"` close, as this contract did before,
+///   fails the raw-literal and escaped-literal cases of
 ///   `a_construction_that_only_resembles_a_route_is_not_an_offence`;
-/// - accepting a target containing a scanned-looking literal anywhere, rather
-///   than one that is exactly such a literal, fails
-///   `a_suppression_is_an_offence::case_15_included_from_a_concatenated_path`
-///   alone, which earns that case its line;
-/// - returning `true` for every target fails every `include!` case of that
-///   test;
+/// - accepting a target containing a scanned-looking literal anywhere, rather than one that is
+///   exactly such a literal, fails
+///   `a_suppression_is_an_offence::case_15_included_from_a_concatenated_path` alone, which earns
+///   that case its line;
+/// - returning `true` for every target fails every `include!` case of that test;
 /// - dropping the containment test, so the extension alone decides, fails
-///   `case_13_included_outside_the_scanned_tree` and
-///   `case_14_included_from_an_absolute_path`, which is the escape route
-///   review found;
-/// - refusing any target with a separator in it, a containment test drawn one
-///   step too wide, fails
+///   `case_13_included_outside_the_scanned_tree` and `case_14_included_from_an_absolute_path`,
+///   which is the escape route review found;
+/// - refusing any target with a separator in it, a containment test drawn one step too wide, fails
 ///   `a_construction_that_only_resembles_a_route_is_not_an_offence::
 ///   case_6_included_scanned_subdirectory`.
 ///
@@ -243,7 +242,10 @@ fn attribute_at(trees: &[TokenTree], index: usize) -> Option<Vec<(String, String
         return is_forwarded(&body).then(|| vec![(FORWARDED_ATTRIBUTE.to_owned(), rendered)]);
     };
     Some(
-        suppressed_by_meta(&meta, scope).into_iter().map(|lint| (lint, rendered.clone())).collect(),
+        suppressed_by_meta(&meta, scope)
+            .into_iter()
+            .map(|lint| (lint, rendered.clone()))
+            .collect(),
     )
 }
 

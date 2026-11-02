@@ -9,11 +9,15 @@
 //! validator entry points.
 
 /// The embedded `repovec.target` unit checked in under `packaging/systemd/`.
-const CHECKED_IN_REPOVEC_TARGET: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovec.target"));
+const CHECKED_IN_REPOVEC_TARGET: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packaging/systemd/repovec.target"
+));
 /// The embedded `repovecd.service` unit checked in under `packaging/systemd/`.
-const CHECKED_IN_REPOVECD_SERVICE: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packaging/systemd/repovecd.service"));
+const CHECKED_IN_REPOVECD_SERVICE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packaging/systemd/repovecd.service"
+));
 /// The embedded `repovec-mcpd.service` unit checked in under `packaging/systemd/`.
 const CHECKED_IN_REPOVEC_MCPD_SERVICE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -109,8 +113,11 @@ pub(super) const GREPAI_HARDENING_DIRECTIVES: [(&str, &str); 15] = [
     ("ProcSubset", "pid"),
 ];
 /// Boolean hardening directives required by the grepai template.
-pub(super) const GREPAI_BOOLEAN_HARDENING_DIRECTIVES: [(&str, &str); 3] =
-    [("RestrictNamespaces", "yes"), ("RestrictRealtime", "yes"), ("RestrictSUIDSGID", "yes")];
+pub(super) const GREPAI_BOOLEAN_HARDENING_DIRECTIVES: [(&str, &str); 3] = [
+    ("RestrictNamespaces", "yes"),
+    ("RestrictRealtime", "yes"),
+    ("RestrictSUIDSGID", "yes"),
+];
 /// Address families permitted to the grepai template service.
 pub(super) const GREPAI_RESTRICT_ADDRESS_FAMILIES: &str = "AF_UNIX AF_INET AF_INET6";
 

@@ -8,7 +8,11 @@ use super::{
     QdrantQuadletError,
     parser::ParsedQuadlet,
     tests_proptest_strategies::{
-        auto_update_policy, host_port, insertion_position, non_loopback_ip, valid_image,
+        auto_update_policy,
+        host_port,
+        insertion_position,
+        non_loopback_ip,
+        valid_image,
         valid_quadlet_base,
     },
     validate_qdrant_quadlet,

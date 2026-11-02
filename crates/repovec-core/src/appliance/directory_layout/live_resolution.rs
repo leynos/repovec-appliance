@@ -16,7 +16,10 @@ use camino::Utf8PathBuf;
 
 use super::{
     account::{
-        PASSWD_DATABASE_PATH, find_repovec_account, passwd_database_text, validate_repovec_account,
+        PASSWD_DATABASE_PATH,
+        find_repovec_account,
+        passwd_database_text,
+        validate_repovec_account,
     },
     group::{GROUP_DATABASE_PATH, GroupLookupError, group_database_text, resolve_repovec_gid_from},
     live::{LiveLayoutError, verify_layout_for_ids},
@@ -51,8 +54,7 @@ pub struct LiveLayoutIds {
 /// # Examples
 ///
 /// ```no_run
-/// use repovec_core::RuntimePaths;
-/// use repovec_core::appliance::directory_layout::live::verify_live_layout;
+/// use repovec_core::{RuntimePaths, appliance::directory_layout::live::verify_live_layout};
 ///
 /// verify_live_layout(&RuntimePaths::appliance_defaults()).expect("the host is provisioned");
 /// ```
@@ -133,5 +135,8 @@ fn map_group_lookup_error(error: GroupLookupError) -> LiveLayoutError {
 
 /// Maps an unreadable account database to the typed error.
 fn unreadable_database(path: &str, source: io::Error) -> LiveLayoutError {
-    LiveLayoutError::UnreadablePath { path: Utf8PathBuf::from(path), source }
+    LiveLayoutError::UnreadablePath {
+        path: Utf8PathBuf::from(path),
+        source,
+    }
 }

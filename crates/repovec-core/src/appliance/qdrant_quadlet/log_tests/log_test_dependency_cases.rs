@@ -8,7 +8,8 @@
 use tracing::Level;
 
 use super::{
-    LogScenario, canonical,
+    LogScenario,
+    canonical,
     log_test_case_support::{event, without_line},
 };
 
@@ -115,7 +116,10 @@ fn missing_dependency(
         event(
             Level::WARN,
             message,
-            &[("directive", directive), ("expected_dependency", expected_dependency)],
+            &[
+                ("directive", directive),
+                ("expected_dependency", expected_dependency),
+            ],
         ),
     )
 }
@@ -167,7 +171,10 @@ pub(super) fn incorrect_api_key_secret() -> LogScenario {
             Level::WARN,
             "qdrant quadlet validation failed: incorrect api key secret",
             &[
-                ("secret", "other-secret,type=env,target=QDRANT__SERVICE__API_KEY"),
+                (
+                    "secret",
+                    "other-secret,type=env,target=QDRANT__SERVICE__API_KEY",
+                ),
                 ("expected_secret", "repovec-qdrant-api-key"),
                 ("expected_target", "QDRANT__SERVICE__API_KEY"),
             ],

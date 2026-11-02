@@ -5,6 +5,8 @@
 mod error_builders;
 #[path = "expected_errors.rs"]
 mod expected_errors;
+#[path = "expected_errors_grepai.rs"]
+mod expected_errors_grepai;
 #[path = "grepai_template_mutations.rs"]
 mod grepai_template_mutations;
 #[path = "hardening.rs"]

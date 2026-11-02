@@ -7,14 +7,12 @@
 //!
 //! ## Entry points
 //!
-//! - [`validate_and_trace_checked_in_units`] — validates the three
-//!   embedded systemd unit assets and emits a `tracing::trace!` event on
-//!   success. Daemon binaries call this as the first substantive action in
-//!   `main()`.
-//! - [`run_startup_validation`] — runs an injected validator closure,
-//!   emits structured `tracing::error!` diagnostics on failure, and maps
-//!   any [`SystemdUnitError`] to `Err(1)` so the caller can exit with the
-//!   returned code.
+//! - [`validate_and_trace_checked_in_units`] — validates the three embedded systemd unit assets and
+//!   emits a `tracing::trace!` event on success. Daemon binaries call this as the first substantive
+//!   action in `main()`.
+//! - [`run_startup_validation`] — runs an injected validator closure, emits structured
+//!   `tracing::error!` diagnostics on failure, and maps any [`SystemdUnitError`] to `Err(1)` so the
+//!   caller can exit with the returned code.
 //!
 //! The private helper `validate_and_trace_systemd_units_with` is an
 //! injection seam used by tests and by `validate_and_trace_checked_in_units`
@@ -57,7 +55,8 @@ pub fn validate_and_trace_checked_in_units() -> Result<(), SystemdUnitError> {
 ///
 /// ```
 /// use repovec_core::appliance::systemd_units::{
-///     run_startup_validation, validate_and_trace_checked_in_units,
+///     run_startup_validation,
+///     validate_and_trace_checked_in_units,
 /// };
 ///
 /// run_startup_validation(validate_and_trace_checked_in_units)
@@ -108,7 +107,9 @@ mod tests {
     use repovec_test_helpers::{capture_logs, ensure, ensure_log_line_contains};
 
     use super::{
-        SystemdUnitError, run_startup_validation, validate_and_trace_checked_in_units,
+        SystemdUnitError,
+        run_startup_validation,
+        validate_and_trace_checked_in_units,
         validate_and_trace_systemd_units_with,
     };
 
@@ -120,11 +121,16 @@ mod tests {
 
     #[test]
     fn validate_and_trace_systemd_units_with_returns_injected_error() {
-        let injected_error =
-            SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" };
+        let injected_error = SystemdUnitError::MissingSection {
+            unit: "repovecd.service",
+            section: "Service",
+        };
 
         let result = validate_and_trace_systemd_units_with(|| {
-            Err(SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" })
+            Err(SystemdUnitError::MissingSection {
+                unit: "repovecd.service",
+                section: "Service",
+            })
         });
 
         assert_eq!(result, Err(injected_error));
@@ -148,7 +154,10 @@ mod tests {
     #[test]
     fn run_startup_validation_returns_exit_code_1_when_validation_fails() {
         let result = run_startup_validation(|| {
-            Err(SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" })
+            Err(SystemdUnitError::MissingSection {
+                unit: "repovecd.service",
+                section: "Service",
+            })
         });
 
         assert_eq!(result, Err(1));
@@ -166,8 +175,11 @@ mod tests {
         })
         .expect("capturing validation logs should succeed");
 
-        ensure(result == Err(1), "startup validation should return exit code 1")
-            .expect("startup validation should return exit code 1");
+        ensure(
+            result == Err(1),
+            "startup validation should return exit code 1",
+        )
+        .expect("startup validation should return exit code 1");
         ensure_log_line_contains(
             &logs,
             "ERROR",

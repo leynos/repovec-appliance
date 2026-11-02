@@ -6,16 +6,32 @@ use proptest::prelude::*;
 use rstest::rstest;
 
 use super::{
-    AccessToken, DeviceCode, DeviceFlowErrorCode, PollDecision, SLOW_DOWN_EXTRA_DELAY,
-    TerminalDeviceFlowError, TokenPollOutcome, UserCode, apply_poll_outcome,
+    AccessToken,
+    DeviceCode,
+    DeviceFlowErrorCode,
+    PollDecision,
+    SLOW_DOWN_EXTRA_DELAY,
+    TerminalDeviceFlowError,
+    TokenPollOutcome,
+    UserCode,
+    apply_poll_outcome,
     classify_device_flow_error,
 };
 
 #[rstest]
-#[case(DeviceFlowErrorCode::AuthorizationPending, Some(TokenPollOutcome::AuthorizationPending))]
+#[case(
+    DeviceFlowErrorCode::AuthorizationPending,
+    Some(TokenPollOutcome::AuthorizationPending)
+)]
 #[case(DeviceFlowErrorCode::SlowDown, Some(TokenPollOutcome::SlowDown))]
-#[case(DeviceFlowErrorCode::AccessDenied, Some(TokenPollOutcome::AccessDenied))]
-#[case(DeviceFlowErrorCode::ExpiredToken, Some(TokenPollOutcome::ExpiredToken))]
+#[case(
+    DeviceFlowErrorCode::AccessDenied,
+    Some(TokenPollOutcome::AccessDenied)
+)]
+#[case(
+    DeviceFlowErrorCode::ExpiredToken,
+    Some(TokenPollOutcome::ExpiredToken)
+)]
 #[case(DeviceFlowErrorCode::Unsupported, None)]
 fn device_code_errors_are_classified(
     #[case] error: DeviceFlowErrorCode,
@@ -24,24 +40,22 @@ fn device_code_errors_are_classified(
     assert_eq!(classify_device_flow_error(error), expected);
 }
 
-#[test]
-fn authorization_pending_keeps_the_active_interval() {
+#[rstest]
+#[case::authorization_pending(TokenPollOutcome::AuthorizationPending, Duration::ZERO)]
+#[case::slow_down(TokenPollOutcome::SlowDown, SLOW_DOWN_EXTRA_DELAY)]
+fn active_outcomes_keep_or_extend_the_interval(
+    #[case] outcome: TokenPollOutcome,
+    #[case] extra_delay: Duration,
+) {
     let interval = Duration::from_secs(7);
 
-    let decision = apply_poll_outcome(TokenPollOutcome::AuthorizationPending, interval);
-
-    assert_eq!(decision, PollDecision::Continue { next_interval: interval });
-}
-
-#[test]
-fn slow_down_increases_the_active_interval() {
-    let interval = Duration::from_secs(7);
-
-    let decision = apply_poll_outcome(TokenPollOutcome::SlowDown, interval);
+    let decision = apply_poll_outcome(outcome, interval);
 
     assert_eq!(
         decision,
-        PollDecision::Continue { next_interval: interval + SLOW_DOWN_EXTRA_DELAY },
+        PollDecision::Continue {
+            next_interval: interval + extra_delay
+        },
     );
 }
 
@@ -49,7 +63,12 @@ fn slow_down_increases_the_active_interval() {
 fn slow_down_saturates_extreme_active_interval() {
     let decision = apply_poll_outcome(TokenPollOutcome::SlowDown, Duration::MAX);
 
-    assert_eq!(decision, PollDecision::Continue { next_interval: Duration::MAX });
+    assert_eq!(
+        decision,
+        PollDecision::Continue {
+            next_interval: Duration::MAX
+        }
+    );
 }
 
 #[rstest]

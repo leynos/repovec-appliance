@@ -7,16 +7,14 @@
 //!
 //! ## Validation Entry Points
 //!
-//! - [`validate_checked_in_systemd_units`] validates the five embedded unit
-//!   assets shipped in the repository.
-//! - [`validate_and_trace_checked_in_units`] validates the checked-in unit set
-//!   and emits the daemon startup success trace.
-//! - [`validate_systemd_units`] validates caller-supplied unit text. Use it in
-//!   tests or tooling that needs to analyse unit contents sourced outside the
-//!   checked-in files.
-//! - [`validate_systemd_units_with_grepai_template`] validates caller-supplied
-//!   target, daemon, and grepai template text against the full appliance
-//!   service-layout contract.
+//! - [`validate_checked_in_systemd_units`] validates the five embedded unit assets shipped in the
+//!   repository.
+//! - [`validate_and_trace_checked_in_units`] validates the checked-in unit set and emits the daemon
+//!   startup success trace.
+//! - [`validate_systemd_units`] validates caller-supplied unit text. Use it in tests or tooling
+//!   that needs to analyse unit contents sourced outside the checked-in files.
+//! - [`validate_systemd_units_with_grepai_template`] validates caller-supplied target, daemon, and
+//!   grepai template text against the full appliance service-layout contract.
 //!
 //! The validators return `Ok(())`, or [`SystemdUnitError`] for the first
 //! violation found.
@@ -30,29 +28,23 @@
 //!
 //! The service-layout contract enforces:
 //!
-//! - Required section headers for the relevant unit type: `[Unit]`, `[Service]`,
-//!   and `[Install]`.
-//! - Dependency and ordering directives: `Wants=`, `Requires=`, `After=`, and
-//!   `WantedBy=`.
-//! - Rejection of Quadlet-derived Qdrant dependency names such as
-//!   `qdrant.container` and `qdrant.container.service`.
-//! - `ExecStart=` executable paths for `repovecd`, `repovec-mcpd`, and
-//!   `grepai watch`.
-//! - The provisioning oneshot contract: `repovec-provision.service` is wanted
-//!   by `repovec.target`, runs `systemd-sysusers` then `systemd-tmpfiles` in
-//!   that exact order, and is ordered before the Qdrant API-key oneshot,
-//!   Qdrant, and both daemons. It returns to inactive after success so a later
-//!   target restart reruns the idempotent provisioning commands.
-//! - A requirement, not merely an ordering, from each provisioned consumer back
-//!   to the oneshot: `repovecd` and `repovec-mcpd` must `Requires=`
-//!   `repovec-provision.service`. `Before=` in the oneshot only sequences the
-//!   start jobs, so without the reverse requirement a failed provisioning run
-//!   would still leave the daemons starting against an unprovisioned host.
-//! - `[Service]` identity and runtime-directory directives: `User=`, `Group=`,
-//!   `WorkingDirectory=`, and `Environment=HOME=`.
-//! - Grepai template directives that bind future instances to
-//!   `repovec.target`, use `WorkingDirectory=/var/lib/repovec/worktrees/%I`,
-//!   and keep stdout and stderr in journald.
+//! - Required section headers for the relevant unit type: `[Unit]`, `[Service]`, and `[Install]`.
+//! - Dependency and ordering directives: `Wants=`, `Requires=`, `After=`, and `WantedBy=`.
+//! - Rejection of Quadlet-derived Qdrant dependency names such as `qdrant.container` and
+//!   `qdrant.container.service`.
+//! - `ExecStart=` executable paths for `repovecd`, `repovec-mcpd`, and `grepai watch`.
+//! - The provisioning oneshot contract: `repovec-provision.service` is wanted by `repovec.target`,
+//!   runs `systemd-sysusers` then `systemd-tmpfiles` in that exact order, and is ordered before the
+//!   Qdrant API-key oneshot, Qdrant, and both daemons. It returns to inactive after success so a
+//!   later target restart reruns the idempotent provisioning commands.
+//! - A requirement, not merely an ordering, from each provisioned consumer back to the oneshot:
+//!   `repovecd` and `repovec-mcpd` must `Requires=` `repovec-provision.service`. `Before=` in the
+//!   oneshot only sequences the start jobs, so without the reverse requirement a failed
+//!   provisioning run would still leave the daemons starting against an unprovisioned host.
+//! - `[Service]` identity and runtime-directory directives: `User=`, `Group=`, `WorkingDirectory=`,
+//!   and `Environment=HOME=`.
+//! - Grepai template directives that bind future instances to `repovec.target`, use
+//!   `WorkingDirectory=/var/lib/repovec/worktrees/%I`, and keep stdout and stderr in journald.
 //!
 //! The validators do not verify that referenced binaries, users, groups,
 //! directories, or services exist on the host.
@@ -77,25 +69,49 @@ mod tests;
 // validators, their tests, and the public API all keep referring to a single
 // path. `assets.rs` owns the definitions.
 pub use assets::{
-    CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH, CHECKED_IN_REPOVEC_MCPD_SERVICE_PATH,
-    CHECKED_IN_REPOVEC_PROVISION_SERVICE_PATH, CHECKED_IN_REPOVEC_TARGET_PATH,
-    CHECKED_IN_REPOVECD_SERVICE_PATH, checked_in_repovec_grepai_template,
-    checked_in_repovec_mcpd_service, checked_in_repovec_provision_service,
-    checked_in_repovec_target, checked_in_repovecd_service,
+    CHECKED_IN_REPOVEC_GREPAI_TEMPLATE_PATH,
+    CHECKED_IN_REPOVEC_MCPD_SERVICE_PATH,
+    CHECKED_IN_REPOVEC_PROVISION_SERVICE_PATH,
+    CHECKED_IN_REPOVEC_TARGET_PATH,
+    CHECKED_IN_REPOVECD_SERVICE_PATH,
+    checked_in_repovec_grepai_template,
+    checked_in_repovec_mcpd_service,
+    checked_in_repovec_provision_service,
+    checked_in_repovec_target,
+    checked_in_repovecd_service,
 };
 use assets::{
-    GREPAI_BOOLEAN_HARDENING_DIRECTIVES, GREPAI_HARDENING_DIRECTIVES,
-    GREPAI_RESTRICT_ADDRESS_FAMILIES, GREPAI_WORKING_DIRECTORY, INSTALL_SECTION,
-    PROVISION_EXEC_SEQUENCE, QDRANT_API_KEY_SERVICE, QDRANT_CONTAINER, QDRANT_CONTAINER_SERVICE,
-    QDRANT_SERVICE, REPOVEC_GREPAI_TEMPLATE_UNIT, REPOVEC_MCPD_UNIT, REPOVEC_PROVISION_SERVICE,
-    REPOVECD_UNIT, SERVICE_GROUP, SERVICE_HOME_ENVIRONMENT, SERVICE_SECTION, SERVICE_USER,
-    SERVICE_WORKING_DIRECTORY, SYSUSERS_SERVICE, TARGET_UNIT, UNIT_SECTION,
+    GREPAI_BOOLEAN_HARDENING_DIRECTIVES,
+    GREPAI_HARDENING_DIRECTIVES,
+    GREPAI_RESTRICT_ADDRESS_FAMILIES,
+    GREPAI_WORKING_DIRECTORY,
+    INSTALL_SECTION,
+    PROVISION_EXEC_SEQUENCE,
+    QDRANT_API_KEY_SERVICE,
+    QDRANT_CONTAINER,
+    QDRANT_CONTAINER_SERVICE,
+    QDRANT_SERVICE,
+    REPOVEC_GREPAI_TEMPLATE_UNIT,
+    REPOVEC_MCPD_UNIT,
+    REPOVEC_PROVISION_SERVICE,
+    REPOVECD_UNIT,
+    SERVICE_GROUP,
+    SERVICE_HOME_ENVIRONMENT,
+    SERVICE_SECTION,
+    SERVICE_USER,
+    SERVICE_WORKING_DIRECTORY,
+    SYSUSERS_SERVICE,
+    TARGET_UNIT,
+    UNIT_SECTION,
 };
 pub use error::SystemdUnitError;
 use parsed::ParsedUnit;
 pub use startup::{run_startup_validation, validate_and_trace_checked_in_units};
 use validate::{
-    validate_grepai_template, validate_mcpd, validate_provision_service, validate_repovecd,
+    validate_grepai_template,
+    validate_mcpd,
+    validate_provision_service,
+    validate_repovecd,
     validate_target,
 };
 
@@ -165,7 +181,8 @@ pub fn validate_checked_in_systemd_units() -> Result<(), SystemdUnitError> {
 ///
 /// let target = "\
 /// [Unit]
-/// Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service repovec-provision.service
+/// Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service \
+///               repovec-provision.service
 ///
 /// [Install]
 /// WantedBy=multi-user.target
@@ -227,12 +244,14 @@ pub fn validate_systemd_units(
 ///
 /// ```
 /// use repovec_core::appliance::systemd_units::{
-///     checked_in_repovec_grepai_template, validate_systemd_units_with_grepai_template,
+///     checked_in_repovec_grepai_template,
+///     validate_systemd_units_with_grepai_template,
 /// };
 ///
 /// let target = "\
 /// [Unit]
-/// Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service repovec-provision.service
+/// Wants=qdrant.service repovecd.service repovec-mcpd.service cloudflared.service \
+///               repovec-provision.service
 ///
 /// [Install]
 /// WantedBy=multi-user.target

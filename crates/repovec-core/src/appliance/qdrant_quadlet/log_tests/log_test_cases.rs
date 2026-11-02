@@ -12,94 +12,137 @@ use tracing::Level;
 
 use super::{LogScenario, canonical, log_test_case_support::event};
 
-pub(super) fn invalid_line() -> LogScenario {
-    LogScenario {
-        snapshot_name: "invalid_line",
-        contents: String::from("[Container]\nBearer very-secret-token\n"),
-        expected: event(
-            Level::ERROR,
-            "qdrant quadlet validation rejected invalid line",
-            &[("line_number", "2"), ("redacted_line", "Bearer <redacted>")],
-        ),
-    }
+/// Declares one scenario constructor per mutation.
+///
+/// Every constructor shares the same shape: name the scenario, edit the
+/// canonical Quadlet, and pair that with the event the observer must emit. The
+/// snapshot name is the constructor name, so the table below records only the
+/// data that actually differs between cases.
+macro_rules! log_scenarios {
+    ($($name:ident, $contents:expr, $level:expr, $message:literal, $fields:expr;)*) => {
+        $(
+            pub(super) fn $name() -> LogScenario {
+                LogScenario {
+                    snapshot_name: stringify!($name),
+                    contents: $contents,
+                    expected: event($level, $message, $fields),
+                }
+            }
+        )*
+    };
 }
 
-pub(super) fn property_before_section() -> LogScenario {
-    LogScenario {
-        snapshot_name: "property_before_section",
-        contents: String::from("Environment=QDRANT__SERVICE__API_KEY=secret\n[Container]\n"),
-        expected: event(
-            Level::ERROR,
-            "qdrant quadlet validation rejected property before section",
-            &[("line_number", "1"), ("redacted_line", "Environment=<redacted>")],
-        ),
-    }
-}
-
-pub(super) fn bearer_assignment_before_section() -> LogScenario {
-    LogScenario {
-        snapshot_name: "bearer_assignment_before_section",
-        contents: String::from("auth=Bearer very-secret-token\n[Container]\n"),
-        expected: event(
-            Level::ERROR,
-            "qdrant quadlet validation rejected property before section",
-            &[("line_number", "1"), ("redacted_line", "Bearer <redacted>")],
-        ),
-    }
-}
-
-pub(super) fn missing_image() -> LogScenario {
-    LogScenario {
-        snapshot_name: "missing_image",
-        contents: canonical().replace("Image=docker.io/qdrant/qdrant:v1\n", ""),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: missing image",
-            &[("expected_image", "docker.io/qdrant/qdrant:v1")],
-        ),
-    }
-}
-
-pub(super) fn image_not_pinned() -> LogScenario {
-    LogScenario {
-        snapshot_name: "image_not_pinned",
-        contents: canonical().replace("docker.io/qdrant/qdrant:v1", "qdrant/qdrant:latest"),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: image is not fully qualified and pinned",
-            &[("image", "qdrant/qdrant:latest"), ("expected_image", "docker.io/qdrant/qdrant:v1")],
-        ),
-    }
-}
-
-pub(super) fn unexpected_image() -> LogScenario {
-    LogScenario {
-        snapshot_name: "unexpected_image",
-        contents: canonical().replace("docker.io/qdrant/qdrant:v1", "docker.io/other/image:v2"),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: unexpected image",
-            &[
-                ("image", "docker.io/other/image:v2"),
-                ("expected_image", "docker.io/qdrant/qdrant:v1"),
-            ],
-        ),
-    }
-}
-
-pub(super) fn duplicate_image() -> LogScenario {
-    LogScenario {
-        snapshot_name: "duplicate_image",
-        contents: canonical().replace(
-            "Image=docker.io/qdrant/qdrant:v1\n",
-            "Image=docker.io/qdrant/qdrant:v1\nImage=docker.io/qdrant/qdrant:v2\n",
-        ),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: unexpected image",
-            &[("image", "docker.io/qdrant/qdrant:v1,docker.io/qdrant/qdrant:v2")],
-        ),
-    }
+log_scenarios! {
+    invalid_line,
+    String::from("[Container]\nBearer very-secret-token\n"),
+    Level::ERROR,
+    "qdrant quadlet validation rejected invalid line",
+    &[("line_number", "2"), ("redacted_line", "Bearer <redacted>")];
+    property_before_section,
+    String::from("Environment=QDRANT__SERVICE__API_KEY=secret\n[Container]\n"),
+    Level::ERROR,
+    "qdrant quadlet validation rejected property before section",
+    &[
+        ("line_number", "1"),
+        ("redacted_line", "Environment=<redacted>"),
+    ];
+    bearer_assignment_before_section,
+    String::from("auth=Bearer very-secret-token\n[Container]\n"),
+    Level::ERROR,
+    "qdrant quadlet validation rejected property before section",
+    &[("line_number", "1"), ("redacted_line", "Bearer <redacted>")];
+    missing_image,
+    canonical().replace("Image=docker.io/qdrant/qdrant:v1\n", ""),
+    Level::WARN,
+    "qdrant quadlet validation failed: missing image",
+    &[("expected_image", "docker.io/qdrant/qdrant:v1")];
+    image_not_pinned,
+    canonical().replace("docker.io/qdrant/qdrant:v1", "qdrant/qdrant:latest"),
+    Level::WARN,
+    "qdrant quadlet validation failed: image is not fully qualified and pinned",
+    &[
+        ("image", "qdrant/qdrant:latest"),
+        ("expected_image", "docker.io/qdrant/qdrant:v1"),
+    ];
+    unexpected_image,
+    canonical().replace("docker.io/qdrant/qdrant:v1", "docker.io/other/image:v2"),
+    Level::WARN,
+    "qdrant quadlet validation failed: unexpected image",
+    &[
+        ("image", "docker.io/other/image:v2"),
+        ("expected_image", "docker.io/qdrant/qdrant:v1"),
+    ];
+    duplicate_image,
+    canonical().replace(
+        "Image=docker.io/qdrant/qdrant:v1\n",
+        "Image=docker.io/qdrant/qdrant:v1\nImage=docker.io/qdrant/qdrant:v2\n",
+    ),
+    Level::WARN,
+    "qdrant quadlet validation failed: unexpected image",
+    &[(
+        "image",
+        "docker.io/qdrant/qdrant:v1,docker.io/qdrant/qdrant:v2",
+    )];
+    missing_storage_mount,
+    canonical().replace(
+        "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n",
+        "",
+    ),
+    Level::WARN,
+    "qdrant quadlet validation failed: missing storage mount",
+    &[
+        ("expected_source", "/var/lib/repovec/qdrant-storage"),
+        ("expected_target", "/qdrant/storage"),
+    ];
+    malformed_storage_mount,
+    canonical().replace(
+        "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z",
+        "Volume=/var/lib/repovec/qdrant-storage",
+    ),
+    Level::WARN,
+    "qdrant quadlet validation failed: missing storage mount",
+    &[
+        ("volume", "/var/lib/repovec/qdrant-storage"),
+        ("expected_source", "/var/lib/repovec/qdrant-storage"),
+        ("expected_target", "/qdrant/storage"),
+    ];
+    incorrect_storage_source,
+    canonical().replace(
+        "/var/lib/repovec/qdrant-storage",
+        "/var/lib/other/qdrant-storage",
+    ),
+    Level::WARN,
+    "qdrant quadlet validation failed: incorrect storage source",
+    &[
+        ("source", "/var/lib/other/qdrant-storage"),
+        ("expected_source", "/var/lib/repovec/qdrant-storage"),
+    ];
+    incorrect_storage_target,
+    canonical().replace("/qdrant/storage:Z", "/srv/qdrant:Z"),
+    Level::WARN,
+    "qdrant quadlet validation failed: incorrect storage target",
+    &[
+        ("storage_target", "/srv/qdrant"),
+        ("expected_target", "/qdrant/storage"),
+    ];
+    missing_selinux_relabel,
+    canonical().replace(":/qdrant/storage:Z", ":/qdrant/storage"),
+    Level::WARN,
+    "qdrant quadlet validation failed: missing selinux relabel",
+    &[("volume", "/var/lib/repovec/qdrant-storage:/qdrant/storage")];
+    missing_auto_update,
+    canonical().replace("AutoUpdate=registry\n", ""),
+    Level::WARN,
+    "qdrant quadlet validation failed: missing auto-update policy",
+    &[("expected_auto_update", "registry")];
+    incorrect_auto_update,
+    canonical().replace("AutoUpdate=registry\n", "AutoUpdate=local\n"),
+    Level::WARN,
+    "qdrant quadlet validation failed: incorrect auto-update policy",
+    &[
+        ("auto_update", "local"),
+        ("expected_auto_update", "registry"),
+    ];
 }
 
 pub(super) fn missing_rest_publish() -> LogScenario {
@@ -127,11 +170,21 @@ fn missing_publish(
 }
 
 pub(super) fn rest_port_not_loopback() -> LogScenario {
-    port_not_loopback("rest_port_not_loopback", "127.0.0.1:6333:6333", "0.0.0.0:6333:6333", "6333")
+    port_not_loopback(
+        "rest_port_not_loopback",
+        "127.0.0.1:6333:6333",
+        "0.0.0.0:6333:6333",
+        "6333",
+    )
 }
 
 pub(super) fn grpc_port_not_loopback() -> LogScenario {
-    port_not_loopback("grpc_port_not_loopback", "127.0.0.1:6334:6334", "0.0.0.0:6334:6334", "6334")
+    port_not_loopback(
+        "grpc_port_not_loopback",
+        "127.0.0.1:6334:6334",
+        "0.0.0.0:6334:6334",
+        "6334",
+    )
 }
 
 fn port_not_loopback(
@@ -146,106 +199,11 @@ fn port_not_loopback(
         expected: event(
             Level::WARN,
             "qdrant quadlet validation failed: publish port is not bound to loopback",
-            &[("port", port), ("publish_port", publish_port), ("expected_publish_port", from)],
-        ),
-    }
-}
-
-pub(super) fn missing_storage_mount() -> LogScenario {
-    LogScenario {
-        snapshot_name: "missing_storage_mount",
-        contents: canonical()
-            .replace("Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z\n", ""),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: missing storage mount",
             &[
-                ("expected_source", "/var/lib/repovec/qdrant-storage"),
-                ("expected_target", "/qdrant/storage"),
+                ("port", port),
+                ("publish_port", publish_port),
+                ("expected_publish_port", from),
             ],
-        ),
-    }
-}
-
-pub(super) fn malformed_storage_mount() -> LogScenario {
-    LogScenario {
-        snapshot_name: "malformed_storage_mount",
-        contents: canonical().replace(
-            "Volume=/var/lib/repovec/qdrant-storage:/qdrant/storage:Z",
-            "Volume=/var/lib/repovec/qdrant-storage",
-        ),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: missing storage mount",
-            &[
-                ("volume", "/var/lib/repovec/qdrant-storage"),
-                ("expected_source", "/var/lib/repovec/qdrant-storage"),
-                ("expected_target", "/qdrant/storage"),
-            ],
-        ),
-    }
-}
-
-pub(super) fn incorrect_storage_source() -> LogScenario {
-    LogScenario {
-        snapshot_name: "incorrect_storage_source",
-        contents: canonical()
-            .replace("/var/lib/repovec/qdrant-storage", "/var/lib/other/qdrant-storage"),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: incorrect storage source",
-            &[
-                ("source", "/var/lib/other/qdrant-storage"),
-                ("expected_source", "/var/lib/repovec/qdrant-storage"),
-            ],
-        ),
-    }
-}
-
-pub(super) fn incorrect_storage_target() -> LogScenario {
-    LogScenario {
-        snapshot_name: "incorrect_storage_target",
-        contents: canonical().replace("/qdrant/storage:Z", "/srv/qdrant:Z"),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: incorrect storage target",
-            &[("storage_target", "/srv/qdrant"), ("expected_target", "/qdrant/storage")],
-        ),
-    }
-}
-
-pub(super) fn missing_selinux_relabel() -> LogScenario {
-    LogScenario {
-        snapshot_name: "missing_selinux_relabel",
-        contents: canonical().replace(":/qdrant/storage:Z", ":/qdrant/storage"),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: missing selinux relabel",
-            &[("volume", "/var/lib/repovec/qdrant-storage:/qdrant/storage")],
-        ),
-    }
-}
-
-pub(super) fn missing_auto_update() -> LogScenario {
-    LogScenario {
-        snapshot_name: "missing_auto_update",
-        contents: canonical().replace("AutoUpdate=registry\n", ""),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: missing auto-update policy",
-            &[("expected_auto_update", "registry")],
-        ),
-    }
-}
-
-pub(super) fn incorrect_auto_update() -> LogScenario {
-    LogScenario {
-        snapshot_name: "incorrect_auto_update",
-        contents: canonical().replace("AutoUpdate=registry\n", "AutoUpdate=local\n"),
-        expected: event(
-            Level::WARN,
-            "qdrant quadlet validation failed: incorrect auto-update policy",
-            &[("auto_update", "local"), ("expected_auto_update", "registry")],
         ),
     }
 }

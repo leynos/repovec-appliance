@@ -4,7 +4,11 @@ use oauth2::reqwest::StatusCode;
 use repovec_core::github_oauth::TokenPollOutcome;
 
 use super::{
-    DeviceFlowEndpoints, GitHubOAuthClient, OAuthClientError, TokenPollWire, join_scopes,
+    DeviceFlowEndpoints,
+    GitHubOAuthClient,
+    OAuthClientError,
+    TokenPollWire,
+    join_scopes,
     token_poll_outcome,
 };
 
@@ -15,10 +19,15 @@ fn scopes_are_joined_with_spaces() {
 
 #[test]
 fn invalid_device_code_url_is_rejected() {
-    let result =
-        GitHubOAuthClient::new(DeviceFlowEndpoints::new("not a URL", "https://example.test/token"));
+    let result = GitHubOAuthClient::new(DeviceFlowEndpoints::new(
+        "not a URL",
+        "https://example.test/token",
+    ));
 
-    assert!(matches!(result, Err(OAuthClientError::InvalidDeviceCodeUrl(_))));
+    assert!(matches!(
+        result,
+        Err(OAuthClientError::InvalidDeviceCodeUrl(_))
+    ));
 }
 
 #[test]
@@ -41,7 +50,11 @@ fn token_poll_maps_device_flow_error_codes(
     #[case] expected: TokenPollOutcome,
 ) {
     let outcome = token_poll_outcome(
-        TokenPollWire { access_token: None, error: Some(error.to_owned()), scope: None },
+        TokenPollWire {
+            access_token: None,
+            error: Some(error.to_owned()),
+            scope: None,
+        },
         false,
     )
     .expect("known device-flow error should map to an outcome");
@@ -49,35 +62,76 @@ fn token_poll_maps_device_flow_error_codes(
     assert_eq!(outcome, expected);
 }
 
-#[test]
-fn token_poll_rejects_unsupported_error_codes() {
-    let result = token_poll_outcome(
-        TokenPollWire { access_token: None, error: Some("invalid_grant".to_owned()), scope: None },
-        false,
-    );
-
-    assert!(matches!(result, Err(OAuthClientError::UnsupportedOAuthError { .. })));
+#[derive(Clone, Copy, Debug)]
+enum ExpectedPollError {
+    UnsupportedError,
+    MissingErrorField,
+    MissingAccessToken,
 }
 
-#[test]
-fn token_poll_rejects_error_responses_without_error_codes() {
-    let result =
-        token_poll_outcome(TokenPollWire { access_token: None, error: None, scope: None }, false);
+impl ExpectedPollError {
+    fn assert_matches(self, error: &OAuthClientError) {
+        let matches_expected = match self {
+            Self::UnsupportedError => {
+                matches!(error, OAuthClientError::UnsupportedOAuthError { .. })
+            }
+            Self::MissingErrorField => {
+                matches!(error, OAuthClientError::ReadTokenErrorWithoutErrorField)
+            }
+            Self::MissingAccessToken => matches!(error, OAuthClientError::MissingAccessToken),
+        };
 
-    assert!(matches!(result, Err(OAuthClientError::ReadTokenErrorWithoutErrorField)));
+        assert!(matches_expected, "expected {self:?}, got {error:?}");
+    }
 }
 
-#[test]
-fn token_poll_rejects_success_without_access_token() {
-    let result =
-        token_poll_outcome(TokenPollWire { access_token: None, error: None, scope: None }, true);
+#[rstest::rstest]
+#[case::unsupported_error_code(
+    TokenPollWire {
+        access_token: None,
+        error: Some("invalid_grant".to_owned()),
+        scope: None,
+    },
+    false,
+    ExpectedPollError::UnsupportedError,
+)]
+#[case::missing_error_code(
+    TokenPollWire {
+        access_token: None,
+        error: None,
+        scope: None,
+    },
+    false,
+    ExpectedPollError::MissingErrorField,
+)]
+#[case::missing_access_token(
+    TokenPollWire {
+        access_token: None,
+        error: None,
+        scope: None,
+    },
+    true,
+    ExpectedPollError::MissingAccessToken,
+)]
+fn token_poll_rejects_invalid_responses(
+    #[case] body: TokenPollWire,
+    #[case] is_success: bool,
+    #[case] expected_error: ExpectedPollError,
+) {
+    let result = token_poll_outcome(body, is_success);
 
-    assert!(matches!(result, Err(OAuthClientError::MissingAccessToken)));
+    let Err(error) = result else {
+        panic!("invalid token response should be rejected");
+    };
+    expected_error.assert_matches(&error);
 }
 
 #[test]
 fn non_success_device_code_status_is_rejected() {
     let result = super::ensure_device_code_status(StatusCode::BAD_GATEWAY, &tracing::Span::none());
 
-    assert!(matches!(result, Err(OAuthClientError::UnexpectedStatus { .. })));
+    assert!(matches!(
+        result,
+        Err(OAuthClientError::UnexpectedStatus { .. })
+    ));
 }

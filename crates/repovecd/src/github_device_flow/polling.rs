@@ -3,13 +3,22 @@
 use std::time::{Duration, Instant};
 
 use repovec_core::github_oauth::{
-    AccessToken, DeviceAuthorization, PollDecision, TerminalDeviceFlowError, apply_poll_outcome,
+    AccessToken,
+    DeviceAuthorization,
+    PollDecision,
+    TerminalDeviceFlowError,
+    apply_poll_outcome,
 };
 use tracing::info;
 
 use super::{
-    DeviceFlowApi, DeviceFlowLoginRequest, DeviceFlowRunError, DeviceFlowRuntime, MonotonicClock,
-    Sleeper, TokenStore,
+    DeviceFlowApi,
+    DeviceFlowLoginRequest,
+    DeviceFlowRunError,
+    DeviceFlowRuntime,
+    MonotonicClock,
+    Sleeper,
+    TokenStore,
     observability::{info_interval_increase, info_terminal_outcome},
 };
 
@@ -76,7 +85,10 @@ where
 {
     runtime.sleeper.sleep(polling.interval);
     polling.record_attempt();
-    info!(attempt = polling.attempt, "metric.github_device_flow_poll_attempt_total");
+    info!(
+        attempt = polling.attempt,
+        "metric.github_device_flow_poll_attempt_total"
+    );
     runtime
         .api
         .poll_token(&request.client_id, authorization)
@@ -122,7 +134,11 @@ impl ActivePolling {
     ///
     /// For example, a 5-second interval starts with attempt 0.
     const fn new(interval: Duration, started_at: Instant) -> Self {
-        Self { interval, attempt: 0, started_at }
+        Self {
+            interval,
+            attempt: 0,
+            started_at,
+        }
     }
     /// Records another token request without allowing the count to wrap.
     ///

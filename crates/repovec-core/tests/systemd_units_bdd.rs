@@ -1,8 +1,11 @@
 //! Behavioural tests for the checked-in repovec systemd unit contract.
 
 use repovec_core::appliance::systemd_units::{
-    SystemdUnitError, checked_in_repovec_grepai_template, checked_in_repovec_mcpd_service,
-    checked_in_repovec_target, checked_in_repovecd_service,
+    SystemdUnitError,
+    checked_in_repovec_grepai_template,
+    checked_in_repovec_mcpd_service,
+    checked_in_repovec_target,
+    checked_in_repovecd_service,
     validate_systemd_units_with_grepai_template,
 };
 use rstest::fixture;
@@ -46,18 +49,23 @@ fn cloudflared_is_removed_from_the_target_wants_list(systemd_world: &mut Systemd
 fn the_provisioning_oneshot_is_removed_from_the_target_wants_list(
     systemd_world: &mut SystemdWorld,
 ) {
-    systemd_world.target = systemd_world.target.replace(" repovec-provision.service", "");
+    systemd_world.target = systemd_world
+        .target
+        .replace(" repovec-provision.service", "");
 }
 
 #[given("the target install binding is removed")]
 fn the_target_install_binding_is_removed(systemd_world: &mut SystemdWorld) {
-    systemd_world.target = systemd_world.target.replace("WantedBy=multi-user.target\n", "");
+    systemd_world.target = systemd_world
+        .target
+        .replace("WantedBy=multi-user.target\n", "");
 }
 
 #[given("a semicolon comment is added to the target")]
 fn a_semicolon_comment_is_added_to_the_target(systemd_world: &mut SystemdWorld) {
-    systemd_world.target =
-        systemd_world.target.replace("[Unit]\n", "[Unit]\n; systemd accepts semicolon comments\n");
+    systemd_world.target = systemd_world
+        .target
+        .replace("[Unit]\n", "[Unit]\n; systemd accepts semicolon comments\n");
 }
 
 #[given("additional service environment entries are added")]
@@ -83,44 +91,53 @@ fn the_repovecd_qdrant_ordering_is_removed(systemd_world: &mut SystemdWorld) {
 
 #[given("the repovec-mcpd repovecd requirement is removed")]
 fn the_repovec_mcpd_repovecd_requirement_is_removed(systemd_world: &mut SystemdWorld) {
-    systemd_world.mcpd = systemd_world
-        .mcpd
-        .replace("Requires=qdrant.service repovecd.service\n", "Requires=qdrant.service\n");
+    systemd_world.mcpd = systemd_world.mcpd.replace(
+        "Requires=qdrant.service repovecd.service\n",
+        "Requires=qdrant.service\n",
+    );
 }
 
 #[given("repovecd requires qdrant.container instead of qdrant.service")]
 fn repovecd_requires_qdrant_container_instead_of_qdrant_service(systemd_world: &mut SystemdWorld) {
-    systemd_world.repovecd =
-        systemd_world.repovecd.replace("Requires=qdrant.service\n", "Requires=qdrant.container\n");
+    systemd_world.repovecd = systemd_world
+        .repovecd
+        .replace("Requires=qdrant.service\n", "Requires=qdrant.container\n");
 }
 
 #[given("repovecd runs as root instead of repovec")]
 fn repovecd_runs_as_root_instead_of_repovec(systemd_world: &mut SystemdWorld) {
-    systemd_world.repovecd = systemd_world.repovecd.replace("User=repovec\n", "User=root\n");
+    systemd_world.repovecd = systemd_world
+        .repovecd
+        .replace("User=repovec\n", "User=root\n");
 }
 
 #[given("the repovec-mcpd home environment is removed")]
 fn the_repovec_mcpd_home_environment_is_removed(systemd_world: &mut SystemdWorld) {
-    systemd_world.mcpd = systemd_world.mcpd.replace("Environment=HOME=/var/lib/repovec\n", "");
+    systemd_world.mcpd = systemd_world
+        .mcpd
+        .replace("Environment=HOME=/var/lib/repovec\n", "");
 }
 
 #[given("the grepai template Qdrant ordering is removed")]
 fn the_grepai_template_qdrant_ordering_is_removed(systemd_world: &mut SystemdWorld) {
-    systemd_world.grepai_template =
-        systemd_world.grepai_template.replace("After=qdrant.service repovecd.service\n", "");
+    systemd_world.grepai_template = systemd_world
+        .grepai_template
+        .replace("After=qdrant.service repovecd.service\n", "");
 }
 
 #[given("the grepai template runs as root instead of repovec")]
 fn the_grepai_template_runs_as_root_instead_of_repovec(systemd_world: &mut SystemdWorld) {
-    systemd_world.grepai_template =
-        systemd_world.grepai_template.replace("User=repovec\n", "User=root\n");
+    systemd_world.grepai_template = systemd_world
+        .grepai_template
+        .replace("User=repovec\n", "User=root\n");
 }
 
 #[given("the grepai template writes stdout to a log file")]
 fn the_grepai_template_writes_stdout_to_a_log_file(systemd_world: &mut SystemdWorld) {
-    systemd_world.grepai_template = systemd_world
-        .grepai_template
-        .replace("StandardOutput=journal\n", "StandardOutput=file:/var/log/repovec/grepai.log\n");
+    systemd_world.grepai_template = systemd_world.grepai_template.replace(
+        "StandardOutput=journal\n",
+        "StandardOutput=file:/var/log/repovec/grepai.log\n",
+    );
 }
 
 #[when("the systemd units are validated")]
@@ -271,12 +288,18 @@ fn target_pulls_in_provisioning_before_the_appliance_starts(systemd_world: Syste
     assert_scenario_steps_ran(&systemd_world);
 }
 
-#[scenario(path = "tests/features/systemd_units.feature", name = "The target remains enableable")]
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "The target remains enableable"
+)]
 fn target_remains_enableable(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }
 
-#[scenario(path = "tests/features/systemd_units.feature", name = "Semicolon comments are accepted")]
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "Semicolon comments are accepted"
+)]
 fn semicolon_comments_are_accepted(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }
@@ -289,7 +312,10 @@ fn additional_service_environment_entries_are_accepted(systemd_world: SystemdWor
     assert_scenario_steps_ran(&systemd_world);
 }
 
-#[scenario(path = "tests/features/systemd_units.feature", name = "repovecd waits for Qdrant")]
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "repovecd waits for Qdrant"
+)]
 fn repovecd_waits_for_qdrant(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }
@@ -326,7 +352,10 @@ fn repovec_mcpd_keeps_the_appliance_home_environment(systemd_world: SystemdWorld
     assert_scenario_steps_ran(&systemd_world);
 }
 
-#[scenario(path = "tests/features/systemd_units.feature", name = "grepai waits for Qdrant")]
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "grepai waits for Qdrant"
+)]
 fn grepai_waits_for_qdrant(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }
@@ -339,7 +368,10 @@ fn grepai_keeps_the_appliance_service_identity(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }
 
-#[scenario(path = "tests/features/systemd_units.feature", name = "grepai output stays in journald")]
+#[scenario(
+    path = "tests/features/systemd_units.feature",
+    name = "grepai output stays in journald"
+)]
 fn grepai_output_stays_in_journald(systemd_world: SystemdWorld) {
     assert_scenario_steps_ran(&systemd_world);
 }

@@ -2,13 +2,18 @@
 
 use super::{
     error_builders::{
-        exec_start, forbidden_directive, missing, missing_install, quadlet_source,
+        exec_start,
+        forbidden_directive,
+        missing,
+        missing_install,
+        quadlet_source,
         service_directive,
     },
     scenarios::ValidationScenario,
 };
 use crate::appliance::systemd_units::{
-    PROVISION_EXEC_SEQUENCE, SystemdUnitError,
+    PROVISION_EXEC_SEQUENCE,
+    SystemdUnitError,
     assets::{SYSUSERS_EXEC, TMPFILES_EXEC},
 };
 
@@ -90,12 +95,14 @@ impl ValidationScenario {
                 line_number: 2,
                 line: String::from("not valid"),
             },
-            Self::MissingTargetUnitSection => {
-                SystemdUnitError::MissingSection { unit: "repovec.target", section: "Unit" }
-            }
-            Self::MissingTargetInstallSection => {
-                SystemdUnitError::MissingSection { unit: "repovec.target", section: "Install" }
-            }
+            Self::MissingTargetUnitSection => SystemdUnitError::MissingSection {
+                unit: "repovec.target",
+                section: "Unit",
+            },
+            Self::MissingTargetInstallSection => SystemdUnitError::MissingSection {
+                unit: "repovec.target",
+                section: "Install",
+            },
             Self::MissingTargetWantedBy => missing_install("repovec.target", "multi-user.target"),
             Self::MissingTargetWantsQdrant => missing("repovec.target", "Wants", "qdrant.service"),
             Self::TargetUsesQdrantContainer => {
@@ -134,9 +141,11 @@ impl ValidationScenario {
             Self::MissingProvisionWantedByTarget => {
                 missing_install("repovec-provision.service", "repovec.target")
             }
-            Self::MissingProvisionAfterSysusers => {
-                missing("repovec-provision.service", "After", "systemd-sysusers.service")
-            }
+            Self::MissingProvisionAfterSysusers => missing(
+                "repovec-provision.service",
+                "After",
+                "systemd-sysusers.service",
+            ),
             Self::MissingProvisionBeforeRepovecd => {
                 missing("repovec-provision.service", "Before", "repovecd.service")
             }
@@ -156,12 +165,18 @@ impl ValidationScenario {
             Self::ProvisionRemainsActive => {
                 service_directive("repovec-provision.service", "RemainAfterExit", "no", "yes")
             }
-            Self::ProvisionRefusesManualStop => {
-                forbidden_directive("repovec-provision.service", "Unit", "RefuseManualStop", "yes")
-            }
-            Self::ProvisionRefusesManualStopDisabled => {
-                forbidden_directive("repovec-provision.service", "Unit", "RefuseManualStop", "no")
-            }
+            Self::ProvisionRefusesManualStop => forbidden_directive(
+                "repovec-provision.service",
+                "Unit",
+                "RefuseManualStop",
+                "yes",
+            ),
+            Self::ProvisionRefusesManualStopDisabled => forbidden_directive(
+                "repovec-provision.service",
+                "Unit",
+                "RefuseManualStop",
+                "no",
+            ),
             _ => panic!("provision error called for non-provision scenario"),
         }
     }
@@ -193,9 +208,10 @@ impl ValidationScenario {
                 line_number: 1,
                 line: String::from("Requires=qdrant.service"),
             },
-            Self::MissingRepovecdServiceSection => {
-                SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" }
-            }
+            Self::MissingRepovecdServiceSection => SystemdUnitError::MissingSection {
+                unit: "repovecd.service",
+                section: "Service",
+            },
             Self::MissingRepovecdRequiresQdrant => {
                 missing("repovecd.service", "Requires", "qdrant.service")
             }
@@ -223,9 +239,12 @@ impl ValidationScenario {
                 "/var/lib/repovec",
                 "/tmp",
             ),
-            Self::RepovecdMissingEnvironment => {
-                service_directive("repovecd.service", "Environment", "HOME=/var/lib/repovec", "")
-            }
+            Self::RepovecdMissingEnvironment => service_directive(
+                "repovecd.service",
+                "Environment",
+                "HOME=/var/lib/repovec",
+                "",
+            ),
             _ => panic!("repovecd error called for non-repovecd scenario"),
         }
     }
@@ -242,18 +261,22 @@ impl ValidationScenario {
             Self::MissingMcpdRequiresRepovecd => {
                 missing("repovec-mcpd.service", "Requires", "repovecd.service")
             }
-            Self::MissingMcpdRequiresProvision => {
-                missing("repovec-mcpd.service", "Requires", "repovec-provision.service")
-            }
+            Self::MissingMcpdRequiresProvision => missing(
+                "repovec-mcpd.service",
+                "Requires",
+                "repovec-provision.service",
+            ),
             Self::MissingMcpdAfterQdrant => {
                 missing("repovec-mcpd.service", "After", "qdrant.service")
             }
             Self::MissingMcpdAfterRepovecd => {
                 missing("repovec-mcpd.service", "After", "repovecd.service")
             }
-            Self::WrongMcpdExecStart => {
-                exec_start("repovec-mcpd.service", "/usr/bin/repovec-mcpd", "/usr/bin/other-mcpd")
-            }
+            Self::WrongMcpdExecStart => exec_start(
+                "repovec-mcpd.service",
+                "/usr/bin/repovec-mcpd",
+                "/usr/bin/other-mcpd",
+            ),
             Self::McpdWrongUser => {
                 service_directive("repovec-mcpd.service", "User", "repovec", "root")
             }
@@ -273,121 +296,6 @@ impl ValidationScenario {
                 "",
             ),
             _ => panic!("repovec-mcpd error called for non-mcpd scenario"),
-        }
-    }
-
-    fn expected_grepai_template_error(self) -> SystemdUnitError {
-        match self {
-            Self::MissingGrepaiTemplateUnitSection => SystemdUnitError::MissingSection {
-                unit: "repovec-grepai@.service",
-                section: "Unit",
-            },
-            Self::MissingGrepaiTemplateServiceSection => SystemdUnitError::MissingSection {
-                unit: "repovec-grepai@.service",
-                section: "Service",
-            },
-            Self::MissingGrepaiTemplateInstallSection => SystemdUnitError::MissingSection {
-                unit: "repovec-grepai@.service",
-                section: "Install",
-            },
-            Self::MissingGrepaiTemplateRequiresQdrant
-            | Self::MissingGrepaiTemplateRequiresRepovecd
-            | Self::MissingGrepaiTemplateAfterQdrant
-            | Self::MissingGrepaiTemplateAfterRepovecd
-            | Self::GrepaiTemplateUsesQdrantContainer
-            | Self::MissingGrepaiTemplatePartOfTarget
-            | Self::MissingGrepaiTemplateWantedByTarget => {
-                self.expected_grepai_template_dependency_error()
-            }
-            Self::WrongGrepaiTemplateType
-            | Self::WrongGrepaiTemplateExecStart
-            | Self::GrepaiTemplateWrongUser
-            | Self::GrepaiTemplateMissingGroup
-            | Self::GrepaiTemplateWrongWorkingDirectory
-            | Self::GrepaiTemplateMissingEnvironment
-            | Self::GrepaiTemplateWrongRestartPolicy
-            | Self::GrepaiTemplateWrongRestartDelay
-            | Self::GrepaiTemplateLogsStdoutToFile
-            | Self::GrepaiTemplateLogsStderrToFile => self.expected_grepai_template_service_error(),
-            _ => panic!("grepai template error called for non-template scenario"),
-        }
-    }
-
-    fn expected_grepai_template_dependency_error(self) -> SystemdUnitError {
-        match self {
-            Self::MissingGrepaiTemplateRequiresQdrant => {
-                missing("repovec-grepai@.service", "Requires", "qdrant.service")
-            }
-            Self::MissingGrepaiTemplateRequiresRepovecd => {
-                missing("repovec-grepai@.service", "Requires", "repovecd.service")
-            }
-            Self::MissingGrepaiTemplateAfterQdrant => {
-                missing("repovec-grepai@.service", "After", "qdrant.service")
-            }
-            Self::MissingGrepaiTemplateAfterRepovecd => {
-                missing("repovec-grepai@.service", "After", "repovecd.service")
-            }
-            Self::GrepaiTemplateUsesQdrantContainer => {
-                quadlet_source("repovec-grepai@.service", "Requires", "qdrant.container")
-            }
-            Self::MissingGrepaiTemplatePartOfTarget => {
-                missing("repovec-grepai@.service", "PartOf", "repovec.target")
-            }
-            Self::MissingGrepaiTemplateWantedByTarget => SystemdUnitError::MissingDependency {
-                unit: "repovec-grepai@.service",
-                section: "Install",
-                key: "WantedBy",
-                dependency: "repovec.target",
-            },
-            _ => panic!("grepai template dependency error called for non-dependency scenario"),
-        }
-    }
-
-    fn expected_grepai_template_service_error(self) -> SystemdUnitError {
-        match self {
-            Self::WrongGrepaiTemplateType => {
-                service_directive("repovec-grepai@.service", "Type", "exec", "simple")
-            }
-            Self::WrongGrepaiTemplateExecStart => {
-                exec_start("repovec-grepai@.service", "/usr/bin/grepai watch", "/usr/bin/grepai")
-            }
-            Self::GrepaiTemplateWrongUser => {
-                service_directive("repovec-grepai@.service", "User", "repovec", "root")
-            }
-            Self::GrepaiTemplateMissingGroup => {
-                service_directive("repovec-grepai@.service", "Group", "repovec", "")
-            }
-            Self::GrepaiTemplateWrongWorkingDirectory => service_directive(
-                "repovec-grepai@.service",
-                "WorkingDirectory",
-                "/var/lib/repovec/worktrees/%I",
-                "/var/lib/repovec",
-            ),
-            Self::GrepaiTemplateMissingEnvironment => service_directive(
-                "repovec-grepai@.service",
-                "Environment",
-                "HOME=/var/lib/repovec",
-                "",
-            ),
-            Self::GrepaiTemplateWrongRestartPolicy => {
-                service_directive("repovec-grepai@.service", "Restart", "on-failure", "always")
-            }
-            Self::GrepaiTemplateWrongRestartDelay => {
-                service_directive("repovec-grepai@.service", "RestartSec", "5s", "0")
-            }
-            Self::GrepaiTemplateLogsStdoutToFile => service_directive(
-                "repovec-grepai@.service",
-                "StandardOutput",
-                "journal",
-                "file:/var/log/repovec/grepai.log",
-            ),
-            Self::GrepaiTemplateLogsStderrToFile => service_directive(
-                "repovec-grepai@.service",
-                "StandardError",
-                "journal",
-                "file:/var/log/repovec/grepai.err",
-            ),
-            _ => panic!("grepai template service error called for non-service scenario"),
         }
     }
 }

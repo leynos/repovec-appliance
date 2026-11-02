@@ -10,10 +10,15 @@
 use std::{error::Error, fmt};
 
 use super::{
-    QDRANT_API_KEY_SERVICE, REQUIRED_GRPC_PORT, REQUIRED_IMAGE, REQUIRED_REST_PORT,
+    QDRANT_API_KEY_SERVICE,
+    REQUIRED_GRPC_PORT,
+    REQUIRED_IMAGE,
+    REQUIRED_REST_PORT,
     REQUIRED_STORAGE_TARGET,
     platform_bindings::{
-        REQUIRED_AUTO_UPDATE_POLICY, REQUIRED_SELINUX_OPTION, REQUIRED_STORAGE_SOURCE,
+        REQUIRED_AUTO_UPDATE_POLICY,
+        REQUIRED_SELINUX_OPTION,
+        REQUIRED_STORAGE_SOURCE,
     },
 };
 
@@ -128,77 +133,158 @@ pub enum QdrantQuadletError {
 impl fmt::Display for QdrantQuadletError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidLine { line_number, line } => {
-                write!(f, "invalid quadlet line {line_number}: {line}")
-            }
+            Self::InvalidLine { line_number, line } => write_invalid_line(f, *line_number, line),
             Self::PropertyBeforeSection { line_number, line } => {
-                write!(f, "quadlet property before section on line {line_number}: {line}")
+                write_property_before_section(f, *line_number, line)
             }
             Self::MissingImage => f.write_str("missing Image= entry in [Container]"),
-            Self::ImageNotFullyQualified { image } => {
-                write!(f, "image reference must be fully qualified and tagged: {image}")
-            }
-            Self::UnexpectedImage { image } => {
-                write!(f, "image reference must remain {REQUIRED_IMAGE}: {image}")
-            }
-            Self::MissingRestPort => {
-                write!(f, "missing PublishPort={REQUIRED_REST_PORT} in [Container]")
-            }
-            Self::MissingGrpcPort => {
-                write!(f, "missing PublishPort={REQUIRED_GRPC_PORT} in [Container]")
-            }
+            Self::ImageNotFullyQualified { image } => write_image_not_fully_qualified(f, image),
+            Self::UnexpectedImage { image } => write_unexpected_image(f, image),
+            Self::MissingRestPort => write_missing_rest_port(f),
+            Self::MissingGrpcPort => write_missing_grpc_port(f),
             Self::PortNotBoundToLoopback { port, publish_port } => {
-                write!(f, "port {port} must be published on 127.0.0.1 only: {publish_port}")
+                write_port_not_bound_to_loopback(f, *port, publish_port)
             }
             Self::MissingStorageMount => f.write_str("missing persistent Qdrant storage mount"),
-            Self::IncorrectStorageSource { source } => {
-                write!(f, "storage source must be {REQUIRED_STORAGE_SOURCE}: {source}")
-            }
-            Self::IncorrectStorageTarget { target } => {
-                write!(f, "storage target must be {REQUIRED_STORAGE_TARGET}: {target}")
-            }
+            Self::IncorrectStorageSource { source } => write_incorrect_storage_source(f, source),
+            Self::IncorrectStorageTarget { target } => write_incorrect_storage_target(f, target),
             Self::MissingSelinuxRelabel { volume } => write_selinux_relabel(f, volume),
             Self::MissingAutoUpdate => f.write_str("missing AutoUpdate= entry in [Container]"),
             Self::IncorrectAutoUpdate { auto_update } => {
-                write!(f, "AutoUpdate must remain {REQUIRED_AUTO_UPDATE_POLICY}: {auto_update}")
+                write_incorrect_auto_update(f, auto_update)
             }
             Self::MissingApiKeyProvisioningDependency { directive } => {
                 DependencyFailure::missing(directive, QDRANT_API_KEY_SERVICE, true).fmt(f)
             }
-            Self::IncorrectApiKeyProvisioningDependency { directive, dependency } => {
-                DependencyFailure::incorrect(directive, QDRANT_API_KEY_SERVICE, dependency, true)
-                    .fmt(f)
-            }
-            Self::MissingUnitDependency { directive, expected } => {
-                DependencyFailure::missing(directive, expected, false).fmt(f)
-            }
-            Self::IncorrectUnitDependency { directive, expected, actual } => {
-                DependencyFailure::incorrect(directive, expected, actual, false).fmt(f)
-            }
+            Self::IncorrectApiKeyProvisioningDependency {
+                directive,
+                dependency,
+            } => DependencyFailure::incorrect(directive, QDRANT_API_KEY_SERVICE, dependency, true)
+                .fmt(f),
+            Self::MissingUnitDependency {
+                directive,
+                expected,
+            } => DependencyFailure::missing(directive, expected, false).fmt(f),
+            Self::IncorrectUnitDependency {
+                directive,
+                expected,
+                actual,
+            } => DependencyFailure::incorrect(directive, expected, actual, false).fmt(f),
             Self::MissingApiKeySecret => write_missing_api_key_secret(f),
             Self::IncorrectApiKeySecret { secret } => write_incorrect_api_key_secret(f, secret),
-            Self::InlineApiKeyEnvironmentDisallowed { .. } => f.write_str(
-                "Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>",
-            ),
+            Self::InlineApiKeyEnvironmentDisallowed { .. } => write_inline_api_key_environment(f),
         }
     }
 }
 
+/// Writes the diagnostic for an unparsable Quadlet line.
+fn write_invalid_line(f: &mut fmt::Formatter<'_>, line_number: usize, line: &str) -> fmt::Result {
+    write!(f, "invalid quadlet line {line_number}: {line}")
+}
+
+/// Writes the diagnostic for a property that precedes any section header.
+fn write_property_before_section(
+    f: &mut fmt::Formatter<'_>,
+    line_number: usize,
+    line: &str,
+) -> fmt::Result {
+    write!(
+        f,
+        "quadlet property before section on line {line_number}: {line}"
+    )
+}
+
+/// Writes the diagnostic for an image reference that is not fully qualified.
+fn write_image_not_fully_qualified(f: &mut fmt::Formatter<'_>, image: &str) -> fmt::Result {
+    write!(
+        f,
+        "image reference must be fully qualified and tagged: {image}"
+    )
+}
+
+/// Writes the diagnostic for an image reference that is not the required image.
+fn write_unexpected_image(f: &mut fmt::Formatter<'_>, image: &str) -> fmt::Result {
+    write!(f, "image reference must remain {REQUIRED_IMAGE}: {image}")
+}
+
+/// Writes the diagnostic for a missing REST port mapping.
+fn write_missing_rest_port(f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "missing PublishPort={REQUIRED_REST_PORT} in [Container]")
+}
+
+/// Writes the diagnostic for a missing gRPC port mapping.
+fn write_missing_grpc_port(f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "missing PublishPort={REQUIRED_GRPC_PORT} in [Container]")
+}
+
+/// Writes the diagnostic for a port that is not bound to loopback.
+fn write_port_not_bound_to_loopback(
+    f: &mut fmt::Formatter<'_>,
+    port: u16,
+    publish_port: &str,
+) -> fmt::Result {
+    write!(
+        f,
+        "port {port} must be published on 127.0.0.1 only: {publish_port}"
+    )
+}
+
+/// Writes the diagnostic for a wrong persistent storage source.
+fn write_incorrect_storage_source(f: &mut fmt::Formatter<'_>, source: &str) -> fmt::Result {
+    write!(
+        f,
+        "storage source must be {REQUIRED_STORAGE_SOURCE}: {source}"
+    )
+}
+
+/// Writes the diagnostic for a wrong persistent storage target.
+fn write_incorrect_storage_target(f: &mut fmt::Formatter<'_>, target: &str) -> fmt::Result {
+    write!(
+        f,
+        "storage target must be {REQUIRED_STORAGE_TARGET}: {target}"
+    )
+}
+
+/// Writes the diagnostic for a wrong auto-update policy.
+fn write_incorrect_auto_update(f: &mut fmt::Formatter<'_>, auto_update: &str) -> fmt::Result {
+    write!(
+        f,
+        "AutoUpdate must remain {REQUIRED_AUTO_UPDATE_POLICY}: {auto_update}"
+    )
+}
+
+/// Writes the diagnostic for an inline API-key environment entry.
+fn write_inline_api_key_environment(f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str("Qdrant API keys must use a Podman secret, not inline Environment=: <redacted>")
+}
+
 /// Writes the diagnostic for a storage mount without the relabel option.
 fn write_selinux_relabel(f: &mut fmt::Formatter<'_>, volume: &str) -> fmt::Result {
-    write!(f, "storage mount must include SELinux relabel :{REQUIRED_SELINUX_OPTION}: {volume}")
+    write!(
+        f,
+        "storage mount must include SELinux relabel :{REQUIRED_SELINUX_OPTION}: {volume}"
+    )
 }
 
 /// Writes the diagnostic for an absent API-key `Secret=` entry.
 fn write_missing_api_key_secret(f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY")
+    write!(
+        f,
+        "missing Secret=repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY"
+    )
 }
 
 /// Writes the diagnostic for a `Secret=` entry wired to the wrong target.
 fn write_incorrect_api_key_secret(f: &mut fmt::Formatter<'_>, secret: &str) -> fmt::Result {
     write!(
         f,
-        "Qdrant API-key secret must be repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
+        concat!(
+            "Qdrant API-key secret must be ",
+            "repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
+        ),
+        // A format string that comes from `concat!` cannot capture names
+        // implicitly, so the argument is named explicitly.
+        secret = secret,
     )
 }
 
@@ -222,7 +308,12 @@ struct DependencyFailure<'a> {
 impl<'a> DependencyFailure<'a> {
     /// Builds the failure for a directive the unit does not declare at all.
     const fn missing(directive: &'a str, expected: &'a str, is_api_key: bool) -> Self {
-        Self { directive, expected, actual: None, is_api_key }
+        Self {
+            directive,
+            expected,
+            actual: None,
+            is_api_key,
+        }
     }
 
     /// Builds the failure for a directive that names a different unit.
@@ -232,7 +323,12 @@ impl<'a> DependencyFailure<'a> {
         actual: &'a str,
         is_api_key: bool,
     ) -> Self {
-        Self { directive, expected, actual: Some(actual), is_api_key }
+        Self {
+            directive,
+            expected,
+            actual: Some(actual),
+            is_api_key,
+        }
     }
 
     /// Writes the operator-facing message for this failure.

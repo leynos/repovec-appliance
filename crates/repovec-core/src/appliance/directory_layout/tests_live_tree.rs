@@ -17,11 +17,19 @@ use rstest::rstest;
 use super::{
     directory_contract::DirectoryContract,
     live::{
-        LiveLayoutError, LiveLayoutIds, layout_contracts, verify_layout_for_ids,
+        LiveLayoutError,
+        LiveLayoutIds,
+        layout_contracts,
+        verify_layout_for_ids,
         verify_layout_from_databases,
     },
     tests_live_tree_support::{
-        IdentityExpectation, LiveTree, current_ids, expected_absolute, live_ids, live_tree,
+        IdentityExpectation,
+        LiveTree,
+        current_ids,
+        expected_absolute,
+        live_ids,
+        live_tree,
     },
 };
 
@@ -31,7 +39,10 @@ fn pass_path_accepts_a_correctly_provisioned_tree(live_tree: Result<LiveTree, io
     let (uid, gid) = current_ids(&tree).expect("data root ids");
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
-    assert!(result.is_ok(), "expected a correct tree to pass, got {result:?}");
+    assert!(
+        result.is_ok(),
+        "expected a correct tree to pass, got {result:?}"
+    );
 }
 
 /// The database-resolution seam must reach the directory checks.
@@ -74,7 +85,10 @@ fn database_resolution_rejects_an_unsafe_account_before_stating_any_directory(
 
     let result = verify_layout_from_databases(&tree.paths, passwd, "repovec:x:0:\n");
 
-    assert!(matches!(result, Err(LiveLayoutError::RepovecUserIsRoot { uid: 0 })));
+    assert!(matches!(
+        result,
+        Err(LiveLayoutError::RepovecUserIsRoot { uid: 0 })
+    ));
 }
 
 /// The contract must name the repovec ids for the data tree, root for
@@ -87,8 +101,12 @@ fn database_resolution_rejects_an_unsafe_account_before_stating_any_directory(
 #[rstest]
 fn layout_contract_maps_each_directory_to_its_ids(live_tree: Result<LiveTree, io::Error>) {
     let tree = live_tree.expect("fixture tree");
-    let ids =
-        LiveLayoutIds { repovec_uid: 998, repovec_gid: 996, privileged_uid: 0, privileged_gid: 0 };
+    let ids = LiveLayoutIds {
+        repovec_uid: 998,
+        repovec_gid: 996,
+        privileged_uid: 0,
+        privileged_gid: 0,
+    };
 
     let contracts = layout_contracts(&tree.paths, ids);
     let contract_for = |path: &Utf8PathBuf| -> DirectoryContract {
@@ -106,16 +124,28 @@ fn layout_contract_maps_each_directory_to_its_ids(live_tree: Result<LiveTree, io
     ];
     for path in data_paths {
         let contract = contract_for(&path);
-        assert_eq!((contract.owner_uid, contract.owner_gid), (998, 996), "data path {path}");
+        assert_eq!(
+            (contract.owner_uid, contract.owner_gid),
+            (998, 996),
+            "data path {path}"
+        );
         assert_eq!(contract.mode, 0o700, "data path {path}");
     }
 
     let storage = contract_for(&tree.paths.qdrant_storage_root());
-    assert_eq!((storage.owner_uid, storage.owner_gid), (0, 0), "qdrant-storage is root:root");
+    assert_eq!(
+        (storage.owner_uid, storage.owner_gid),
+        (0, 0),
+        "qdrant-storage is root:root"
+    );
     assert_eq!(storage.mode, 0o700);
 
     let secrets = contract_for(&tree.paths.config_root().to_path_buf());
-    assert_eq!((secrets.owner_uid, secrets.owner_gid), (0, 996), "/etc/repovec is root:repovec");
+    assert_eq!(
+        (secrets.owner_uid, secrets.owner_gid),
+        (0, 996),
+        "/etc/repovec is root:repovec"
+    );
     assert_eq!(secrets.mode, 0o750);
 }
 
@@ -159,7 +189,9 @@ fn missing_data_directory_is_reported(live_tree: Result<LiveTree, io::Error>) {
     let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     let missing = expected_absolute(&tree, "var/lib/repovec/worktrees").expect("utf8 path");
-    tree.root.remove_dir_all("var/lib/repovec/worktrees").expect("worktrees should be removed");
+    tree.root
+        .remove_dir_all("var/lib/repovec/worktrees")
+        .expect("worktrees should be removed");
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
 
@@ -215,7 +247,8 @@ fn incorrect_mode_is_reported(
 ) {
     let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
-    tree.chmod(case.relative, case.seeded_mode).expect("seed mode mismatch");
+    tree.chmod(case.relative, case.seeded_mode)
+        .expect("seed mode mismatch");
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
 
@@ -235,7 +268,9 @@ fn symlink_in_place_of_a_directory_is_reported(live_tree: Result<LiveTree, io::E
     let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     let replaced = expected_absolute(&tree, "var/lib/repovec/worktrees").expect("utf8 path");
-    tree.root.remove_dir_all("var/lib/repovec/worktrees").expect("remove worktrees");
+    tree.root
+        .remove_dir_all("var/lib/repovec/worktrees")
+        .expect("remove worktrees");
     // The target is a contract-correct directory, so following the link would
     // satisfy every owner, group, and mode check while aliasing two required
     // paths onto one directory.
@@ -256,12 +291,17 @@ fn regular_file_in_place_of_a_directory_is_reported(live_tree: Result<LiveTree, 
     let tree = live_tree.expect("fixture tree");
     let (uid, gid) = current_ids(&tree).expect("data root ids");
     let replaced = expected_absolute(&tree, "var/lib/repovec/worktrees").expect("utf8 path");
-    tree.root.remove_dir_all("var/lib/repovec/worktrees").expect("remove worktrees");
+    tree.root
+        .remove_dir_all("var/lib/repovec/worktrees")
+        .expect("remove worktrees");
     // A file carrying the contract owner, group, and mode would satisfy every
     // id-and-mode check while leaving the documented directory unusable, so the
     // pre-flight must reject it on type alone.
-    tree.root.write("var/lib/repovec/worktrees", b"not a directory").expect("write file");
-    tree.chmod("var/lib/repovec/worktrees", 0o700).expect("chmod");
+    tree.root
+        .write("var/lib/repovec/worktrees", b"not a directory")
+        .expect("write file");
+    tree.chmod("var/lib/repovec/worktrees", 0o700)
+        .expect("chmod");
 
     let result = verify_layout_for_ids(&tree.paths, live_ids(uid, gid));
 

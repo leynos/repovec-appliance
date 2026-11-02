@@ -33,8 +33,10 @@ pub const DEFAULT_QDRANT_LIVENESS_TIMEOUT: Duration = Duration::from_secs(5);
 ///
 /// ```no_run
 /// use repovec_core::appliance::qdrant_liveness::{
-///     DEFAULT_QDRANT_GRPC_ENDPOINT, DEFAULT_QDRANT_LIVENESS_TIMEOUT,
-///     QdrantApiKey, QdrantLivenessConfig,
+///     DEFAULT_QDRANT_GRPC_ENDPOINT,
+///     DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+///     QdrantApiKey,
+///     QdrantLivenessConfig,
 /// };
 ///
 /// let api_key = QdrantApiKey::parse("test-qdrant-api-key")?;
@@ -65,23 +67,22 @@ impl QdrantLivenessConfig {
     /// ```no_run
     /// use std::time::Duration;
     ///
-    /// use repovec_core::appliance::qdrant_liveness::{
-    ///     QdrantApiKey, QdrantLivenessConfig,
-    /// };
+    /// use repovec_core::appliance::qdrant_liveness::{QdrantApiKey, QdrantLivenessConfig};
     ///
     /// let api_key = QdrantApiKey::parse("test-qdrant-api-key")?;
-    /// let config = QdrantLivenessConfig::new(
-    ///     "http://127.0.0.1:6334",
-    ///     api_key,
-    ///     Duration::from_secs(2),
-    /// );
+    /// let config =
+    ///     QdrantLivenessConfig::new("http://127.0.0.1:6334", api_key, Duration::from_secs(2));
     ///
     /// assert_eq!(config.timeout(), Duration::from_secs(2));
     /// # Ok::<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError>(())
     /// ```
     #[must_use]
     pub fn new(endpoint: impl Into<String>, api_key: QdrantApiKey, timeout: Duration) -> Self {
-        Self { endpoint: endpoint.into(), api_key, timeout }
+        Self {
+            endpoint: endpoint.into(),
+            api_key,
+            timeout,
+        }
     }
 
     /// Loads the provisioned appliance API key and returns its default probe configuration.
@@ -118,8 +119,10 @@ impl QdrantLivenessConfig {
     ///
     /// ```no_run
     /// use repovec_core::appliance::qdrant_liveness::{
-    ///     DEFAULT_QDRANT_GRPC_ENDPOINT, DEFAULT_QDRANT_LIVENESS_TIMEOUT,
-    ///     QdrantApiKey, QdrantLivenessConfig,
+    ///     DEFAULT_QDRANT_GRPC_ENDPOINT,
+    ///     DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+    ///     QdrantApiKey,
+    ///     QdrantLivenessConfig,
     /// };
     ///
     /// let config = QdrantLivenessConfig::new(
@@ -140,7 +143,9 @@ impl QdrantLivenessConfig {
     ///
     /// ```no_run
     /// use repovec_core::appliance::qdrant_liveness::{
-    ///     DEFAULT_QDRANT_LIVENESS_TIMEOUT, QdrantApiKey, QdrantLivenessConfig,
+    ///     DEFAULT_QDRANT_LIVENESS_TIMEOUT,
+    ///     QdrantApiKey,
+    ///     QdrantLivenessConfig,
     /// };
     ///
     /// let config = QdrantLivenessConfig::new(
@@ -203,7 +208,11 @@ impl QdrantLivenessReport {
         version: impl Into<String>,
         commit: Option<impl Into<String>>,
     ) -> Self {
-        Self { title: title.into(), version: version.into(), commit: commit.map(Into::into) }
+        Self {
+            title: title.into(),
+            version: version.into(),
+            commit: commit.map(Into::into),
+        }
     }
 
     /// Returns Qdrant's server title.
@@ -284,9 +293,7 @@ pub(super) fn load_qdrant_api_key(
 /// ```no_run
 /// # async fn example()
 /// # -> Result<(), repovec_core::appliance::qdrant_liveness::QdrantLivenessError> {
-/// use repovec_core::appliance::qdrant_liveness::{
-///     QdrantLivenessConfig, check_qdrant_liveness,
-/// };
+/// use repovec_core::appliance::qdrant_liveness::{QdrantLivenessConfig, check_qdrant_liveness};
 ///
 /// let config = QdrantLivenessConfig::for_appliance()?;
 /// let report = check_qdrant_liveness(&config).await?;

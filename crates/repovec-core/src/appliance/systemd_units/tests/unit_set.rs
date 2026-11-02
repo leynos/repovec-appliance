@@ -3,9 +3,13 @@
 use rstest::fixture;
 
 use crate::appliance::systemd_units::{
-    SystemdUnitError, UnitTexts, checked_in_repovec_grepai_template,
-    checked_in_repovec_mcpd_service, checked_in_repovec_provision_service,
-    checked_in_repovec_target, checked_in_repovecd_service,
+    SystemdUnitError,
+    UnitTexts,
+    checked_in_repovec_grepai_template,
+    checked_in_repovec_mcpd_service,
+    checked_in_repovec_provision_service,
+    checked_in_repovec_target,
+    checked_in_repovecd_service,
     validate_systemd_units_with_grepai_template_and_provision,
 };
 
@@ -97,7 +101,9 @@ fn remove_token_from_line(line: &str, key: &str, token: &str) -> String {
         return line.to_owned();
     }
 
-    let retained = value.split_whitespace().filter(|candidate| *candidate != token);
+    let retained = value
+        .split_whitespace()
+        .filter(|candidate| *candidate != token);
 
     format!("{key}{}", retained.collect::<Vec<_>>().join(" "))
 }

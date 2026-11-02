@@ -7,11 +7,10 @@
 //!
 //! ## Validation Entry Points
 //!
-//! - [`validate_checked_in_directory_layout`] validates the two embedded
-//!   packaging assets shipped in the repository.
-//! - [`validate_directory_layout`] validates caller-supplied asset text. Use it
-//!   in tests or tooling that needs to analyse asset contents sourced outside
-//!   the checked-in files.
+//! - [`validate_checked_in_directory_layout`] validates the two embedded packaging assets shipped
+//!   in the repository.
+//! - [`validate_directory_layout`] validates caller-supplied asset text. Use it in tests or tooling
+//!   that needs to analyse asset contents sourced outside the checked-in files.
 //!
 //! ## Contract Scope
 //!
@@ -28,6 +27,7 @@ mod group;
 pub mod live;
 mod live_resolution;
 mod parser;
+mod spec_field;
 
 #[cfg(test)]
 mod tests;
@@ -48,13 +48,18 @@ mod tests_support;
 
 use assets::{CHECKED_IN_REPOVEC_SYSUSERS, CHECKED_IN_REPOVEC_TMPFILES};
 pub use assets::{
-    CHECKED_IN_REPOVEC_SYSUSERS_PATH, CHECKED_IN_REPOVEC_TMPFILES_PATH,
-    INSTALLED_REPOVEC_SYSUSERS_PATH, INSTALLED_REPOVEC_TMPFILES_PATH, REPOVEC_HOME, REPOVEC_SHELL,
+    CHECKED_IN_REPOVEC_SYSUSERS_PATH,
+    CHECKED_IN_REPOVEC_TMPFILES_PATH,
+    INSTALLED_REPOVEC_SYSUSERS_PATH,
+    INSTALLED_REPOVEC_TMPFILES_PATH,
+    REPOVEC_HOME,
+    REPOVEC_SHELL,
     REPOVEC_USER,
 };
 use camino::{Utf8Path, Utf8PathBuf};
 pub use error::{DirectoryLayoutError, Mode};
 use error::{SYSUSERS_ASSET, TMPFILES_ASSET};
+use spec_field::compare_spec_against;
 
 use crate::RuntimePaths;
 
@@ -79,7 +84,12 @@ impl DirectorySpec {
         owner: &'static str,
         group: &'static str,
     ) -> Self {
-        Self { path: path.into(), mode, owner, group }
+        Self {
+            path: path.into(),
+            mode,
+            owner,
+            group,
+        }
     }
 }
 
@@ -87,8 +97,18 @@ impl DirectorySpec {
 fn layout_contract(paths: &RuntimePaths) -> Vec<DirectorySpec> {
     vec![
         DirectorySpec::new(paths.data_root(), Mode(0o700), REPOVEC_USER, REPOVEC_USER),
-        DirectorySpec::new(paths.git_mirrors_root(), Mode(0o700), REPOVEC_USER, REPOVEC_USER),
-        DirectorySpec::new(paths.worktrees_root(), Mode(0o700), REPOVEC_USER, REPOVEC_USER),
+        DirectorySpec::new(
+            paths.git_mirrors_root(),
+            Mode(0o700),
+            REPOVEC_USER,
+            REPOVEC_USER,
+        ),
+        DirectorySpec::new(
+            paths.worktrees_root(),
+            Mode(0o700),
+            REPOVEC_USER,
+            REPOVEC_USER,
+        ),
         DirectorySpec::new(paths.grepai_root(), Mode(0o700), REPOVEC_USER, REPOVEC_USER),
         DirectorySpec::new(paths.qdrant_storage_root(), Mode(0o700), "root", "root"),
     ]
@@ -185,8 +205,10 @@ fn validate_tmpfiles_entries(
         };
 
         let path = entry.path.as_str();
-        let Some((index, spec)) =
-            contract.iter().enumerate().find(|(_, spec)| spec.path.as_str() == path)
+        let Some((index, spec)) = contract
+            .iter()
+            .enumerate()
+            .find(|(_, spec)| spec.path.as_str() == path)
         else {
             // A config-root entry violates the single-authority invariant (SI-4):
             // the libexec helper owns /etc/repovec, so the tmpfiles asset must
@@ -211,7 +233,9 @@ fn validate_tmpfiles_entries(
     // on every run, and it is the first one in the documented layout.
     for (spec, is_satisfied) in contract.iter().zip(&satisfied) {
         if !is_satisfied {
-            return Err(DirectoryLayoutError::MissingDirectoryEntry { path: spec.path.clone() });
+            return Err(DirectoryLayoutError::MissingDirectoryEntry {
+                path: spec.path.clone(),
+            });
         }
     }
 
@@ -228,9 +252,13 @@ fn unexpected_tmpfiles_path_error(
     // second authority for the secrets file.
     let candidate = Utf8Path::new(path);
     if candidate.starts_with(runtime_paths.config_root()) {
-        DirectoryLayoutError::ForbiddenSecretsEntry { path: candidate.to_path_buf() }
+        DirectoryLayoutError::ForbiddenSecretsEntry {
+            path: candidate.to_path_buf(),
+        }
     } else {
-        DirectoryLayoutError::UnexpectedDirectoryEntry { path: candidate.to_path_buf() }
+        DirectoryLayoutError::UnexpectedDirectoryEntry {
+            path: candidate.to_path_buf(),
+        }
     }
 }
 
@@ -257,89 +285,6 @@ fn compare_spec(
     compare_spec_against(spec, entry, actual_mode)
 }
 
-/// One field of a [`DirectorySpec`], expressed as data.
-///
-/// The mode, owner, and group comparisons share one decision—does the entry satisfy the
-/// contract, and if not, what the contract required against what the asset declares—and differ
-/// only in the predicate and the error variant. Holding them together runs the three as one
-/// ordered pass rather than three near-identical functions.
-#[derive(Clone, Copy)]
-enum SpecField {
-    /// The required owning user.
-    Owner,
-    /// The required owning group.
-    Group,
-    /// The required permission bits.
-    Mode,
-}
-
-impl SpecField {
-    /// Whether `entry` satisfies this field of `spec`.
-    fn is_satisfied(
-        self,
-        spec: &DirectorySpec,
-        entry: &parser::TmpfilesEntry,
-        actual_mode: Mode,
-    ) -> bool {
-        match self {
-            Self::Owner => entry.user == spec.owner,
-            Self::Group => entry.group == spec.group,
-            Self::Mode => actual_mode == spec.mode,
-        }
-    }
-
-    /// The violation raised when this field of `spec` is not satisfied.
-    fn violation(
-        self,
-        spec: &DirectorySpec,
-        entry: &parser::TmpfilesEntry,
-        actual_mode: Mode,
-    ) -> DirectoryLayoutError {
-        let path = Utf8PathBuf::from(entry.path.as_str());
-        match self {
-            Self::Owner => DirectoryLayoutError::IncorrectOwner {
-                path,
-                expected: spec.owner,
-                actual: entry.user.clone(),
-            },
-            Self::Group => DirectoryLayoutError::IncorrectGroup {
-                path,
-                expected: spec.group,
-                actual: entry.group.clone(),
-            },
-            Self::Mode => DirectoryLayoutError::IncorrectMode {
-                path,
-                expected: spec.mode,
-                actual: actual_mode,
-            },
-        }
-    }
-}
-
-/// The compared fields, in the order their violations are reported.
-///
-/// The order is the contract: the validator returns the first unsatisfied field,
-/// so the list runs from the least specific mismatch to the most.
-const COMPARED_FIELDS: [SpecField; 3] = [SpecField::Owner, SpecField::Group, SpecField::Mode];
-
-/// Compares a parsed entry against a directory spec.
-///
-/// `actual_mode` is the mode column already parsed by [`compare_spec`], which keeps the mode
-/// comparison total: the explicitness and syntax failures have been reported before this runs.
-fn compare_spec_against(
-    spec: &DirectorySpec,
-    entry: &parser::TmpfilesEntry,
-    actual_mode: Mode,
-) -> Result<(), DirectoryLayoutError> {
-    COMPARED_FIELDS.into_iter().try_for_each(|field| {
-        if field.is_satisfied(spec, entry, actual_mode) {
-            Ok(())
-        } else {
-            Err(field.violation(spec, entry, actual_mode))
-        }
-    })
-}
-
 /// Checks that the asset declares the canonical `repovec` account without a pinned uid.
 fn validate_sysusers_entries(sysusers: &str) -> Result<(), DirectoryLayoutError> {
     let mut found_user = false;
@@ -363,7 +308,9 @@ fn validate_sysusers_entries(sysusers: &str) -> Result<(), DirectoryLayoutError>
         // numeric uid would make provisioning depend on that number being free
         // on the host, which the appliance does not control.
         if entry.uid != "-" {
-            return Err(DirectoryLayoutError::SysusersPinnedUid { actual: entry.uid.clone() });
+            return Err(DirectoryLayoutError::SysusersPinnedUid {
+                actual: entry.uid.clone(),
+            });
         }
 
         if entry.home != REPOVEC_HOME {
@@ -381,5 +328,9 @@ fn validate_sysusers_entries(sysusers: &str) -> Result<(), DirectoryLayoutError>
         }
     }
 
-    if found_user { Ok(()) } else { Err(DirectoryLayoutError::SysusersMissingUser) }
+    if found_user {
+        Ok(())
+    } else {
+        Err(DirectoryLayoutError::SysusersMissingUser)
+    }
 }

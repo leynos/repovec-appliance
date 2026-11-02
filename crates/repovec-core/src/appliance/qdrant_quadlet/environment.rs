@@ -122,8 +122,10 @@ mod proptests {
     use proptest::prelude::*;
 
     use super::{
-        QDRANT_API_KEY_ENVIRONMENT_VARIABLE, is_api_key_environment_assignment,
-        redact_api_key_environment_assignment, split_environment_assignments,
+        QDRANT_API_KEY_ENVIRONMENT_VARIABLE,
+        is_api_key_environment_assignment,
+        redact_api_key_environment_assignment,
+        split_environment_assignments,
     };
 
     const REDACTED_API_KEY: &str = "QDRANT__SERVICE__API_KEY=<redacted>";
@@ -136,7 +138,11 @@ mod proptests {
     }
 
     fn quote_style_strategy() -> impl Strategy<Value = QuoteStyle> {
-        prop_oneof![Just(QuoteStyle::Bare), Just(QuoteStyle::Single), Just(QuoteStyle::Double)]
+        prop_oneof![
+            Just(QuoteStyle::Bare),
+            Just(QuoteStyle::Single),
+            Just(QuoteStyle::Double)
+        ]
     }
 
     fn assignment(key: &str, value: &str, quote_style: QuoteStyle) -> (String, String) {

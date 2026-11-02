@@ -6,12 +6,15 @@ use rstest::{fixture, rstest};
 
 use super::QdrantStartupLivenessPolicy;
 use crate::appliance::qdrant_liveness::{
-    QdrantLivenessError, test_support::transient_qdrant_result,
+    QdrantLivenessError,
+    test_support::transient_qdrant_result,
 };
 
 #[fixture]
 fn current_thread_runtime() -> std::io::Result<tokio::runtime::Runtime> {
-    tokio::runtime::Builder::new_current_thread().enable_time().build()
+    tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
 }
 
 #[rstest]
@@ -90,7 +93,10 @@ fn startup_liveness_success_logs_a_bounded_metric(
         QdrantStartupLivenessPolicy::new(Duration::from_millis(50), Duration::from_millis(1));
 
     let (result, logs) = repovec_test_helpers::capture_logs(|| {
-        runtime.block_on(super::wait_for_qdrant_startup_liveness(|| async { Ok(()) }, policy))
+        runtime.block_on(super::wait_for_qdrant_startup_liveness(
+            || async { Ok(()) },
+            policy,
+        ))
     })
     .expect("capturing liveness logs should succeed");
 
@@ -130,7 +136,10 @@ fn startup_liveness_returns_last_transient_error_at_the_deadline(
         policy,
     ));
 
-    assert!(matches!(result, Err(QdrantLivenessError::GrpcUnavailable { .. })));
+    assert!(matches!(
+        result,
+        Err(QdrantLivenessError::GrpcUnavailable { .. })
+    ));
     assert_eq!(attempts.get(), 1);
 }
 

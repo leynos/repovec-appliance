@@ -2,27 +2,34 @@
 
 use std::time::{Duration, Instant};
 
-use oauth2::{
-    reqwest::{
-        StatusCode,
-        blocking::{Client, Response},
-        redirect::Policy,
-    },
-    url::Url,
+use oauth2::reqwest::{
+    StatusCode,
+    blocking::{Client, Response},
+    redirect::Policy,
 };
 use repovec_core::github_oauth::{
-    ClientId, DeviceAuthorization, DeviceCode, TokenPollOutcome, classify_device_flow_error,
+    ClientId,
+    DeviceAuthorization,
+    DeviceCode,
+    TokenPollOutcome,
+    classify_device_flow_error,
 };
 use thiserror::Error;
 use tracing::{Span, info_span};
 
 use crate::github_device_flow::DeviceFlowApi;
 
+mod endpoints;
 mod observability;
 mod wire;
 
+pub use endpoints::DeviceFlowEndpoints;
+use endpoints::{validate_device_code_url, validate_token_url};
 use observability::{
-    info_adapter_failure, info_http_request, info_token_poll, info_token_poll_outcome,
+    info_adapter_failure,
+    info_http_request,
+    info_token_poll,
+    info_token_poll_outcome,
 };
 use wire::{DeviceCodeWire, TokenPollWire};
 
@@ -34,64 +41,6 @@ const DEFAULT_DEVICE_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Overall deadline applied to each request made by the adapter.
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// GitHub OAuth endpoint URLs used by the device-flow adapter.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DeviceFlowEndpoints {
-    /// URL receiving device-code requests.
-    device_code_url: String,
-    /// URL receiving token-poll requests.
-    token_url: String,
-}
-
-impl DeviceFlowEndpoints {
-    /// Creates endpoint URLs from explicit strings.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use repovecd::github_oauth_client::DeviceFlowEndpoints;
-    ///
-    /// let endpoints = DeviceFlowEndpoints::new(
-    ///     "https://github.com/login/device/code",
-    ///     "https://github.com/login/oauth/access_token",
-    /// );
-    ///
-    /// assert_eq!(endpoints.token_url(), "https://github.com/login/oauth/access_token");
-    /// ```
-    #[must_use]
-    pub fn new(device_code_url: impl Into<String>, token_url: impl Into<String>) -> Self {
-        Self { device_code_url: device_code_url.into(), token_url: token_url.into() }
-    }
-
-    /// Returns the production GitHub device-flow endpoints.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use repovecd::github_oauth_client::DeviceFlowEndpoints;
-    ///
-    /// assert_eq!(
-    ///     DeviceFlowEndpoints::github().device_code_url(),
-    ///     "https://github.com/login/device/code",
-    /// );
-    /// ```
-    #[must_use]
-    pub fn github() -> Self {
-        Self::new(
-            "https://github.com/login/device/code",
-            "https://github.com/login/oauth/access_token",
-        )
-    }
-
-    /// Returns the device-code request URL.
-    #[must_use]
-    pub fn device_code_url(&self) -> &str { &self.device_code_url }
-
-    /// Returns the token polling URL.
-    #[must_use]
-    pub fn token_url(&self) -> &str { &self.token_url }
-}
 
 /// Blocking OAuth device-flow client used by repovecd.
 #[derive(Debug)]
@@ -144,8 +93,7 @@ impl GitHubOAuthClient {
     /// use repovecd::github_oauth_client::{DeviceFlowEndpoints, GitHubOAuthClient};
     ///
     /// let client = GitHubOAuthClient::new(DeviceFlowEndpoints::github())?;
-    /// let authorization =
-    ///     client.request_device_code(&ClientId::new("github-client-id"), ["repo"])?;
+    /// let authorization = client.request_device_code(&ClientId::new("github-client-id"), ["repo"])?;
     /// assert_eq!(authorization.interval.as_secs(), 5);
     ///
     /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -160,14 +108,18 @@ impl GitHubOAuthClient {
         S: AsRef<str>,
     {
         let scope = join_scopes(scopes);
-        let span =
-            info_span!("github_oauth.request_device_code", scope_count = scope_count(&scope));
+        let span = info_span!(
+            "github_oauth.request_device_code",
+            scope_count = scope_count(&scope)
+        );
         let started_at = Instant::now();
         let response = self.send_device_code_request(&span, client_id, &scope)?;
         info_http_request(&span, response.status(), started_at);
         ensure_device_code_status(response.status(), &span)?;
 
-        let wire = response.json::<DeviceCodeWire>().map_err(OAuthClientError::ReadDeviceCode)?;
+        let wire = response
+            .json::<DeviceCodeWire>()
+            .map_err(OAuthClientError::ReadDeviceCode)?;
         Ok(wire.into_domain())
     }
 
@@ -186,8 +138,10 @@ impl GitHubOAuthClient {
     /// use repovecd::github_oauth_client::{DeviceFlowEndpoints, GitHubOAuthClient};
     ///
     /// let client = GitHubOAuthClient::new(DeviceFlowEndpoints::github())?;
-    /// let outcome =
-    ///     client.poll_token(&ClientId::new("github-client-id"), &DeviceCode::new("device-code"))?;
+    /// let outcome = client.poll_token(
+    ///     &ClientId::new("github-client-id"),
+    ///     &DeviceCode::new("device-code"),
+    /// )?;
     /// match outcome {
     ///     TokenPollOutcome::Authorized(token) => {
     ///         assert!(token.scopes().iter().any(|scope| scope == "repo"));
@@ -211,7 +165,9 @@ impl GitHubOAuthClient {
         info_token_poll(&span, response.status(), started_at);
 
         let is_success = response.status().is_success();
-        let body = response.json::<TokenPollWire>().map_err(OAuthClientError::ReadToken)?;
+        let body = response
+            .json::<TokenPollWire>()
+            .map_err(OAuthClientError::ReadToken)?;
         let outcome = token_poll_outcome(body, is_success)?;
         info_token_poll_outcome(&span, &outcome);
         Ok(outcome)
@@ -331,7 +287,10 @@ fn ensure_device_code_status(status: StatusCode, span: &Span) -> Result<(), OAut
         return Ok(());
     }
     info_adapter_failure(span, status);
-    Err(OAuthClientError::UnexpectedStatus { endpoint: "device-code", status })
+    Err(OAuthClientError::UnexpectedStatus {
+        endpoint: "device-code",
+        status,
+    })
 }
 
 /// Interprets an OAuth poll body according to its HTTP status and error code.
@@ -353,19 +312,10 @@ fn token_poll_outcome(
 /// Counts non-empty whitespace-separated scope names for span metadata.
 /// For example, `repo read:org` produces the count `2`.
 fn scope_count(scopes: &str) -> usize {
-    scopes.split_whitespace().filter(|scope| !scope.is_empty()).count()
-}
-
-/// Checks that the configured token endpoint is a parseable URL.
-/// For example, `https://github.com/login/oauth/access_token` is accepted.
-fn validate_token_url(token_url: &str) -> Result<(), OAuthClientError> {
-    Url::parse(token_url).map(|_| ()).map_err(OAuthClientError::InvalidTokenUrl)
-}
-
-/// Checks that the configured device-code endpoint is a parseable URL.
-/// For example, `https://github.com/login/device/code` is accepted.
-fn validate_device_code_url(device_code_url: &str) -> Result<(), OAuthClientError> {
-    Url::parse(device_code_url).map(|_| ()).map_err(OAuthClientError::InvalidDeviceCodeUrl)
+    scopes
+        .split_whitespace()
+        .filter(|scope| !scope.is_empty())
+        .count()
 }
 
 /// Joins scope names with the space separator expected by the request API.

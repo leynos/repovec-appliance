@@ -10,7 +10,10 @@ use std::{
 
 use qdrant_client::Qdrant;
 use repovec_core::appliance::qdrant_liveness::{
-    QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError, QdrantLivenessReport,
+    QdrantApiKey,
+    QdrantLivenessConfig,
+    QdrantLivenessError,
+    QdrantLivenessReport,
     check_qdrant_liveness,
 };
 use rstest::{fixture, rstest};
@@ -84,8 +87,12 @@ fn ready_qdrant() -> Result<ReadyQdrant, String> {
 #[test]
 #[ignore = "requires explicit live Qdrant integration run"]
 fn liveness_fails_when_the_service_port_is_closed() {
-    let config = config_for("http://127.0.0.1:9", TEST_API_KEY, Duration::from_millis(500))
-        .expect("closed-port integration config should build");
+    let config = config_for(
+        "http://127.0.0.1:9",
+        TEST_API_KEY,
+        Duration::from_millis(500),
+    )
+    .expect("closed-port integration config should build");
     let error = block_on(check_qdrant_liveness(&config))
         .expect("Tokio runtime should run the closed-port liveness check")
         .expect_err("closed port should fail liveness");
@@ -96,8 +103,12 @@ fn liveness_fails_when_the_service_port_is_closed() {
 #[test]
 #[ignore = "requires explicit live Qdrant integration run"]
 fn waiting_for_qdrant_liveness_times_out() {
-    let config = config_for("http://127.0.0.1:9", TEST_API_KEY, Duration::from_millis(50))
-        .expect("timeout integration config should build");
+    let config = config_for(
+        "http://127.0.0.1:9",
+        TEST_API_KEY,
+        Duration::from_millis(50),
+    )
+    .expect("timeout integration config should build");
     let error = block_on(wait_for_qdrant_liveness(&config, Duration::from_millis(75)))
         .expect("Tokio runtime should run the readiness timeout check")
         .expect_err("readiness wait should time out");
@@ -144,20 +155,28 @@ fn config_for(
 fn container_name() -> String { format!("repovec-qdrant-liveness-{}", unique_suffix()) }
 
 fn block_on<T>(future: impl Future<Output = T>) -> Result<T, String> {
-    let runtime =
-        match tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build() {
-            Ok(runtime) => runtime,
-            Err(error) => {
-                return Err(format!("Tokio runtime should build for integration tests: {error}"));
-            }
-        };
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            return Err(format!(
+                "Tokio runtime should build for integration tests: {error}"
+            ));
+        }
+    };
 
     Ok(runtime.block_on(future))
 }
 
 fn unique_suffix() -> String {
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_nanos();
 
     format!("{nanos}-{counter}")
 }
@@ -189,7 +208,9 @@ impl QdrantContainer {
                 log_cleanup_result(
                     "podman rm --force",
                     &name,
-                    Command::new("podman").args(["rm", "--force", &name]).output(),
+                    Command::new("podman")
+                        .args(["rm", "--force", &name])
+                        .output(),
                 );
                 return Err(error);
             }
@@ -203,7 +224,9 @@ impl Drop for QdrantContainer {
         log_cleanup_result(
             "podman rm --force",
             &self.name,
-            Command::new("podman").args(["rm", "--force", &self.name]).output(),
+            Command::new("podman")
+                .args(["rm", "--force", &self.name])
+                .output(),
         );
     }
 }
@@ -213,7 +236,9 @@ fn published_grpc_endpoint(container_name: &str) -> Result<String, String> {
     assert_success("podman port", &output)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let Some(endpoint) = stdout.lines().map(str::trim).find(|line| !line.is_empty()) else {
-        return Err(format!("podman port returned no {QDRANT_GRPC_PORT} binding"));
+        return Err(format!(
+            "podman port returned no {QDRANT_GRPC_PORT} binding"
+        ));
     };
 
     Ok(format!("http://{endpoint}"))

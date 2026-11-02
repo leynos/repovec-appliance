@@ -8,8 +8,12 @@ use std::{
 use rstest::rstest;
 
 use super::{
-    DaemonStartupError, QdrantLivenessError, STARTUP_FAILURE_EXIT_CODE, SystemdUnitError,
-    log_daemon_startup_error, validate_daemon_startup_contracts_with,
+    DaemonStartupError,
+    QdrantLivenessError,
+    STARTUP_FAILURE_EXIT_CODE,
+    SystemdUnitError,
+    log_daemon_startup_error,
+    validate_daemon_startup_contracts_with,
     validate_qdrant_liveness_with_policy,
 };
 use crate::appliance::qdrant_liveness::test_support::transient_qdrant_result;
@@ -77,8 +81,10 @@ fn startup_runs_real_systemd_validation() {
 #[test]
 fn startup_skips_qdrant_after_systemd_failure() {
     let qdrant_called = Cell::new(false);
-    let injected_error =
-        SystemdUnitError::MissingSection { unit: "repovecd.service", section: "Service" };
+    let injected_error = SystemdUnitError::MissingSection {
+        unit: "repovecd.service",
+        section: "Service",
+    };
 
     let result = validate_daemon_startup_contracts_with(
         || Err(injected_error.clone()),
@@ -129,14 +135,20 @@ fn startup_error_logging_preserves_systemd_unit_field() {
 #[test]
 fn qdrant_liveness_timeout_maps_to_startup_error() {
     let result = validate_qdrant_liveness_with_policy(
-        || async { Err(QdrantLivenessError::Timeout { timeout: Duration::from_millis(5) }) },
+        || async {
+            Err(QdrantLivenessError::Timeout {
+                timeout: Duration::from_millis(5),
+            })
+        },
         Duration::ZERO,
         Duration::from_millis(1),
     );
 
     assert!(matches!(
         result,
-        Err(DaemonStartupError::QdrantLiveness(QdrantLivenessError::Timeout { .. }))
+        Err(DaemonStartupError::QdrantLiveness(
+            QdrantLivenessError::Timeout { .. }
+        ))
     ));
 }
 

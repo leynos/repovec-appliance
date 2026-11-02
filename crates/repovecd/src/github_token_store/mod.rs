@@ -110,7 +110,10 @@ where
     /// Returns an error if the directory cannot be opened.
     pub fn open(root: &Utf8Path, encryptor: E) -> Result<Self, TokenStoreError<E::Error>> {
         Dir::open_ambient_dir(root, ambient_authority())
-            .map(|opened_root| Self { root: opened_root, encryptor })
+            .map(|opened_root| Self {
+                root: opened_root,
+                encryptor,
+            })
             .map_err(TokenStoreError::OpenRoot)
     }
 
@@ -136,8 +139,10 @@ where
         let span = info_span!("github_token_store.store");
         let _entered = span.enter();
         let started_at = Instant::now();
-        let ciphertext =
-            self.encryptor.encrypt(token.secret().as_bytes()).map_err(TokenStoreError::Encrypt)?;
+        let ciphertext = self
+            .encryptor
+            .encrypt(token.secret().as_bytes())
+            .map_err(TokenStoreError::Encrypt)?;
         write_atomically(&self.root, TOKEN_CREDENTIAL_FILE, &ciphertext)
             .map_err(TokenStoreError::Write)?;
         info_token_store_write(started_at);
@@ -172,8 +177,14 @@ where
         let span = info_span!("github_token_store.load");
         let _entered = span.enter();
         let started_at = Instant::now();
-        let ciphertext = self.root.read(TOKEN_CREDENTIAL_FILE).map_err(TokenStoreError::Read)?;
-        let plaintext = self.encryptor.decrypt(&ciphertext).map_err(TokenStoreError::Decrypt)?;
+        let ciphertext = self
+            .root
+            .read(TOKEN_CREDENTIAL_FILE)
+            .map_err(TokenStoreError::Read)?;
+        let plaintext = self
+            .encryptor
+            .decrypt(&ciphertext)
+            .map_err(TokenStoreError::Decrypt)?;
         let token = String::from_utf8(plaintext).map_err(TokenStoreError::Decode)?;
         info_token_store_load(started_at);
         Ok(AccessToken::new(token, std::iter::empty::<String>()))
@@ -208,7 +219,12 @@ where
 {
     /// Creates an encryptor using the supplied command runner.
     #[must_use]
-    pub fn new(runner: R) -> Self { Self { runner, command: Utf8PathBuf::from("systemd-creds") } }
+    pub fn new(runner: R) -> Self {
+        Self {
+            runner,
+            command: Utf8PathBuf::from("systemd-creds"),
+        }
+    }
 
     /// Creates an encryptor with an explicit `systemd-creds` path.
     #[must_use]

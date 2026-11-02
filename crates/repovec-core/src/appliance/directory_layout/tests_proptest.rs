@@ -38,8 +38,11 @@ fn data_path() -> impl Strategy<Value = String> {
 
 /// An octal mode column, three or four digits wide.
 fn octal_mode() -> impl Strategy<Value = String> {
-    prop::collection::vec(prop::sample::select(&['0', '1', '2', '3', '4', '5', '6', '7']), 3..=4)
-        .prop_map(|digits| digits.into_iter().collect())
+    prop::collection::vec(
+        prop::sample::select(&['0', '1', '2', '3', '4', '5', '6', '7']),
+        3..=4,
+    )
+    .prop_map(|digits| digits.into_iter().collect())
 }
 
 /// A quoted GECOS field, which may be empty and may contain spaces.

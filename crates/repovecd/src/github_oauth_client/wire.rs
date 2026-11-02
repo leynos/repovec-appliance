@@ -3,7 +3,12 @@
 use std::time::Duration;
 
 use repovec_core::github_oauth::{
-    AccessToken, DeviceAuthorization, DeviceCode, DeviceFlowErrorCode, TokenPollOutcome, UserCode,
+    AccessToken,
+    DeviceAuthorization,
+    DeviceCode,
+    DeviceFlowErrorCode,
+    TokenPollOutcome,
+    UserCode,
 };
 use serde::Deserialize;
 
@@ -33,7 +38,9 @@ impl DeviceCodeWire {
             user_code: UserCode::new(self.user_code),
             verification_uri: self.verification_uri,
             expires_in: Duration::from_secs(self.expires_in),
-            interval: self.interval.map_or(DEFAULT_DEVICE_POLL_INTERVAL, Duration::from_secs),
+            interval: self
+                .interval
+                .map_or(DEFAULT_DEVICE_POLL_INTERVAL, Duration::from_secs),
         }
     }
 }
@@ -53,13 +60,17 @@ impl TokenPollWire {
     /// Parses the optional OAuth error into its raw and classified forms.
     /// For example, `slow_down` is classified as the device-flow slowdown.
     pub(super) fn oauth_error(&self) -> Option<TokenErrorWire> {
-        self.error.as_ref().map(|error| TokenErrorWire::new(error.clone()))
+        self.error
+            .as_ref()
+            .map(|error| TokenErrorWire::new(error.clone()))
     }
 
     /// Converts a successful response, requiring an access token.
     /// For example, missing `access_token` returns `MissingAccessToken`.
     pub(super) fn into_domain(self) -> Result<TokenPollOutcome, OAuthClientError> {
-        let access_token = self.access_token.ok_or(OAuthClientError::MissingAccessToken)?;
+        let access_token = self
+            .access_token
+            .ok_or(OAuthClientError::MissingAccessToken)?;
         Ok(TokenPollOutcome::Authorized(AccessToken::new(
             access_token,
             split_scopes(self.scope.as_deref().unwrap_or_default()),
@@ -93,7 +104,10 @@ impl TokenErrorWire {
 /// Splits returned scopes on commas or spaces and drops empty entries.
 /// For example, `repo,read:org gist` yields three scope names.
 fn split_scopes(scopes: &str) -> impl Iterator<Item = String> + '_ {
-    scopes.split([',', ' ']).filter(|scope| !scope.is_empty()).map(str::to_owned)
+    scopes
+        .split([',', ' '])
+        .filter(|scope| !scope.is_empty())
+        .map(str::to_owned)
 }
 
 #[cfg(test)]

@@ -7,7 +7,10 @@ use cap_std::{ambient_authority, fs_utf8::Dir};
 use qdrant_client::{Qdrant, QdrantError, qdrant::HealthCheckReply};
 
 use super::{
-    DEFAULT_QDRANT_GRPC_ENDPOINT, QdrantApiKey, QdrantLivenessConfig, QdrantLivenessError,
+    DEFAULT_QDRANT_GRPC_ENDPOINT,
+    QdrantApiKey,
+    QdrantLivenessConfig,
+    QdrantLivenessError,
     QdrantLivenessReport,
 };
 
@@ -42,8 +45,12 @@ where
 /// For example, a missing file becomes `MissingApiKeyFile`; other path or I/O failures become
 /// `UnreadableApiKeyFile`.
 pub(super) fn read_api_key_file(path: &camino::Utf8Path) -> Result<String, QdrantLivenessError> {
-    let parent = path.parent().ok_or_else(|| invalid_api_key_path_error(path))?;
-    let filename = path.file_name().ok_or_else(|| invalid_api_key_path_error(path))?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_api_key_path_error(path))?;
+    let filename = path
+        .file_name()
+        .ok_or_else(|| invalid_api_key_path_error(path))?;
     let directory = Dir::open_ambient_dir(parent, ambient_authority())
         .map_err(|source| map_api_key_read_error(path.to_path_buf(), source))?;
 
@@ -92,7 +99,9 @@ pub(super) fn build_qdrant_client(
 /// common Qdrant error mapping.
 fn map_qdrant_build_error(endpoint: &str, error: QdrantError) -> QdrantLivenessError {
     if matches!(error, QdrantError::InvalidUri(ref _source)) {
-        QdrantLivenessError::InvalidEndpoint { endpoint: endpoint.to_owned() }
+        QdrantLivenessError::InvalidEndpoint {
+            endpoint: endpoint.to_owned(),
+        }
     } else {
         map_qdrant_error(error)
     }
@@ -118,10 +127,12 @@ fn map_qdrant_error(error: QdrantError) -> QdrantLivenessError {
         QdrantError::InvalidUri(_source) => QdrantLivenessError::InvalidEndpoint {
             endpoint: DEFAULT_QDRANT_GRPC_ENDPOINT.to_owned(),
         },
-        QdrantError::Io(source) => {
-            QdrantLivenessError::GrpcUnavailable { message: source.kind().to_string() }
-        }
-        other => QdrantLivenessError::GrpcUnavailable { message: other.to_string() },
+        QdrantError::Io(source) => QdrantLivenessError::GrpcUnavailable {
+            message: source.kind().to_string(),
+        },
+        other => QdrantLivenessError::GrpcUnavailable {
+            message: other.to_string(),
+        },
     }
 }
 

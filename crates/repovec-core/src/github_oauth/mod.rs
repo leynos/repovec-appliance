@@ -145,7 +145,10 @@ impl AccessToken {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        Self { token: token.into(), scopes: scopes.into_iter().map(Into::into).collect() }
+        Self {
+            token: token.into(),
+            scopes: scopes.into_iter().map(Into::into).collect(),
+        }
     }
 
     /// Returns the secret bearer token for storage or API use.
@@ -155,7 +158,10 @@ impl AccessToken {
     /// ```
     /// use repovec_core::github_oauth::AccessToken;
     ///
-    /// assert_eq!(AccessToken::new("gho_token", ["repo"]).secret(), "gho_token");
+    /// assert_eq!(
+    ///     AccessToken::new("gho_token", ["repo"]).secret(),
+    ///     "gho_token"
+    /// );
     /// ```
     #[must_use]
     pub fn secret(&self) -> &str { &self.token }
@@ -254,22 +260,25 @@ impl std::error::Error for TerminalDeviceFlowError {}
 ///
 /// ```
 /// use std::time::Duration;
+///
 /// use repovec_core::github_oauth::{PollDecision, TokenPollOutcome, apply_poll_outcome};
 ///
 /// let decision = apply_poll_outcome(TokenPollOutcome::SlowDown, Duration::from_secs(5));
 ///
 /// assert_eq!(
 ///     decision,
-///     PollDecision::Continue { next_interval: Duration::from_secs(10) },
+///     PollDecision::Continue {
+///         next_interval: Duration::from_secs(10)
+///     },
 /// );
 /// ```
 #[must_use]
 pub fn apply_poll_outcome(outcome: TokenPollOutcome, active_interval: Duration) -> PollDecision {
     match outcome {
         TokenPollOutcome::Authorized(token) => PollDecision::Complete(token),
-        TokenPollOutcome::AuthorizationPending => {
-            PollDecision::Continue { next_interval: active_interval }
-        }
+        TokenPollOutcome::AuthorizationPending => PollDecision::Continue {
+            next_interval: active_interval,
+        },
         TokenPollOutcome::SlowDown => PollDecision::Continue {
             next_interval: active_interval.saturating_add(SLOW_DOWN_EXTRA_DELAY),
         },
@@ -288,7 +297,9 @@ pub fn apply_poll_outcome(outcome: TokenPollOutcome, active_interval: Duration) 
 ///
 /// ```
 /// use repovec_core::github_oauth::{
-///     DeviceFlowErrorCode, TokenPollOutcome, classify_device_flow_error,
+///     DeviceFlowErrorCode,
+///     TokenPollOutcome,
+///     classify_device_flow_error,
 /// };
 ///
 /// assert_eq!(

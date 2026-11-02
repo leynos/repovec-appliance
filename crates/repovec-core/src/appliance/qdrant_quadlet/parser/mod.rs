@@ -64,7 +64,10 @@ impl ParsedQuadlet {
             let Some((key, value)) = line.split_once('=') else {
                 let redacted_line = redact_line(line);
                 observer.invalid_line(line_number, &redacted_line);
-                return Err(QdrantQuadletError::InvalidLine { line_number, line: redacted_line });
+                return Err(QdrantQuadletError::InvalidLine {
+                    line_number,
+                    line: redacted_line,
+                });
             };
 
             let Some(section) = &current_section else {
@@ -92,7 +95,10 @@ impl ParsedQuadlet {
     /// For example, querying `Container` and `Image` returns the parsed image
     /// entries in their original order.
     pub(super) fn values(&self, section: &str, key: &str) -> &[String] {
-        self.sections.get(section).and_then(|entries| entries.get(key)).map_or(&[], Vec::as_slice)
+        self.sections
+            .get(section)
+            .and_then(|entries| entries.get(key))
+            .map_or(&[], Vec::as_slice)
     }
 }
 
@@ -187,13 +193,22 @@ struct RedactedToken {
 fn redact_token(token: &str) -> RedactedToken {
     if let Some((key, value)) = token.split_once('=') {
         return if is_sensitive_assignment(key, value) {
-            RedactedToken { value: format!("{key}=<redacted>"), is_sensitive_assignment: true }
+            RedactedToken {
+                value: format!("{key}=<redacted>"),
+                is_sensitive_assignment: true,
+            }
         } else {
-            RedactedToken { value: redact_url_authority(token), is_sensitive_assignment: false }
+            RedactedToken {
+                value: redact_url_authority(token),
+                is_sensitive_assignment: false,
+            }
         };
     }
 
-    RedactedToken { value: redact_url_authority(token), is_sensitive_assignment: false }
+    RedactedToken {
+        value: redact_url_authority(token),
+        is_sensitive_assignment: false,
+    }
 }
 
 /// Detects sensitive keys and secret-like values, including quoted forms.
@@ -214,7 +229,9 @@ fn is_sensitive_assignment(key: &str, value: &str) -> bool {
     tokens.iter().enumerate().any(|(index, raw_token)| {
         let trimmed_token = raw_token.trim();
         if trimmed_token.eq_ignore_ascii_case("bearer")
-            && tokens.get(index + 1).is_some_and(|next| !next.trim().is_empty())
+            && tokens
+                .get(index + 1)
+                .is_some_and(|next| !next.trim().is_empty())
         {
             return true;
         }
@@ -222,14 +239,18 @@ fn is_sensitive_assignment(key: &str, value: &str) -> bool {
             return true;
         }
 
-        trimmed_token.split_once('=').is_some_and(|(raw_nested_key, raw_nested_value)| {
-            let trimmed_nested_key = raw_nested_key.trim();
-            let trimmed_nested_value = raw_nested_value.trim();
-            is_sensitive_key(trimmed_nested_key)
-                || looks_like_secret_value(trimmed_nested_value)
-                || (trimmed_nested_value.eq_ignore_ascii_case("bearer")
-                    && tokens.get(index + 1).is_some_and(|next| !next.trim().is_empty()))
-        })
+        trimmed_token
+            .split_once('=')
+            .is_some_and(|(raw_nested_key, raw_nested_value)| {
+                let trimmed_nested_key = raw_nested_key.trim();
+                let trimmed_nested_value = raw_nested_value.trim();
+                is_sensitive_key(trimmed_nested_key)
+                    || looks_like_secret_value(trimmed_nested_value)
+                    || (trimmed_nested_value.eq_ignore_ascii_case("bearer")
+                        && tokens
+                            .get(index + 1)
+                            .is_some_and(|next| !next.trim().is_empty()))
+            })
     })
 }
 
@@ -243,7 +264,9 @@ fn is_spaced_sensitive_assignment(tokens: &[String], index: usize, key: &str) ->
     }
 
     let has_separator = tokens.get(index + 1).is_some_and(|next| next.trim() == "=");
-    let has_value = tokens.get(index + 2).is_some_and(|next| !next.trim().is_empty());
+    let has_value = tokens
+        .get(index + 2)
+        .is_some_and(|next| !next.trim().is_empty());
     has_separator && has_value
 }
 
@@ -255,7 +278,11 @@ fn trim_surrounding_quotes(value: &str) -> &str {
     value
         .strip_prefix('"')
         .and_then(|unquoted| unquoted.strip_suffix('"'))
-        .or_else(|| value.strip_prefix('\'').and_then(|unquoted| unquoted.strip_suffix('\'')))
+        .or_else(|| {
+            value
+                .strip_prefix('\'')
+                .and_then(|unquoted| unquoted.strip_suffix('\''))
+        })
         .unwrap_or(value)
 }
 

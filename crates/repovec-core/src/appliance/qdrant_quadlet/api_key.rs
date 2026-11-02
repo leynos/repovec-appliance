@@ -12,10 +12,16 @@
 //! completed.
 
 use super::{
-    CONTAINER_SECTION, PROVISION_SERVICE, QDRANT_API_KEY_ENVIRONMENT_VARIABLE,
-    QDRANT_API_KEY_SECRET, QDRANT_API_KEY_SERVICE, QdrantQuadletError, UNIT_SECTION,
+    CONTAINER_SECTION,
+    PROVISION_SERVICE,
+    QDRANT_API_KEY_ENVIRONMENT_VARIABLE,
+    QDRANT_API_KEY_SECRET,
+    QDRANT_API_KEY_SERVICE,
+    QdrantQuadletError,
+    UNIT_SECTION,
     environment::{
-        is_api_key_environment_assignment, redact_api_key_environment_assignment,
+        is_api_key_environment_assignment,
+        redact_api_key_environment_assignment,
         split_environment_assignments,
     },
     observer::QdrantQuadletObserver,
@@ -28,8 +34,7 @@ use super::{
 /// container must then fail closed rather than start against an unprovisioned
 /// host:
 ///
-/// - `repovec-qdrant-api-key.service`, which creates the Podman secret wired
-///   through `Secret=`;
+/// - `repovec-qdrant-api-key.service`, which creates the Podman secret wired through `Secret=`;
 /// - `repovec-provision.service`, which creates the `repovec` account and the
 ///   `/var/lib/repovec/qdrant-storage` mount source.
 ///
@@ -50,7 +55,9 @@ use super::{
 ///
 /// ```rust,no_run
 /// use repovec_core::appliance::qdrant_quadlet::{
-///     QdrantQuadletError, checked_in_qdrant_quadlet, validate_qdrant_quadlet,
+///     QdrantQuadletError,
+///     checked_in_qdrant_quadlet,
+///     validate_qdrant_quadlet,
 /// };
 ///
 /// # fn main() -> Result<(), QdrantQuadletError> {
@@ -128,10 +135,15 @@ fn dependency_error(
             directive,
             dependency: unit,
         },
-        (false, None) => QdrantQuadletError::MissingUnitDependency { directive, expected },
-        (false, Some(unit)) => {
-            QdrantQuadletError::IncorrectUnitDependency { directive, expected, actual: unit }
-        }
+        (false, None) => QdrantQuadletError::MissingUnitDependency {
+            directive,
+            expected,
+        },
+        (false, Some(unit)) => QdrantQuadletError::IncorrectUnitDependency {
+            directive,
+            expected,
+            actual: unit,
+        },
     }
 }
 
@@ -151,7 +163,8 @@ fn dependency_error(
 ///
 /// ```rust,no_run
 /// use repovec_core::appliance::qdrant_quadlet::{
-///     checked_in_qdrant_quadlet, validate_qdrant_quadlet,
+///     checked_in_qdrant_quadlet,
+///     validate_qdrant_quadlet,
 /// };
 ///
 /// assert!(validate_qdrant_quadlet(checked_in_qdrant_quadlet(), &()).is_ok());
@@ -166,7 +179,10 @@ pub(super) fn validate_api_key_secret(
         return Err(QdrantQuadletError::MissingApiKeySecret);
     }
 
-    if secrets.iter().any(|secret| is_required_api_key_secret(secret)) {
+    if secrets
+        .iter()
+        .any(|secret| is_required_api_key_secret(secret))
+    {
         return Ok(());
     }
 
@@ -220,9 +236,7 @@ fn is_required_api_key_secret(secret: &str) -> bool {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use repovec_core::appliance::qdrant_quadlet::{
-///     QdrantQuadletError, validate_qdrant_quadlet,
-/// };
+/// use repovec_core::appliance::qdrant_quadlet::{QdrantQuadletError, validate_qdrant_quadlet};
 ///
 /// let contents = concat!(
 ///     "[Unit]\n",

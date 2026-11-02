@@ -173,13 +173,16 @@ fn read_directory_metadata(path: &Utf8Path) -> Result<Metadata, LiveLayoutError>
 
     let directory = Dir::open_ambient_dir(parent, ambient_authority())
         .map_err(|source| map_metadata_error(path, source))?;
-    let metadata =
-        directory.symlink_metadata(name).map_err(|source| map_metadata_error(path, source))?;
+    let metadata = directory
+        .symlink_metadata(name)
+        .map_err(|source| map_metadata_error(path, source))?;
 
     if metadata.is_dir() {
         Ok(metadata)
     } else {
-        Err(LiveLayoutError::NotADirectory { path: path.to_path_buf() })
+        Err(LiveLayoutError::NotADirectory {
+            path: path.to_path_buf(),
+        })
     }
 }
 
@@ -187,8 +190,13 @@ fn read_directory_metadata(path: &Utf8Path) -> Result<Metadata, LiveLayoutError>
 /// required directory from a directory that exists but cannot be inspected.
 fn map_metadata_error(path: &Utf8Path, source: io::Error) -> LiveLayoutError {
     if source.kind() == io::ErrorKind::NotFound {
-        LiveLayoutError::MissingPath { path: path.to_path_buf() }
+        LiveLayoutError::MissingPath {
+            path: path.to_path_buf(),
+        }
     } else {
-        LiveLayoutError::UnreadablePath { path: path.to_path_buf(), source }
+        LiveLayoutError::UnreadablePath {
+            path: path.to_path_buf(),
+            source,
+        }
     }
 }

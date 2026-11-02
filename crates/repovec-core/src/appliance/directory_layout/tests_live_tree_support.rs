@@ -105,7 +105,11 @@ impl LiveTree {
         let data_root = Utf8PathBuf::from_path_buf(temp.path().join("var/lib/repovec"))
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "data root is not UTF-8"))?;
 
-        Ok(Self { temp, root, paths: RuntimePaths::new(config_root, data_root) })
+        Ok(Self {
+            temp,
+            root,
+            paths: RuntimePaths::new(config_root, data_root),
+        })
     }
 
     pub(super) fn chmod(&self, relative: &str, mode: u32) -> Result<(), io::Error> {
@@ -137,7 +141,12 @@ pub(super) fn current_ids(tree: &LiveTree) -> Result<(u32, u32), io::Error> {
 
 /// Seeds every expectation to the ids the scratch tree actually carries.
 pub(super) fn live_ids(uid: u32, gid: u32) -> LiveLayoutIds {
-    LiveLayoutIds { repovec_uid: uid, repovec_gid: gid, privileged_uid: uid, privileged_gid: gid }
+    LiveLayoutIds {
+        repovec_uid: uid,
+        repovec_gid: gid,
+        privileged_uid: uid,
+        privileged_gid: gid,
+    }
 }
 
 pub(super) fn expected_absolute(tree: &LiveTree, relative: &str) -> Result<String, io::Error> {

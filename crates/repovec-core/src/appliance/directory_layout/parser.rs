@@ -123,7 +123,11 @@ fn tmpfiles_d_preserves_contents(tail: &[String]) -> bool {
 
 /// Builds the malformed-line error for a rejected asset line.
 fn malformed_line(asset: &'static str, line_number: usize, trimmed: &str) -> DirectoryLayoutError {
-    DirectoryLayoutError::MalformedLine { asset, line_number, line: trimmed.to_owned() }
+    DirectoryLayoutError::MalformedLine {
+        asset,
+        line_number,
+        line: trimmed.to_owned(),
+    }
 }
 
 /// A parsed `d` entry from the `tmpfiles.d` asset.
@@ -164,7 +168,12 @@ pub(crate) fn tmpfiles_entry(
         return Err(malformed_line(asset, line_number, trimmed));
     }
 
-    Ok(Some(TmpfilesEntry { path, mode, user, group }))
+    Ok(Some(TmpfilesEntry {
+        path,
+        mode,
+        user,
+        group,
+    }))
 }
 
 /// A parsed `u` line from the `sysusers.d` asset.
@@ -214,7 +223,11 @@ pub(crate) fn sysusers_user_line(
         let Some(field) = SYSUSERS_COLUMNS.get(column_count).copied() else {
             return Err(malformed_line(asset, line_number, trimmed));
         };
-        return Err(DirectoryLayoutError::MissingSysusersField { asset, line_number, field });
+        return Err(DirectoryLayoutError::MissingSysusersField {
+            asset,
+            line_number,
+            field,
+        });
     };
     if tail.len() > 1 {
         return Err(malformed_line(asset, line_number, trimmed));
@@ -249,5 +262,7 @@ pub(crate) fn parse_mode(text: &str) -> Result<Mode, ModeParseError> {
     if text == "-" {
         return Err(ModeParseError::Placeholder);
     }
-    u16::from_str_radix(text, 8).map(Mode).map_err(|_| ModeParseError::Invalid)
+    u16::from_str_radix(text, 8)
+        .map(Mode)
+        .map_err(|_| ModeParseError::Invalid)
 }

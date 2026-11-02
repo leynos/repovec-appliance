@@ -62,52 +62,68 @@ fn token_poll_maps_device_flow_error_codes(
     assert_eq!(outcome, expected);
 }
 
-#[test]
-fn token_poll_rejects_unsupported_error_codes() {
-    let result = token_poll_outcome(
-        TokenPollWire {
-            access_token: None,
-            error: Some("invalid_grant".to_owned()),
-            scope: None,
-        },
-        false,
-    );
-
-    assert!(matches!(
-        result,
-        Err(OAuthClientError::UnsupportedOAuthError { .. })
-    ));
+#[derive(Clone, Copy, Debug)]
+enum ExpectedPollError {
+    UnsupportedError,
+    MissingErrorField,
+    MissingAccessToken,
 }
 
-#[test]
-fn token_poll_rejects_error_responses_without_error_codes() {
-    let result = token_poll_outcome(
-        TokenPollWire {
-            access_token: None,
-            error: None,
-            scope: None,
-        },
-        false,
-    );
+impl ExpectedPollError {
+    fn assert_matches(self, error: &OAuthClientError) {
+        let matches_expected = match self {
+            Self::UnsupportedError => {
+                matches!(error, OAuthClientError::UnsupportedOAuthError { .. })
+            }
+            Self::MissingErrorField => {
+                matches!(error, OAuthClientError::ReadTokenErrorWithoutErrorField)
+            }
+            Self::MissingAccessToken => matches!(error, OAuthClientError::MissingAccessToken),
+        };
 
-    assert!(matches!(
-        result,
-        Err(OAuthClientError::ReadTokenErrorWithoutErrorField)
-    ));
+        assert!(matches_expected, "expected {self:?}, got {error:?}");
+    }
 }
 
-#[test]
-fn token_poll_rejects_success_without_access_token() {
-    let result = token_poll_outcome(
-        TokenPollWire {
-            access_token: None,
-            error: None,
-            scope: None,
-        },
-        true,
-    );
+#[rstest::rstest]
+#[case::unsupported_error_code(
+    TokenPollWire {
+        access_token: None,
+        error: Some("invalid_grant".to_owned()),
+        scope: None,
+    },
+    false,
+    ExpectedPollError::UnsupportedError,
+)]
+#[case::missing_error_code(
+    TokenPollWire {
+        access_token: None,
+        error: None,
+        scope: None,
+    },
+    false,
+    ExpectedPollError::MissingErrorField,
+)]
+#[case::missing_access_token(
+    TokenPollWire {
+        access_token: None,
+        error: None,
+        scope: None,
+    },
+    true,
+    ExpectedPollError::MissingAccessToken,
+)]
+fn token_poll_rejects_invalid_responses(
+    #[case] body: TokenPollWire,
+    #[case] is_success: bool,
+    #[case] expected_error: ExpectedPollError,
+) {
+    let result = token_poll_outcome(body, is_success);
 
-    assert!(matches!(result, Err(OAuthClientError::MissingAccessToken)));
+    let Err(error) = result else {
+        panic!("invalid token response should be rejected");
+    };
+    expected_error.assert_matches(&error);
 }
 
 #[test]

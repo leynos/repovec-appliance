@@ -162,16 +162,21 @@ def test_even_backslash_run_is_not_a_continuation() -> None:
     """A doubled backslash ends a line literally instead of continuing it."""
     lines = ["echo a\\\\", "echo b"]
 
-    assert join_continuations(lines) == lines
+    joined = join_continuations(lines)
+
+    assert joined == lines, (
+        f"a doubled trailing backslash must end the line, got {joined!r}"
+    )
 
 
 @SETTINGS
 @given(st.lists(st.text(max_size=10), max_size=10))
 def test_join_continuations_is_idempotent(lines: list[str]) -> None:
     once = join_continuations(lines)
+    twice = join_continuations(once)
 
-    assert join_continuations(once) == once
-    assert all(line.strip() for line in once)
+    assert twice == once, f"joining {lines!r} twice changed it to {twice!r}"
+    assert all(line.strip() for line in once), f"a blank line survived in {once!r}"
 
 
 #: Commands the generated run blocks may contain. One command per line keeps

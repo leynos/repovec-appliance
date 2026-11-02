@@ -120,154 +120,75 @@ impl SystemdUnitError {
             | Self::ForbiddenDirective { unit, .. } => unit,
         }
     }
-}
 
-impl fmt::Display for SystemdUnitError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    /// Writes the operator-facing diagnostic for this validation error.
+    fn write_diagnostic(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidLine {
                 unit,
                 line_number,
                 line,
-            } => write_invalid_line(f, unit, *line_number, line),
+            } => write!(f, "invalid systemd line in {unit} at {line_number}: {line}"),
             Self::PropertyBeforeSection {
                 unit,
                 line_number,
                 line,
-            } => write_property_before_section(f, unit, *line_number, line),
-            Self::MissingSection { unit, section } => write_missing_section(f, unit, section),
+            } => write!(
+                f,
+                "systemd property before section in {unit} on line {line_number}: {line}"
+            ),
+            Self::MissingSection { unit, section } => write!(f, "{unit} is missing [{section}]"),
             Self::MissingDependency {
                 unit,
                 section,
                 key,
                 dependency,
-            } => write_missing_dependency(f, (unit, section, key, dependency)),
+            } => write!(f, "{unit} is missing {key}={dependency} in [{section}]"),
             Self::UsesQuadletSourceDependency {
                 unit,
                 section,
                 key,
                 dependency,
-            } => write_uses_quadlet_source_dependency(f, (unit, section, key, dependency)),
+            } => write!(
+                f,
+                "{unit} must depend on qdrant.service, not {dependency}, in [{section}] {key}"
+            ),
             Self::IncorrectExecStart {
                 unit,
                 expected,
                 actual,
-            } => write_incorrect_exec_start(f, unit, expected, actual),
+            } => write!(f, "{unit} must use ExecStart={expected}: {actual}"),
             Self::IncorrectExecStartSequence {
                 unit,
                 expected,
                 actual,
-            } => write_incorrect_exec_start_sequence(f, unit, expected, actual),
+            } => write!(
+                f,
+                "{unit} must declare ExecStart={} in order: {}",
+                expected.join(", "),
+                actual.join(", ")
+            ),
             Self::IncorrectServiceDirective {
                 unit,
                 key,
                 expected,
                 actual,
-            } => write_incorrect_service_directive(f, (unit, key, expected, actual)),
+            } => write!(
+                f,
+                "{unit} must have {key}={expected} in [Service]: {actual}"
+            ),
             Self::ForbiddenDirective {
                 unit,
                 section,
                 key,
                 actual,
-            } => write_forbidden_directive(f, (unit, section, key, actual)),
+            } => write!(f, "{unit} must not declare {key} in [{section}]: {actual}"),
         }
     }
 }
 
-/// Writes the diagnostic for an unparsable unit line.
-fn write_invalid_line(
-    f: &mut fmt::Formatter<'_>,
-    unit: &str,
-    line_number: usize,
-    line: &str,
-) -> fmt::Result {
-    write!(f, "invalid systemd line in {unit} at {line_number}: {line}")
-}
-
-/// Writes the diagnostic for a property that precedes any section header.
-fn write_property_before_section(
-    f: &mut fmt::Formatter<'_>,
-    unit: &str,
-    line_number: usize,
-    line: &str,
-) -> fmt::Result {
-    write!(
-        f,
-        "systemd property before section in {unit} on line {line_number}: {line}"
-    )
-}
-
-/// Writes the diagnostic for a missing required section.
-fn write_missing_section(f: &mut fmt::Formatter<'_>, unit: &str, section: &str) -> fmt::Result {
-    write!(f, "{unit} is missing [{section}]")
-}
-
-/// Writes the diagnostic for a missing dependency token.
-///
-/// This and the three dependency-shaped writers below take a destructured
-/// tuple because the workspace's `too-many-arguments-threshold = 4` makes five
-/// plain parameters a lint failure, and the tuple groups the diagnostic parts
-/// without a struct that would exist only to carry them.
-fn write_missing_dependency(
-    f: &mut fmt::Formatter<'_>,
-    (unit, section, key, dependency): (&str, &str, &str, &str),
-) -> fmt::Result {
-    write!(f, "{unit} is missing {key}={dependency} in [{section}]")
-}
-
-/// Writes the diagnostic for a dependency on the Quadlet source name.
-fn write_uses_quadlet_source_dependency(
-    f: &mut fmt::Formatter<'_>,
-    (unit, section, key, dependency): (&str, &str, &str, &str),
-) -> fmt::Result {
-    write!(
-        f,
-        "{unit} must depend on qdrant.service, not {dependency}, in [{section}] {key}"
-    )
-}
-
-/// Writes the diagnostic for a wrong `ExecStart=` command.
-fn write_incorrect_exec_start(
-    f: &mut fmt::Formatter<'_>,
-    unit: &str,
-    expected: &str,
-    actual: &str,
-) -> fmt::Result {
-    write!(f, "{unit} must use ExecStart={expected}: {actual}")
-}
-
-/// Writes the diagnostic for a wrong `ExecStart=` command sequence.
-fn write_incorrect_exec_start_sequence(
-    f: &mut fmt::Formatter<'_>,
-    unit: &str,
-    expected: &[&str],
-    actual: &[String],
-) -> fmt::Result {
-    write!(
-        f,
-        "{unit} must declare ExecStart={} in order: {}",
-        expected.join(", "),
-        actual.join(", ")
-    )
-}
-
-/// Writes the diagnostic for a wrong `[Service]` identity directive.
-fn write_incorrect_service_directive(
-    f: &mut fmt::Formatter<'_>,
-    (unit, key, expected, actual): (&str, &str, &str, &str),
-) -> fmt::Result {
-    write!(
-        f,
-        "{unit} must have {key}={expected} in [Service]: {actual}"
-    )
-}
-
-/// Writes the diagnostic for a forbidden directive.
-fn write_forbidden_directive(
-    f: &mut fmt::Formatter<'_>,
-    (unit, section, key, actual): (&str, &str, &str, &str),
-) -> fmt::Result {
-    write!(f, "{unit} must not declare {key} in [{section}]: {actual}")
+impl fmt::Display for SystemdUnitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.write_diagnostic(f) }
 }
 
 impl Error for SystemdUnitError {}

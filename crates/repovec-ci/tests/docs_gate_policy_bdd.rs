@@ -56,57 +56,57 @@ fn evaluate(world: &mut PolicyWorld) {
 
 #[then("the docs gate runs")]
 fn docs_gate_runs(world: &PolicyWorld) {
-    assert!(plan(world).should_run());
+    assert!(plan(world).is_some_and(DocsGatePlan::should_run));
 }
 
 #[then("the docs gate is skipped")]
 fn docs_gate_skips(world: &PolicyWorld) {
-    assert!(!plan(world).should_run());
+    assert_eq!(plan(world).map(DocsGatePlan::should_run), Some(false));
 }
 
 #[then("Mermaid validation is required")]
 fn nixie_runs(world: &PolicyWorld) {
-    assert!(plan(world).nixie_required());
+    assert!(plan(world).is_some_and(DocsGatePlan::nixie_required));
 }
 
 #[then("Mermaid validation is skipped")]
 fn nixie_skips(world: &PolicyWorld) {
-    assert!(!plan(world).nixie_required());
+    assert_eq!(plan(world).map(DocsGatePlan::nixie_required), Some(false));
 }
 
 #[then(expr = "the conservative fallback count is {count}")]
 fn fallback_count(world: &PolicyWorld, count: usize) {
-    assert_eq!(plan(world).conservative_fallback_files().len(), count);
+    assert_eq!(plan(world).map(|plan| plan.conservative_fallback_files().len()), Some(count));
 }
 
 #[then(expr = "the conservative fallback list contains {path}")]
 fn fallback_list_contains(world: &PolicyWorld, path: String) {
-    assert!(plan(world).conservative_fallback_files().iter().any(|item| item == &path));
+    assert!(
+        plan(world).is_some_and(|plan| plan
+            .conservative_fallback_files()
+            .iter()
+            .any(|item| item == &path))
+    );
 }
 
 #[then(expr = "the docs gate reason is {reason}")]
 fn docs_gate_reason(world: &PolicyWorld, reason: String) {
-    assert_eq!(plan(world).reason().as_str(), reason);
+    assert_eq!(plan(world).map(|plan| plan.reason().as_str()), Some(reason.as_str()));
 }
 
 #[then(expr = "the docs gate matches {path}")]
 fn docs_gate_matches(world: &PolicyWorld, path: String) {
-    assert!(plan(world).matched_files().iter().any(|item| item == &path));
+    assert!(plan(world).is_some_and(|plan| plan.matched_files().iter().any(|item| item == &path)));
 }
 
-const fn plan(world: &PolicyWorld) -> &DocsGatePlan {
-    match &world.plan {
-        Some(plan) => plan,
-        None => panic!("docs-gate policy should be evaluated before assertions"),
-    }
-}
+const fn plan(world: &PolicyWorld) -> Option<&DocsGatePlan> { world.plan.as_ref() }
 
 #[scenario(
     path = "tests/features/docs_gate.feature",
     name = "Markdown-only changes trigger the docs gate"
 )]
 fn markdown_changes_trigger_docs_gate(world: PolicyWorld) {
-    assert_eq!(plan(&world).reason(), DocsGateReason::DocumentationChanged);
+    assert_eq!(plan(&world).map(DocsGatePlan::reason), Some(DocsGateReason::DocumentationChanged));
 }
 
 #[scenario(
@@ -114,7 +114,10 @@ fn markdown_changes_trigger_docs_gate(world: PolicyWorld) {
     name = "Code-only changes skip the docs gate"
 )]
 fn code_changes_skip_docs_gate(world: PolicyWorld) {
-    assert_eq!(plan(&world).reason(), DocsGateReason::NoDocumentationChanges);
+    assert_eq!(
+        plan(&world).map(DocsGatePlan::reason),
+        Some(DocsGateReason::NoDocumentationChanges)
+    );
 }
 
 #[scenario(
@@ -122,7 +125,10 @@ fn code_changes_skip_docs_gate(world: PolicyWorld) {
     name = "Mixed changes still trigger the docs gate"
 )]
 fn mixed_changes_trigger_docs_gate(world: PolicyWorld) {
-    assert!(plan(&world).matched_files().iter().any(|item| item == "README.md"));
+    assert!(
+        plan(&world)
+            .is_some_and(|plan| plan.matched_files().iter().any(|item| item == "README.md"))
+    );
 }
 
 #[scenario(
@@ -130,7 +136,7 @@ fn mixed_changes_trigger_docs_gate(world: PolicyWorld) {
     name = "Documentation tooling changes trigger the docs gate conservatively"
 )]
 fn docs_tooling_changes_trigger_docs_gate(world: PolicyWorld) {
-    assert!(plan(&world).nixie_required());
+    assert!(plan(&world).is_some_and(DocsGatePlan::nixie_required));
 }
 
 #[scenario(
@@ -138,7 +144,7 @@ fn docs_tooling_changes_trigger_docs_gate(world: PolicyWorld) {
     name = "Mermaid-bearing docs changes require nixie"
 )]
 fn mermaid_docs_require_nixie(world: PolicyWorld) {
-    assert!(plan(&world).nixie_required());
+    assert!(plan(&world).is_some_and(DocsGatePlan::nixie_required));
 }
 
 #[scenario(
@@ -146,7 +152,7 @@ fn mermaid_docs_require_nixie(world: PolicyWorld) {
     name = "Unreadable changed Markdown triggers conservative fallback"
 )]
 fn unreadable_markdown_triggers_fallback(world: PolicyWorld) {
-    assert!(plan(&world).nixie_required());
+    assert!(plan(&world).is_some_and(DocsGatePlan::nixie_required));
 }
 
 #[scenario(
@@ -154,5 +160,5 @@ fn unreadable_markdown_triggers_fallback(world: PolicyWorld) {
     name = "Missing changed-file input runs the docs gate conservatively"
 )]
 fn missing_input_runs_docs_gate(world: PolicyWorld) {
-    assert_eq!(plan(&world).reason(), DocsGateReason::MissingChangedFiles);
+    assert_eq!(plan(&world).map(DocsGatePlan::reason), Some(DocsGateReason::MissingChangedFiles));
 }

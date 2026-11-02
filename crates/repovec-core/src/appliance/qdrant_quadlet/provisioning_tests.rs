@@ -17,43 +17,61 @@ macro_rules! include_packaging_asset {
 }
 
 /// Returns the byte offset of the first occurrence of `needle` in
-/// `PROVISIONING_HELPER`, panicking if the needle is missing.
+/// `PROVISIONING_HELPER`, or `None` when the asset does not contain it.
+fn find_helper_offset(needle: &str) -> Option<usize> { PROVISIONING_HELPER.find(needle) }
+
+/// Asserts that `PROVISIONING_HELPER` contains `needle` and returns its offset.
+///
+/// This is a thin assertion wrapper over [`find_helper_offset`]: a missing
+/// needle means the checked-in asset no longer matches the contract under
+/// test, so the panic points at the caller.
+#[track_caller]
 fn helper_offset(needle: &str) -> usize {
-    let Some(offset) = PROVISIONING_HELPER.find(needle) else {
+    let Some(offset) = find_helper_offset(needle) else {
         panic!("helper should contain expected text: {needle:?}");
     };
     offset
 }
 
-fn helper_suffix_preview(suffix: &str) -> String {
-    if suffix.len() <= 120 { suffix.to_owned() } else { suffix.chars().take(120).collect() }
+/// Returns the byte offset of `needle` at or after `offset`, or `None` when
+/// either the boundary or the needle is invalid.
+fn find_helper_offset_after(needle: &str, offset: usize) -> Option<usize> {
+    let suffix = PROVISIONING_HELPER.get(offset..)?;
+    suffix.find(needle).map(|relative_offset| offset + relative_offset)
 }
 
-/// Returns the byte offset of the first occurrence of `needle` in
-/// `PROVISIONING_HELPER` after `offset`, useful for ordering assertions.
-/// Panics if `offset` is not a valid UTF-8 boundary or if no matching
-/// occurrence exists after `offset`.
+/// Asserts that `needle` occurs in `PROVISIONING_HELPER` after `offset`.
+///
+/// This is a thin assertion wrapper over [`find_helper_offset_after`] for
+/// ordering assertions; the panic points at the caller.
+#[track_caller]
 fn helper_offset_after(needle: &str, offset: usize) -> usize {
-    let Some(suffix) = PROVISIONING_HELPER.get(offset..) else {
+    let Some(found) = find_helper_offset_after(needle, offset) else {
         panic!(
-            "helper offset should be a valid byte boundary: offset={offset}, helper_len={}",
+            "helper should contain expected text after offset: needle={needle:?}, \
+             offset={offset}, helper_len={}",
             PROVISIONING_HELPER.len()
         );
     };
-    let Some(relative_offset) = suffix.find(needle) else {
-        let suffix_preview = helper_suffix_preview(suffix);
-        panic!(
-            "helper should contain expected text after offset: needle={needle:?}, \
-             offset={offset}, suffix_preview={suffix_preview:?}"
-        );
-    };
-    offset + relative_offset
+    found
 }
 
+/// Returns the `start..end` slice of `PROVISIONING_HELPER`, or `None` when the
+/// range is not a valid byte boundary.
+fn find_helper_slice(start: usize, end: usize) -> Option<&'static str> {
+    PROVISIONING_HELPER.get(start..end)
+}
+
+/// Asserts that `start..end` is a valid slice of `PROVISIONING_HELPER`.
+///
+/// This is a thin assertion wrapper over [`find_helper_slice`] for snapshot
+/// assertions; the panic points at the caller.
+#[track_caller]
 fn helper_slice(start: usize, end: usize) -> &'static str {
-    let Some(slice) = PROVISIONING_HELPER.get(start..end) else {
+    let Some(slice) = find_helper_slice(start, end) else {
         panic!(
-            "helper slice should use valid byte boundaries: start={start}, end={end}, helper_len={}",
+            "helper slice should use valid byte boundaries: start={start}, end={end}, \
+             helper_len={}",
             PROVISIONING_HELPER.len()
         );
     };

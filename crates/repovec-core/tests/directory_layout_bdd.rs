@@ -121,12 +121,10 @@ fn the_directory_layout_assets_are_validated(directory_layout_world: &mut Direct
 
 #[then("the directory-layout asset set is accepted")]
 fn the_directory_layout_asset_set_is_accepted(directory_layout_world: &DirectoryLayoutWorld) {
-    let Some(validation_result) = directory_layout_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
+    let validation_result = find_validation_result(directory_layout_world);
 
     assert!(
-        validation_result.is_ok(),
+        validation_result.is_some_and(Result::is_ok),
         "expected the asset set to be accepted, got {validation_result:?}"
     );
 }
@@ -155,13 +153,10 @@ macro_rules! then_validation_fails_with {
         $(
             #[then($sentence)]
             fn $step(directory_layout_world: &DirectoryLayoutWorld) {
-                let Some(validation_result) = directory_layout_world.validation_result.as_ref()
-                else {
-                    panic!("the validation step should have run");
-                };
+                let validation_result = find_validation_result(directory_layout_world);
 
                 assert!(
-                    matches!(validation_result, Err($pattern)),
+                    matches!(validation_result, Some(Err($pattern))),
                     "expected the error the scenario pins, got {validation_result:?}"
                 );
             }
@@ -338,13 +333,16 @@ fn assert_scenario_steps_ran(directory_layout_world: &DirectoryLayoutWorld) {
     );
 }
 
+/// Returns the validation outcome recorded by the `when` step, if any.
+const fn find_validation_result(
+    directory_layout_world: &DirectoryLayoutWorld,
+) -> Option<&Result<(), DirectoryLayoutError>> {
+    directory_layout_world.validation_result.as_ref()
+}
+
 fn assert_validation_result(
     directory_layout_world: &DirectoryLayoutWorld,
     expected: DirectoryLayoutError,
 ) {
-    let Some(validation_result) = directory_layout_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
-    assert_eq!(validation_result, &Err(expected));
+    assert_eq!(find_validation_result(directory_layout_world), Some(&Err(expected)));
 }

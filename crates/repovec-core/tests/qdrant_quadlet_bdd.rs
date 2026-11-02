@@ -70,77 +70,69 @@ fn the_quadlet_is_validated(quadlet_world: &mut QuadletWorld) {
     quadlet_world.validation_result = Some(validate_qdrant_quadlet(&quadlet_world.contents, &()));
 }
 
+/// Returns the validation outcome recorded by the `when` step, if any.
+///
+/// Keeping the lookup pure lets every `then` step assert on the `Option`
+/// rather than panicking when the `when` step did not run.
+const fn find_validation_result(world: &QuadletWorld) -> Option<&Result<(), QdrantQuadletError>> {
+    world.validation_result.as_ref()
+}
+
 #[then("the Quadlet is accepted")]
 fn the_quadlet_is_accepted(quadlet_world: &QuadletWorld) {
-    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
-    assert!(validation_result.is_ok());
+    assert!(find_validation_result(quadlet_world).is_some_and(Result::is_ok));
 }
 
 #[then("the validation fails with a loopback error for port 6333")]
 fn the_validation_fails_with_a_loopback_error_for_port_6333(quadlet_world: &QuadletWorld) {
-    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
     assert_eq!(
-        validation_result,
-        &Err(QdrantQuadletError::PortNotBoundToLoopback {
+        find_validation_result(quadlet_world),
+        Some(&Err(QdrantQuadletError::PortNotBoundToLoopback {
             port: 6333,
             publish_port: String::from("0.0.0.0:6333:6333"),
-        })
+        }))
     );
 }
 
 #[then("the validation fails because the gRPC port is missing")]
 fn the_validation_fails_because_the_grpc_port_is_missing(quadlet_world: &QuadletWorld) {
-    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
-    assert_eq!(validation_result, &Err(QdrantQuadletError::MissingGrpcPort));
+    assert_eq!(
+        find_validation_result(quadlet_world),
+        Some(&Err(QdrantQuadletError::MissingGrpcPort))
+    );
 }
 
 #[then("the validation fails because the storage mount is missing")]
 fn the_validation_fails_because_the_storage_mount_is_missing(quadlet_world: &QuadletWorld) {
-    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
-    assert_eq!(validation_result, &Err(QdrantQuadletError::MissingStorageMount));
+    assert_eq!(
+        find_validation_result(quadlet_world),
+        Some(&Err(QdrantQuadletError::MissingStorageMount))
+    );
 }
 
 #[then("the validation fails because auto-update is missing")]
 fn the_validation_fails_because_auto_update_is_missing(quadlet_world: &QuadletWorld) {
-    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
-    assert_eq!(validation_result, &Err(QdrantQuadletError::MissingAutoUpdate));
+    assert_eq!(
+        find_validation_result(quadlet_world),
+        Some(&Err(QdrantQuadletError::MissingAutoUpdate))
+    );
 }
 
 #[then("the validation fails because the API key secret is missing")]
 fn the_validation_fails_because_the_api_key_secret_is_missing(quadlet_world: &QuadletWorld) {
-    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
-    assert_eq!(validation_result, &Err(QdrantQuadletError::MissingApiKeySecret));
+    assert_eq!(
+        find_validation_result(quadlet_world),
+        Some(&Err(QdrantQuadletError::MissingApiKeySecret))
+    );
 }
 
 #[then("the validation fails because inline API keys are not allowed")]
 fn the_validation_fails_because_inline_api_keys_are_not_allowed(quadlet_world: &QuadletWorld) {
-    let Some(validation_result) = quadlet_world.validation_result.as_ref() else {
-        panic!("the validation step should have run");
-    };
-
     assert_eq!(
-        validation_result,
-        &Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
+        find_validation_result(quadlet_world),
+        Some(&Err(QdrantQuadletError::InlineApiKeyEnvironmentDisallowed {
             environment: String::from("QDRANT__SERVICE__API_KEY=<redacted>"),
-        })
+        }))
     );
 }
 

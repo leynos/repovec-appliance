@@ -56,7 +56,7 @@ fn oauth2_test_server_exercises_device_code_request_and_token_poll() {
 
 #[test]
 fn malformed_device_code_json_is_reported() {
-    let endpoint = malformed_json_endpoint();
+    let endpoint = malformed_json_endpoint().expect("test server should start");
     let oauth_client = GitHubOAuthClient::new(DeviceFlowEndpoints::new(&endpoint, &endpoint))
         .expect("OAuth client should be constructed");
 
@@ -67,7 +67,7 @@ fn malformed_device_code_json_is_reported() {
 
 #[test]
 fn malformed_token_json_is_reported() {
-    let endpoint = malformed_json_endpoint();
+    let endpoint = malformed_json_endpoint().expect("test server should start");
     let oauth_client = GitHubOAuthClient::new(DeviceFlowEndpoints::new(&endpoint, &endpoint))
         .expect("OAuth client should be constructed");
 
@@ -76,30 +76,32 @@ fn malformed_token_json_is_reported() {
     assert!(matches!(result, Err(OAuthClientError::ReadToken(_))));
 }
 
-fn malformed_json_endpoint() -> String {
-    let listener = match TcpListener::bind("127.0.0.1:0") {
-        Ok(listener) => listener,
-        Err(error) => panic!("test server should bind: {error}"),
+fn malformed_json_endpoint() -> std::io::Result<String> {
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let address = listener.local_addr()?;
+    thread::spawn(move || serve_malformed_json(&listener));
+    Ok(format!("http://{address}/oauth"))
+}
+
+/// Answer the single request the client under test sends with invalid JSON.
+///
+/// The helper returns no value because the server thread has no caller to
+/// report to; a broken fixture is a test bug, so it panics there. Keeping it
+/// out of [`malformed_json_endpoint`] keeps that fallible function free of
+/// panics, which `clippy::panic_in_result_fn` requires.
+fn serve_malformed_json(listener: &TcpListener) {
+    let (mut stream, _) = match listener.accept() {
+        Ok(accepted) => accepted,
+        Err(error) => panic!("test server should accept one request: {error}"),
     };
-    let address = match listener.local_addr() {
-        Ok(address) => address,
-        Err(error) => panic!("test server address should be readable: {error}"),
+    let mut request = [0_u8; 1024];
+    let _bytes_read = match stream.read(&mut request) {
+        Ok(bytes_read) => bytes_read,
+        Err(error) => panic!("test server should read request: {error}"),
     };
-    thread::spawn(move || {
-        let (mut stream, _) = match listener.accept() {
-            Ok(accepted) => accepted,
-            Err(error) => panic!("test server should accept one request: {error}"),
-        };
-        let mut request = [0_u8; 1024];
-        let _bytes_read = match stream.read(&mut request) {
-            Ok(bytes_read) => bytes_read,
-            Err(error) => panic!("test server should read request: {error}"),
-        };
-        if let Err(error) = stream.write_all(
-            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1\r\n\r\n{",
-        ) {
-            panic!("test server should write response: {error}");
-        }
-    });
-    format!("http://{address}/oauth")
+    if let Err(error) = stream.write_all(
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1\r\n\r\n{",
+    ) {
+        panic!("test server should write response: {error}");
+    }
 }

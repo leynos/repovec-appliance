@@ -79,21 +79,29 @@ fn malformed_token_json_is_reported() {
 fn malformed_json_endpoint() -> std::io::Result<String> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let address = listener.local_addr()?;
-    thread::spawn(move || {
-        let (mut stream, _) = match listener.accept() {
-            Ok(accepted) => accepted,
-            Err(error) => panic!("test server should accept one request: {error}"),
-        };
-        let mut request = [0_u8; 1024];
-        let _bytes_read = match stream.read(&mut request) {
-            Ok(bytes_read) => bytes_read,
-            Err(error) => panic!("test server should read request: {error}"),
-        };
-        if let Err(error) = stream.write_all(
-            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1\r\n\r\n{",
-        ) {
-            panic!("test server should write response: {error}");
-        }
-    });
+    thread::spawn(move || serve_malformed_json(&listener));
     Ok(format!("http://{address}/oauth"))
+}
+
+/// Answer the single request the client under test sends with invalid JSON.
+///
+/// The helper returns no value because the server thread has no caller to
+/// report to; a broken fixture is a test bug, so it panics there. Keeping it
+/// out of [`malformed_json_endpoint`] keeps that fallible function free of
+/// panics, which `clippy::panic_in_result_fn` requires.
+fn serve_malformed_json(listener: &TcpListener) {
+    let (mut stream, _) = match listener.accept() {
+        Ok(accepted) => accepted,
+        Err(error) => panic!("test server should accept one request: {error}"),
+    };
+    let mut request = [0_u8; 1024];
+    let _bytes_read = match stream.read(&mut request) {
+        Ok(bytes_read) => bytes_read,
+        Err(error) => panic!("test server should read request: {error}"),
+    };
+    if let Err(error) = stream.write_all(
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1\r\n\r\n{",
+    ) {
+        panic!("test server should write response: {error}");
+    }
 }

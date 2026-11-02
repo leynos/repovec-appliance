@@ -33,6 +33,8 @@ from typing import Final
 
 import pytest
 
+from build_standard_probe import SUBPROCESS_TIMEOUT_SECONDS
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 INSTALLER_PATH: Final = REPO_ROOT / "scripts" / "install-build-tools.sh"
 BASH: Final = shutil.which("bash") or "/usr/bin/bash"
@@ -102,6 +104,7 @@ class Installer:
             capture_output=True,
             text=True,
             check=False,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
         )
 
     def recorded(self) -> list[str]:
@@ -211,12 +214,20 @@ def test_installs_the_pinned_mold_release(installer: Installer) -> None:
     assert extracted.is_file(), (
         f"expected {extracted}, found {list(installer.prefix.rglob('*'))}"
     )
-    assert extracted.read_bytes() == MOLD_PAYLOAD
+    assert extracted.read_bytes() == MOLD_PAYLOAD, (
+        f"{extracted} should hold the mold {MOLD_VERSION} payload, "
+        f"found {extracted.read_bytes()!r}"
+    )
     assert not (installer.prefix / ARCHIVE_ROOT).exists(), (
         "the archive root should be stripped, not preserved"
     )
     assert f"verified {ARCHIVE_NAME}" in completed.stderr, completed.stderr
-    assert f"installed mold {MOLD_VERSION} into {installer.prefix}" in completed.stderr
+    assert (
+        f"installed mold {MOLD_VERSION} into {installer.prefix}" in completed.stderr
+    ), (
+        f"expected the installer to report installing mold {MOLD_VERSION} "
+        f"into {installer.prefix}, got: {completed.stderr}"
+    )
 
 
 def test_installs_the_pinned_toolchain(installer: Installer) -> None:
@@ -233,6 +244,9 @@ def test_installs_the_pinned_toolchain(installer: Installer) -> None:
     assert (
         f"rustup toolchain install {TOOLCHAIN} --profile minimal"
         in installer.recorded()
+    ), (
+        f"expected rustup to install the pinned toolchain {TOOLCHAIN} with the "
+        f"minimal profile, recorded: {installer.recorded()}"
     )
 
 
@@ -241,33 +255,54 @@ def tamper_with_checksums(installer: Installer, case: str) -> None:
     sums = installer.root / "SHA256SUMS"
     if case == "mismatch":
         sums.write_text(f"{'0' * 64}  {ARCHIVE_NAME}\n", encoding="utf-8")
+    elif case == "ambiguous":
+        # A wrong digest filed ahead of the genuine row. Reading only the
+        # first match would verify against the wrong digest, and reading every
+        # match would let `sha256sum --check` pass on the genuine row while
+        # warning about the other, so the installer has to refuse the file.
+        genuine = hashlib.sha256(
+            (installer.root / ARCHIVE_NAME).read_bytes()
+        ).hexdigest()
+        sums.write_text(
+            f"{'0' * 64}  {ARCHIVE_NAME}\n{genuine}  {ARCHIVE_NAME}\n",
+            encoding="utf-8",
+        )
     else:
         sums.write_text(f"{'0' * 64}  another-archive.tar.gz\n", encoding="utf-8")
 
 
 @pytest.mark.parametrize(
-    ("case", "expected"),
+    ("case", "expected_parts"),
     (
-        ("mismatch", f"checksum mismatch for {ARCHIVE_NAME}"),
-        ("unlisted", f"no checksum recorded for {ARCHIVE_NAME}"),
+        ("mismatch", (f"checksum mismatch for {ARCHIVE_NAME}",)),
+        ("unlisted", (f"no checksum recorded for {ARCHIVE_NAME}",)),
+        (
+            "ambiguous",
+            (f"2 checksums recorded for {ARCHIVE_NAME}", "refusing to guess"),
+        ),
     ),
 )
 def test_rejects_an_unverifiable_archive(
-    installer: Installer, case: str, expected: str
+    installer: Installer, case: str, expected_parts: tuple[str, ...]
 ) -> None:
-    """Scenario: the download does not match its recorded digest.
+    """Scenario: the checksum file cannot identify the download.
 
-    Invariant: the installer fails before unpacking anything and before
-    spending time on the toolchain. A wrong artefact must never reach the
-    prefix, and a rejected run must not install a toolchain as a partial
-    success.
+    The download either does not match its recorded digest, is not listed at
+    all, or is listed twice. Invariant: the installer fails before unpacking
+    anything and before spending time on the toolchain. A wrong artefact must
+    never reach the prefix, and a rejected run must not install a toolchain
+    as a partial success.
     """
     tamper_with_checksums(installer, case)
 
     completed = installer.run()
 
     assert completed.returncode != 0, completed.stdout + completed.stderr
-    assert expected in completed.stderr, completed.stderr
+    missing = [part for part in expected_parts if part not in completed.stderr]
+    assert not missing, (
+        f"the {case} rejection should explain itself, missing {missing}: "
+        f"{completed.stderr}"
+    )
     assert not (installer.prefix / "bin" / "mold").exists(), (
         "a rejected archive must not be unpacked"
     )

@@ -29,7 +29,12 @@ from pathlib import Path
 
 import pytest
 
-from build_standard_probe import REPO_ROOT, run_make_dry_run
+from build_standard_probe import (
+    MOLD_VERSION_PATH,
+    REPO_ROOT,
+    SUBPROCESS_TIMEOUT_SECONDS,
+    run_make_dry_run,
+)
 
 pytestmark = pytest.mark.skipif(
     platform.system() != "Linux",
@@ -82,7 +87,11 @@ def _host_triple() -> str:
     rustc = shutil.which("rustc")
     if rustc is not None:
         completed = subprocess.run(
-            [rustc, "-vV"], capture_output=True, text=True, check=False
+            [rustc, "-vV"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
         )
         match = _HOST_RE.search(completed.stdout)
         if completed.returncode == 0 and match is not None:
@@ -173,6 +182,7 @@ def test_the_preflight_fails_with_the_install_command(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         check=False,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
     )
 
     output = f"{completed.stdout}\n{completed.stderr}"
@@ -192,22 +202,26 @@ def test_the_preflight_fails_with_the_install_command(tmp_path: Path) -> None:
 
 
 def test_the_preflight_passes_with_a_matching_mold(tmp_path: Path) -> None:
-    """Scenario: the controlled environment's fake mold is not consulted.
+    """Scenario: a matching fake mold satisfies the real preflight script.
 
     Invariant: the failure above is caused by mold's absence, not by the
-    controlled PATH being unable to run the preflight at all. A matching
-    fake mold makes the dry-run equivalent of the same environment pass.
+    controlled PATH being unable to run the preflight at all. The real
+    ``scripts/check-build-tools.sh`` runs here: it executes the fake mold,
+    compares the version it reports with the pin in ``tools/mold/VERSION``,
+    and passes only when the two agree, which isolates the previous test's
+    cause to mold's absence.
 
-    This uses ``make --dry-run`` so the fake mold is never executed; the
-    point is that the preflight step is reached and satisfied, isolating
-    the previous test's cause.
+    The fake mold reports the pinned version read from that file, so a pin
+    bump updates the fixture with the repository rather than silently
+    leaving a hard-coded version behind.
     """
     environment, _ = _controlled_environment(tmp_path)
+    pinned_version = MOLD_VERSION_PATH.read_text(encoding="utf-8").strip()
     # The real check runs ``mold --version``; provide a matching version
     # so the preflight's own logic is what is under test.
     fake_mold = Path(environment["PATH"]) / "mold"
     fake_mold.write_text(
-        "#!/bin/sh\nprintf 'mold %s (compatible with GNU ld)\\n' \"2.41.0\"\n",
+        f"#!/bin/sh\nprintf 'mold %s (compatible with GNU ld)\\n' '{pinned_version}'\n",
         encoding="utf-8",
     )
     fake_mold.chmod(0o755)
@@ -221,12 +235,13 @@ def test_the_preflight_passes_with_a_matching_mold(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         check=False,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
     )
     output = f"{completed.stdout}\n{completed.stderr}"
     assert completed.returncode == 0, (
         f"the preflight should pass with a matching mold and toolchain:\n{output}"
     )
-    assert "mold 2.41.0" in output, output
+    assert f"mold {pinned_version}" in output, output
 
 
 def test_a_toolchain_that_only_extends_the_pin_is_not_accepted(tmp_path: Path) -> None:
@@ -249,6 +264,7 @@ def test_a_toolchain_that_only_extends_the_pin_is_not_accepted(tmp_path: Path) -
         capture_output=True,
         text=True,
         check=False,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
     )
     output = f"{completed.stdout}\n{completed.stderr}"
     assert completed.returncode != 0, (

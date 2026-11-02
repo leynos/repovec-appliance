@@ -43,14 +43,39 @@ WARNING_TOKENS: Final = ("-D", "warnings")
 #: exist on PATH makes a leaked probe line unmistakable in a failure.
 PROBE_CARGO: Final = "probe-cargo"
 
+#: Bound on every child process the build-standard contract tests start.
+#: Without it, a script that waits on a network, a lock, or a stuck toolchain
+#: probe stalls the gate instead of failing with a diagnosis. The limit is
+#: deliberately generous for a loaded CI runner; reaching it raises
+#: ``subprocess.TimeoutExpired``, which fails the test with the command that
+#: was still running.
+SUBPROCESS_TIMEOUT_SECONDS: Final = 120
+
 #: Set on every probe so the Makefile's standard flags are evaluated in
 #: the same environment CI uses: ``setup-rust`` exports ``-D warnings``
 #: for the whole job, which displaces ``.cargo/config.toml``.
 CI_RUSTFLAGS: Final = "-D warnings"
 
 #: Environment variables that would change how the nested Make behaves.
-#: ``MAKEFLAGS`` carries the parent's jobserver and target list.
-_SCRUBBED_ENVIRONMENT: Final = ("MAKEFLAGS", "MFLAGS", "MAKELEVEL")
+#: ``MAKEFLAGS`` carries the parent's jobserver and target list. The Make
+#: control variables -- ``BUILD_JOBS`` and the per-target flag groups -- are
+#: scrubbed as well, because the probes assert the Makefile's own defaults;
+#: an inherited value would replace the flags under test and let the probe
+#: check the caller's environment instead of the repository's standard.
+_SCRUBBED_ENVIRONMENT: Final = (
+    "MAKEFLAGS",
+    "MFLAGS",
+    "MAKELEVEL",
+    "BUILD_JOBS",
+    "CARGO_FLAGS",
+    "TEST_FLAGS",
+    "DOCTEST_FLAGS",
+    "CLIPPY_FLAGS",
+    "BASE_RUST_FLAGS",
+    "RUST_FLAGS",
+    "BASE_RUSTDOC_FLAGS",
+    "RUSTDOC_FLAGS",
+)
 
 #: A leading ``NAME=value`` shell assignment. ``shlex`` keeps the whole
 #: assignment, spaces in the value included, as one token.
@@ -235,6 +260,7 @@ def run_make_dry_run(
         capture_output=True,
         text=True,
         check=False,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
     )
     assert completed.returncode == 0, (
         f"make --dry-run {target} failed with {completed.returncode}:\n"

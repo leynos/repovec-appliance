@@ -51,8 +51,10 @@ fn find_helper_offset_after(needle: &str, offset: usize) -> Option<usize> {
 pub(super) fn helper_offset_after(needle: &str, offset: usize) -> usize {
     let Some(found) = find_helper_offset_after(needle, offset) else {
         panic!(
-            "helper should contain expected text after offset: needle={needle:?}, \
-             offset={offset}, helper_len={}",
+            concat!(
+                "helper should contain expected text after offset: needle={needle:?}, ",
+                "offset={offset}, helper_len={}",
+            ),
             PROVISIONING_HELPER.len()
         );
     };
@@ -73,8 +75,10 @@ fn find_helper_slice(start: usize, end: usize) -> Option<&'static str> {
 pub(super) fn helper_slice(start: usize, end: usize) -> &'static str {
     let Some(slice) = find_helper_slice(start, end) else {
         panic!(
-            "helper slice should use valid byte boundaries: start={start}, end={end}, \
-             helper_len={}",
+            concat!(
+                "helper slice should use valid byte boundaries: start={start}, end={end}, ",
+                "helper_len={}",
+            ),
             PROVISIONING_HELPER.len()
         );
     };

@@ -278,8 +278,10 @@ fn write_missing_api_key_secret(f: &mut fmt::Formatter<'_>) -> fmt::Result {
 fn write_incorrect_api_key_secret(f: &mut fmt::Formatter<'_>, secret: &str) -> fmt::Result {
     write!(
         f,
-        "Qdrant API-key secret must be \
-         repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
+        concat!(
+            "Qdrant API-key secret must be ",
+            "repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
+        )
     )
 }
 

@@ -19,8 +19,10 @@ use super::super::{
 fn assert_mutated_service(original: &str, service_name: &str) -> String {
     assert!(
         original.contains("Environment=HOME=/var/lib/repovec\n"),
-        "expected checked-in {service_name} service to contain \
-         'Environment=HOME=/var/lib/repovec\\n' but got: {original}",
+        concat!(
+            "expected checked-in {service_name} service to contain ",
+            "'Environment=HOME=/var/lib/repovec\\n' but got: {original}",
+        ),
     );
     let mutated = original.replace(
         "Environment=HOME=/var/lib/repovec\n",

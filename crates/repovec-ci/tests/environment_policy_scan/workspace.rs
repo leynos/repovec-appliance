@@ -41,8 +41,10 @@ fn no_source_file_allows_a_policy_lint() {
 
     assert!(
         offences.is_empty(),
-        "no source may allow a protected lint; use an item-scoped #[expect(..., reason = \
-         \"...\")] at a composition root instead:\n{}",
+        concat!(
+            "no source may allow a protected lint; use an item-scoped #[expect(..., reason = ",
+            "\"...\")] at a composition root instead:\n{}",
+        ),
         offences.join("\n")
     );
 }

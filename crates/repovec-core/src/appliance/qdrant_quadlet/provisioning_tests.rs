@@ -45,8 +45,10 @@ fn provisioning_service_runs_the_packaged_helper_once() {
 fn api_key_service_requires_provisioning() {
     assert!(
         PROVISIONING_SERVICE.contains("Requires=repovec-provision.service"),
-        "repovec-qdrant-api-key.service must require repovec-provision.service; Before= alone is \
-         only an ordering constraint"
+        concat!(
+            "repovec-qdrant-api-key.service must require repovec-provision.service; ",
+            "Before= alone is only an ordering constraint",
+        )
     );
 }
 

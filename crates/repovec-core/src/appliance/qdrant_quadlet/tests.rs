@@ -249,10 +249,10 @@ fn validated_qdrant_quadlet_violations_match_expected_variant_and_diagnostic_sna
 ) {
     let input = scenario.mutated_contents(&qdrant_quadlet_contents);
     let Err(err) = validate_qdrant_quadlet(&input, &()) else {
-        panic!(
-            "expected {scenario:?} validation to fail — input parsed as valid \
-             Quadlet:\n---\n{input}\n---",
-        );
+        panic!(concat!(
+            "expected {scenario:?} validation to fail — input parsed as valid ",
+            "Quadlet:\n---\n{input}\n---",
+        ));
     };
 
     assert_eq!(err, scenario.expected_error());

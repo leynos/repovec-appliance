@@ -55,18 +55,47 @@ The earlier rule compared each gate command only against *later gate*
 commands, so ``$(CARGO) test; echo done`` was checked against an empty
 list and the successful ``echo`` supplied the recipe's status.
 
+Added 2026-11-02, when the Whitaker leg became binding; each mutation was
+applied alone and reverted, and the observed failure is recorded:
+
+- removing ``lint-whitaker`` from the ``lint`` recipe fails
+  ``test_lint_delegates_to_both_lint_routes``;
+- replacing the recursive-make sequencing with a plain prerequisite list
+  fails ``test_lint_delegates_to_both_lint_routes`` and
+  ``test_make_keeps_the_lint_routes_sequential``;
+- restoring the ``command -v`` skip in the Whitaker recipe fails
+  ``test_the_whitaker_recipe_runs_the_tested_script_as_one_command``,
+  ``test_lint_routes_are_unconditional``, and
+  ``test_a_missing_whitaker_fails_the_target``;
+- appending ``|| true`` to the Whitaker command fails
+  ``test_lint_routes_are_unconditional``;
+- replacing ``scripts/run_whitaker.py`` with a direct ``whitaker`` call
+  fails ``test_the_whitaker_recipe_runs_the_tested_script_as_one_command``;
+- discarding a rejecting stub's status fails
+  ``test_a_rejecting_whitaker_fails_the_target``.
+
 Run via ``make test-workflow-contracts``.
 """
 
 from __future__ import annotations
 
-import re
-from collections.abc import Iterator
-from pathlib import Path
+import os
+import shlex
+import subprocess
 
 import pytest
 
-MAKEFILE_PATH = Path(__file__).resolve().parents[2] / "Makefile"
+from makefile_gate_support import (
+    APPROVED_GUARD,
+    CONDITION_RE,
+    MAKEFILE_PATH,
+    STATUS_ALTERING_OPERATORS,
+    gate_commands,
+    ignores_errors,
+    logical_lines,
+    masking_followers,
+    strip_prefixes,
+)
 
 pytestmark = pytest.mark.skipif(
     not MAKEFILE_PATH.exists(),
@@ -77,158 +106,6 @@ pytestmark = pytest.mark.skipif(
 #: Recipes whose gate logic must stay out of the Makefile entirely.
 SINGLE_COMMAND_RECIPES = ("test",)
 
-#: Make variables that expand to a tool whose rejection is a gate
-#: verdict. Extend this when a recipe starts running a new one; a tool
-#: missing from here is simply not checked.
-GATE_TOOLS = (
-    "$(CARGO)",
-    "$(WHITAKER)",
-    "$(MDLINT)",
-    "$(MDTABLEFIX)",
-    "$(NIXIE)",
-    "$(RUST_TEST_RUNNER)",
-    "$(SCRIPT_PYTEST)",
-    "$(TYPOS_CONFIG_BUILDER)",
-)
-
-#: A statement that opens a condition. A tool named in an ``if`` is being
-#: asked a question, and a non-zero answer there is meaningful rather
-#: than a rejection, so those invocations are not gate commands.
-CONDITION_RE = re.compile(r"^@?(if|elif|while|until)\s")
-
-#: Statements that close a block. They carry the status of whatever the
-#: taken branch last ran, so a gate command followed only by these is
-#: still the statement the recipe reports.
-BLOCK_CLOSERS_RE = re.compile(r"^(fi|done|esac|;;)\b")
-
-#: Statements that open an alternative branch. Everything from here to
-#: the matching closer runs only when the gate's own branch did not, so
-#: it cannot mask the gate's status.
-ALTERNATIVE_RE = re.compile(r"^(else|elif)\b")
-
-#: The one disjunction a gate command may carry: it turns a rejection
-#: into an immediate exit rather than discarding it.
-APPROVED_GUARD = "|| exit 1"
-
-#: A target definition line, which ends the preceding recipe.
-TARGET_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.-]*)\s*:(?!=)")
-
-#: Make's line prefixes. ``-`` makes Make ignore the command's status
-#: entirely, which discards a gate verdict as surely as deleting the
-#: command, while leaving it in place and readable.
-RECIPE_PREFIXES = "@+-"
-
-#: Shell operators that make a command's status something other than its
-#: own. Enumerating the succeeding right-hand sides (``|| true``, ``|| :``,
-#: ``|| exit 0``) is the wrong shape: the next one written will not be on
-#: the list. A gate command is a bare invocation, so any disjunction or
-#: conjunction is rejected and ``|| exit 1`` is the sole exception, since
-#: it strengthens the status rather than discarding it.
-STATUS_ALTERING_OPERATORS = ("||", "&&")
-
-
-def _logical_lines(target: str) -> list[str]:
-    """Return one Make recipe's lines, with continuations joined.
-
-    Recipe lines are tab-indented and may be continued with a trailing
-    backslash. Each joined line is one shell invocation, which is the
-    unit Make takes a status from.
-    """
-    lines = MAKEFILE_PATH.read_text(encoding="utf-8").splitlines()
-    start = next(
-        index
-        for index, line in enumerate(lines)
-        if TARGET_RE.match(line) and TARGET_RE.match(line).group(1) == target
-    )
-
-    recipe: list[str] = []
-    pending = ""
-    for line in lines[start + 1 :]:
-        if not line.startswith("\t"):
-            break
-        body = line.lstrip("\t").rstrip()
-        if body.endswith("\\"):
-            pending += body[:-1]
-            continue
-        recipe.append((pending + body).strip())
-        pending = ""
-    if pending:
-        recipe.append(pending.strip())
-    return recipe
-
-
-def _targets() -> list[str]:
-    """Return every target the Makefile defines, in file order."""
-    seen: list[str] = []
-    for line in MAKEFILE_PATH.read_text(encoding="utf-8").splitlines():
-        match = TARGET_RE.match(line)
-        if match and match.group(1) not in seen:
-            seen.append(match.group(1))
-    return seen
-
-
-def _strip_prefixes(statement: str) -> str:
-    """Return a recipe statement without Make's line prefixes."""
-    return statement.lstrip(RECIPE_PREFIXES).lstrip()
-
-
-def _ignores_errors(statement: str) -> bool:
-    """Report whether Make is told to ignore this command's status."""
-    return statement.lstrip("@+").startswith("-")
-
-
-def _statements(logical_line: str) -> list[str]:
-    """Return every non-empty statement in one shell invocation.
-
-    Statements are separated by ``;``; the split does not honour shell
-    quoting, which is sufficient for these recipes.
-    """
-    return [part.strip() for part in logical_line.split(";") if part.strip()]
-
-
-def _is_gate_command(statement: str) -> bool:
-    """Report whether a statement runs a gate tool as a command.
-
-    A tool named in a condition is being asked a question, and a non-zero
-    answer there is meaningful rather than a rejection, so it is not a
-    gate command.
-    """
-    if CONDITION_RE.match(statement):
-        return False
-    return any(tool in statement for tool in GATE_TOOLS)
-
-
-def _gate_statements(logical_line: str) -> list[str]:
-    """Return the gate invocations in one shell invocation, in order."""
-    return [
-        statement
-        for statement in _statements(logical_line)
-        if _is_gate_command(statement)
-    ]
-
-
-def _gate_commands_in(
-    target: str, logical_line: str
-) -> Iterator[tuple[str, list[str], int]]:
-    """Yield the gate commands in one shell invocation."""
-    statements = _statements(logical_line)
-    for index, statement in enumerate(statements):
-        if _is_gate_command(statement):
-            yield target, statements, index
-
-
-def _gate_commands() -> Iterator[tuple[str, list[str], int]]:
-    """Yield every gate command in the Makefile with its position.
-
-    Each item is the recipe's target, the statements of the one shell
-    invocation the command sits in, and its index among them. Tests then
-    hold a single loop rather than three, which keeps the rule they
-    assert legible.
-    """
-    for target in _targets():
-        for logical_line in _logical_lines(target):
-            yield from _gate_commands_in(target, logical_line)
-
 
 @pytest.mark.parametrize("target", SINGLE_COMMAND_RECIPES)
 def test_the_recipe_runs_exactly_one_command(target: str) -> None:
@@ -237,7 +114,7 @@ def test_the_recipe_runs_exactly_one_command(target: str) -> None:
     Invariant: the recipe is one shell invocation running one command,
     so there is no second command whose status could mask the first.
     """
-    recipe = _logical_lines(target)
+    recipe = logical_lines(target)
 
     assert len(recipe) == 1, (
         f"the {target} recipe should be one command, found {len(recipe)}: {recipe}"
@@ -249,12 +126,12 @@ def test_the_recipe_runs_exactly_one_command(target: str) -> None:
     )
 
     command = statements[0].strip()
-    assert not _ignores_errors(command), (
+    assert not ignores_errors(command), (
         f"the {target} recipe is prefixed with '-', so Make ignores its "
         "status and the gate can never fail the build"
     )
     for operator in STATUS_ALTERING_OPERATORS:
-        assert operator not in _strip_prefixes(command), (
+        assert operator not in strip_prefixes(command), (
             f"the {target} recipe joins its command with {operator!r}, so the "
             "recipe's status is no longer the gate's verdict; a gate command "
             "is a bare invocation"
@@ -268,7 +145,7 @@ def test_the_single_command_recipe_runs_the_tested_runner() -> None:
     sequencing, so the single-command contract cannot be satisfied by an
     untested one-liner.
     """
-    assert "$(RUST_TEST_RUNNER)" in _logical_lines("test")[0], (
+    assert "$(RUST_TEST_RUNNER)" in logical_lines("test")[0], (
         "the test recipe should invoke the Rust test-gate runner"
     )
 
@@ -280,36 +157,12 @@ def test_no_gate_command_has_its_status_ignored() -> None:
     prefix leaves the command in place and readable, so a contract that
     only looks for the command cannot see it.
     """
-    for target, statements, index in _gate_commands():
+    for target, statements, index in gate_commands():
         statement = statements[index]
-        assert not _ignores_errors(statement), (
+        assert not ignores_errors(statement), (
             f"the {target} recipe runs {statement!r} with Make's "
             "ignore-errors prefix, so its rejection is discarded"
         )
-
-
-def _masking_followers(statements: list[str], index: int) -> list[str]:
-    """Return statements after *index* that could supply the exit status.
-
-    A block closer carries the taken branch's status rather than setting
-    its own. An alternative branch runs only when the gate's branch did
-    not, so everything from ``else`` to its closer is skipped. Whatever
-    remains is a command that runs after the gate and replaces its
-    status.
-    """
-    masking: list[str] = []
-    skipping = False
-    for statement in statements[index + 1 :]:
-        if BLOCK_CLOSERS_RE.match(statement):
-            skipping = False
-            continue
-        if ALTERNATIVE_RE.match(statement):
-            skipping = True
-            continue
-        if skipping:
-            continue
-        masking.append(statement)
-    return masking
 
 
 def test_no_gate_command_is_followed_by_an_unguarded_command() -> None:
@@ -321,9 +174,9 @@ def test_no_gate_command_is_followed_by_an_unguarded_command() -> None:
     gate statement, so nothing was checked, and the successful ``echo``
     supplied the recipe's status.
     """
-    for target, statements, index in _gate_commands():
+    for target, statements, index in gate_commands():
         statement = statements[index]
-        followers = _masking_followers(statements, index)
+        followers = masking_followers(statements, index)
         if followers:
             assert statement.endswith(APPROVED_GUARD), (
                 f"the {target} recipe runs {statement!r} followed by "
@@ -339,7 +192,7 @@ def test_no_gate_command_alters_its_own_status() -> None:
     approved ``|| exit 1`` guard. Enumerating the succeeding right-hand
     sides would hold only until someone writes the next one.
     """
-    for target, statements, index in _gate_commands():
+    for target, statements, index in gate_commands():
         statement = statements[index]
         remainder = statement.removesuffix(APPROVED_GUARD)
         for operator in STATUS_ALTERING_OPERATORS:
@@ -348,3 +201,153 @@ def test_no_gate_command_alters_its_own_status() -> None:
                 f"a gate command is a bare invocation, apart from "
                 f"{APPROVED_GUARD!r}"
             )
+
+
+def test_lint_delegates_to_both_lint_routes() -> None:
+    """Scenario: the composite lint target stops running one route.
+
+    Invariant: ``lint`` runs both routes through recursive make, in order,
+    with no condition or status-altering operator. A plain prerequisite
+    list is unordered under ``make -j``, so the two routes would otherwise
+    run concurrently and an earlier rejection would not stop the later one.
+    """
+    recipe = logical_lines("lint")
+
+    assert recipe == ["$(MAKE) lint-clippy", "$(MAKE) lint-whitaker"]
+    for line in recipe:
+        assert not CONDITION_RE.match(line), (
+            f"the lint recipe conditions {line!r}, so a route can be skipped"
+        )
+        for operator in STATUS_ALTERING_OPERATORS:
+            assert operator not in line, (
+                f"the lint recipe joins {line!r} with {operator!r}, so the "
+                "first route's rejection can be discarded"
+            )
+
+
+@pytest.mark.parametrize("target", ["lint-clippy", "lint-whitaker"])
+def test_lint_routes_are_unconditional(target: str) -> None:
+    """Scenario: a lint route is guarded so it can silently skip.
+
+    Invariant: each route's recipe is a plain command sequence with no
+    shell condition and no status-altering operator, so neither route can
+    be skipped while the composite target still reports success.
+    """
+    recipe = logical_lines(target)
+
+    assert recipe
+    for line in recipe:
+        assert not CONDITION_RE.match(line), (
+            f"the {target} recipe conditions {line!r}, so it can skip"
+        )
+        for operator in STATUS_ALTERING_OPERATORS:
+            assert operator not in line, (
+                f"the {target} recipe joins {line!r} with {operator!r}, so "
+                "its status is no longer the gate's verdict"
+            )
+
+
+def test_the_whitaker_recipe_runs_the_tested_script_as_one_command() -> None:
+    """Scenario: the Whitaker logic drifts back into the Makefile.
+
+    Invariant: ``lint-whitaker`` is one shell invocation running the
+    tested script, so the fail-closed resolution and status propagation
+    are covered by unit tests rather than shell conditions.
+    """
+    recipe = logical_lines("lint-whitaker")
+
+    assert len(recipe) == 1, (
+        f"the lint-whitaker recipe should be one command, found {recipe}"
+    )
+    statements = [part for part in recipe[0].split(";") if part.strip()]
+    assert len(statements) == 1, (
+        "the lint-whitaker recipe chains commands; move the logic into "
+        "scripts/run_whitaker.py per docs/scripting-standards.md"
+    )
+    command = statements[0].strip()
+    assert "$(WHITAKER_RUNNER)" in command, (
+        "the lint-whitaker recipe should invoke the tested Whitaker runner"
+    )
+    assert not ignores_errors(command)
+
+
+def _run_make(*arguments: str) -> subprocess.CompletedProcess[str]:
+    """Run Make in the repository root without inheriting a jobserver."""
+    environment = {**os.environ, "MAKEFLAGS": "", "MFLAGS": ""}
+    return subprocess.run(
+        ["make", *arguments],
+        cwd=MAKEFILE_PATH.parent,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_make_keeps_the_lint_routes_sequential(tmp_path) -> None:
+    """Scenario: ``make -j`` is free to reorder the lint prerequisites.
+
+    Invariant: the routes run one after the other. Parsing ``.WAIT``
+    proves the arrangement; this runs ``make -j4`` with recording stubs
+    and proves Make honours it, because without ``.WAIT`` the Whitaker
+    stub records itself before the Clippy stub finishes.
+    """
+    log = tmp_path / "order.log"
+    cargo = tmp_path / "cargo"
+    cargo.write_text(
+        f"#!/bin/sh\nprintf 'cargo %s\\n' \"$1\" >> {shlex.quote(str(log))}\n",
+        encoding="utf-8",
+    )
+    whitaker_runner = tmp_path / "whitaker-runner"
+    whitaker_runner.write_text(
+        f"#!/bin/sh\nprintf 'whitaker\\n' >> {shlex.quote(str(log))}\n",
+        encoding="utf-8",
+    )
+    cargo.chmod(0o755)
+    whitaker_runner.chmod(0o755)
+
+    result = _run_make(
+        "-j4",
+        "-o",
+        "ensure-cargo",
+        "-o",
+        "check-build-tools",
+        f"CARGO={cargo}",
+        f"WHITAKER_RUNNER={whitaker_runner}",
+        "lint",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert log.read_text(encoding="utf-8").splitlines() == [
+        "cargo doc",
+        "cargo clippy",
+        "whitaker",
+    ]
+
+
+def test_a_missing_whitaker_fails_the_target() -> None:
+    """Scenario: ``make whitaker-lint`` runs without Whitaker installed.
+
+    Invariant: the target exits non-zero and the runner's actionable
+    message reaches the caller, so an absent suite cannot look green.
+    """
+    result = _run_make("whitaker-lint", "WHITAKER=/nonexistent")
+
+    assert result.returncode != 0
+    assert "Whitaker executable '/nonexistent'" in result.stderr, result.stderr
+
+
+def test_a_rejecting_whitaker_fails_the_target(tmp_path) -> None:
+    """Scenario: the installed suite rejects the workspace with status 7.
+
+    Invariant: the target exits non-zero and Make reports the suite's own
+    status, so the recipe neither flattens nor discards it.
+    """
+    stub = tmp_path / "whitaker"
+    stub.write_text("#!/bin/sh\nexit 7\n", encoding="utf-8")
+    stub.chmod(0o755)
+
+    result = _run_make("whitaker-lint", f"WHITAKER={stub}")
+
+    assert result.returncode != 0
+    assert "Error 7" in result.stdout + result.stderr

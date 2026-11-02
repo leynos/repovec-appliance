@@ -69,6 +69,17 @@ def split_flags(flags: str | None) -> list[str]:
 
     An unset variable arrives as the empty string, which must contribute
     no argument rather than an empty one.
+
+    Examples
+    --------
+    >>> split_flags("--all-targets --all-features")
+    ['--all-targets', '--all-features']
+    >>> split_flags("--features 'a b'")
+    ['--features', 'a b']
+    >>> split_flags("")
+    []
+    >>> split_flags(None)
+    []
     """
     return shlex.split(flags or "")
 
@@ -79,17 +90,39 @@ def build_argv(*, packages: list[str], cargo_flags: list[str]) -> list[str]:
     ``--all`` selects every discovered lint library, the package
     selection checks every workspace package, and the Cargo flags are
     forwarded without reordering or rewriting.
+
+    Examples
+    --------
+    >>> build_argv(packages=["--workspace"], cargo_flags=["--all-targets"])
+    ['--all', '--workspace', '--', '--all-targets']
+    >>> build_argv(packages=[], cargo_flags=[])
+    ['--all', '--']
     """
     return ["--all", *packages, "--", *cargo_flags]
 
 
 def resolve_executable(whitaker: str) -> str | None:
-    """Return the executable path for *whitaker*, or ``None`` if absent."""
+    """Return the executable path for *whitaker*, or ``None`` if absent.
+
+    Examples
+    --------
+    With Whitaker installed on ``PATH``, ``resolve_executable("whitaker")``
+    returns an absolute path such as ``/home/user/.local/bin/whitaker``.
+    With a name that is not on ``PATH``, it returns ``None``, which is the
+    signal ``main`` turns into the actionable failure.
+    """
     return shutil.which(whitaker)
 
 
 def run_suite(command: BaseCommand, argv: list[str]) -> int:
-    """Run Whitaker with its output inherited and return its exit status."""
+    """Run Whitaker with its output inherited and return its exit status.
+
+    Examples
+    --------
+    A suite that succeeds returns ``0``; a suite that rejects the tree
+    returns its own non-zero status, such as ``7``, which ``main`` then
+    propagates unchanged.
+    """
     code, _, _ = command[argv].run(retcode=None, stdout=None, stderr=None)
     return code
 
@@ -103,6 +136,13 @@ def main(*, options: WhitakerOptions = WhitakerOptions()) -> None:
     options
         Runner configuration. ``Parameter(name="*")`` flattens it, so
         each field is still spelled as its own command-line flag.
+
+    Examples
+    --------
+    ``make lint-whitaker`` runs the suite and the process exits with the
+    suite's status. ``make lint-whitaker WHITAKER=/nonexistent`` prints the
+    missing-executable message to standard error and exits ``1``, so the
+    gate fails rather than skipping.
     """
     executable = resolve_executable(options.whitaker)
     if executable is None:

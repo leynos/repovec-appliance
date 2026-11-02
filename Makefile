@@ -230,7 +230,7 @@ script-test: ## Validate the Rust test-gate runner script
 	@$(SCRIPT_PYTEST) scripts/tests/test_run_rust_tests.py -c /dev/null --rootdir=. -p no:cacheprovider -p cmd_mox.pytest_plugin --no-cmd-mox-auto-lifecycle $(SCRIPT_COVERAGE_ARGS)
 
 test-workflow-contracts: ## Validate the mutation-testing caller contract
-	uv run --with 'pytest>=8' --with 'pyyaml>=6' pytest tests/workflow_contracts -q
+	uv run --with 'pytest>=8' --with 'pyyaml>=6' --with 'hypothesis>=6' pytest tests/workflow_contracts -q
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \

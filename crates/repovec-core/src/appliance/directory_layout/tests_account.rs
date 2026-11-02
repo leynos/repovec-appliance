@@ -5,6 +5,8 @@
 //! pre-flight: the parser must read the whole record, and the validator must
 //! refuse a root-owned uid, a non-contract home, and a login-capable shell.
 
+use rstest::rstest;
+
 use super::{
     account::{find_repovec_account, validate_repovec_account},
     live::LiveLayoutError,
@@ -78,33 +80,23 @@ fn validate_repovec_account_rejects_a_root_owned_account() {
     assert_eq!(LiveLayoutError::RepovecUserIsRoot { uid: 0 }.path(), None);
 }
 
-#[test]
-fn validate_repovec_account_rejects_a_login_capable_shell() {
-    let account = parsed_account(
-        "repovec:x:998:996:repovec appliance service user:/var/lib/repovec:/bin/bash\n",
-    )
-    .expect("repovec account");
+#[rstest]
+#[case::login_capable_shell(
+    "repovec:x:998:996:repovec appliance service user:/var/lib/repovec:/bin/bash\n",
+    "the repovec user shell must be /usr/sbin/nologin: /bin/bash"
+)]
+#[case::mismatched_home(
+    "repovec:x:998:996:repovec appliance service user:/home/repovec:/usr/sbin/nologin\n",
+    "the repovec user home must be /var/lib/repovec: /home/repovec"
+)]
+fn validate_repovec_account_rejects_an_incorrect_identity(
+    #[case] passwd_line: &str,
+    #[case] expected_message: &str,
+) {
+    let account = parsed_account(passwd_line).expect("repovec account");
 
-    let error = validate_repovec_account(&account).expect_err("shell violation");
+    let error = validate_repovec_account(&account).expect_err("identity violation");
 
-    assert_eq!(
-        error.to_string(),
-        "the repovec user shell must be /usr/sbin/nologin: /bin/bash"
-    );
-}
-
-#[test]
-fn validate_repovec_account_rejects_a_mismatched_home() {
-    let account = parsed_account(
-        "repovec:x:998:996:repovec appliance service user:/home/repovec:/usr/sbin/nologin\n",
-    )
-    .expect("repovec account");
-
-    let error = validate_repovec_account(&account).expect_err("home violation");
-
-    assert_eq!(
-        error.to_string(),
-        "the repovec user home must be /var/lib/repovec: /home/repovec"
-    );
+    assert_eq!(error.to_string(), expected_message);
     assert_eq!(error.path(), None);
 }

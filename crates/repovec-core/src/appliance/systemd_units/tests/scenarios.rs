@@ -203,8 +203,10 @@ impl ValidationScenario {
             Self::MissingProvisionUnitSection => {
                 units.replace_file(
                     UnitFile::Provision,
-                    "[Service]\nType=oneshot\nRemainAfterExit=no\n\n[Install]\nWantedBy=repovec.\
-                     target\n",
+                    concat!(
+                        "[Service]\nType=oneshot\nRemainAfterExit=no\n\n[Install]\n",
+                        "WantedBy=repovec.target\n",
+                    ),
                 );
             }
             Self::MissingProvisionServiceSection => {
@@ -232,12 +234,12 @@ impl ValidationScenario {
                 UnitFile::Provision,
                 concat!(
                     "ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf\n",
-                    "ExecStart=/usr/bin/systemd-tmpfiles --create \
-                     /usr/lib/tmpfiles.d/repovec.conf\n",
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create ",
+                    "/usr/lib/tmpfiles.d/repovec.conf\n",
                 ),
                 concat!(
-                    "ExecStart=/usr/bin/systemd-tmpfiles --create \
-                     /usr/lib/tmpfiles.d/repovec.conf\n",
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create ",
+                    "/usr/lib/tmpfiles.d/repovec.conf\n",
                     "ExecStart=/usr/bin/systemd-sysusers /usr/lib/sysusers.d/repovec.conf\n",
                 ),
             ),
@@ -245,8 +247,8 @@ impl ValidationScenario {
                 UnitFile::Provision,
                 "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/repovec.conf\n",
                 concat!(
-                    "ExecStart=/usr/bin/systemd-tmpfiles --create \
-                     /usr/lib/tmpfiles.d/repovec.conf\n",
+                    "ExecStart=/usr/bin/systemd-tmpfiles --create ",
+                    "/usr/lib/tmpfiles.d/repovec.conf\n",
                     "ExecStart=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/extra.conf\n",
                 ),
             ),

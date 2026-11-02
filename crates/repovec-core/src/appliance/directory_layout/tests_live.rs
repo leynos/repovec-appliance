@@ -109,11 +109,6 @@ fn resolution_rejects_a_login_shell() {
 /// Every variant carries a stable, bounded category for metrics and logs.
 #[test]
 fn every_error_variant_has_a_stable_category() {
-    let violation = || LiveLayoutViolation {
-        path: Utf8PathBuf::from("/var/lib/repovec"),
-        expected: "repovec (uid 998)".to_owned(),
-        actual: "uid 0".to_owned(),
-    };
     let cases = [
         (
             LiveLayoutError::RepovecUserNotFound,
@@ -149,19 +144,19 @@ fn every_error_variant_has_a_stable_category() {
         ),
         (
             LiveLayoutError::IncorrectMode {
-                violation: violation(),
+                violation: sample_violation(),
             },
             "incorrect_mode",
         ),
         (
             LiveLayoutError::IncorrectOwner {
-                violation: violation(),
+                violation: sample_violation(),
             },
             "incorrect_owner",
         ),
         (
             LiveLayoutError::IncorrectGroup {
-                violation: violation(),
+                violation: sample_violation(),
             },
             "incorrect_group",
         ),
@@ -182,6 +177,15 @@ fn every_error_variant_has_a_stable_category() {
 
     for (error, expected) in cases {
         assert_eq!(error.category(), expected);
+    }
+}
+
+/// Builds a representative filesystem violation for category coverage.
+fn sample_violation() -> LiveLayoutViolation {
+    LiveLayoutViolation {
+        path: Utf8PathBuf::from("/var/lib/repovec"),
+        expected: "repovec (uid 998)".to_owned(),
+        actual: "uid 0".to_owned(),
     }
 }
 

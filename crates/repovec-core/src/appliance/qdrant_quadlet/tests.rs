@@ -48,14 +48,7 @@ impl ValidationScenario {
             Self::PropertyBeforeFirstSection => {
                 String::from("Authorization=Bearer correct horse battery\n[Container]\n")
             }
-            Self::MissingImage => {
-                canonical
-                    .lines()
-                    .filter(|line| !line.starts_with("Image="))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    + "\n"
-            }
+            Self::MissingImage => remove_image_lines(canonical),
             Self::ImageUnqualified => {
                 canonical.replace("docker.io/qdrant/qdrant:v1", "qdrant/qdrant:latest")
             }
@@ -202,6 +195,16 @@ impl ValidationScenario {
             },
         }
     }
+}
+
+/// Removes every `Image=` line from a canonical Quadlet.
+fn remove_image_lines(canonical: &str) -> String {
+    canonical
+        .lines()
+        .filter(|line| !line.starts_with("Image="))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
 }
 
 #[fixture]

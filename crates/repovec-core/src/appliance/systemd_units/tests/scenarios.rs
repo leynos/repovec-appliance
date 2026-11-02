@@ -9,6 +9,18 @@ mod scenario_catalogue;
 
 pub(super) use scenario_catalogue::ValidationScenario;
 
+/// The provision unit with its `[Service]` section removed.
+const MISSING_PROVISION_SERVICE_SECTION: &str = concat!(
+    "[Unit]\n",
+    "Wants=systemd-sysusers.service\n",
+    "After=systemd-sysusers.service\n",
+    "Before=repovec-qdrant-api-key.service qdrant.service repovecd.service ",
+    "repovec-mcpd.service\n",
+    "\n",
+    "[Install]\n",
+    "WantedBy=repovec.target\n",
+);
+
 #[derive(Clone, Copy)]
 enum ServiceUnit {
     Repovecd,
@@ -196,19 +208,7 @@ impl ValidationScenario {
                 );
             }
             Self::MissingProvisionServiceSection => {
-                units.replace_file(
-                    UnitFile::Provision,
-                    concat!(
-                        "[Unit]\n",
-                        "Wants=systemd-sysusers.service\n",
-                        "After=systemd-sysusers.service\n",
-                        "Before=repovec-qdrant-api-key.service qdrant.service repovecd.service ",
-                        "repovec-mcpd.service\n",
-                        "\n",
-                        "[Install]\n",
-                        "WantedBy=repovec.target\n",
-                    ),
-                );
+                units.replace_file(UnitFile::Provision, MISSING_PROVISION_SERVICE_SECTION);
             }
             Self::MissingProvisionInstallSection => {
                 units.remove_line(UnitFile::Provision, "[Install]\n");

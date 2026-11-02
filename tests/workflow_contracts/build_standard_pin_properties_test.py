@@ -155,20 +155,23 @@ def test_checksum_rows_are_validated(counts: tuple[int, int, int]) -> None:
         completed = installer.run()
 
         matching = correct_count + wrong_count
+        context = f"counts={counts} stderr={completed.stderr!r}"
         if matching == 0:
-            assert completed.returncode != 0
-            assert f"no checksum recorded for {ARCHIVE_NAME}" in completed.stderr
-        elif matching > 1:
-            assert completed.returncode != 0
-            assert (
-                f"{matching} checksums recorded for {ARCHIVE_NAME}"
-                in completed.stderr
-            ), completed.stderr
-        elif correct_count == 1:
-            assert completed.returncode == 0, completed.stderr
-            assert (installer.prefix / "bin" / "mold").is_file()
-        else:
-            assert completed.returncode != 0
-            assert f"checksum mismatch for {ARCHIVE_NAME}" in completed.stderr, (
-                completed.stderr
+            assert completed.returncode != 0, context
+            assert f"no checksum recorded for {ARCHIVE_NAME}" in completed.stderr, (
+                context
             )
+        elif matching > 1:
+            assert completed.returncode != 0, context
+            assert (
+                f"{matching} checksums recorded for {ARCHIVE_NAME}" in completed.stderr
+            ), context
+        elif correct_count == 1:
+            assert completed.returncode == 0, context
+            unpacked = installer.prefix / "bin" / "mold"
+            assert unpacked.is_file(), (
+                f"expected {unpacked} from {ARCHIVE_NAME}: {context}"
+            )
+        else:
+            assert completed.returncode != 0, context
+            assert f"checksum mismatch for {ARCHIVE_NAME}" in completed.stderr, context

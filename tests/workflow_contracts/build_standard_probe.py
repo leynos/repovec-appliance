@@ -155,6 +155,21 @@ def expected_standard_tokens() -> list[str]:
     return tokens
 
 
+def _trailing_backslashes(text: str) -> int:
+    """Count the backslashes that end ``text``."""
+    return len(text) - len(text.rstrip("\\"))
+
+
+def is_continued(line: str) -> bool:
+    """Report whether ``line`` ends in a Make continuation.
+
+    Make continues a recipe line only for an odd run of trailing
+    backslashes: ``a \\`` continues, while ``a \\\\`` is a literal
+    backslash at the end of the line and does not.
+    """
+    return _trailing_backslashes(line.rstrip()) % 2 == 1
+
+
 def join_continuations(lines: list[str]) -> list[str]:
     """Join backslash-continued shell lines into one line each.
 
@@ -167,7 +182,7 @@ def join_continuations(lines: list[str]) -> list[str]:
     pending = ""
     for line in lines:
         stripped = line.rstrip()
-        if stripped.endswith("\\"):
+        if is_continued(stripped):
             pending += stripped[:-1] + " "
             continue
         joined.append((pending + stripped).strip())

@@ -53,10 +53,9 @@ needs the prefix on `PATH` explicitly:
 export PATH="$BUILD_TOOLS_PREFIX/bin:$PATH"
 ```
 
-Here `BUILD_TOOLS_PREFIX` names the installation prefix, defaulting to
-`$HOME/.local`. Verify an installation with `make check-build-tools`; every
-standard target runs the same check before compiling and fails with the
-installation command when a component is missing.
+Verify an installation with `make check-build-tools`; every standard target
+runs the same check before compiling and fails with the installation command
+when a component is missing.
 
 CI runs `make install-build-tools` in each job that compiles or links Rust,
 after Rust setup and before the compiling step. Formatting and spelling do not

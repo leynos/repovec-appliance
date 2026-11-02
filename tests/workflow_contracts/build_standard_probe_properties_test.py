@@ -95,13 +95,17 @@ def reference_strings(value: object) -> list[str]:
 @SETTINGS
 @given(_NESTED)
 def test_iter_keys_matches_a_reference_walker(value: object) -> None:
-    assert iter_keys(value) == reference_keys(value)
+    assert iter_keys(value) == reference_keys(value), (
+        f"iter_keys disagreed for {value!r}"
+    )
 
 
 @SETTINGS
 @given(_NESTED)
 def test_iter_strings_matches_a_reference_walker(value: object) -> None:
-    assert iter_strings(value) == reference_strings(value)
+    assert iter_strings(value) == reference_strings(value), (
+        f"iter_strings disagreed for {value!r}"
+    )
 
 
 #: Tokens may contain shell metacharacters, spaces and quotes. Newlines and
@@ -146,10 +150,19 @@ def test_join_continuations_preserves_tokens(groups: list[list[str]]) -> None:
     joined = join_continuations(continued_lines(groups))
     expected = [group for group in groups if group]
 
-    assert len(joined) == len(expected)
-    for line, group in zip(joined, expected):
-        assert shell_tokens(line) == group
-    assert all(not line.endswith("\\") for line in joined)
+    assert len(joined) == len(expected), f"{joined!r} did not match {expected!r}"
+    for line, group in zip(joined, expected, strict=True):
+        assert shell_tokens(line) == group, f"{line!r} did not restore {group!r}"
+    assert all(not line.endswith("\\") for line in joined), (
+        f"{joined!r} kept a continuation"
+    )
+
+
+def test_even_backslash_run_is_not_a_continuation() -> None:
+    """A doubled backslash ends a line literally instead of continuing it."""
+    lines = ["echo a\\\\", "echo b"]
+
+    assert join_continuations(lines) == lines
 
 
 @SETTINGS
@@ -197,7 +210,7 @@ def test_make_targets_matches_a_reference_predicate(
 ) -> None:
     run_value, expected_make, _ = case
 
-    assert make_targets(run_value) == expected_make
+    assert make_targets(run_value) == expected_make, f"make targets for {run_value!r}"
 
 
 @SETTINGS
@@ -207,7 +220,9 @@ def test_cargo_subcommands_matches_a_reference_predicate(
 ) -> None:
     run_value, _, expected_cargo = case
 
-    assert cargo_subcommands(run_value) == expected_cargo
+    assert cargo_subcommands(run_value) == expected_cargo, (
+        f"cargo calls in {run_value!r}"
+    )
 
 
 @SETTINGS
@@ -220,7 +235,9 @@ def test_run_value_compiles_matches_a_reference_predicate(
         subcommand in COMPILING_CARGO_SUBCOMMANDS for subcommand in expected_cargo
     )
 
-    assert run_value_compiles(run_value) is expected
+    assert run_value_compiles(run_value) is expected, (
+        f"compile verdict for {run_value!r}"
+    )
 
 
 @SETTINGS
@@ -233,6 +250,6 @@ def test_run_value_compiles_matches_a_reference_predicate(
     )
 )
 def test_non_string_run_values_are_inert(value: object) -> None:
-    assert make_targets(value) == []
-    assert cargo_subcommands(value) == []
-    assert run_value_compiles(value) is False
+    assert make_targets(value) == [], f"{value!r} should yield no make targets"
+    assert cargo_subcommands(value) == [], f"{value!r} should yield no cargo calls"
+    assert run_value_compiles(value) is False, f"{value!r} should not compile"

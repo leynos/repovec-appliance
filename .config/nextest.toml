@@ -1,13 +1,22 @@
 # Nextest configuration shared by the test lanes.
 #
+# The coverage action supplies these profile defaults, but only when no nextest
+# configuration exists: `ensure_nextest_config` writes a temporary file when the
+# resolved path is absent, and leaves an existing file alone. Because this file
+# exists, the defaults it would have supplied are restated here, so the coverage
+# lane keeps its 180 s termination policy and its 10-minute ceiling on the run
+# instead of falling back to nextest's 60 s period with no global timeout.
+[profile.default]
+slow-timeout = { period = "180s", terminate-after = 1, grace-period = "5s" }
+global-timeout = "10m"
+
 # `crates/repovec-core/tests/compile_time.rs` drives `trybuild`, which compiles
 # each UI fixture as its own crate and therefore rebuilds `repovec-core` and its
 # dependencies three times. Under `cargo llvm-cov` every one of those
-# compilation units is instrumented, so the default budget (60 s per period,
-# terminated after three periods) expires while the fixtures are still
-# compiling; nextest then reports a timeout rather than the assertion the test
-# exists to make (observed on PR #216, run 41348216522: 627 passed, 1 timed out
-# at 180 s).
+# compilation units is instrumented, so the profile's budget expires while the
+# fixtures are still compiling; nextest then reports a timeout rather than the
+# assertion the test exists to make (observed on PR #216, run 41348216522: 627
+# passed, 1 timed out at 180 s).
 #
 # The test asserts compile failures and contributes no coverage, so it keeps a
 # longer budget instead of being skipped: skipping would stop measuring the one

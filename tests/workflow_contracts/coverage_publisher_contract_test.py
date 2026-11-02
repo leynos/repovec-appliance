@@ -25,6 +25,9 @@ from coverage_contract_support import (
 from coverage_input_rules import coverage_violations
 from coverage_publisher_rules import publisher_violations, retired_names
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 DISPATCH = "github.event_name == 'workflow_dispatch'"
 PRESENCE_GUARD = "steps.codescene-token.outputs.available == 'true'"
 MAIN_GUARD = f"{PRESENCE_GUARD} && github.ref == 'refs/heads/main'"
@@ -192,9 +195,9 @@ def test_second_uploader_is_refused(documents: Documents) -> None:
     """A second uploader could publish where nothing here looks."""
     publisher, upload = find_publisher(documents)
     job_steps(publisher).append(copy.deepcopy(upload))
-    assert publisher_violations(documents) == [
-        "expected one CodeScene upload step, found 2"
-    ]
+    found = publisher_violations(documents)
+    expected = ["expected one CodeScene upload step, found 2"]
+    assert found == expected, f"unexpected violations: {found}"
 
 
 @pytest.mark.parametrize(
@@ -264,7 +267,7 @@ def _restore_variable(documents: Documents) -> None:
     [_restore_refresher, _restore_installer_checksum, _restore_variable],
 )
 def test_retired_checksum_machinery_stays_gone(
-    documents: Documents, mutation: typ.Callable[[Documents], None]
+    documents: Documents, mutation: cabc.Callable[[Documents], None]
 ) -> None:
     """The retired installer checksum is refused wherever it reappears."""
     mutation(documents)

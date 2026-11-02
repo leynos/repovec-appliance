@@ -15,6 +15,9 @@ from coverage_publisher_rules import upload_steps
 from coverage_pull_request_rules import pull_request_closure
 from coverage_workflow_reader import Document, holding_job, jobs
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 ENVIRONMENT: typ.Final[str] = "codescene"
 MISSING: typ.Final[str] = f"the uploading job must declare `environment: {ENVIRONMENT}`"
 STRAY: typ.Final[str] = f"declares `{ENVIRONMENT}` but uploads nothing"
@@ -45,7 +48,7 @@ def environment_name(job: dict[str, object]) -> str | None:
 
 
 def _placed(
-    documents: dict[str, Document], names: typ.Iterable[str]
+    documents: dict[str, Document], names: cabc.Iterable[str]
 ) -> list[tuple[str, dict[str, object]]]:
     """Return ``("workflow:job", job)`` for every job in the named workflows."""
     return [

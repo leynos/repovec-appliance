@@ -76,11 +76,13 @@ def read_documents(directory: Path = WORKFLOW_DIR) -> dict[str, Document]:
 
 def _listing_failure(directory: Path, error: Exception) -> str:
     """Return the message describing why the workflow directory was refused."""
-    if isinstance(error, UnicodeDecodeError):
-        return f"{directory}: a workflow cannot be read as UTF-8: {error}"
-    if isinstance(error, yaml.YAMLError):
-        return f"{directory}: a workflow cannot be read strictly: {error}"
-    return f"cannot list workflows in {directory}: {error}"
+    match error:
+        case UnicodeDecodeError():
+            return f"{directory}: a workflow cannot be read as UTF-8: {error}"
+        case yaml.YAMLError():
+            return f"{directory}: a workflow cannot be read strictly: {error}"
+        case _:
+            return f"cannot list workflows in {directory}: {error}"
 
 
 def triggers(name: str, document: Document) -> dict[str, object]:
@@ -268,12 +270,36 @@ def continues_on_error(mapping: dict[str, object]) -> bool:
 
     ``continue-on-error`` keeps the step running while its failure turns green,
     which silences a ratchet or an upload as surely as ``if: false`` does.
+
+    Parameters
+    ----------
+    mapping
+        A step or job mapping from a parsed workflow.
+
+    Returns
+    -------
+    bool
+        True when ``continue-on-error`` is set to any value other than false.
     """
     return mapping.get("continue-on-error", False) is not False
 
 
 def holding_job(name: str, document: Document, step: Step) -> dict[str, object]:
     """Return the job in one workflow whose steps include this step.
+
+    Parameters
+    ----------
+    name
+        The workflow's file name, for messages.
+    document
+        The parsed workflow.
+    step
+        The step mapping to find among the workflow's jobs.
+
+    Returns
+    -------
+    dict[str, object]
+        The job mapping whose ``steps`` list holds ``step``.
 
     Raises
     ------

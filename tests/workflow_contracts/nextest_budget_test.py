@@ -2,16 +2,18 @@
 
 ``crates/repovec-core/tests/compile_time.rs`` drives ``trybuild``, which
 compiles each UI fixture as its own crate. Under ``cargo llvm-cov`` every
-compilation unit in that fixture build is instrumented, so the default
-nextest budget — 60 s per period, terminated after three periods — expires
-while the fixtures are still compiling. Measured on PR #216, run
+compilation unit in that fixture build is instrumented, so the profile budget
+expires while the fixtures are still compiling. Measured on PR #216, run
 41348216522: 627 tests passed and this one was killed at 180 s, failing the
 ``coverage`` job without a diagnostic from the test itself.
 
-The remedy is a narrow override in ``.config/nextest.toml``: a longer budget
-for that one test, which asserts compile failures and contributes no
-coverage. Skipping it would stop guarding the opaque wrapper types, and a
-workspace-wide budget increase would hide a genuine hang in every other test.
+The profile itself restates the budgets the coverage action would have
+written had the file been absent, because the action leaves an existing file
+untouched. The remedy for the fixture build is then a narrow override in
+``.config/nextest.toml``: a longer budget for that one test, which asserts
+compile failures and contributes no coverage. Skipping it would stop guarding
+the opaque wrapper types, and a workspace-wide budget increase would hide a
+genuine hang in every other test.
 
 Both properties are contractual: the override must still select the test by
 its exact name, and its total budget must exceed the default it supersedes.
@@ -31,9 +33,9 @@ Run via ``make test-workflow-contracts``.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import tomllib
+import typing as typ
+from pathlib import Path
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / ".config" / "nextest.toml"
 
@@ -47,10 +49,15 @@ DEFAULT_BUDGET_SECONDS = 180.0
 DURATION_UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0}
 
 
+def _profile() -> dict[str, object]:
+    """Return the default profile's table from the checked-in config."""
+    config = tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    return config["profile"]["default"]
+
+
 def _overrides() -> list[dict[str, object]]:
     """Return the default profile's overrides in declaration order."""
-    config = tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    return config["profile"]["default"].get("overrides", [])
+    return typ.cast("list[dict[str, object]]", _profile().get("overrides", []))
 
 
 def _seconds(duration: str) -> float:
@@ -75,6 +82,25 @@ def _compile_time_overrides() -> list[dict[str, object]]:
         for override in _overrides()
         if COMPILE_TIME_TEST in str(override.get("filter", ""))
     ]
+
+
+def test_the_profile_keeps_the_coverage_action_budgets() -> None:
+    """Scenario: this file exists, so the coverage action writes none of its own.
+
+    Invariant: the profile restates the action's slow-timeout and global
+    timeout, so a stalled test is still terminated and the whole run still has
+    a ceiling instead of falling back to nextest's unset defaults.
+    """
+    profile = _profile()
+
+    assert profile.get("slow-timeout") == {
+        "period": "180s",
+        "terminate-after": 1,
+        "grace-period": "5s",
+    }, f"the coverage action's slow-timeout is not restated: {profile!r}"
+    assert profile.get("global-timeout") == "10m", (
+        f"the coverage action's global-timeout is not restated: {profile!r}"
+    )
 
 
 def test_the_compile_time_fixture_build_has_a_longer_budget() -> None:

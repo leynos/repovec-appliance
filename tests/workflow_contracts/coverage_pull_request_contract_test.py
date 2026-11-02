@@ -94,6 +94,15 @@ def test_workflow_run_matches_an_unnamed_workflow_by_path(
     _assert_contact(documents, f"{PROBE} names the CodeScene host")
 
 
+def test_workflow_run_matches_a_glob_pattern(documents: Documents) -> None:
+    """GitHub matches a ``workflows:`` entry as a glob against the name."""
+    _, callee = _probe()
+    lane = str(documents[LANE].get("name", LANE))
+    callee[True] = {"workflow_run": {"workflows": [f"{lane}*"]}}
+    documents[PROBE] = callee
+    _assert_contact(documents, f"{PROBE} names the CodeScene host")
+
+
 @pytest.mark.parametrize(
     ("uses", "reason"),
     [

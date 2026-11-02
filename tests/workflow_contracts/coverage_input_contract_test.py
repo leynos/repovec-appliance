@@ -195,15 +195,15 @@ def test_publisher_must_be_the_single_uploader(documents: Documents) -> None:
     """Without one publisher there is no baseline for the lanes to compare with."""
     publisher, upload = find_publisher(documents)
     job_steps(publisher).remove(upload)
-    assert coverage_violations(documents) == [
-        "coverage lanes need exactly one publisher to compare against"
-    ]
+    found = coverage_violations(documents)
+    expected = ["coverage lanes need exactly one publisher to compare against"]
+    assert found == expected, f"unexpected violations: {found}"
 
 
 def test_publisher_generates_coverage_once(documents: Documents) -> None:
     """Two generators in the publisher leave no single selection to compare."""
     publisher, _ = find_publisher(documents)
     job_steps(publisher).append(copy.deepcopy(coverage_step(publisher)))
-    assert coverage_violations(documents) == [
-        f"{PUBLISHER} must generate coverage exactly once"
-    ]
+    found = coverage_violations(documents)
+    expected = [f"{PUBLISHER} must generate coverage exactly once"]
+    assert found == expected, f"unexpected violations: {found}"

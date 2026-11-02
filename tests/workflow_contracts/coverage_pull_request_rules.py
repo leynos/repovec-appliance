@@ -17,6 +17,7 @@ one.
 
 from __future__ import annotations
 
+import fnmatch
 import typing as typ
 
 from coverage_workflow_reader import (
@@ -143,10 +144,22 @@ def _watched(name: str, document: Document) -> set[str]:
 
 
 def _chained(found: set[str], documents: dict[str, Document]) -> set[str]:
-    """Return workflows a ``workflow_run`` trigger chains onto any found one."""
+    """Return workflows a ``workflow_run`` trigger chains onto any found one.
+
+    A ``workflows:`` entry may be a glob, so each pattern is matched against
+    each found workflow's name. ``fnmatchcase`` lets ``*`` cross a ``/``, which
+    GitHub's path globs do not; over-matching adds a workflow to the judged set
+    rather than hiding one, which is the safe direction for a refusal.
+    """
     names = _names(found, documents)
     return {
-        name for name, document in documents.items() if _watched(name, document) & names
+        name
+        for name, document in documents.items()
+        if any(
+            fnmatch.fnmatchcase(candidate, pattern)
+            for pattern in _watched(name, document)
+            for candidate in names
+        )
     }
 
 

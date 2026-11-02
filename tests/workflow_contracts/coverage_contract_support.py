@@ -129,12 +129,13 @@ def coverage_job(document: Document) -> dict[str, object]:
 
     Raises
     ------
-    StopIteration
+    LookupError
         If no job in the workflow calls the coverage action.
     """
     job = _job_holding(document, "generate-coverage")
     if job is None:
-        raise StopIteration("no job calls the coverage action")
+        message = "no job calls the coverage action"
+        raise LookupError(message)
     return job
 
 

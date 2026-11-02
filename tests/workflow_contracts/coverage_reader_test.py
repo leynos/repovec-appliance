@@ -67,7 +67,8 @@ def test_reader_reads_every_suffix_and_case(tmp_path: Path) -> None:
     """GitHub runs ``.yaml`` and upper-case suffixes as readily as ``.yml``."""
     for name in ("a.YML", "b.yaml"):
         (tmp_path / name).write_text("on: push\njobs: {}\n", encoding="utf-8")
-    assert sorted(read_documents(tmp_path)) == ["a.YML", "b.yaml"]
+    found = sorted(read_documents(tmp_path))
+    assert found == ["a.YML", "b.yaml"], f"unexpected workflows read: {found}"
 
 
 @pytest.mark.parametrize(

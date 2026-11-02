@@ -6,18 +6,35 @@ schema = 1
 stems = []
 
 [words]
-# Official name: the ratatui Rust crate.
-accepted = ["ratatui"]
+accepted = []
 
 [words.corrections]
 
 [patterns]
 ignore = [
-  # The mold linker, named in the build standard and Cargo configuration.
-  '\bmold\b',
-  # Inline code spans are masked; the shared dictionary does not mask them yet.
-  '`[^`\n]+`',
+  # The mold linker, named in the build standard and Cargo configuration. The
+  # checker's `regex` crate has no lookaround, so the delimiters are matched
+  # instead of asserted: most occurrences are subwords inside identifiers
+  # (`mold_version`, `check_mold`, `MOLD_FLAG`, `STANDARD_MOLD_FLAG`), where
+  # `\bmold\b` cannot match because `_` is a word character. Under `(?i)` the
+  # negated class also excludes capitals.
+  '(?im)(?:^|[^a-z])mold(?:[^a-z]|$)',
+  # GitHub's fixed `actions/upload-artifact` action name, quoted in a docstring.
+  '\bupload-artifact\b',
+  # Official crate name in documentation.
+  '`ratatui`',
+  # Cargo's fixed environment-variable name, including its documentation.
+  '\bCARGO_TERM_COLOR\b',
+  # The colour-control environment variable consumed by markdownlint-cli2.
+  '\bFORCE_COLOR\b',
+  # GitHub's fixed pull-request event names in the established trigger schema.
+  '(?m)^    types: \[opened, reopened, synchronize, labeled, ready_for_review\]$',
+  # One fixed assessment identifier from a recorded execplan revision; the hex
+  # fragment is not prose and cannot be respelled.
+  'RP133-COMP-4ba3851a15c8',
 ]
 
 [files]
-exclude = []
+# Authored negative spelling examples; tests materialize them as ordinary,
+# unexcluded tracked source and prose in isolated Git repositories.
+exclude = ["tests/workflow_contracts/fixtures/spelling_precision_cases.json"]

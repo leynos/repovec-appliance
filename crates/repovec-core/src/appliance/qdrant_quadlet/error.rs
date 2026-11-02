@@ -206,7 +206,7 @@ fn write_incorrect_api_key_secret(f: &mut fmt::Formatter<'_>, secret: &str) -> f
 ///
 /// [`QdrantQuadletError`] carries four variants for these failures because the
 /// API-key oneshot's variants are part of the historical public surface and
-/// must keep their original messages. Normalising the four into one value keeps
+/// must keep their original messages. Normalizing the four into one value keeps
 /// the message shapes in one place without collapsing the variants.
 struct DependencyFailure<'a> {
     directive: &'a str,
@@ -233,7 +233,7 @@ impl<'a> DependencyFailure<'a> {
     /// Writes the operator-facing message for this failure.
     ///
     /// The API-key wording names the oneshot explicitly and has been stable
-    /// since the secret contract shipped, so it is not generalised.
+    /// since the secret contract shipped, so it is not generalized.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (directive, expected) = (self.directive, self.expected);
         match (self.is_api_key, self.actual) {

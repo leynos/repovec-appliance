@@ -233,7 +233,7 @@ impl LiveLayoutError {
 /// # Errors
 ///
 /// Returns [`LiveLayoutError`] when a required directory is missing, not a
-/// directory, unreadable, mis-moded, or misowned.
+/// directory, unreadable, of the wrong mode, or misowned.
 pub fn verify_layout_for_ids(
     paths: &RuntimePaths,
     ids: LiveLayoutIds,

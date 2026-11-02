@@ -280,7 +280,7 @@ fn omitted_tmpfiles_cleanup_age_preserves_persistent_directories() {
     assert_eq!(validate_directory_layout(&tmpfiles, &sysusers), Ok(()));
 }
 
-/// Octal-mode normalisation: `0750` and `750` denote the same permission set.
+/// Octal-mode normalization: `0750` and `750` denote the same permission set.
 #[rstest]
 #[case("0750", Mode(0o750))]
 #[case("750", Mode(0o750))]

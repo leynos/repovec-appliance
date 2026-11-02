@@ -3,7 +3,7 @@
 //! Quadlet `Environment=` values may carry several `KEY=VALUE` pairs separated
 //! by whitespace, and a value may itself contain whitespace when it is quoted.
 //! Splitting on whitespace alone would therefore tear a quoted value in half and
-//! mis-attribute the remainder to a neighbouring key, which matters here because
+//! misattribute the remainder to a neighbouring key, which matters here because
 //! the API-key prohibition is a substring-free exact match on the key.
 //!
 //! These helpers are kept away from the validators that call them so the

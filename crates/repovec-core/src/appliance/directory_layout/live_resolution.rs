@@ -61,7 +61,7 @@ pub struct LiveLayoutIds {
 ///
 /// Returns [`LiveLayoutError`] when the account databases cannot be read, the
 /// `repovec` account or group is absent or unsafe, or any required directory is
-/// missing, not a directory, unreadable, mis-moded, or misowned.
+/// missing, not a directory, unreadable, of the wrong mode, or misowned.
 pub fn verify_live_layout(paths: &RuntimePaths) -> Result<(), LiveLayoutError> {
     let passwd = passwd_database_text()
         .map_err(|source| unreadable_database(PASSWD_DATABASE_PATH, source))?;
@@ -80,7 +80,7 @@ pub fn verify_live_layout(paths: &RuntimePaths) -> Result<(), LiveLayoutError> {
 ///
 /// Returns [`LiveLayoutError`] when the records are missing, truncated, or
 /// unsafe, or any required directory is missing, not a directory, unreadable,
-/// mis-moded, or misowned.
+/// of the wrong mode, or misowned.
 pub(crate) fn verify_layout_from_databases(
     paths: &RuntimePaths,
     passwd: &str,

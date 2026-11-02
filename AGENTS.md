@@ -138,18 +138,19 @@ project:
     estate formatting profile, including the unstable options in
     `rustfmt.toml`. The `rust-toolchain.toml` file enforces the nightly
     toolchain, so the correct rustfmt version is automatically selected.
-  - `make lint` executes:
+  - `make lint` delegates to `lint-clippy` and then `lint-whitaker`.
+    `lint-clippy` executes:
 
     ```sh
     cargo doc --no-deps --workspace
     cargo clippy --workspace --all-targets --all-features -- -D warnings
-    make whitaker-lint
     ```
 
-    building the documentation with `--cfg docsrs` and `-D warnings`, linting
-    every target with all features enabled and denying all Clippy warnings,
-    and then running the Whitaker Dylint suite. The Whitaker leg reports that
-    it is skipping when `whitaker` is not on `PATH`.
+    building the documentation with `--cfg docsrs` and `-D warnings`, and
+    linting every target with all features enabled while denying all Clippy
+    warnings. `lint-whitaker` then runs the Whitaker Dylint suite over every
+    workspace package through `scripts/run_whitaker.py`. A missing `whitaker`
+    executable fails the gate with an actionable message; it is never skipped.
   - `make test` executes:
 
     ```sh

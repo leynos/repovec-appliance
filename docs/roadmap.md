@@ -50,6 +50,11 @@ CLI, a strict lint baseline, and a CI pipeline that gates merges.
     published docs. No production source repair was needed: the earlier
     documentation waves already cover every private item, and the one
     test-source change is the assertion message the new row required.
+  - Make the Whitaker leg binding: `make lint` delegates to `lint-clippy`
+    and `lint-whitaker` through ordered recursive-make recipe lines, the
+    soft skip for an absent executable is removed, and the recipe invokes
+    the tested `scripts/run_whitaker.py` over every workspace package. The
+    rolling suite revision is recorded rather than pinned. Status: complete.
   - Confirm `make lint` and `make check-fmt` pass with zero warnings.
   - Status: complete.
 - [ ] 1.1.3. Add CI gating pipeline

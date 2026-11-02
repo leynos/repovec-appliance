@@ -183,7 +183,37 @@ and fails if any recipe chains two gate commands in one shell invocation without
 exempt, because a non-zero status there is an answer rather than a rejection.
 Both are mutation-proven.
 
-### 1.3 Formatting workflow
+### 1.3 Lint routes: Clippy and Whitaker
+
+`make lint` delegates to two routes and runs them in order. `lint-clippy`
+builds the documentation with `--cfg docsrs` and `-D warnings`, then runs
+Clippy across every target and feature with warnings denied. `lint-whitaker`
+runs the Whitaker Dylint suite over every workspace package.
+
+The order is explicit because a prerequisite list is unordered under `make -j`.
+The `lint` recipe therefore runs `$(MAKE) lint-clippy` and then
+`$(MAKE) lint-whitaker`; each recipe line is a separate shell and Make stops at
+the first rejection, so the Whitaker route cannot start before the Clippy route
+has passed. Recursive make is used rather than GNU Make 4.4's `.WAIT` because
+the Ubuntu 24.04 CI runners ship GNU Make 4.3.
+
+Whitaker is a binding gate, not an optional extra. The recipe used to ask
+`command -v` whether `whitaker` existed and print a skip when it did not, so an
+absent suite produced the same green result as a passing one. The recipe now
+invokes `scripts/run_whitaker.py` as one command. That script resolves the
+executable, exits non-zero with a message naming `WHITAKER` when it is missing,
+and propagates the suite's own exit status. Its behaviour is covered by
+`scripts/tests/test_run_whitaker.py`.
+
+The suite is a rolling release and is deliberately not pinned. CI installs it
+through `leynos/shared-actions/.github/actions/install-whitaker` at
+`872f59f53717b5bebe8e24b2f4a7496b089a939a`; that action's installer default is
+0.2.11, it refuses `suite-version`, and it always passes
+`--no-source-fallback`. A local run on 2026-11-02 observed suite revision
+`nightly-2026-05-28` under `$HOME/.local/share/whitaker/lints/`, as reported by
+`whitaker list`.
+
+### 1.4 Formatting workflow
 
 Rust formatting uses the nightly `rustfmt` selected by `rust-toolchain.toml`.
 The toolchain pin supplies the formatter, so contributors do not install or

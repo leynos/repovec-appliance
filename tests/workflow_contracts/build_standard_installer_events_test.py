@@ -238,7 +238,7 @@ def test_bsd_date_falls_back_to_whole_seconds(installer: Installer) -> None:
 
     Invariant: the installer succeeds and every ``elapsed_ms`` field is a
     plain integer. BSD/macOS ``date`` prints ``%3N`` literally, so the stamp
-    must be recognised as unusable before it reaches ``elapsed_ms``.
+    must be recognized as unusable before it reaches ``elapsed_ms``.
     """
     write_stub(
         installer.root / "stub" / "date",

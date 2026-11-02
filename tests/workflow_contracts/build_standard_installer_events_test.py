@@ -196,7 +196,7 @@ def test_the_default_endpoint_is_reported_without_its_host(
 ) -> None:
     """Scenario: the release base URL is left at its default.
 
-    Invariant: the attempt event categorises the endpoint as ``default``
+    Invariant: the attempt event categorizes the endpoint as ``default``
     instead of naming a host, so event labels stay bounded; the full URL
     stays out of the event stream.
     """

@@ -281,7 +281,10 @@ fn write_incorrect_api_key_secret(f: &mut fmt::Formatter<'_>, secret: &str) -> f
         concat!(
             "Qdrant API-key secret must be ",
             "repovec-qdrant-api-key,type=env,target=QDRANT__SERVICE__API_KEY: {secret}",
-        )
+        ),
+        // A format string that comes from `concat!` cannot capture names
+        // implicitly, so the argument is named explicitly.
+        secret = secret,
     )
 }
 

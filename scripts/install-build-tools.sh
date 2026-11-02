@@ -43,7 +43,30 @@ remove_workdir() {
 trap remove_workdir EXIT
 
 # Milliseconds since the epoch, for bounded elapsed-time events.
-now_ms() { date +%s%3N; }
+#
+# GNU `date` supports `+%s%3N`. BSD/macOS `date` has no sub-second
+# conversion and prints the `%3N` literally, which would reach the
+# arithmetic in `elapsed_ms` as a non-numeric stamp and abort the script
+# under `set -e`. Fall back to whole seconds scaled to milliseconds, and
+# still propagate a genuine `date` failure.
+now_ms() {
+  local stamp
+  stamp=$(date +%s%3N) || fail 'cannot read the current time: date +%s%3N failed'
+  [ -n "$stamp" ] ||
+    fail 'cannot read the current time: date +%s%3N returned no output'
+  case $stamp in
+    *[!0-9]*)
+      stamp=$(date +%s) || fail 'cannot read the current time: date +%s failed'
+      [ -n "$stamp" ] ||
+        fail 'cannot read the current time: date +%s returned no output'
+      case $stamp in
+        *[!0-9]*) fail "cannot read the current time: date returned '$stamp'" ;;
+      esac
+      printf '%s' "$((stamp * 1000))"
+      ;;
+    *) printf '%s' "$stamp" ;;
+  esac
+}
 
 # Emit one stable, bounded event line. Fields are positional key=value pairs;
 # callers must never pass a full URL or a credential.

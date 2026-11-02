@@ -194,3 +194,33 @@ def test_a_missing_rustup_emits_a_failure_outcome(installer: Installer) -> None:
     assert len(outcomes) == 1, found
     assert outcomes[0]["outcome"] == "failure"
     assert outcomes[0]["failure_category"] == "rustup_not_found"
+
+
+def test_bsd_date_falls_back_to_whole_seconds(installer: Installer) -> None:
+    """Scenario: ``date`` has no GNU sub-second conversion.
+
+    Invariant: the installer succeeds and every ``elapsed_ms`` field is a
+    plain integer. BSD/macOS ``date`` prints ``%3N`` literally, so the stamp
+    must be recognised as unusable before it reaches ``elapsed_ms``.
+    """
+    write_stub(
+        installer.root / "stub" / "date",
+        """case ${1:-} in
+  +%s%3N) printf '17620000003N\\n' ;;
+  +%s) printf '1762000000\\n' ;;
+  *) printf '1762000000\\n' ;;
+esac
+""",
+    )
+
+    completed = installer.run()
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    found = events(completed.stderr)
+    assert named(found, "toolchain_install_outcome"), found
+    timed = [event for event in found if "elapsed_ms" in event]
+    assert timed, found
+    for event in timed:
+        assert event["elapsed_ms"].isdigit(), (
+            f"elapsed_ms should be a plain integer, found {event['elapsed_ms']!r}"
+        )

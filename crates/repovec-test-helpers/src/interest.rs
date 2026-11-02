@@ -68,6 +68,8 @@ impl Subscriber for AlwaysInterested {
 
 #[cfg(test)]
 mod tests {
+    //! Regression cover for the interest-cache anchor.
+
     use std::{sync::mpsc, thread};
 
     use crate::{capture_logs, ensure_log_line_contains};

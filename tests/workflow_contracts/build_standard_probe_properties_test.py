@@ -55,18 +55,32 @@ def reference_keys(
 ) -> list[tuple[object, ...]]:
     """Return every mapping key with its path, independently of the probe."""
     if isinstance(value, dict):
-        found: list[tuple[object, ...]] = []
-        for key, child in value.items():
-            child_path = (*path, key)
-            found.append(child_path)
-            found.extend(reference_keys(child, child_path))
-        return found
+        return _mapping_key_paths(value, path)
     if isinstance(value, list):
-        found = []
-        for index, child in enumerate(value):
-            found.extend(reference_keys(child, (*path, index)))
-        return found
+        return _sequence_key_paths(value, path)
     return []
+
+
+def _mapping_key_paths(
+    mapping: dict[object, object], path: tuple[object, ...]
+) -> list[tuple[object, ...]]:
+    """Visit each key before descending into its value, in insertion order."""
+    return [
+        descendant
+        for key, child in mapping.items()
+        for descendant in ((*path, key), *reference_keys(child, (*path, key)))
+    ]
+
+
+def _sequence_key_paths(
+    items: list[object], path: tuple[object, ...]
+) -> list[tuple[object, ...]]:
+    """Descend into each element in index order without recording indices."""
+    return [
+        descendant
+        for index, child in enumerate(items)
+        for descendant in reference_keys(child, (*path, index))
+    ]
 
 
 def reference_strings(value: object) -> list[str]:
@@ -196,11 +210,8 @@ def test_run_value_compiles_matches_a_reference_predicate(
     case: tuple[str, list[str], list[str]],
 ) -> None:
     run_value, expected_make, expected_cargo = case
-    expected = any(
-        target in COMPILING_MAKE_TARGETS for target in expected_make
-    ) or any(
-        subcommand in COMPILING_CARGO_SUBCOMMANDS
-        for subcommand in expected_cargo
+    expected = any(target in COMPILING_MAKE_TARGETS for target in expected_make) or any(
+        subcommand in COMPILING_CARGO_SUBCOMMANDS for subcommand in expected_cargo
     )
 
     assert run_value_compiles(run_value) is expected

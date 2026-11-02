@@ -109,7 +109,14 @@ fn resolution_rejects_a_login_shell() {
 /// Every variant carries a stable, bounded category for metrics and logs.
 #[test]
 fn every_error_variant_has_a_stable_category() {
-    let cases = [
+    for (error, expected) in category_cases() {
+        assert_eq!(error.category(), expected);
+    }
+}
+
+/// Pairs each error variant with the category it must keep reporting.
+fn category_cases() -> [(LiveLayoutError, &'static str); 11] {
+    [
         (
             LiveLayoutError::RepovecUserNotFound,
             "repovec_user_not_found",
@@ -173,11 +180,7 @@ fn every_error_variant_has_a_stable_category() {
             },
             "not_a_directory",
         ),
-    ];
-
-    for (error, expected) in cases {
-        assert_eq!(error.category(), expected);
-    }
+    ]
 }
 
 /// Builds a representative filesystem violation for category coverage.

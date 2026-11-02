@@ -11,6 +11,7 @@ Run via ``make test-workflow-contracts``.
 from __future__ import annotations
 
 from build_standard_installer_support import (
+    MOLD_PAYLOAD,
     MOLD_VERSION,
     TOOLCHAIN,
     Installer,
@@ -71,7 +72,7 @@ def test_success_emits_one_attempt_and_outcome_per_boundary(
     assert attempts[0]["attempt"] == "1"
     assert attempts[0]["version"] == MOLD_VERSION
     assert attempts[0]["arch"] == "x86_64"
-    assert attempts[0]["url_host"] == "mold.example.invalid"
+    assert attempts[0]["url_source"] == "override"
     assert len(outcomes) == 1, found
     assert outcomes[0]["outcome"] == "success"
     assert "elapsed_ms" in outcomes[0]
@@ -157,7 +158,9 @@ def test_a_failing_toolchain_install_emits_events(installer: Installer) -> None:
     """Scenario: rustup is present but the install command fails.
 
     Invariant: the toolchain boundary emits one attempt and one failure
-    outcome with a category and an elapsed time.
+    outcome with a category and an elapsed time, and the failure neither
+    discards the mold installed by the earlier step nor leaves the download
+    scratch directory behind.
     """
     write_stub(installer.root / "stub" / "rustup", "exit 1\n")
 
@@ -173,6 +176,40 @@ def test_a_failing_toolchain_install_emits_events(installer: Installer) -> None:
     assert outcomes[0]["outcome"] == "failure"
     assert "failure_category" in outcomes[0]
     assert "elapsed_ms" in outcomes[0]
+
+    installed_mold = installer.prefix / "bin" / "mold"
+    assert installed_mold.is_file(), (
+        f"the earlier mold install must survive a toolchain failure; "
+        f"{installed_mold} is missing. stderr={completed.stderr!r}"
+    )
+    assert installed_mold.read_bytes() == MOLD_PAYLOAD, (
+        f"{installed_mold} does not hold the pinned payload"
+    )
+    assert list(installer.scratch.iterdir()) == [], (
+        "the failed run left scratch entries behind: "
+        f"{list(installer.scratch.iterdir())}"
+    )
+
+
+def test_the_default_endpoint_is_reported_without_its_host(
+    installer: Installer,
+) -> None:
+    """Scenario: the release base URL is left at its default.
+
+    Invariant: the attempt event categorises the endpoint as ``default``
+    instead of naming a host, so event labels stay bounded; the full URL
+    stays out of the event stream.
+    """
+    completed = installer.run({"MOLD_RELEASE_BASE_URL": ""})
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    attempts = named(events(completed.stderr), "mold_download_attempt")
+    assert attempts, completed.stderr
+    assert attempts[0]["url_source"] == "default", attempts[0]
+    assert_no_full_url(completed.stderr)
+    for line in completed.stderr.splitlines():
+        if line.startswith(EVENT_PREFIX):
+            assert "github.com" not in line, line
 
 
 def test_a_missing_rustup_emits_a_failure_outcome(installer: Installer) -> None:

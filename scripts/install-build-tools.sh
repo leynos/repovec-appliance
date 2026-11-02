@@ -12,7 +12,8 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/build-tools-common.sh
 . "$script_dir/build-tools-common.sh"
 
-MOLD_RELEASE_BASE_URL=${MOLD_RELEASE_BASE_URL:-https://github.com/rui314/mold/releases/download}
+MOLD_RELEASE_BASE_URL_DEFAULT=https://github.com/rui314/mold/releases/download
+MOLD_RELEASE_BASE_URL=${MOLD_RELEASE_BASE_URL:-$MOLD_RELEASE_BASE_URL_DEFAULT}
 
 # Download bounds, overridable so a test can drive them without waiting.
 CURL_CONNECT_TIMEOUT=${CURL_CONNECT_TIMEOUT:-15}
@@ -87,11 +88,16 @@ elapsed_ms() {
   printf '%s' "$(($(now_ms) - start))"
 }
 
-# The host component of a URL, for events that must not carry the full URL.
-url_host() {
-  local url=$1 rest
-  rest=${url#*://}
-  printf '%s' "${rest%%/*}"
+# Categorize the download endpoint instead of naming its host. Event fields are
+# the script's bounded metric labels: a host derived from a configurable base
+# URL has unbounded cardinality, while the note written below still names the
+# full URL for a human diagnosing a failed download.
+url_source() {
+  if [ "$MOLD_RELEASE_BASE_URL" = "$MOLD_RELEASE_BASE_URL_DEFAULT" ]; then
+    printf 'default'
+  else
+    printf 'override'
+  fi
 }
 
 # Verify the downloaded tarball against the single matching line in
@@ -128,7 +134,7 @@ download_mold() {
   while :; do
     event mold_download_attempt \
       "attempt=$attempt" "version=$version" "arch=$arch" \
-      "url_host=$(url_host "$url")"
+      "url_source=$(url_source)"
     attempt_started=$(now_ms)
     if curl --fail --silent --show-error --location \
       --connect-timeout "$CURL_CONNECT_TIMEOUT" \

@@ -374,9 +374,9 @@ missing `repovec-mcpd.service` `Requires=repovecd.service`, missing
 `After=qdrant.service`, and wrong `ExecStart=` binary names.
 
 Stage D adds automated tests. Put `rstest` unit tests alongside the validator in
-`crates/repovec-core/src/appliance/systemd_units/tests.rs`. Use fixtures for
-the checked-in unit contents and parameterized mutation cases for each error
-variant. Check operator-visible error messages with literal diagnostic
+`crates/repovec-core/src/appliance/systemd_units/tests/mod.rs`. Use fixtures
+for the checked-in unit contents and parameterized mutation cases for each
+error variant. Check operator-visible error messages with literal diagnostic
 assertions because separate snapshot files would exceed this plan's file-count
 tolerance.
 

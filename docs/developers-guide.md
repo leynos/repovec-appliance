@@ -191,10 +191,13 @@ select a separate nightly. `rustfmt.toml` carries the shared estate options,
 including the unstable features that require nightly, import grouping and
 granularity, comment wrapping, and string formatting.
 
-`make fmt` applies the formatter across the workspace, and `make check-fmt`
-validates the same files without modifying them. Both targets also handle
-Markdown tables. Run `make check-fmt` before proposing a change; run `make fmt`
-to apply the formatting it reports.
+`make fmt` applies every formatter the repository uses: `cargo fmt --all`,
+`mdtablefix --in-place` for Markdown tables, and `markdownlint-cli2 --fix` for
+Markdown lint rules. `make check-fmt` validates only the first two, so it
+checks Rust formatting and Markdown table formatting without modifying files.
+Markdown lint rules are checked separately by `make markdownlint`. Run
+`make check-fmt` and `make markdownlint` before proposing a change; run
+`make fmt` to apply the formatting they report.
 
 `rustfmt.toml` excludes `crates/repovec-core/tests/ui` through its `ignore`
 list. A trybuild-style test asserts on the exact text of those fixtures, so

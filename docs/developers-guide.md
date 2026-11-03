@@ -70,6 +70,40 @@ contracts are hermetic: they drive the real script with the real checksum and
 archive tools over an archive the test builds, stubbing only the download, host
 detection and toolchain installation.
 
+### Cranelift is not adopted
+
+The estate baseline prefers Cranelift as a development default where the
+repository is compatible with it. This repository is not, and the exclusion is
+recorded with its reproduction rather than left as a policy preference.
+
+Measured on `x86_64-unknown-linux-gnu` with the pinned `nightly-2026-03-12`,
+adding `-Zcodegen-backend=cranelift` to the standard flags compiles the
+workspace and passes the full suite: 716 tests across 25 test targets,
+including the trybuild compile-fail fixtures and doctests, with no failures.
+Code generation is therefore sound for everything the suite exercises.
+
+Panic containment is not. A probe that calls `panic!` inside
+`std::panic::catch_unwind` exits 101 with the panic escaping to the process, so
+the call never returns; adding `-C panic=unwind` and
+`-C force-unwind-tables=yes` does not change the outcome. A probe that panics
+on a spawned thread aborts the process with
+`fatal runtime error: failed to initiate panic, error 5, aborting` (signal 6).
+The same probes pass under the default LLVM backend. `#[should_panic]` still
+reports a pass, so a suite of `should_panic` tests alone does not detect the
+difference.
+
+The scope is unwinding on this target and toolchain, and the consequence is a
+change in failure semantics rather than a defect in generated code: a panic
+anywhere in the daemon aborts the whole process instead of unwinding to a
+handler or failing one task.
+
+Development builds therefore keep the LLVM backend. `.cargo/config.toml` names
+no codegen backend for any profile, and
+`tests/workflow_contracts/build_standard_config_test.py` refuses one, so the
+exclusion is enforced rather than remembered. Revisit the decision only when
+the backend supports unwinding on the pinned nightly; adopt it only after these
+probes and the full suite pass.
+
 ## Normative references
 
 - [Documentation contents](contents.md) if present

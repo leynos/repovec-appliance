@@ -203,12 +203,20 @@ silently: an unreadable manifest answered "no target declares doctests", and the
 reports `the unit tests gate rejected the workspace (exit code 100)`, and never
 reaches the doctest gate.
 
+A green doctest gate is not enough on its own. Cargo exits zero when it
+collects no doctests at all, so a gate that asks only for a zero status cannot
+tell a workspace whose examples were lost from one that documents its API. The
+runner therefore reads the harness summary and rejects a run that reported no
+passing doctests, naming the gate and exiting 1. Every crate that reports a
+summary contributes to the count, so one empty binary cannot hide examples that
+ran in another.
+
 Because the logic is a script, it has unit tests. `make script-test` runs
 `scripts/tests/test_run_rust_tests.py`, which uses `cmd-mox` to supply `cargo`
-and covers a failing unit-test run, a failing doctest run and the all-pass
-case, asserting the recorded invocation sequence rather than only the exit
-code. It runs as a prerequisite of `make test`, so the runner is tested before
-it gates anything.
+and covers a failing unit-test run, a failing doctest run, an empty doctest
+collection and the all-pass case, asserting the recorded invocation sequence
+rather than only the exit code. It runs as a prerequisite of `make test`, so
+the runner is tested before it gates anything.
 
 Two contracts hold the shape. `tests/workflow_contracts/makefile_gate_test.py`
 fails if the `test` recipe grows a second command or stops invoking the runner,

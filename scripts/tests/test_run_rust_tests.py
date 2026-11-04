@@ -24,7 +24,7 @@ import pytest
 from plumbum import local
 
 import run_rust_tests
-from run_rust_tests import Gate, GateOptions, main, plan_gates
+from run_rust_tests import Gate, GateOptions, count_passed, main, plan_gates
 
 #: The only question the runner asks before planning any gate.
 NEXTEST_PROBE = ["nextest", "--version"]
@@ -46,11 +46,16 @@ class CargoScript:
         Exit code for the unit-test gate.
     doctest_exit
         Exit code for the doctest gate.
+    doctest_output
+        Standard output the doctest gate reports. It defaults to a
+        summary with three passing doctests, because a successful doctest
+        gate must also report a non-zero count.
     """
 
     nextest_available: bool = True
     unit_exit: int = 0
     doctest_exit: int = 0
+    doctest_output: str = "test result: ok. 3 passed; 0 failed; 0 ignored"
 
     def __call__(self, invocation) -> tuple[str, str, int]:
         """Answer one Cargo invocation."""
@@ -60,7 +65,7 @@ class CargoScript:
             case ["nextest", "run", *_]:
                 return ("", "", self.unit_exit)
             case ["test", "--doc", *_]:
-                return ("", "", self.doctest_exit)
+                return (self.doctest_output, "", self.doctest_exit)
             case ["test", *_]:
                 return ("", "", self.unit_exit)
             case unexpected:
@@ -126,6 +131,36 @@ def test_a_failing_doctest_run_fails_the_runner(cmd_mox) -> None:
 
     assert exit_info.value.code == 101
     assert invocations(cargo)[-1] == ["test", "--doc"]
+
+
+def test_a_doctest_run_that_collects_nothing_fails_the_runner(cmd_mox) -> None:
+    """Scenario: every gate exits successfully, but no doctest ran.
+
+    Invariant: the runner rejects the empty collection with its own
+    status. Cargo reports success when it collects no doctests, so exit
+    codes alone cannot distinguish a documented workspace from one whose
+    examples were lost.
+    """
+    stage_cargo(
+        cmd_mox,
+        CargoScript(doctest_output="test result: ok. 0 passed; 0 failed"),
+    )
+
+    with replaying(cmd_mox), pytest.raises(SystemExit) as exit_info:
+        main()
+
+    assert exit_info.value.code == 1
+
+
+def test_the_doctest_count_sums_every_summary_line() -> None:
+    """Scenario: Cargo reports one summary per doctest binary.
+
+    Invariant: the total counts every summary, so a later empty binary
+    cannot hide doctests that ran in an earlier one.
+    """
+    output = "test result: ok. 2 passed; 0 failed\ntest result: ok. 3 passed; 0 failed"
+
+    assert count_passed(output) == 5
 
 
 def test_all_gates_passing_exits_cleanly(cmd_mox) -> None:
@@ -219,7 +254,7 @@ def test_without_nextest_the_doctest_gate_still_runs(cmd_mox) -> None:
 
     assert gates == [
         Gate("unit tests", ["test", "--all-targets"]),
-        Gate("doctests", ["test", "--doc", "--workspace"]),
+        Gate("doctests", ["test", "--doc", "--workspace"], requires_tests=True),
     ]
     assert invocations(cargo) == [NEXTEST_PROBE]
 

@@ -575,6 +575,52 @@ and the baseline advances only on the next ordinary push; see
 [Coverage ownership](coverage-ownership.md) for that gap, the evidence limits
 around the unverified secret, and the mutation proof for each clause.
 
+### 2.5 Automated review services and their limits
+
+CodeRabbit, Sourcery, CodeScene and Codex review pull requests here. None of
+them is a required check, and each can decline to review a diff at all. The
+limits below were observed on this repository during the Rust estate refresh on
+2026-11-02 and 2026-11-03, quoted from the services' own messages:
+
+- Sourcery refuses a single diff larger than 150,000 characters: "your pull
+  request is larger than the review limit of 150,000 diff characters" (PR #225).
+- Sourcery also holds a rolling budget of 250,000 diff characters per author
+  per seven days: "you've used your own review budget of 250,000 diff
+  characters for the last 7 days" (PRs #226, #227 and #231). Its message names
+  when another review can be requested.
+- CodeRabbit rate-limits reviews and command invocations. PR #227 carried a
+  "Review limit reached" banner, and command replies on PRs #225 and #227
+  reported "Review rate limited".
+
+The consequence is that a missing review is the normal case for a busy week,
+not an anomaly. #226 merged with Sourcery silent, and #227 merged with both
+Sourcery and CodeRabbit silent.
+
+**A skip is not a pass.** When a service declines, quote its message in the
+pull request and say what carries the review instead. Absence of findings is
+not evidence that there are none, and a green merge on a skipped review must
+not be recorded as a reviewed one.
+
+The compensating evidence is the required checks plus the deterministic local
+gates: `make check-fmt`, `make lint`, `make test`, `make markdownlint`,
+`make spelling` and `make test-workflow-contracts`. CodeScene's approval and
+Codex's comments are read when they arrive. When they do not, a person reads
+the diff for the defect classes the missing reviewer would have caught —
+correctness, security, and API misuse — and that reading is recorded in the
+pull request.
+
+Two habits keep the budget usable. Keep layers under the per-PR limit; a layer
+that would exceed it is split, because a diff above the limit receives no
+review at all. Spend the weekly budget on layers with behaviour changes, and
+accept deterministic-gate-only review for documentation and configuration
+layers, which is what those layers would have got in a busy week anyway.
+
+A bot finding is a claim, not a verdict. PR #231's CodeRabbit review asked for
+a line to be wrapped to 80 columns, claiming 114 characters; the line was 79
+characters and the repository's own `mdtablefix` wrap had produced it. Measure
+before editing: `awk 'NR==86{print length}'` decided that one in a second, and
+complying would have produced a diff that fails `make check-fmt`.
+
 ## 3. CI policy helper
 
 ### 3.1 Public API

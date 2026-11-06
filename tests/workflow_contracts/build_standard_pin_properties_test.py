@@ -65,6 +65,7 @@ def valid_pins(draw: DrawFn) -> tuple[str, str]:
 @SETTINGS
 @given(valid_pins())
 def test_read_pin_accepts_a_single_clean_line(case: tuple[str, str]) -> None:
+    """Check that a single clean line is read as the pin."""
     content, expected = case
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "VERSION"
@@ -105,6 +106,7 @@ def invalid_pins(draw: DrawFn) -> tuple[str, str | None, str]:
 @SETTINGS
 @given(invalid_pins())
 def test_read_pin_rejects_invalid_files(case: tuple[str, str | None, str]) -> None:
+    """Check that invalid pin files are rejected."""
     kind, content, expected = case
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "VERSION"

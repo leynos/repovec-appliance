@@ -141,6 +141,7 @@ def test_every_table_defining_rustflags_defines_the_frontend() -> None:
     def rustflag_tables(value: object, path: tuple[object, ...] = ()) -> list[
         tuple[tuple[object, ...], object]
     ]:
+        """Return each table's path and its ``rustflags`` value."""
         tables: list[tuple[tuple[object, ...], object]] = []
         if isinstance(value, dict):
             if "rustflags" in value:

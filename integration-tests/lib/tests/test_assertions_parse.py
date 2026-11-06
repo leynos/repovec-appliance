@@ -18,6 +18,7 @@ from lib.assertions import FileStat, PasswdEntry
 
 
 def test_passwd_parse_returns_all_seven_columns() -> None:
+    """Check that a passwd line parses into the six fields the entry keeps."""
     raw = "repovec:x:996:993::/var/lib/repovec:/usr/sbin/nologin"
 
     entry = PasswdEntry.parse(raw)
@@ -31,6 +32,7 @@ def test_passwd_parse_returns_all_seven_columns() -> None:
 
 
 def test_passwd_parse_strips_trailing_newline() -> None:
+    """Check that a trailing newline is stripped from the passwd line."""
     raw = "root:x:0:0:root:/root:/bin/bash\n"
 
     entry = PasswdEntry.parse(raw)
@@ -51,6 +53,7 @@ def test_passwd_parse_strips_trailing_newline() -> None:
     ],
 )
 def test_passwd_parse_rejects_wrong_field_count(broken: str) -> None:
+    """Check that a passwd line with the wrong field count is rejected."""
     with pytest.raises(AssertionError, match="unexpected passwd format"):
         PasswdEntry.parse(broken)
 
@@ -59,6 +62,7 @@ def test_passwd_parse_rejects_wrong_field_count(broken: str) -> None:
 
 
 def test_filestat_parse_returns_expected_columns() -> None:
+    """Check that a stat line parses into the expected columns."""
     raw = "0400\trepovec\trepovec\t64\t1700000000"
 
     stat = FileStat.parse(raw)
@@ -71,6 +75,7 @@ def test_filestat_parse_returns_expected_columns() -> None:
 
 
 def test_filestat_parse_strips_trailing_newline() -> None:
+    """Check that a trailing newline does not break parsing the size."""
     raw = "0750\troot\trepovec\t4096\t1700000000\n"
 
     stat = FileStat.parse(raw)
@@ -88,11 +93,13 @@ def test_filestat_parse_strips_trailing_newline() -> None:
     ],
 )
 def test_filestat_parse_rejects_wrong_field_count(broken: str) -> None:
+    """Check that a stat line with the wrong field count is rejected."""
     with pytest.raises(AssertionError, match="unexpected stat format"):
         FileStat.parse(broken)
 
 
 def test_filestat_parse_raises_value_error_for_non_numeric_size() -> None:
+    """Check that a non-numeric size raises ValueError."""
     raw = "0400\trepovec\trepovec\tnot-a-number\t1700000000"
 
     # ``int(size)`` propagates ``ValueError`` rather than wrapping it in an
@@ -105,6 +112,7 @@ def test_filestat_parse_raises_value_error_for_non_numeric_size() -> None:
 def test_filestat_parse_passes_through_blank_user_field() -> None:
     # The script's stat invocation always emits a username (or numeric
     # fallback), but the parser should not assume it is non-empty.
+    """Check that a blank user field is passed through unchanged."""
     raw = "0644\t\trepovec\t64\t1700000000"
 
     stat = FileStat.parse(raw)

@@ -243,9 +243,20 @@ and fails if any recipe chains two gate commands in one shell invocation without
 exempt, because a non-zero status there is an answer rather than a rejection.
 Both are mutation-proven.
 
-### 1.3 Lint routes: Clippy and Whitaker
+### 1.3 Lint routes: interrogate, Clippy and Whitaker
 
-`make lint` delegates to two routes and runs them in order. `lint-clippy`
+`make lint` depends on `make interrogate`, which requires a docstring on every
+module, class and function in the Python files under `integration-tests`,
+`scripts` and `tests`. The target runs interrogate 1.7.0 through `uv tool run`
+with `-vv --fail-under 100`, so it needs `uv` on the path, and it also fails on
+any `MISSED` row because the rounded percentage can hide a single gap. Add a
+new Python directory to `INTERROGATE_TARGETS` in the Makefile.
+`tests/workflow_contracts/interrogate_gate_test.py` holds the wiring: it checks
+that `lint` reaches the target, the pin and the flags, that every directory
+holding Python is a target, and that a failing or `MISSED` report fails the
+target.
+
+`make lint` then delegates to two routes and runs them in order. `lint-clippy`
 builds the documentation with `--cfg docsrs` and `-D warnings`, then runs
 Clippy across every target and feature with warnings denied. `lint-whitaker`
 runs the Whitaker Dylint suite over every workspace package.

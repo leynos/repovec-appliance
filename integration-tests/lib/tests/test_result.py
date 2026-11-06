@@ -21,6 +21,7 @@ def _result(
     stderr: str = "",
     cwd: str | None = None,
 ) -> CommandResult:
+    """Build a command result from keyword overrides of the defaults."""
     return CommandResult(
         argv=argv,
         exit_code=exit_code,
@@ -31,16 +32,19 @@ def _result(
 
 
 def test_ok_is_true_for_zero_exit() -> None:
+    """Check that a zero exit status reads as success."""
     assert _result(exit_code=0).ok is True, "ok must be True when exit_code is 0"
 
 
 def test_ok_is_false_for_non_zero_exit() -> None:
+    """Check that a non-zero exit status reads as failure."""
     assert _result(exit_code=1).ok is False, (
         "ok must be False when exit_code is non-zero"
     )
 
 
 def test_render_emits_command_and_exit_code_only_for_minimal_result() -> None:
+    """Check that a minimal result renders only the command and exit code."""
     rendered = _result().render()
 
     assert rendered == "command: echo hi\nexit_code: 0", (
@@ -49,6 +53,7 @@ def test_render_emits_command_and_exit_code_only_for_minimal_result() -> None:
 
 
 def test_render_quotes_argv_with_spaces() -> None:
+    """Check that arguments containing spaces are quoted."""
     rendered = _result(argv=("/bin/sh", "-c", "echo 'one two'")).render()
 
     assert rendered.startswith("command: /bin/sh -c 'echo '\"'\"'one two'\"'\"''"), (
@@ -57,6 +62,7 @@ def test_render_quotes_argv_with_spaces() -> None:
 
 
 def test_render_quotes_argv_with_shell_metacharacters() -> None:
+    """Check that arguments containing shell metacharacters are quoted."""
     rendered = _result(argv=("printf", "$X", ">file")).render()
 
     # ``shlex.join`` must quote both tokens so they do not look like a
@@ -66,18 +72,21 @@ def test_render_quotes_argv_with_shell_metacharacters() -> None:
 
 
 def test_render_omits_cwd_when_none() -> None:
+    """Check that no working directory line is rendered when it is unset."""
     rendered = _result(cwd=None).render()
 
     assert "cwd:" not in rendered, "render must omit the cwd line when cwd is None"
 
 
 def test_render_includes_cwd_when_set() -> None:
+    """Check that the working directory is rendered when it is set."""
     rendered = _result(cwd="/tmp").render()
 
     assert "cwd: /tmp" in rendered, "render must include the cwd line when cwd is set"
 
 
 def test_render_appends_stdout_block_only_when_present() -> None:
+    """Check that the stdout block is rendered when stdout is supplied."""
     rendered = _result(stdout="line1\nline2\n").render()
 
     assert rendered.endswith("stdout:\nline1\nline2"), (
@@ -89,6 +98,7 @@ def test_render_appends_stdout_block_only_when_present() -> None:
 
 
 def test_render_trims_trailing_whitespace_from_stream_blocks() -> None:
+    """Check that trailing whitespace is trimmed from the stdout block."""
     rendered = _result(stdout="payload\n\n\n").render()
 
     # ``rstrip()`` strips trailing whitespace; the block should not carry
@@ -99,6 +109,7 @@ def test_render_trims_trailing_whitespace_from_stream_blocks() -> None:
 
 
 def test_render_appends_stderr_block_when_present() -> None:
+    """Check that the stderr block is rendered when there is output."""
     rendered = _result(stderr="oops\n").render()
 
     assert rendered.endswith("stderr:\noops"), (
@@ -110,6 +121,7 @@ def test_render_appends_stderr_block_when_present() -> None:
 
 
 def test_render_orders_command_cwd_exit_stdout_stderr() -> None:
+    """Check the order of the rendered sections."""
     rendered = _result(
         argv=("ls",),
         exit_code=2,
@@ -129,6 +141,7 @@ def test_render_orders_command_cwd_exit_stdout_stderr() -> None:
 
 
 def test_result_is_frozen() -> None:
+    """Check that a result cannot be modified after creation."""
     result = _result()
     with pytest.raises(dataclasses_frozen_error()):
         result.exit_code = 99  # type: ignore[misc]

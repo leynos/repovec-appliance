@@ -140,13 +140,14 @@ jobs:
         run: make install-build-tools
       - name: Install Whitaker
         uses: leynos/shared-actions/.github/actions/install-whitaker@872f59f53717b5bebe8e24b2f4a7496b089a939a
-      - name: Lint
-        run: make lint
       - name: Setup uv
+        # Before the lint step: `make lint` runs interrogate through `uv`.
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
         with:
           python-version: '3.13'
           enable-cache: true
+      - name: Lint
+        run: make lint
       - name: Install mdtablefix for workflow contracts
         # The selection contract exercises the real formatter in a scratch Git
         # repository; tool probes cover the other Make invocation boundaries.

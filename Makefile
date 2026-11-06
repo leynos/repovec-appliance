@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint lint-clippy lint-whitaker whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie spelling build-docs-gate-helper validate-systemd integration-test integration-command-test test-workflow-contracts script-test install-build-tools check-build-tools _check-python _check-integration-prereqs _check-command-test-prereqs
+.PHONY: help all clean test build release lint lint-clippy lint-whitaker whitaker-lint typecheck fmt check-fmt markdownlint docs docs-lint docs-check ensure-cargo nixie spelling build-docs-gate-helper validate-systemd integration-test integration-command-test test-workflow-contracts script-test install-build-tools check-build-tools _check-python _check-integration-prereqs _check-command-test-prereqs interrogate
 
 
 CARGO ?= $(or $(shell command -v cargo 2>/dev/null),$(HOME)/.cargo/bin/cargo)
@@ -166,12 +166,35 @@ clean: ensure-cargo ## Remove build artefacts
 test: ensure-cargo check-build-tools script-test ## Run tests with warnings treated as errors
 	$(RUST_TEST_RUNNER) --cargo="$(CARGO)" --rust-flags=$(call shell_quote,$(GATE_RUSTFLAG_VALUE)) --test-flags="$(TEST_FLAGS)" --doctest-flags="$(DOCTEST_FLAGS)" --build-jobs="$(BUILD_JOBS)"
 
+# Interrogate measures docstring presence over every Python file the repository
+# owns. Add a new Python directory to INTERROGATE_TARGETS. No `--python` pin: a
+# managed interpreter would be downloaded, and a PyO3 build could link it.
+INTERROGATE_VERSION ?= 1.7.0
+INTERROGATE_TARGETS ?= integration-tests scripts tests
+# Level 2 prints a MISSED row per undocumented definition, which the
+# `interrogate` target fails on: the rounded percentage alone passes a lone gap.
+INTERROGATE_FLAGS ?= -vv --fail-under 100
+INTERROGATE = $(UV) tool run \
+	--from 'interrogate==$(INTERROGATE_VERSION)' interrogate
+
+# Interrogate rounds its percentage to one decimal, so `--fail-under 100` alone
+# passes a lone gap in a large repository; fail on any MISSED row as well.
+interrogate: ## Enforce complete Python docstring coverage
+	@report="$$($(INTERROGATE) $(INTERROGATE_FLAGS) $(INTERROGATE_TARGETS))"; \
+	  status=$$?; \
+	  printf '%s\n' "$$report"; \
+	  test "$$status" -eq 0 || exit "$$status"; \
+	  if printf '%s\n' "$$report" | grep -q '| *MISSED *|'; then \
+	    printf '%s\n' 'interrogate: undocumented definitions remain; see the MISSED rows above' >&2; \
+	    exit 1; \
+	  fi
+
 # A prerequisite list is unordered under `make -j`, so `lint` sequences the
 # two routes with recursive make. Each recipe line is a separate shell and
 # Make stops at the first rejection, so the Whitaker route cannot start
 # before the Clippy route has passed. Recursive make is used rather than
 # GNU Make 4.4's `.WAIT` because the Ubuntu 24.04 CI runners ship Make 4.3.
-lint: ## Run cargo doc, Clippy and the Whitaker Dylint suite
+lint: interrogate ## Run interrogate, cargo doc, Clippy and the Whitaker Dylint suite
 	$(MAKE) lint-clippy
 	$(MAKE) lint-whitaker
 

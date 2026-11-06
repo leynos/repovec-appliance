@@ -195,6 +195,25 @@ def join_continuations(lines: list[str]) -> list[str]:
 _DOUBLE_QUOTE_ESCAPES: Final = frozenset('$`"\\\n')
 
 
+def _read_quoted(line: str, start: int) -> tuple[str, int]:
+    """Read the quoted span that opens at ``start``; return its text and the next index."""
+    quote = line[start]
+    text = ""
+    index = start + 1
+    while index < len(line):
+        char = line[index]
+        if char == quote:
+            return text, index + 1
+        escaped = line[index + 1 : index + 2]
+        if quote == '"' and char == "\\" and escaped in _DOUBLE_QUOTE_ESCAPES:
+            char = escaped
+            index += 1
+        text += char
+        index += 1
+    message = f"unterminated {quote} quote in {line!r}"
+    raise ValueError(message)
+
+
 def shell_tokens(line: str) -> list[str]:
     """Split one shell line into words the way ``sh`` does, failing on bad quoting.
 
@@ -209,45 +228,25 @@ def shell_tokens(line: str) -> list[str]:
     ['RUSTFLAGS=-Cvar=$HOME a', 'cargo', 'build']
     """
     words: list[str] = []
-    word = ""
-    started = False
-    quote = ""
+    word: str | None = None
     index = 0
     while index < len(line):
         char = line[index]
-        if quote == "'":
-            if char == "'":
-                quote = ""
-            else:
-                word += char
-        elif quote == '"':
-            if char == '"':
-                quote = ""
-            elif char == "\\" and line[index + 1 : index + 2] in _DOUBLE_QUOTE_ESCAPES:
-                index += 1
-                word += line[index]
-            else:
-                word += char
-        elif char in "'\"":
-            quote = char
-            started = True
+        if char in "'\"":
+            text, index = _read_quoted(line, index)
+            word = (word or "") + text
         elif char == "\\" and index + 1 < len(line):
-            index += 1
-            word += line[index]
-            started = True
+            word = (word or "") + line[index + 1]
+            index += 2
         elif char.isspace():
-            if word or started:
+            if word is not None:
                 words.append(word)
-            word = ""
-            started = False
+            word = None
+            index += 1
         else:
-            word += char
-            started = True
-        index += 1
-    if quote:
-        message = f"unterminated {quote} quote in {line!r}"
-        raise ValueError(message)
-    if word or started:
+            word = (word or "") + char
+            index += 1
+    if word is not None:
         words.append(word)
     return words
 

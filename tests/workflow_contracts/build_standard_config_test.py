@@ -24,7 +24,6 @@ Run via ``make test-workflow-contracts``.
 from __future__ import annotations
 
 import re
-import tomllib
 
 import pytest
 
@@ -33,7 +32,6 @@ from build_standard_probe import (
     MOLD_FLAG,
     MOLD_SHA256SUMS_PATH,
     MOLD_VERSION_PATH,
-    REPO_ROOT,
     THREADS_FLAG,
     iter_keys,
     iter_strings,
@@ -207,21 +205,3 @@ def test_the_checksum_list_names_both_archives_for_the_pinned_version() -> None:
             f"checksum {digest!r} is not a lowercase 64-character SHA-256"
         )
 
-
-def test_development_builds_keep_no_incremental_state_debug_info_or_metadata() -> None:
-    """Scenario: the development footprint settings are dropped.
-
-    Invariant: the workspace manifest sets ``incremental = false`` and
-    ``debug = 0`` for the development profile, and the Cargo configuration
-    disables embedded metadata under ``[unstable]``. Both files are parsed,
-    so a reformat cannot break the check.
-    """
-    manifest = tomllib.loads((REPO_ROOT / "Cargo.toml").read_text(encoding="utf-8"))
-    dev = manifest.get("profile", {}).get("dev", {})
-    assert dev.get("incremental") is False, "profile.dev.incremental should be false"
-    assert dev.get("debug") == 0, "profile.dev.debug should be 0"
-    unstable = _config().get("unstable", {})
-    assert isinstance(unstable, dict), "the configuration should define [unstable]"
-    assert unstable.get("embed-metadata") is False, (
-        "[unstable].embed-metadata should be false"
-    )

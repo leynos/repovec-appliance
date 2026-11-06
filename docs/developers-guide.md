@@ -81,8 +81,7 @@ stable Cargo ignores the table. The trade-off is that a debugger sees no
 source-level debug information or line tables in a default development build
 and every rebuild recompiles whole crates. To debug, run with
 `CARGO_PROFILE_DEV_DEBUG=true`; to rebuild incrementally, set
-`CARGO_INCREMENTAL=1`. `build_standard_config_test.py` parses both files and
-holds the three settings.
+`CARGO_INCREMENTAL=1`. The Concordat rule is the check for the three settings.
 
 ### Quoting the composed flags
 

@@ -192,63 +192,21 @@ def join_continuations(lines: list[str]) -> list[str]:
     return [line for line in joined if line]
 
 
-_DOUBLE_QUOTE_ESCAPES: Final = frozenset('$`"\\\n')
-
-
-def _read_quoted(line: str, start: int) -> tuple[str, int]:
-    """Read the quoted span that opens at ``start``; return its text and the next index."""
-    quote = line[start]
-    text = ""
-    index = start + 1
-    while index < len(line):
-        char = line[index]
-        if char == quote:
-            return text, index + 1
-        escaped = line[index + 1 : index + 2]
-        if quote == '"' and char == "\\" and escaped in _DOUBLE_QUOTE_ESCAPES:
-            char = escaped
-            index += 1
-        text += char
-        index += 1
-    message = f"unterminated {quote} quote in {line!r}"
-    raise ValueError(message)
-
-
 def shell_tokens(line: str) -> list[str]:
-    """Split one shell line into words the way ``sh`` does, failing on bad quoting.
+    """Split one shell line into words, failing clearly on bad quoting.
 
-    ``shlex`` in POSIX mode keeps the backslash before a dollar sign or a backtick
-    inside double quotes, but a shell removes it. The recipes escape those two
-    characters when they compose a double-quoted ``RUSTFLAGS``, so the reader
-    must undo the escape for the contracts to see the caller's text.
+    POSIX ``shlex`` keeps the backslash before a dollar sign or a backtick inside
+    double quotes, but a shell removes it. The recipes escape those two
+    characters when they compose a double-quoted ``RUSTFLAGS``, so the escape is
+    undone here for the contracts to see the caller's text.
 
     Examples
     --------
     >>> shell_tokens('RUSTFLAGS="-Cvar=\\$HOME a" cargo build')
     ['RUSTFLAGS=-Cvar=$HOME a', 'cargo', 'build']
     """
-    words: list[str] = []
-    word: str | None = None
-    index = 0
-    while index < len(line):
-        char = line[index]
-        if char in "'\"":
-            text, index = _read_quoted(line, index)
-            word = (word or "") + text
-        elif char == "\\" and index + 1 < len(line):
-            word = (word or "") + line[index + 1]
-            index += 2
-        elif char.isspace():
-            if word is not None:
-                words.append(word)
-            word = None
-            index += 1
-        else:
-            word = (word or "") + char
-            index += 1
-    if word is not None:
-        words.append(word)
-    return words
+    words = shlex.split(line, comments=False, posix=True)
+    return [word.replace("\\$", "$").replace("\\`", "`") for word in words]
 
 
 def invocation(line: str) -> Invocation:

@@ -138,7 +138,10 @@ project:
     estate formatting profile, including the unstable options in
     `rustfmt.toml`. The `rust-toolchain.toml` file enforces the nightly
     toolchain, so the correct rustfmt version is automatically selected.
-  - `make lint` delegates to `lint-clippy` and then `lint-whitaker`.
+  - `make lint` first runs `make interrogate`, which requires complete
+    docstrings in every Python file under `integration-tests`, `scripts` and
+    `tests` (interrogate 1.7.0 with `--fail-under 100`, run through `uv`).
+    It then delegates to `lint-clippy` and then `lint-whitaker`.
     `lint-clippy` executes:
 
     ```sh

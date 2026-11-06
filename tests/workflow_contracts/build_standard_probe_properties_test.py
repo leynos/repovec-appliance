@@ -95,6 +95,7 @@ def reference_strings(value: object) -> list[str]:
 @SETTINGS
 @given(_NESTED)
 def test_iter_keys_matches_a_reference_walker(value: object) -> None:
+    """Check that key iteration matches a reference walker."""
     assert iter_keys(value) == reference_keys(value), (
         f"iter_keys disagreed for {value!r}"
     )
@@ -103,6 +104,7 @@ def test_iter_keys_matches_a_reference_walker(value: object) -> None:
 @SETTINGS
 @given(_NESTED)
 def test_iter_strings_matches_a_reference_walker(value: object) -> None:
+    """Check that string iteration matches a reference walker."""
     assert iter_strings(value) == reference_strings(value), (
         f"iter_strings disagreed for {value!r}"
     )
@@ -172,6 +174,7 @@ def test_even_backslash_run_is_not_a_continuation() -> None:
 @SETTINGS
 @given(st.lists(st.text(max_size=10), max_size=10))
 def test_join_continuations_is_idempotent(lines: list[str]) -> None:
+    """Check that joining continuations twice changes nothing more."""
     once = join_continuations(lines)
     twice = join_continuations(once)
 
@@ -213,6 +216,7 @@ def run_values(draw: DrawFn) -> tuple[str, list[str], list[str]]:
 def test_make_targets_matches_a_reference_predicate(
     case: tuple[str, list[str], list[str]],
 ) -> None:
+    """Check that make target detection matches a reference predicate."""
     run_value, expected_make, _ = case
 
     assert make_targets(run_value) == expected_make, f"make targets for {run_value!r}"
@@ -223,6 +227,7 @@ def test_make_targets_matches_a_reference_predicate(
 def test_cargo_subcommands_matches_a_reference_predicate(
     case: tuple[str, list[str], list[str]],
 ) -> None:
+    """Check that cargo subcommand detection matches a reference predicate."""
     run_value, _, expected_cargo = case
 
     assert cargo_subcommands(run_value) == expected_cargo, (
@@ -235,6 +240,7 @@ def test_cargo_subcommands_matches_a_reference_predicate(
 def test_run_value_compiles_matches_a_reference_predicate(
     case: tuple[str, list[str], list[str]],
 ) -> None:
+    """Check that run value compilation matches a reference predicate."""
     run_value, expected_make, expected_cargo = case
     expected = any(target in COMPILING_MAKE_TARGETS for target in expected_make) or any(
         subcommand in COMPILING_CARGO_SUBCOMMANDS for subcommand in expected_cargo
@@ -255,6 +261,7 @@ def test_run_value_compiles_matches_a_reference_predicate(
     )
 )
 def test_non_string_run_values_are_inert(value: object) -> None:
+    """Check that non-string run values are ignored."""
     assert make_targets(value) == [], f"{value!r} should yield no make targets"
     assert cargo_subcommands(value) == [], f"{value!r} should yield no cargo calls"
     assert run_value_compiles(value) is False, f"{value!r} should not compile"

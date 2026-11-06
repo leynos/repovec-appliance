@@ -118,7 +118,7 @@ def test_every_python_directory_is_a_target() -> None:
 
 
 def test_ci_installs_uv_before_it_runs_make_lint() -> None:
-    """Every job that runs `make lint` needs uv set up first, and one must run it."""
+    """Each job with an exact `make lint` step sets up uv first; one such job exists."""
     workflow = yaml.safe_load(CI.read_text(encoding="utf-8"))
     checked = 0
     for name, job in workflow["jobs"].items():

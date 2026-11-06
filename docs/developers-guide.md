@@ -118,6 +118,11 @@ change in failure semantics rather than a defect in generated code: a panic
 anywhere in the daemon aborts the whole process instead of unwinding to a
 handler or failing one task.
 
+Re-measured on `nightly-2026-11-06` on 2026-11-06 with
+`-Zcodegen-backend=cranelift` and `-C panic=unwind`: the `catch_unwind` probe
+still exits 101 with the panic escaping, and the spawned-thread probe still
+aborts with signal 6, while both pass under LLVM.
+
 Development builds therefore keep the LLVM backend. `.cargo/config.toml` names
 no codegen backend for any profile, and
 `tests/workflow_contracts/build_standard_config_test.py` refuses one, so the

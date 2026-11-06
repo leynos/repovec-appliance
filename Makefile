@@ -73,21 +73,27 @@ DOCTEST_FLAGS ?= --workspace --all-features
 # escapes the quote, and reopens it; `subst` performs that rewrite at Make
 # level so the shell only ever sees finished, escaped text.
 shell_quote = '$(subst ','\'',$1)'
+# Quote a value as the inside of one double-quoted shell word. Backslash, the
+# double quote, `$` and the backtick are the only characters a double-quoted
+# word treats specially, so each is escaped here at Make level and the shell
+# sees finished text. The recipes write the quotes around the call, which keeps
+# the composed flags readable by a static reader of the recipe.
+shell_dquote_escape = $(subst `,\`,$(subst $$,\$$,$(subst ",\",$(subst \,\\,$1))))
 # Gate routes deny warnings and take the standard, appended to whatever
 # `RUSTFLAGS` the caller set. The value is expanded here rather than in the
 # shell so `make --dry-run` prints the flags actually used, which the workflow
 # contracts evaluate.
 GATE_RUSTFLAG_VALUE := $(strip $(INHERITED_RUSTFLAGS) $(EFFECTIVE_RUST_FLAGS))
-GATE_RUSTFLAGS = RUSTFLAGS=$(call shell_quote,$(GATE_RUSTFLAG_VALUE))
+GATE_RUSTFLAGS = RUSTFLAGS="$(call shell_dquote_escape,$(GATE_RUSTFLAG_VALUE))"
 # A debug build keeps the caller's warning policy rather than imposing one,
 # but still takes the standard.
 DEBUG_RUSTFLAG_VALUE := $(strip $(INHERITED_RUSTFLAGS) $(STANDARD_RUSTFLAGS))
-DEBUG_RUSTFLAGS = RUSTFLAGS=$(call shell_quote,$(DEBUG_RUSTFLAG_VALUE))
+DEBUG_RUSTFLAGS = RUSTFLAGS="$(call shell_dquote_escape,$(DEBUG_RUSTFLAG_VALUE))"
 # Release builds take neither the parallel frontend nor `mold`. Assigning
 # `RUSTFLAGS` at all -- even to an empty inherited value -- displaces the
 # configuration file's `rustflags` tables, which is the whole mechanism. This
 # route must not depend on the build tools being installed.
-RELEASE_RUSTFLAGS = RUSTFLAGS=$(call shell_quote,$(INHERITED_RUSTFLAGS))
+RELEASE_RUSTFLAGS = RUSTFLAGS="$(call shell_dquote_escape,$(INHERITED_RUSTFLAGS))"
 # `-fuse-ld=mold` and `command -v mold` both resolve by PATH order, so the
 # pinned install prefix leads. An overridden BUILD_TOOLS_PREFIX is therefore
 # the prefix the linker actually comes from, not a hard-coded ~/.local.

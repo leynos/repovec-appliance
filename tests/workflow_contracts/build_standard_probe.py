@@ -192,9 +192,64 @@ def join_continuations(lines: list[str]) -> list[str]:
     return [line for line in joined if line]
 
 
+_DOUBLE_QUOTE_ESCAPES: Final = frozenset('$`"\\\n')
+
+
 def shell_tokens(line: str) -> list[str]:
-    """Split one shell line into words, failing clearly on bad quoting."""
-    return shlex.split(line, comments=False, posix=True)
+    """Split one shell line into words the way ``sh`` does, failing on bad quoting.
+
+    ``shlex`` in POSIX mode keeps the backslash before a dollar sign or a backtick
+    inside double quotes, but a shell removes it. The recipes escape those two
+    characters when they compose a double-quoted ``RUSTFLAGS``, so the reader
+    must undo the escape for the contracts to see the caller's text.
+
+    Examples
+    --------
+    >>> shell_tokens('RUSTFLAGS="-Cvar=\\$HOME a" cargo build')
+    ['RUSTFLAGS=-Cvar=$HOME a', 'cargo', 'build']
+    """
+    words: list[str] = []
+    word = ""
+    started = False
+    quote = ""
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if quote == "'":
+            if char == "'":
+                quote = ""
+            else:
+                word += char
+        elif quote == '"':
+            if char == '"':
+                quote = ""
+            elif char == "\\" and line[index + 1 : index + 2] in _DOUBLE_QUOTE_ESCAPES:
+                index += 1
+                word += line[index]
+            else:
+                word += char
+        elif char in "'\"":
+            quote = char
+            started = True
+        elif char == "\\" and index + 1 < len(line):
+            index += 1
+            word += line[index]
+            started = True
+        elif char.isspace():
+            if word or started:
+                words.append(word)
+            word = ""
+            started = False
+        else:
+            word += char
+            started = True
+        index += 1
+    if quote:
+        message = f"unterminated {quote} quote in {line!r}"
+        raise ValueError(message)
+    if word or started:
+        words.append(word)
+    return words
 
 
 def invocation(line: str) -> Invocation:

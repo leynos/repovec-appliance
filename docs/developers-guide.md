@@ -70,6 +70,28 @@ contracts are hermetic: they drive the real script with the real checksum and
 archive tools over an archive the test builds, stubbing only the download, host
 detection and toolchain installation.
 
+### Development build footprint
+
+The Concordat `rust-dev-build-footprint` rule keeps default development builds
+small. The workspace `Cargo.toml` sets `incremental = false` and `debug = 0` in
+`[profile.dev]`, which the test profile inherits, and `.cargo/config.toml` sets
+`[unstable] embed-metadata = false`, the native Cargo setting for dated
+nightlies from 2026-07-31; read the pin from `rust-toolchain.toml`, because
+stable Cargo ignores the table. The trade-off is that a debugger sees no
+source-level debug information or line tables in a default development build
+and every rebuild recompiles whole crates. To debug, run with
+`CARGO_PROFILE_DEV_DEBUG=true`; to rebuild incrementally, set
+`CARGO_INCREMENTAL=1`. `build_standard_config_test.py` parses both files and
+holds the three settings.
+
+### Quoting the composed flags
+
+The gate routes write `RUSTFLAGS="$(call shell_dquote_escape,...)"` rather than
+single-quoting the value, so the composed flags stay visible to a static reader
+of the recipe. The escape function covers the four characters a double-quoted
+shell word treats specially (backslash, double quote, `$` and the backtick),
+and the contract's property test checks that a caller's value arrives unchanged.
+
 ### Cranelift is not adopted
 
 The estate baseline prefers Cranelift as a development default where the

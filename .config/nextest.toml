@@ -24,3 +24,14 @@ global-timeout = "10m"
 [[profile.default.overrides]]
 filter = 'test(=opaque_secrets_and_observer_bounds_fail_to_compile)'
 slow-timeout = { period = "120s", terminate-after = 5 }
+
+# Tests that start a child cargo or rustc: the trybuild suite above and the
+# environment-policy lint UI test. They contend for the package-cache lock and
+# for build parallelism, so they run one at a time, each bounded by its own
+# allowance.
+[test-groups.nested-cargo-builds]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = 'binary(=compile_time) | binary(=environment_policy_lint_ui)'
+test-group = "nested-cargo-builds"

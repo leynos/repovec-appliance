@@ -17,9 +17,10 @@
 //! The fixture is not a workspace member and has no dependencies, so the run
 //! needs no network and compiles nothing but itself.
 
-use std::{path::PathBuf, process::Command};
-
-use tempfile::TempDir;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 /// Prohibited methods paired with the remedy the diagnostic must carry.
 const REPORTED_METHODS: [(&str, &str); 6] = [
@@ -47,14 +48,25 @@ fn fixture_manifest() -> PathBuf {
         .join("Cargo.toml")
 }
 
+/// The target directory the fixture lints into.
+///
+/// It sits under the repository's own `target`, which the build already warms
+/// and `cargo clean` removes, so the fixture's dependencies compile once and not
+/// once per run in a directory that is thrown away.
+fn fixture_target_directory() -> PathBuf {
+    repository_root()
+        .join("target")
+        .join("environment-policy-lint-ui")
+}
+
 /// Lint the fixture with the repository's Clippy configuration.
 ///
 /// The child's environment is composed explicitly: the target directory is
-/// redirected so the run leaves nothing behind, `RUSTFLAGS` is emptied so the
+/// shared with every run of this test, `RUSTFLAGS` is emptied so the
 /// caller's flags cannot change the diagnostics being asserted, and colour is
 /// disabled so the caller's `CARGO_TERM_COLOR` cannot interleave escape
 /// sequences with the text the assertions match.
-fn lint_fixture(target_directory: &TempDir) -> Result<String, String> {
+fn lint_fixture(target_directory: &Path) -> Result<String, String> {
     let output = Command::new(env!("CARGO"))
         .arg("clippy")
         .arg("--quiet")
@@ -64,11 +76,8 @@ fn lint_fixture(target_directory: &TempDir) -> Result<String, String> {
         .arg("-D")
         .arg("clippy::disallowed_methods")
         .env("CLIPPY_CONF_DIR", repository_root())
-        .env("CARGO_TARGET_DIR", target_directory.path())
-        .env(
-            "CARGO_BUILD_BUILD_DIR",
-            target_directory.path().join("build"),
-        )
+        .env("CARGO_TARGET_DIR", target_directory)
+        .env("CARGO_BUILD_BUILD_DIR", target_directory.join("build"))
         .env("RUSTFLAGS", "")
         .env("CARGO_TERM_COLOR", "never")
         .output()
@@ -104,8 +113,8 @@ fn diagnostic_block<'output>(diagnostics: &'output str, method: &str) -> Option<
 /// contributor is told what to do instead of only what not to do.
 #[test]
 fn every_prohibited_environment_method_is_reported_with_its_remedy() {
-    let target_directory = TempDir::new().expect("temporary target directory should be created");
-    let diagnostics = lint_fixture(&target_directory).expect("the fixture should fail Clippy");
+    let diagnostics =
+        lint_fixture(&fixture_target_directory()).expect("the fixture should fail Clippy");
 
     for (method, remedy) in REPORTED_METHODS {
         let block = diagnostic_block(&diagnostics, method);

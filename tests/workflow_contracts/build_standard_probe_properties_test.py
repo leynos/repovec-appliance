@@ -216,7 +216,7 @@ def run_values(draw: DrawFn) -> tuple[str, list[str], list[str]]:
 def test_make_targets_matches_a_reference_predicate(
     case: tuple[str, list[str], list[str]],
 ) -> None:
-    """Check that make target detection matches a reference predicate."""
+    """Check that make target detection matches the generated expected list."""
     run_value, expected_make, _ = case
 
     assert make_targets(run_value) == expected_make, f"make targets for {run_value!r}"
@@ -227,7 +227,7 @@ def test_make_targets_matches_a_reference_predicate(
 def test_cargo_subcommands_matches_a_reference_predicate(
     case: tuple[str, list[str], list[str]],
 ) -> None:
-    """Check that cargo subcommand detection matches a reference predicate."""
+    """Check that cargo subcommand detection matches the generated expected list."""
     run_value, _, expected_cargo = case
 
     assert cargo_subcommands(run_value) == expected_cargo, (
@@ -240,7 +240,7 @@ def test_cargo_subcommands_matches_a_reference_predicate(
 def test_run_value_compiles_matches_a_reference_predicate(
     case: tuple[str, list[str], list[str]],
 ) -> None:
-    """Check that run value compilation matches a reference predicate."""
+    """Check that run value compilation matches a check over the generated lists."""
     run_value, expected_make, expected_cargo = case
     expected = any(target in COMPILING_MAKE_TARGETS for target in expected_make) or any(
         subcommand in COMPILING_CARGO_SUBCOMMANDS for subcommand in expected_cargo

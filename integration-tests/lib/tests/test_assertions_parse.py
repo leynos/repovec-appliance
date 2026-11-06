@@ -18,7 +18,7 @@ from lib.assertions import FileStat, PasswdEntry
 
 
 def test_passwd_parse_returns_all_seven_columns() -> None:
-    """Check that a passwd line parses into all seven columns."""
+    """Check that a passwd line parses into the six fields the entry keeps."""
     raw = "repovec:x:996:993::/var/lib/repovec:/usr/sbin/nologin"
 
     entry = PasswdEntry.parse(raw)
@@ -75,7 +75,7 @@ def test_filestat_parse_returns_expected_columns() -> None:
 
 
 def test_filestat_parse_strips_trailing_newline() -> None:
-    """Check that a trailing newline is stripped from the stat line."""
+    """Check that a trailing newline does not break parsing the size."""
     raw = "0750\troot\trepovec\t4096\t1700000000\n"
 
     stat = FileStat.parse(raw)

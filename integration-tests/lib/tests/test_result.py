@@ -86,7 +86,7 @@ def test_render_includes_cwd_when_set() -> None:
 
 
 def test_render_appends_stdout_block_only_when_present() -> None:
-    """Check that the stdout block is rendered only when there is output."""
+    """Check that the stdout block is rendered when stdout is supplied."""
     rendered = _result(stdout="line1\nline2\n").render()
 
     assert rendered.endswith("stdout:\nline1\nline2"), (
@@ -98,7 +98,7 @@ def test_render_appends_stdout_block_only_when_present() -> None:
 
 
 def test_render_trims_trailing_whitespace_from_stream_blocks() -> None:
-    """Check that trailing whitespace is trimmed from the stream blocks."""
+    """Check that trailing whitespace is trimmed from the stdout block."""
     rendered = _result(stdout="payload\n\n\n").render()
 
     # ``rstrip()`` strips trailing whitespace; the block should not carry

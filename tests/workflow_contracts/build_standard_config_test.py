@@ -204,3 +204,4 @@ def test_the_checksum_list_names_both_archives_for_the_pinned_version() -> None:
         assert _SHA256_RE.match(digest), (
             f"checksum {digest!r} is not a lowercase 64-character SHA-256"
         )
+

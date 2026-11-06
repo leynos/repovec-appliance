@@ -45,6 +45,7 @@ EXPECTED_SELECTION: typ.Final[dict[str, object]] = {
     "output-path": "lcov.info",
     "format": "lcov",
     "with-ratchet": "true",
+    "baseline-rust-file": ".coverage-baseline-v2.rust",
     "publish-artefact": "false",
     "language": "rust",
     "all-targets": "true",

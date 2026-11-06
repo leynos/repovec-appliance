@@ -193,8 +193,20 @@ def join_continuations(lines: list[str]) -> list[str]:
 
 
 def shell_tokens(line: str) -> list[str]:
-    """Split one shell line into words, failing clearly on bad quoting."""
-    return shlex.split(line, comments=False, posix=True)
+    """Split one shell line into words, failing clearly on bad quoting.
+
+    POSIX ``shlex`` keeps the backslash before a dollar sign or a backtick inside
+    double quotes, but a shell removes it. The recipes escape those two
+    characters when they compose a double-quoted ``RUSTFLAGS``, so the escape is
+    undone here for the contracts to see the caller's text.
+
+    Examples
+    --------
+    >>> shell_tokens('RUSTFLAGS="-Cvar=\\$HOME a" cargo build')
+    ['RUSTFLAGS=-Cvar=$HOME a', 'cargo', 'build']
+    """
+    words = shlex.split(line, comments=False, posix=True)
+    return [word.replace("\\$", "$").replace("\\`", "`") for word in words]
 
 
 def invocation(line: str) -> Invocation:

@@ -68,12 +68,14 @@ UBICLOUD_PLACEMENT: typ.Final = {
     ("ci.yml", "coverage"): ("ubicloud-standard-2", 25),
 }
 
-#: Ubicloud jobs that answer main alone and therefore carry no fork fallback.
+#: Jobs that answer main alone and therefore carry no fork fallback. The
+#: coverage upload is GitHub-hosted: it blocks no one's work, so it needs no
+#: paid runner.
 #: A pull request cannot start their workflow, so a fallback arm here would
 #: only make it possible to widen the lane to a caller nobody reviewed. Pinned
 #: by value for the same reason as the table above.
 MAIN_ONLY_PLACEMENT: typ.Final = {
-    ("coverage-main.yml", "coverage-upload"): ("ubicloud-standard-2", 25),
+    ("coverage-main.yml", "coverage-upload"): ("ubuntu-latest", 25),
 }
 
 #: Jobs this repository does not place: thin callers of reusable workflows,

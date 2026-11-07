@@ -80,6 +80,8 @@ fn lint_fixture(target_directory: &Path) -> Result<String, String> {
         .env("CARGO_BUILD_BUILD_DIR", target_directory.join("build"))
         .env("RUSTFLAGS", "")
         .env("CARGO_TERM_COLOR", "never")
+        // The fixture has no dependencies, so nothing needs the network.
+        .env("CARGO_NET_OFFLINE", "true")
         .output()
         .map_err(|error| format!("cargo clippy should run: {error}"))?;
 

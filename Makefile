@@ -164,7 +164,6 @@ clean: ensure-cargo ## Remove build artefacts
 	$(CARGO) clean
 
 test: ensure-cargo check-build-tools script-test ## Run tests with warnings treated as errors
-	$(CARGO) fetch --locked
 	$(RUST_TEST_RUNNER) --cargo="$(CARGO)" --rust-flags=$(call shell_quote,$(GATE_RUSTFLAG_VALUE)) --test-flags="$(TEST_FLAGS)" --doctest-flags="$(DOCTEST_FLAGS)" --build-jobs="$(BUILD_JOBS)"
 
 # Interrogate measures docstring presence over every Python file the repository

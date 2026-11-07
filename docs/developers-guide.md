@@ -25,6 +25,23 @@ token-based Typos scanner cannot represent.
 `typos-config-builder` release the gate runs (currently `v0.1.3`). Raise it
 together with the regenerated `typos.toml`, never on its own.
 
+## Fetching dependencies before tests
+
+The environment-policy lint test starts its own `cargo clippy` on a fixture
+crate. Cargo resolves dependencies while it holds the package-cache lock in
+`$CARGO_HOME`, so a nested `cargo` that resolves cold can wait on another
+repository's build for many minutes. The fixture has no dependencies, so that
+spawn sets `CARGO_NET_OFFLINE=true` and needs nothing from the network.
+
+In CI, `ci.yml` and `coverage-main.yml` run `cargo fetch --locked` as an
+unconditional step before the test and coverage steps, with no `|| true`.
+`make test` does not fetch: its recipe must stay one runner command, which the
+workflow contracts hold. Run `cargo fetch --locked` yourself before a direct or
+offline run.
+
+The estate lint rule `nested-cargo-offline-tests` checks the CI steps and the
+spawn.
+
 ## Development build standard
 
 Development, test, lint, docs and typecheck builds use the pinned `mold` linker

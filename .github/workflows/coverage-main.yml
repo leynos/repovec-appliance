@@ -52,6 +52,9 @@ jobs:
       # pinned build tools. Install them before anything compiles.
       - name: Install build standard
         run: make install-build-tools
+      - name: Fetch dependencies
+        # Tests start their own cargo; fetch once so none resolves cold.
+        run: cargo fetch --locked
       # The selection is the baseline every pull request's ratchet is measured
       # against, so ci.yml's coverage step must match it field for field.
       - name: Generate coverage

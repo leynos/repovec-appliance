@@ -172,29 +172,52 @@ def _handover_violations(
     """
     if _with(trunk, "publish-baseline") != "never":
         return [f"{publisher} coverage must hand the baseline over (`never`)"]
-    artefact = _with(trunk, "baseline-artefact-name")
-    producer = next(
-        name
-        for name, job in jobs(publisher, document).items()
-        if trunk in typ.cast("list[Step]", job.get("steps", []))
-    )
-    receivers = [
-        step
-        for name, job in jobs(publisher, document).items()
-        if name != producer and producer in _needs(job)
-        for step in typ.cast("list[Step]", job.get("steps", []))
-        if calls(step, BASELINE_ACTION)
-        and artefact
-        and _with(step, "artefact-name") == artefact
-        and _with(step, "baseline-rust-file") == _with(trunk, "baseline-rust-file")
-        and _is_unconditional(step)
-    ]
-    if receivers:
+    producer = _producer(publisher, document, trunk)
+    if _receivers(publisher, document, producer, trunk):
         return []
     return [
         f"{publisher} hands the baseline over but no job that needs "
         f"{producer} runs publish-coverage-baseline unconditionally on its "
         "artefact and baseline path"
+    ]
+
+
+def _job_steps(job: dict[str, object]) -> list[Step]:
+    """Return a job's steps as a list."""
+    return typ.cast("list[Step]", job.get("steps", []))
+
+
+def _producer(publisher: str, document: Document, trunk: Step) -> str:
+    """Return the id of the job that holds the measuring step."""
+    return next(
+        name
+        for name, job in jobs(publisher, document).items()
+        if trunk in _job_steps(job)
+    )
+
+
+def _receives(receiver: Step, trunk: Step) -> bool:
+    """Return whether a step publishes what the measuring step hands over."""
+    artefact = _with(trunk, "baseline-artefact-name")
+    return bool(
+        calls(receiver, BASELINE_ACTION)
+        and artefact
+        and _with(receiver, "artefact-name") == artefact
+        and _with(receiver, "baseline-rust-file") == _with(trunk, "baseline-rust-file")
+        and _is_unconditional(receiver)
+    )
+
+
+def _receivers(
+    publisher: str, document: Document, producer: str, trunk: Step
+) -> list[Step]:
+    """Return the publisher steps, in jobs that need the producer, that receive."""
+    return [
+        step
+        for name, job in jobs(publisher, document).items()
+        if name != producer and producer in _needs(job)
+        for step in _job_steps(job)
+        if _receives(step, trunk)
     ]
 
 

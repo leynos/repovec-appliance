@@ -33,10 +33,13 @@ jobs:
   coverage-upload:
     name: coverage-upload
     # Main-only: no pull request can start this workflow, so it needs no fork
-    # fallback arm. The label is registered for actionlint in
-    # .github/actionlint.yaml.
-    runs-on: ubicloud-standard-2
-    timeout-minutes: 25
+    # fallback arm. This job measures and uploads on a GitHub-hosted runner,
+    # with no compiler cache (a hosted runner's sccache reaches only GitHub's
+    # store, which no Ubicloud lane reads). The two Ubicloud jobs below carry
+    # what the Ubicloud pull-request lane reads from main.
+    runs-on: ubuntu-latest
+    # A cold hosted build compiles everything with no cache.
+    timeout-minutes: 60
     # The CodeScene token lives in this environment, whose deployment policy
     # admits `main` alone; the environment contract holds it to this job.
     environment: codescene
@@ -48,6 +51,9 @@ jobs:
           persist-credentials: false
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@0eabb6bc07148981de5da395e30cd78d83f5c7c2
+        with:
+          use-sccache: 'false'
+          save-cache: 'false'
       # The coverage action runs the suite, whose Make preflight needs the
       # pinned build tools. Install them before anything compiles.
       - name: Install build standard
@@ -58,12 +64,16 @@ jobs:
       # The selection is the baseline every pull request's ratchet is measured
       # against, so ci.yml's coverage step must match it field for field.
       - name: Generate coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@0eabb6bc07148981de5da395e30cd78d83f5c7c2
+        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
         with:
           output-path: lcov.info
           format: lcov
           with-ratchet: 'true'
           baseline-rust-file: .coverage-baseline-v2.rust
+          # `coverage-baseline` saves the baseline on Ubicloud, where the
+          # pull-request lane reads it.
+          publish-baseline: never
+          baseline-artefact-name: coverage-baseline-handover
           publish-artefact: 'false'
           language: rust
           all-targets: 'true'
@@ -80,9 +90,57 @@ jobs:
       # trigger is widened.
       - name: Upload coverage data to CodeScene
         if: steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main'
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@0eabb6bc07148981de5da395e30cd78d83f5c7c2
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
         with:
           path: lcov.info
           format: lcov
           mode: upload
           access-token: ${{ secrets.CS_ACCESS_TOKEN }}
+
+  coverage-baseline:
+    name: coverage-baseline
+    # Saves the ratchet baseline the measuring job hands over, into the store
+    # the Ubicloud pull-request lane reads. It does no compiling. The action
+    # publishes only on a push to `main`.
+    needs: coverage-upload
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Publish the ratchet baseline
+        uses: leynos/shared-actions/.github/actions/publish-coverage-baseline@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        with:
+          artefact-name: coverage-baseline-handover
+          baseline-rust-file: .coverage-baseline-v2.rust
+
+  coverage-warmup:
+    name: coverage-warmup
+    # Build-only: compiles the pull-request lane's instrumented test binaries
+    # so their compiler-cache entries sit in main's Ubicloud scope, which a
+    # pull request reads only if a main job on Ubicloud writes it. It runs no
+    # test and uploads nothing.
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@0eabb6bc07148981de5da395e30cd78d83f5c7c2
+      - name: Install build standard
+        run: make install-build-tools
+      - name: Fetch dependencies
+        run: cargo fetch --locked
+      - name: Compile the instrumented tests
+        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        with:
+          output-path: lcov.info
+          format: lcov
+          baseline-rust-file: .coverage-baseline-v2.rust
+          language: rust
+          all-targets: 'true'
+          all-features: 'true'
+          build-only: 'true'

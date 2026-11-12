@@ -252,7 +252,7 @@ jobs:
         # Tests start their own cargo; fetch once so none resolves cold.
         run: cargo fetch --locked
       - name: Generate coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@0eabb6bc07148981de5da395e30cd78d83f5c7c2
+        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
         with:
           output-path: lcov.info
           format: lcov

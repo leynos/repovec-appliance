@@ -24,6 +24,7 @@ from coverage_workflow_reader import (
     calls,
     continues_on_error,
     holding_job,
+    jobs,
     steps,
     triggers,
 )
@@ -32,6 +33,16 @@ COVERAGE_ACTION: typ.Final[str] = (
     "leynos/shared-actions/.github/actions/generate-coverage"
 )
 ARTEFACT_ACTION: typ.Final[str] = "actions/upload-artifact"
+BASELINE_ACTION: typ.Final[str] = (
+    "leynos/shared-actions/.github/actions/publish-coverage-baseline"
+)
+
+#: The inputs through which the measuring job hands its baseline to a separate
+#: publisher. They say where the baseline is saved, not what is measured, so
+#: the lane-parity comparison ignores them.
+HANDOVER_KEYS: typ.Final[frozenset[str]] = frozenset(
+    {"publish-baseline", "baseline-artefact-name"}
+)
 
 #: The one condition a pull-request coverage job may carry. ``ci.yml`` also
 #: answers a push to main, where the publisher owns the measurement, so the
@@ -66,9 +77,15 @@ def coverage_steps(name: str, document: Document) -> list[Step]:
     Returns
     -------
     list[Step]
-        Every step calling the shared coverage action.
+        Every step calling the shared coverage action that measures. A
+        build-only step compiles the tests to warm a cache and measures
+        nothing, so it is not a coverage lane.
     """
-    return [step for step in steps(name, document) if calls(step, COVERAGE_ACTION)]
+    return [
+        step
+        for step in steps(name, document)
+        if calls(step, COVERAGE_ACTION) and _with(step, "build-only") != "true"
+    ]
 
 
 def _with(step: Step, key: str) -> object:
@@ -78,9 +95,15 @@ def _with(step: Step, key: str) -> object:
 
 
 def _selection(step: Step) -> dict[str, object]:
-    """Return a coverage step's inputs as a plain mapping."""
+    """Return a coverage step's measurement inputs as a plain mapping.
+
+    The hand-over inputs are left out: they decide where the baseline is
+    saved, not what is measured.
+    """
     inputs = step.get("with")
-    return dict(inputs) if isinstance(inputs, dict) else {}
+    if not isinstance(inputs, dict):
+        return {}
+    return {key: value for key, value in inputs.items() if key not in HANDOVER_KEYS}
 
 
 def _condition(scope: dict[str, object]) -> str:
@@ -128,6 +151,57 @@ def _pull_request_lane(
     return [
         f"{name} coverage {problem}" for problem, failed in conditions if failed
     ]
+
+
+def _is_unconditional(step: Step) -> bool:
+    """Return whether a step always runs and fails its job when it fails."""
+    return "if" not in step and not continues_on_error(step)
+
+
+def _handover_violations(
+    publisher: str, document: Document, trunk: Step
+) -> list[str]:
+    """Report a hand-over that no unconditional baseline publisher receives.
+
+    The measuring job runs on a hosted runner, whose cache store the Ubicloud
+    pull-request lane cannot read, so it publishes no baseline itself
+    (``publish-baseline: never``) and names an artefact. A job that needs it
+    must run ``publish-coverage-baseline`` on that artefact and the same
+    baseline path, with no condition, or the baseline would stop advancing
+    under a green run.
+    """
+    if _with(trunk, "publish-baseline") != "never":
+        return [f"{publisher} coverage must hand the baseline over (`never`)"]
+    artefact = _with(trunk, "baseline-artefact-name")
+    producer = next(
+        name
+        for name, job in jobs(publisher, document).items()
+        if trunk in typ.cast("list[Step]", job.get("steps", []))
+    )
+    receivers = [
+        step
+        for name, job in jobs(publisher, document).items()
+        if name != producer and producer in _needs(job)
+        for step in typ.cast("list[Step]", job.get("steps", []))
+        if calls(step, BASELINE_ACTION)
+        and artefact
+        and _with(step, "artefact-name") == artefact
+        and _with(step, "baseline-rust-file") == _with(trunk, "baseline-rust-file")
+        and _is_unconditional(step)
+    ]
+    if receivers:
+        return []
+    return [
+        f"{publisher} hands the baseline over but no job that needs "
+        f"{producer} runs publish-coverage-baseline unconditionally on its "
+        "artefact and baseline path"
+    ]
+
+
+def _needs(job: dict[str, object]) -> list[str]:
+    """Return the job ids a job waits for."""
+    needed = job.get("needs", [])
+    return [needed] if isinstance(needed, str) else list(typ.cast("list[str]", needed))
 
 
 def _trunk_violations(publisher: str, trunk: Step, upload: Step) -> list[str]:
@@ -194,7 +268,9 @@ def _push_writers(documents: dict[str, Document], publisher: str) -> list[str]:
     ]
 
 
-def _baseline_writers(documents: dict[str, Document]) -> list[str]:
+def _baseline_writers(
+    documents: dict[str, Document], publisher: str
+) -> list[str]:
     """Report a coverage step that may write the baseline off main's push.
 
     The default, ``auto``, saves the baseline only on a push to
@@ -207,6 +283,7 @@ def _baseline_writers(documents: dict[str, Document]) -> list[str]:
         for name, document in documents.items()
         for step in coverage_steps(name, document)
         if _with(step, "publish-baseline") not in {None, "auto"}
+        and not (name == publisher and _with(step, "publish-baseline") == "never")
     ]
 
 
@@ -232,6 +309,7 @@ def coverage_violations(documents: dict[str, Document]) -> list[str]:
         return [f"{publisher} must generate coverage exactly once"]
     trunk = trunk_steps[0]
     found = _trunk_violations(publisher, trunk, uploads[0][1])
+    found += _handover_violations(publisher, documents[publisher], trunk)
     lanes = [
         (name, document, step)
         for name, document in pull_request_closure(documents).items()
@@ -242,4 +320,4 @@ def coverage_violations(documents: dict[str, Document]) -> list[str]:
     for name, document, step in lanes:
         found += _pull_request_lane(name, document, step, trunk)
     found += _artefact_uploads(documents, _with(trunk, "output-path"))
-    return found + _baseline_writers(documents) + _push_writers(documents, publisher)
+    return found + _baseline_writers(documents, publisher) + _push_writers(documents, publisher)

@@ -29,6 +29,12 @@ environment. Its job permissions are `contents: read`.
   `cancel-in-progress: false`, declared once at workflow scope. A cancelled run
   abandons its upload and its baseline write, and a group repeated on a job is
   a deadlock GitHub resolves by cancelling the job.
+- The measuring job runs on a GitHub-hosted runner and sets
+  `publish-baseline: never` with a `baseline-artefact-name`. A job that needs it
+  (`coverage-baseline`, on Ubicloud) runs `publish-coverage-baseline` on that
+  artefact and the same baseline path, with no condition and no
+  `continue-on-error`; `coverage-warmup` compiles build-only and is not a
+  coverage lane.
 - The upload job declares `permissions: contents: read`, checks out with
   `persist-credentials: false`, and installs the build tools before the
   coverage action runs the suite.

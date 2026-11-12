@@ -24,7 +24,7 @@ from coverage_contract_support import (
     find_publisher,
     job_steps,
 )
-from coverage_input_rules import coverage_violations
+from coverage_input_rules import HANDOVER_KEYS, coverage_violations
 
 
 def test_repository_ratchets_like_main(documents: Documents) -> None:
@@ -115,7 +115,10 @@ def test_pull_request_coverage_job_is_read_only(documents: Documents) -> None:
 def test_repository_selection_is_pinned(documents: Documents) -> None:
     """Both lanes changing their selection together would pass parity alone."""
     found = coverage_step(find_publisher(documents)[0]).get("with")
-    assert found == EXPECTED_SELECTION, f"coverage selection is {found}"
+    measured = {
+        key: value for key, value in (found or {}).items() if key not in HANDOVER_KEYS
+    }
+    assert measured == EXPECTED_SELECTION, f"coverage selection is {found}"
 
 
 def test_both_lanes_drifting_together_is_refused(documents: Documents) -> None:
@@ -207,3 +210,31 @@ def test_publisher_generates_coverage_once(documents: Documents) -> None:
     found = coverage_violations(documents)
     expected = [f"{PUBLISHER} must generate coverage exactly once"]
     assert found == expected, f"unexpected violations: {found}"
+
+
+def test_publisher_must_hand_the_baseline_over(documents: Documents) -> None:
+    """A measuring job that saves its own baseline would save it off Ubicloud."""
+    coverage_step(documents[PUBLISHER])["with"]["publish-baseline"] = "auto"  # type: ignore[index]
+    assert_reports(coverage_violations, documents, "must hand the baseline over")
+
+
+def test_handed_over_baseline_needs_an_unconditional_receiver(
+    documents: Documents,
+) -> None:
+    """Without a publisher job the baseline stops advancing under a green run."""
+    publisher = typ.cast("dict[str, dict[str, object]]", documents[PUBLISHER]["jobs"])
+    receiver = publisher["coverage-baseline"]
+    receiver["steps"][0]["if"] = "github.ref == 'refs/heads/other'"  # type: ignore[index]
+    assert_reports(
+        coverage_violations, documents, "runs publish-coverage-baseline unconditionally"
+    )
+    del receiver["steps"][0]["if"]  # type: ignore[index]
+    receiver["steps"][0]["with"]["baseline-rust-file"] = ".other"  # type: ignore[index]
+    assert_reports(
+        coverage_violations, documents, "runs publish-coverage-baseline unconditionally"
+    )
+
+
+def test_warm_up_is_not_a_coverage_lane(documents: Documents) -> None:
+    """A build-only step measures nothing, so the publisher still generates once."""
+    assert_clean(coverage_violations, documents)

@@ -609,6 +609,17 @@ and is neither uploaded nor published. A push to `main` runs
 `coverage-main.yml`, the single publisher, which refreshes the ratchet baseline
 and uploads the report to CodeScene under the `codescene` environment.
 
+The publisher is split three ways. `coverage-upload` measures and uploads on a
+GitHub-hosted runner with no compiler cache. Because a baseline saved there
+would land in GitHub's store, which the Ubicloud pull-request lane cannot read,
+it sets `publish-baseline: never` and hands the figure over as the
+`coverage-baseline-handover` artefact. `coverage-baseline`, on
+`ubicloud-standard-2`, needs it and runs `publish-coverage-baseline` on that
+artefact and the same baseline path; the contract refuses a hand-over with no
+unconditional receiver. `coverage-warmup`, also on Ubicloud, compiles the
+pull-request lane's tests build-only (a build-only step is not a coverage lane
+to the contracts), so main's Ubicloud compiler cache stays warm.
+
 The two lanes must select the same measurement, at the same pin, or the ratchet
 compares one thing with another. The contracts under `tests/workflow_contracts`
 read both workflows and refuse: a pull request lane that reaches CodeScene or

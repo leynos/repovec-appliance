@@ -110,9 +110,9 @@ and the contract's property test checks that a caller's value arrives unchanged.
 
 ### Cranelift is not adopted
 
-The estate baseline prefers Cranelift as a development default where the
-suite passes under it. This repository's does not, and the exclusion is recorded
-with its measurement rather than left as a policy preference.
+The estate baseline prefers Cranelift as a development default where the suite
+passes under it. This repository's does not, and the exclusion is recorded with
+its measurement rather than left as a policy preference.
 
 An earlier version of this section rested on a `catch_unwind` probe and a
 spawned-thread probe. Those checked the toolchain, not the product, and the
@@ -124,13 +124,14 @@ Measured on `nightly-2026-11-13` on 2026-11-13, on the same commit, with
 `CARGO_PROFILE_DEV_CODEGEN_BACKEND=cranelift` and
 `CARGO_PROFILE_TEST_CODEGEN_BACKEND=cranelift`:
 
-- Under LLVM, `cargo nextest run --workspace --all-targets --all-features
-  --no-fail-fast` ran 629 tests and all passed (4 skipped).
+- Under LLVM,
+  `cargo nextest run --workspace --all-targets --all-features --no-fail-fast`
+  ran 629 tests and all passed (4 skipped).
 - Under Cranelift, the same command does not build: the `github_oauth_client`
-  test target of `repovecd` fails to link, with `mold: error: undefined symbol:
-  aws_lc_0_42_0_*` from `aws-lc-rs` and `jsonwebtoken`. Those come in through
-  the `oauth2-test-server` development dependency. The `repovecd` binary itself
-  links under Cranelift.
+  test target of `repovecd` fails to link, with
+  `mold: error: undefined symbol: aws_lc_0_42_0_*` from `aws-lc-rs` and
+  `jsonwebtoken`. Those come in through the `oauth2-test-server` development
+  dependency. The `repovecd` binary itself links under Cranelift.
 - Excluding `repovecd`, the other 580 tests passed under Cranelift (4 skipped).
 - The doctests passed under Cranelift.
 

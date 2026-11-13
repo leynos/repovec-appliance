@@ -265,12 +265,13 @@ action; they are not quality targets.
   `/etc/repovec` note, the explicit instruction that operators must not loosen
   modes, and the statement that daemons refuse startup on live ownership or
   confidentiality failures) and documents `repovec-provision.service` in the
-  appliance target section. `docs/adr-001-repovec-directory-provisioning.md`
-  records the decision in Y-Statement format (tmpfiles+sysusers over an
-  imperative helper or unit `StateDirectory=`; the install-time
-  `repovec-provision.service` trigger and sysusers-before-tmpfiles ordering;
-  `0700` data tree; `qdrant-storage` `root:root` and its rootless dependency;
-  single authority for `/etc/repovec`; live pre-flight as runtime backstop).
+  appliance target section.
+  `docs/adrs/adr-0001-repovec-directory-provisioning.md` records the decision
+  in Y-Statement format (tmpfiles+sysusers over an imperative helper or unit
+  `StateDirectory=`; the install-time `repovec-provision.service` trigger and
+  sysusers-before-tmpfiles ordering; `0700` data tree; `qdrant-storage`
+  `root:root` and its rootless dependency; single authority for `/etc/repovec`;
+  live pre-flight as runtime backstop).
   `docs/repovec-appliance-technical-design.md` references the ADR from the
   service-layout section, and roadmap item `1.3.3` is marked complete.
 - [x] Milestone 6: commit, push, and mark roadmap item done. Completed

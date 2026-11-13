@@ -146,7 +146,7 @@ correct ordering and dependency declarations.
     contract (drift-guarded, in the `systemd-gate`) and runs a live
     fail-closed ownership pre-flight at daemon startup. The ownership/mode
     contract is documented in the users guide; the provisioning decision is
-    recorded in `adr-001-repovec-directory-provisioning.md`.
+    recorded in `adrs/adr-0001-repovec-directory-provisioning.md`.
 
 ## 2. Repository lifecycle
 

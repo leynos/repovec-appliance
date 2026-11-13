@@ -386,7 +386,7 @@ declarations after an asset update or directory drift. The unit must not set
 Restarting the provisioning unit also restarts active consumers that require
 it. The contract, alternatives, and the `qdrant-storage` root-ownership
 dependency are recorded in
-[ADR-001: Provision the `repovec` system user and private directory tree](adr-001-repovec-directory-provisioning.md).
+[ADR-001: Provision the `repovec` system user and private directory tree](adrs/adr-0001-repovec-directory-provisioning.md).
 
 Provisioning is a *requirement*, not an ordering hint. `After=` orders start
 jobs but does not cancel a dependent start job when the earlier unit fails, so

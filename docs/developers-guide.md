@@ -119,16 +119,17 @@ spawned-thread probe. Those checked the toolchain, not the product, and the
 section no longer relies on them. No test in the workspace needs a panic to
 unwind.
 
-Measured on `nightly-2026-11-13` on 2026-11-13, on the same commit, with
-`CARGO_UNSTABLE_CODEGEN_BACKEND=true`,
-`CARGO_PROFILE_DEV_CODEGEN_BACKEND=cranelift` and
-`CARGO_PROFILE_TEST_CODEGEN_BACKEND=cranelift`:
+Measured on `nightly-2026-11-13` on 2026-11-13, on the same commit, with the
+standard flags:
 
-- Under LLVM,
+- Under LLVM, with no backend variables set,
   `cargo nextest run --workspace --all-targets --all-features --no-fail-fast`
   ran 629 tests and all passed (4 skipped).
-- Under Cranelift, the same command does not build: the `github_oauth_client`
-  test target of `repovecd` fails to link, with
+- Under Cranelift, the same command with
+  `CARGO_UNSTABLE_CODEGEN_BACKEND=true`,
+  `CARGO_PROFILE_DEV_CODEGEN_BACKEND=cranelift` and
+  `CARGO_PROFILE_TEST_CODEGEN_BACKEND=cranelift` does not build: the
+  `github_oauth_client` test target of `repovecd` fails to link, with
   `mold: error: undefined symbol: aws_lc_0_42_0_*` from `aws-lc-rs` and
   `jsonwebtoken`. Those come in through the `oauth2-test-server` development
   dependency. The `repovecd` binary itself links under Cranelift.

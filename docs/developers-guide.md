@@ -110,42 +110,36 @@ and the contract's property test checks that a caller's value arrives unchanged.
 
 ### Cranelift is not adopted
 
-The estate baseline prefers Cranelift as a development default where the
-repository is compatible with it. This repository is not, and the exclusion is
-recorded with its reproduction rather than left as a policy preference.
+The estate baseline prefers Cranelift as a development default where the suite
+passes under it. This repository's does not, and the exclusion is recorded with
+its measurement rather than left as a policy preference.
 
-Measured on `x86_64-unknown-linux-gnu` with the pinned `nightly-2026-03-12`,
-adding `-Zcodegen-backend=cranelift` to the standard flags compiles the
-workspace and passes the full suite: 716 tests across 25 test targets,
-including the trybuild compile-fail fixtures and doctests, with no failures.
-Code generation is therefore sound for everything the suite exercises.
+An earlier version of this section rested on a `catch_unwind` probe and a
+spawned-thread probe. Those checked the toolchain, not the product, and the
+section no longer relies on them. No test in the workspace needs a panic to
+unwind.
 
-Panic containment is not. A probe that calls `panic!` inside
-`std::panic::catch_unwind` exits 101 with the panic escaping to the process, so
-the call never returns; adding `-C panic=unwind` and
-`-C force-unwind-tables=yes` does not change the outcome. A probe that panics
-on a spawned thread aborts the process with
-`fatal runtime error: failed to initiate panic, error 5, aborting` (signal 6).
-The same probes pass under the default LLVM backend. `#[should_panic]` still
-reports a pass, so a suite of `should_panic` tests alone does not detect the
-difference.
+Measured on `nightly-2026-11-13` on 2026-11-13, on the same commit, with the
+standard flags:
 
-The scope is unwinding on this target and toolchain, and the consequence is a
-change in failure semantics rather than a defect in generated code: a panic
-anywhere in the daemon aborts the whole process instead of unwinding to a
-handler or failing one task.
-
-Re-measured on `nightly-2026-11-06` on 2026-11-06 with
-`-Zcodegen-backend=cranelift` and `-C panic=unwind`: the `catch_unwind` probe
-still exits 101 with the panic escaping, and the spawned-thread probe still
-aborts with signal 6, while both pass under LLVM.
+- Under LLVM, with no backend variables set,
+  `cargo nextest run --workspace --all-targets --all-features --no-fail-fast`
+  ran 629 tests and all passed (4 skipped).
+- Under Cranelift, the same command with
+  `CARGO_UNSTABLE_CODEGEN_BACKEND=true`,
+  `CARGO_PROFILE_DEV_CODEGEN_BACKEND=cranelift` and
+  `CARGO_PROFILE_TEST_CODEGEN_BACKEND=cranelift` does not build: the
+  `github_oauth_client` test target of `repovecd` fails to link, with
+  `mold: error: undefined symbol: aws_lc_0_42_0_*` from `aws-lc-rs` and
+  `jsonwebtoken`. Those come in through the `oauth2-test-server` development
+  dependency. The `repovecd` binary itself links under Cranelift.
+- Excluding `repovecd`, the other 580 tests passed under Cranelift (4 skipped).
+- The doctests passed under Cranelift.
 
 Development builds therefore keep the LLVM backend. `.cargo/config.toml` names
 no codegen backend for any profile, and
-`tests/workflow_contracts/build_standard_config_test.py` refuses one, so the
-exclusion is enforced rather than remembered. Revisit the decision only when
-the backend supports unwinding on the pinned nightly; adopt it only after these
-probes and the full suite pass.
+`tests/workflow_contracts/build_standard_config_test.py` refuses one. Revisit
+the decision when the `repovecd` test target links under Cranelift.
 
 ## Normative references
 

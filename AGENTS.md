@@ -212,10 +212,12 @@ project:
   `make typecheck` and `make validate-systemd` use the parallel `rustc`
   frontend configured in `.cargo/config.toml`, and on Linux also the pinned
   `mold` linker; a bare `cargo build` on Linux therefore needs the pinned
-  `mold` on `PATH` too. Other platforms keep their platform linker.
-  `make release` deliberately uses neither and does not need the tools. See
-  "Development build standard" in `docs/developers-guide.md`. Development
-  builds use the LLVM backend. Cranelift is not adopted, and
+  `mold` on `PATH` too, unless `RUSTFLAGS` is set in the environment, which
+  displaces the configuration file's flags. Other platforms keep their platform
+  linker. `make release` deliberately adds neither the parallel frontend nor
+  `mold`, so it does not need the tools, but it keeps any inherited `RUSTFLAGS`
+  unchanged. See "Development build standard" in `docs/developers-guide.md`.
+  Development builds use the LLVM backend. Cranelift is not adopted, and
   `.cargo/config.toml` names no codegen backend; see "Cranelift is not adopted"
   in `docs/developers-guide.md`.
 - Run `make check-fmt`, `make lint`, and `make test` before committing. These
@@ -377,12 +379,14 @@ project:
   `mockable::DefaultEnv` supplied at the production composition root and
   `mockable::MockEnv` in tests. A narrow closure seam of the same shape is
   acceptable where a trait object would be disproportionate. Production code
-  must not reach for `std::env::var`/`var_os` outside that composition root.
-  This repository does not depend on `mockable`; its accepted forms are the
-  ones in "Choosing a seam" in `docs/developers-guide.md`, namely passing the
-  resolved value or injecting a narrow reader closure. `clippy.toml` disallows
-  `std::env::var`, `var_os`, `vars`, `vars_os`, `set_var` and `remove_var`, and
-  the only permitted read is at a composition root behind an item-scoped
+  must not reach for `std::env::var`/`var_os` outside that composition root. The
+  `mockable` names above describe the template's form and are not a
+  requirement of this repository, which does not depend on `mockable`. Here the
+  rule is met by the accepted seams in "Choosing a seam" in
+  `docs/developers-guide.md`: passing the resolved value or injecting a narrow
+  reader closure. `clippy.toml` disallows `std::env::var`, `var_os`, `vars`,
+  `vars_os`, `set_var` and `remove_var`, and the only permitted read is at a
+  composition root behind an item-scoped
   `#[expect(clippy::disallowed_methods, reason = "...")]`.
 - **Process-wide locks are not an escape hatch.** Serializing environment
   mutation behind a shared `Mutex`, `OnceLock`, or `serial_test` attribute is

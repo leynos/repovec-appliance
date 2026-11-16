@@ -199,39 +199,59 @@ fn validate_tmpfiles_entries(
     let mut satisfied = vec![false; contract.len()];
 
     for (line_index, raw_line) in tmpfiles.lines().enumerate() {
-        let line_number = line_index + 1;
-        let Some(entry) = parser::tmpfiles_entry(raw_line, TMPFILES_ASSET, line_number)? else {
-            continue;
-        };
-
-        let path = entry.path.as_str();
-        let Some((index, spec)) = contract
-            .iter()
-            .enumerate()
-            .find(|(_, spec)| spec.path.as_str() == path)
-        else {
-            // A config-root entry violates the single-authority invariant (SI-4):
-            // the libexec helper owns /etc/repovec, so the tmpfiles asset must
-            // never declare it. Anything else outside the contract is just an
-            // unexpected (undeclared) directory.
-            return Err(unexpected_tmpfiles_path_error(path, paths));
-        };
-
-        compare_spec(spec, &entry, line_number)?;
-
+        let matched = check_tmpfiles_line(raw_line, line_index + 1, paths, contract)?;
         // `index` comes from enumerating the contract, and `satisfied` is
         // allocated with exactly the contract's length, so the slot exists.
         // `get_mut` is used rather than indexing so a future change to either
         // length becomes a visible no-op instead of a panic.
-        if let Some(is_satisfied) = satisfied.get_mut(index) {
+        if let Some(is_satisfied) = matched.and_then(|index| satisfied.get_mut(index)) {
             *is_satisfied = true;
         }
     }
 
-    // Report the first contract entry with no asset line, searching in contract
-    // order rather than in hash order. The operator sees the same missing path
-    // on every run, and it is the first one in the documented layout.
-    for (spec, is_satisfied) in contract.iter().zip(&satisfied) {
+    require_every_entry(contract, &satisfied)
+}
+
+/// Checks one tmpfiles line against the contract and returns the index of the contract entry it
+/// satisfies.
+///
+/// Blank lines and comments satisfy nothing and yield `None`.
+fn check_tmpfiles_line(
+    raw_line: &str,
+    line_number: usize,
+    paths: &RuntimePaths,
+    contract: &[DirectorySpec],
+) -> Result<Option<usize>, DirectoryLayoutError> {
+    let Some(entry) = parser::tmpfiles_entry(raw_line, TMPFILES_ASSET, line_number)? else {
+        return Ok(None);
+    };
+
+    let path = entry.path.as_str();
+    let Some((index, spec)) = contract
+        .iter()
+        .enumerate()
+        .find(|(_, spec)| spec.path.as_str() == path)
+    else {
+        // A config-root entry violates the single-authority invariant (SI-4):
+        // the libexec helper owns /etc/repovec, so the tmpfiles asset must
+        // never declare it. Anything else outside the contract is just an
+        // unexpected (undeclared) directory.
+        return Err(unexpected_tmpfiles_path_error(path, paths));
+    };
+
+    compare_spec(spec, &entry, line_number)?;
+    Ok(Some(index))
+}
+
+/// Reports the first contract entry with no asset line, or `Ok` when every entry was seen.
+fn require_every_entry(
+    contract: &[DirectorySpec],
+    satisfied: &[bool],
+) -> Result<(), DirectoryLayoutError> {
+    // Search in contract order rather than in hash order. The operator sees the
+    // same missing path on every run, and it is the first one in the documented
+    // layout.
+    for (spec, is_satisfied) in contract.iter().zip(satisfied) {
         if !is_satisfied {
             return Err(DirectoryLayoutError::MissingDirectoryEntry {
                 path: spec.path.clone(),

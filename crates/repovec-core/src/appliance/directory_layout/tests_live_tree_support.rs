@@ -72,6 +72,27 @@ impl IdentityExpectation {
 /// turns the assertion into a no-op on such a host.
 fn mismatched_id(id: u32) -> u32 { id.wrapping_add(1) }
 
+/// Creates the data and config directories under `root` with contract-correct modes.
+///
+/// Provisioning a valid tree lets each test seed exactly one mismatch.
+fn provision_tree(root: &Dir) -> Result<(), io::Error> {
+    for child in DATA_CHILDREN {
+        root.create_dir_all(format!("var/lib/repovec/{child}"))?;
+    }
+    root.create_dir_all("etc/repovec")?;
+
+    for child in DATA_CHILDREN {
+        set_mode(root, &format!("var/lib/repovec/{child}"), 0o700)?;
+    }
+    set_mode(root, "etc/repovec", 0o750)
+}
+
+/// Resolves `relative` under the scratch directory as a UTF-8 path, naming `what` on failure.
+fn utf8_root(temp: &TempDir, relative: &str, what: &str) -> Result<Utf8PathBuf, io::Error> {
+    Utf8PathBuf::from_path_buf(temp.path().join(relative))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, format!("{what} is not UTF-8")))
+}
+
 /// A scratch tree provisioned to the live-layout contract.
 pub(super) struct LiveTree {
     temp: TempDir,
@@ -87,23 +108,10 @@ impl LiveTree {
             .to_str()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "temp path is not UTF-8"))?;
         let root = Dir::open_ambient_dir(root_path, ambient_authority())?;
+        provision_tree(&root)?;
 
-        for child in DATA_CHILDREN {
-            root.create_dir_all(format!("var/lib/repovec/{child}"))?;
-        }
-        root.create_dir_all("etc/repovec")?;
-
-        // Provision the tree with contract-correct modes so each test seeds
-        // exactly one mismatch on an otherwise valid fixture.
-        for child in DATA_CHILDREN {
-            set_mode(&root, &format!("var/lib/repovec/{child}"), 0o700)?;
-        }
-        set_mode(&root, "etc/repovec", 0o750)?;
-
-        let config_root = Utf8PathBuf::from_path_buf(temp.path().join("etc/repovec"))
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "config root is not UTF-8"))?;
-        let data_root = Utf8PathBuf::from_path_buf(temp.path().join("var/lib/repovec"))
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "data root is not UTF-8"))?;
+        let config_root = utf8_root(&temp, "etc/repovec", "config root")?;
+        let data_root = utf8_root(&temp, "var/lib/repovec", "data root")?;
 
         Ok(Self {
             temp,

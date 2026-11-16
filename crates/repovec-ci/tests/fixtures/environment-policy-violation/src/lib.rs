@@ -31,3 +31,6 @@ pub unsafe fn set(name: &str, value: &str) { unsafe { std::env::set_var(name, va
 ///
 /// The caller must ensure no other thread is reading the environment.
 pub unsafe fn remove(name: &str) { unsafe { std::env::remove_var(name) } }
+
+/// Change the working directory of the current process.
+pub fn change_directory(path: &str) -> std::io::Result<()> { std::env::set_current_dir(path) }

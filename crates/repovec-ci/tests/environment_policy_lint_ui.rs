@@ -2,7 +2,7 @@
 //!
 //! The sibling contract test reads the configuration files. This test runs the
 //! lint: it points Clippy at `tests/fixtures/environment-policy-violation`,
-//! which calls all six prohibited methods, with `CLIPPY_CONF_DIR` set to the
+//! which calls all seven prohibited methods, with `CLIPPY_CONF_DIR` set to the
 //! repository root so the checked-in `clippy.toml` is the configuration in
 //! force. A configuration that parses but never fires would pass the contract
 //! test and fail this one.
@@ -23,13 +23,17 @@ use std::{
 };
 
 /// Prohibited methods paired with the remedy the diagnostic must carry.
-const REPORTED_METHODS: [(&str, &str); 6] = [
+const REPORTED_METHODS: [(&str, &str); 7] = [
     ("std::env::var", "inject an environment reader"),
     ("std::env::var_os", "inject an environment reader"),
     ("std::env::vars", "inject an environment reader"),
     ("std::env::vars_os", "inject an environment reader"),
     ("std::env::set_var", "use a stub environment in tests"),
     ("std::env::remove_var", "use a stub environment in tests"),
+    (
+        "std::env::set_current_dir",
+        "process-wide working directory; pass the directory in or use Command::current_dir",
+    ),
 ];
 
 /// Return the repository root, which is where `clippy.toml` lives.
@@ -110,7 +114,7 @@ fn diagnostic_block<'output>(diagnostics: &'output str, method: &str) -> Option<
 
 /// Scenario: a contributor calls a prohibited method and runs Clippy.
 ///
-/// Invariant: every one of the six methods is reported as an error, and each
+/// Invariant: every one of the seven methods is reported as an error, and each
 /// diagnostic carries the remedy `clippy.toml` pairs with that method, so the
 /// contributor is told what to do instead of only what not to do.
 #[test]

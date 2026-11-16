@@ -1451,7 +1451,7 @@ Three tests in `repovec-ci` keep this from decaying.
 `environment_access_policy_contract` reads the checked-in configuration and
 fails if an entry, the deny, a crate's lint inheritance, or the lint gate's
 scope is removed. `environment_policy_lint_ui` runs Clippy over a fixture
-package that calls all six methods and asserts each is reported with its
+package that calls all seven methods and asserts each is reported with its
 remedy, so a configuration that parses but never fires is caught too.
 `environment_policy_source_scan` parses every workspace source and rejects any
 that allows a protected lint, because a crate-level

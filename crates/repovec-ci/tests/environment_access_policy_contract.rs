@@ -44,13 +44,17 @@ const WORKSPACE_MANIFEST: &str =
 const MAKEFILE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Makefile"));
 
 /// Prohibited environment methods paired with the remedy Clippy reports.
-const REQUIRED_ENVIRONMENT_METHODS: [(&str, &str); 6] = [
+const REQUIRED_ENVIRONMENT_METHODS: [(&str, &str); 7] = [
     ("std::env::var", "inject an environment reader"),
     ("std::env::var_os", "inject an environment reader"),
     ("std::env::vars", "inject an environment reader"),
     ("std::env::vars_os", "inject an environment reader"),
     ("std::env::set_var", "use a stub environment in tests"),
     ("std::env::remove_var", "use a stub environment in tests"),
+    (
+        "std::env::set_current_dir",
+        "process-wide working directory; pass the directory in or use Command::current_dir",
+    ),
 ];
 
 /// Workspace member manifests, keyed by the path the workspace declares.

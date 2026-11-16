@@ -1426,17 +1426,18 @@ cores that the continuous-integration runner is paying for.
 
 ### 8.1 The prohibition
 
-The root `clippy.toml` disallows six methods, and the workspace lint table in
+The root `clippy.toml` disallows seven methods, and the workspace lint table in
 the root `Cargo.toml` denies `clippy::disallowed_methods`:
 
-| Method                 | Reason reported by Clippy       |
-| ---------------------- | ------------------------------- |
-| `std::env::var`        | inject an environment reader    |
-| `std::env::var_os`     | inject an environment reader    |
-| `std::env::vars`       | inject an environment reader    |
-| `std::env::vars_os`    | inject an environment reader    |
-| `std::env::set_var`    | use a stub environment in tests |
-| `std::env::remove_var` | use a stub environment in tests |
+| Method                      | Reason reported by Clippy                                                           |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| `std::env::var`             | inject an environment reader                                                        |
+| `std::env::var_os`          | inject an environment reader                                                        |
+| `std::env::vars`            | inject an environment reader                                                        |
+| `std::env::vars_os`         | inject an environment reader                                                        |
+| `std::env::set_var`         | use a stub environment in tests                                                     |
+| `std::env::remove_var`      | use a stub environment in tests                                                     |
+| `std::env::set_current_dir` | process-wide working directory; pass the directory in or use `Command::current_dir` |
 
 Every member crate carries `[lints] workspace = true`, so the deny reaches
 every package. `make lint` runs Clippy with
@@ -1450,7 +1451,7 @@ Three tests in `repovec-ci` keep this from decaying.
 `environment_access_policy_contract` reads the checked-in configuration and
 fails if an entry, the deny, a crate's lint inheritance, or the lint gate's
 scope is removed. `environment_policy_lint_ui` runs Clippy over a fixture
-package that calls all six methods and asserts each is reported with its
+package that calls all seven methods and asserts each is reported with its
 remedy, so a configuration that parses but never fires is caught too.
 `environment_policy_source_scan` parses every workspace source and rejects any
 that allows a protected lint, because a crate-level

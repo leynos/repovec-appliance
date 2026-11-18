@@ -50,6 +50,28 @@ tests. Run formatting, format checking, lint, and tests sequentially, logging
 through `tee` with pipeline failure propagation. Stop on full storage or
 unhealthy compiler admission; do not repair shared services or kill other jobs.
 
+Honour the environment access policy in `docs/developers-guide.md`, section 8.
+`clippy.toml` disallows `std::env::var`, `var_os`, `vars`, `vars_os`, `set_var`,
+`remove_var`, and `set_current_dir`, and the workspace denies
+`clippy::disallowed_methods`. This plan reads no environment variable at all:
+credentials arrive through the store or standard input, and the endpoint is
+injected. Process arguments (`std::env::args_os`) remain permitted at the
+example's entry point. A child process receives an explicit environment and
+working directory through `Command::env_clear`, `Command::env`, and
+`Command::current_dir`. The workspace also denies `print_stdout`,
+`print_stderr`, `missing_docs_in_private_items`, `expect_used`, and
+`allow_attributes`: write through the injected streams, document private items,
+return `Result` from fixtures and helpers, and use an item-scoped `#[expect]`
+with a reason if a suppression is ever unavoidable.
+
+Use the development build standard as it stands: the LLVM backend, the pinned
+`mold` linker, and the parallel `rustc` frontend from `.cargo/config.toml`.
+Cranelift is out of scope. It remains an unsupported compile-time option for a
+later experiment, so no dependency choice, test structure, or feature gate in
+this work may be made for the sake of Cranelift compatibility beyond ordinary
+Rust hygiene. Do not name a codegen backend in any profile; a workflow contract
+refuses one.
+
 ## Tolerances (exception triggers)
 
 Implementation may add the modules, tests, example, and documentation named
@@ -72,10 +94,13 @@ open; correct the cause before committing or proceeding.
 
 ## Context and orientation
 
-Baseline: commit `7763a99f5dff25547a972888ed26d6381c465bb9`.
-`crates/repovec-core/src/github_oauth/mod.rs` owns `AccessToken`, including its
-redacted debug representation. `crates/repovecd/src/github_device_flow/mod.rs`
-contains OAuth orchestration and port examples. The blocking HTTP adapter in
+Baseline: commit `df8c445b3a85b4be01da2c8b3e71f82a21e1082c`, the `main` head
+this branch was rebased onto on 2026-11-18. The plan was first drafted against
+`7763a99f5dff25547a972888ed26d6381c465bb9`; the orientation below was checked
+again at the new baseline. `crates/repovec-core/src/github_oauth/mod.rs` owns
+`AccessToken`, including its redacted debug representation.
+`crates/repovecd/src/github_device_flow/mod.rs` contains OAuth orchestration
+and port examples. The blocking HTTP adapter in
 `crates/repovecd/src/github_oauth_client/mod.rs` already uses `reqwest`,
 disabled redirects, a 10-second connection timeout, and a 30-second request
 timeout. `crates/repovecd/src/github_token_store/mod.rs` provides
@@ -91,11 +116,15 @@ precedent. `crates/repovec-core/tests/github_oauth_bdd.rs` and
 `rstest-bdd` style. `repovecd` needs BDD and property-test dev-dependencies
 explicitly; they are already present in the workspace dependency catalogue.
 
-The pinned compiler is `nightly-2026-03-12`; no `.cargo` configuration exists
-at baseline. Borrow-checker posture is unknown, not inferred from the dated
-nightly. This synchronous, owned-result design requires no borrow workaround.
-If that changes, inspect wrappers and flags and run the `rust-router` canary
-before changing API ownership to accommodate a compiler assumption.
+The pinned compiler is `nightly-2026-11-13`. `.cargo/config.toml` now exists:
+it sets `-Zthreads=8`, links with the pinned `mold` on Linux, and builds
+dependencies without embedded metadata. It names no codegen backend. Run
+`make install-build-tools` once before the first local gate. `rstest` is at
+0.28.0 in the workspace catalogue. Borrow-checker posture is unknown, not
+inferred from the dated nightly. This synchronous, owned-result design requires
+no borrow workaround. If that changes, inspect wrappers and flags and run the
+`rust-router` canary before changing API ownership to accommodate a compiler
+assumption.
 
 ## Conformance basis
 
@@ -132,6 +161,9 @@ Read these references before implementation:
   fixture wiring, not assertions about private implementation details.
 - [Documentation style guide](../documentation-style-guide.md): Oxford British
   English, 80-column prose, documentation indexing, and ADR conventions.
+- [Developers' guide](../developers-guide.md): “Development build standard”,
+  “Fetching dependencies before tests”, “Local quality gates”, and “Environment
+  access policy”. These postdate the first draft and bind this work.
 
 Use the `codegraph-mcp`, `hexagonal-architecture`, and `rust-router` skills;
 route verification choices through `rust-verification`, and use `verus` only if
@@ -149,7 +181,7 @@ successful response contains a finite ordered sequence of repository
 observations and either one continuation or no continuation. A failed response
 contains an error, not an empty successful page.
 
-Let `P0, ..., Pn` be the accepted page sequences, in request order. The
+Let `page_0, ..., page_n` be the accepted page sequences, in request order. The
 successful result is their concatenation. Preserve order and multiplicity: if
 GitHub repeats a repository ID during concurrent changes, retain that
 observation. Do not invent deduplication, sorting, or last-writer conflict
@@ -448,18 +480,33 @@ tests call the same composition function as the example with injected endpoints
 and streams, asserting its returned exit status.
 
 Actual-example child-process tests cover invalid/mutually exclusive arguments
-and empty, invalid, or oversize stdin, all rejected before networking. Build it
-first with `cargo build -p repovecd --example list_github_repositories`; derive
-the executable path from Cargo metadata's `target_directory` plus
-`debug/examples/list_github_repositories`, respecting custom target
-directories. Pass that explicit path into the subprocess fixture, without
-changing process environment. For full-gate integration, extend the existing
-Rust test runner only if it does not build the executable already; update its
-command-contract tests in the same commit. An unresolved example path must
-fail, never skip. Successful offline HTTP subprocess testing is not claimed:
-loopback success runs through the shared composition function. Live GitHub
-smoke runs remain opt-in and do not replace offline acceptance. No production
-endpoint-override flag or environment backdoor is introduced.
+and empty, invalid, or oversize stdin, all rejected before networking. The test
+does not start a nested `cargo`. `make test` passes `--all-targets`, so the
+example is built alongside the test binaries; resolve it from
+`std::env::current_exe()` as the sibling `examples/list_github_repositories` of
+the test binary's `deps` directory, which respects custom and coverage target
+directories. Pass that explicit path into the subprocess fixture, and give the
+child an explicit environment through `Command::env_clear` without changing the
+parent's. For a focused run, build the example by hand first with
+`cargo build -p repovecd --example list_github_repositories`. Do not change the
+`test` recipe or `scripts/run_rust_tests.py`: a workflow contract holds the
+recipe to one runner command. An unresolved example path must fail with a
+message naming that build command, never skip. If a nested `cargo` proves
+unavoidable, treat that as a plan revision: the spawn must set
+`CARGO_NET_OFFLINE=true`, join the `nested-cargo-builds` nextest group, and
+satisfy the estate rule `nested-cargo-offline-tests`.
+
+Successful offline HTTP subprocess testing is not claimed: loopback success
+runs through the shared composition function. Live GitHub smoke runs remain
+opt-in and do not replace offline acceptance. No production endpoint-override
+flag or environment backdoor is introduced.
+
+Every test must fit the nextest budget in `.config/nextest.toml`: a test is
+terminated after 180 seconds, and the whole run after 10 minutes. The
+production 10/30-second timeouts are therefore injected values; timeout and
+page-budget cases construct the adapter with short test timeouts and small
+limits, never by waiting out a production deadline. Bound each child process
+with a deadline and kill it on expiry.
 
 There is one plain listing output format, so multiformat `insta` snapshots are
 not warranted. Assert typed results and exact short output directly. If an
@@ -513,7 +560,7 @@ commands, credential seams, and proof-selection rationale. The component
 architecture currently lives in `docs/repovec-appliance-technical-design.md`;
 add the listing boundary, principal distinction, traversal contract, and
 representation there. If a substantive accepted decision needs a separate ADR,
-allocate the next unused `docs/adr-NNN-*.md` number at implementation time and
+allocate the next unused `docs/adr-NNNN-*.md` number at implementation time and
 reference it from the design and `docs/contents.md`.
 
 Acceptance: the runnable workflow and offline end-to-end evidence succeed; all
@@ -534,11 +581,14 @@ separate gated commits for later refactoring and retain rollback points.
 
 Run from the repository root on the approved feature branch. Before code edits,
 inspect `AGENTS.md`, branch/worktree state, the live plan, and current
-dependency versions. Run a baseline `make check-fmt`, `make lint`, and
-`make test` in that order. Keep the shared cache and wrappers. The actual
-Makefile also checks Rustdoc, Whitaker when installed, Python test-runner
-contracts, and doctests; do not replace its targets with narrower cargo
-commands as full gates.
+dependency versions. Run `make install-build-tools` once if
+`make check-build-tools` reports a missing prerequisite. Run a baseline
+`make check-fmt`, `make typecheck`, `make lint`, and `make test` in that order.
+Keep the shared cache and wrappers. `make lint` runs interrogate over the
+Python sources, then Rustdoc and Clippy, then the Whitaker Dylint suite.
+Whitaker is a binding gate: a missing suite fails the target. `make test` runs
+the gate-runner script tests, then the unit tests and the doctests. Do not
+replace these targets with narrower cargo commands as full gates.
 
 Use focused commands during red/green cycles, then delegate full sequential
 gates to `scrutineer`. Representative focused commands once the named targets
@@ -566,14 +616,16 @@ invalidates earlier evidence.
 set -euo pipefail
 make fmt 2>&1 | tee /tmp/fmt-repovec-2-2-1.out
 make check-fmt 2>&1 | tee /tmp/check-fmt-repovec-2-2-1.out
+make typecheck 2>&1 | tee /tmp/typecheck-repovec-2-2-1.out
 make lint 2>&1 | tee /tmp/lint-repovec-2-2-1.out
 make test 2>&1 | tee /tmp/test-repovec-2-2-1.out
 make markdownlint 2>&1 | tee /tmp/markdownlint-repovec-2-2-1.out
 make nixie 2>&1 | tee /tmp/nixie-repovec-2-2-1.out
 ```
 
-Stop at a failing command; do not run the next gate until the failure is
-understood and corrected. Inspect formatter changes before staging. Never
+`make markdownlint` runs `make spelling` first, so the spelling gate is
+covered. Stop at a failing command; do not run the next gate until the failure
+is understood and corrected. Inspect formatter changes before staging. Never
 hand-edit generated `typos.toml`; unrelated regeneration requires a separate
 base change per repository policy. The plan-only commit runs documentation
 checks and format checking, with no claim of implemented behaviour.
@@ -627,6 +679,11 @@ Medium impact, medium likelihood: parser edge cases or large responses consume
 excessive resources. Test protocol grammar and finite limits; fail explicitly
 at boundaries. Do not add background retries or parallel page fetching.
 
+Low impact, medium likelihood: `main` moves again before approval, and the
+lint, build, or environment policy this plan cites changes. Re-check the
+baseline, the gate list, and the cited guide sections at the start of M1, and
+record any difference as a revision note before writing code.
+
 ## Progress
 
 - [x] (2026-10-20) Read repository guidance, rename branch, and load skills.
@@ -637,6 +694,8 @@ at boundaries. Do not add background retries or parallel page fetching.
 - [x] (2026-10-20) Complete and reconcile the six-expert design review.
 - [x] (2026-10-20) Pass plan-only documentation gates. Publication is recorded
       in the draft PR metadata.
+- [x] (2026-11-18) Rebase onto `main` at `df8c445` without conflicts, and
+      revise the plan for the current build, lint, and environment policy.
 - [ ] Explicit approval of this plan.
 - [ ] M1: domain contract and test support.
 - [ ] M2: endpoint modes and complete traversal.
@@ -681,6 +740,24 @@ observability, and actionable recovery. All are incorporated above. All six
 perspectives accepted conventional verification for the scoped transport;
 retaining observation multiplicity trades uniqueness for preserving evidence.
 
+2026-11-18, rebase: Cranelift is out of scope. The experiment found that its
+compile-time gain was outweighed by a threefold increase in binary size and
+slower test execution. It stays an unsupported compile-time option, to be
+revisited in about six months (May 2027). This work targets the LLVM backend
+only and makes no accommodation for Cranelift beyond ordinary Rust hygiene.
+
+2026-11-18, rebase: locate the example binary from the test binary's own path
+instead of building it with a nested `cargo` and reading Cargo metadata. `main`
+now bounds nested `cargo` spawns in tests, requires them offline, and holds the
+`test` recipe to one runner command. `--all-targets` already builds the
+example, so the nested build bought nothing and would have contended for the
+package-cache lock.
+
+2026-11-18, rebase: read no environment variable in this feature. The workspace
+now denies seven `std::env` methods outside an annotated composition root.
+Store path, token input, and endpoint already arrive by argument, stream, or
+injection, so no exception is needed.
+
 ## Outcomes & retrospective
 
 The two Wyvern reconnaissance agents and six expert perspectives completed
@@ -697,6 +774,14 @@ Plan-only validation on 2026-10-20 passed sequentially: `make fmt`,
 `diff-check` for the final Git check. Spelling regenerated no tracked changes.
 No Rust runtime code changed, so `make lint` and `make test` were not run for
 this documentation commit; they remain mandatory implementation milestones.
+
+Rebase on 2026-11-18: the two plan commits replayed onto `main` at `df8c445`
+without conflicts, and `git range-diff` reported both unchanged. The spelling
+gate on the new baseline rejected the page-sequence symbols in the abstract
+specification, so they were renamed `page_0` to `page_n`. The plan was then
+revised as the revision note below records. Documentation gates passed on the
+revised plan: `make fmt`, `make markdownlint` (including spelling), and
+`make nixie`. Still no feature code has been written.
 
 ## Research references
 
@@ -719,3 +804,10 @@ gated delivery. Revision note (2026-10-20): incorporated all six experts'
 findings. The changes strengthen resource and error contracts without expanding
 lifecycle scope. Documentation validation passed; the draft PR records
 publication, while implementation remains subject to approval.
+
+Revision note (2026-11-18): rebased onto `main` at `df8c445`. Updated the
+baseline, compiler pin, and gate list; adopted the environment access policy
+and the nextest budgets; replaced the nested example build with a path derived
+from the test binary; and recorded that Cranelift is out of scope. The
+behavioural contract, interfaces, and milestones are unchanged, so the plan
+still awaits approval as before.

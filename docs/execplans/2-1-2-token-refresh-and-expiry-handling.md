@@ -35,9 +35,19 @@ bodies, authorization headers, or credential plaintext. Present the user code
 only through the existing prompt callback.
 
 All code files remain below 400 lines. Use typed errors and injected time and
-I/O, with no parent-process environment mutation. No `assume`, `admit`, trusted
+I/O, with no parent-process environment mutation. Follow “Environment access
+policy” in `docs/developers-guide.md`: code under test reads no process
+environment, and neither it nor its tests change the process working directory,
+because `clippy.toml` disallows those methods. No `assume`, `admit`, trusted
 proof body, or equivalent proof shortcut is permitted, even temporarily.
 Unproved statements stay in this plan until a substantive proof is possible.
+
+Cranelift support is out of scope. Development and gate builds use the LLVM
+backend through the development build standard, and `.cargo/config.toml` names
+no codegen backend. Cranelift remains an unsupported compile-time option, due
+for re-evaluation in about six months. Make no design, dependency, test, or
+gate decision for Cranelift compatibility beyond ordinary Rust code hygiene,
+and do not run or record Cranelift builds as evidence for this task.
 
 ## Tolerances (exception triggers)
 
@@ -126,7 +136,9 @@ actual evidence after each approved milestone, including residual limitations.
 
 ## Context and orientation
 
-Baseline: commit `7763a99f5dff25547a972888ed26d6381c465bb9`.
+Baseline: commit `df8c445b3a85b4be01da2c8b3e71f82a21e1082c`, the `main` head
+this plan was last rebased onto. Confirm every path and symbol named below
+against the actual tree before implementation starts.
 `crates/repovec-core/src/github_oauth/mod.rs` defines `AccessToken`,
 `DeviceAuthorization`, and `TokenPollOutcome`. The authorization's `expires_in`
 limits device-code polling, not the issued access token.
@@ -138,7 +150,10 @@ application boundary coherently, updating every private caller and doctest. Do
 not add aliases just to preserve pre-1.0 internal signatures.
 
 `crates/repovecd/src/github_oauth_client/wire.rs` maps token HTTP responses;
-`mod.rs` owns `GitHubOAuthClient`. `github_token_store/mod.rs` owns
+`mod.rs` owns `GitHubOAuthClient`, and `endpoints.rs` owns the validated
+`DeviceFlowEndpoints` URLs that the refresh request must reuse. Shared
+device-flow test doubles live in `github_device_flow/tests_support.rs`; extend
+them in preference to adding parallel fixtures. `github_token_store/mod.rs` owns
 `EncryptedGitHubTokenStore::store_token` and `load_token`; its
 `atomic_write.rs` already implements replace-and-sync persistence. Preserve the
 credential name `repovec-github-oauth-token` and filename
@@ -600,12 +615,15 @@ Keep proof execution separate from ordinary Cargo targets initially; document
 an on-demand continuous integration job with the same pins.
 
 Delegate full commit gates to `scrutineer`, once per candidate, sequentially.
-Use `set -o pipefail` and `tee` for each command; for example:
+Run `make install-build-tools` once beforehand, so the pinned `mold` linker and
+toolchain that the Rust gates require are present. Use `set -o pipefail` and
+`tee` for each command; for example:
 
 ```sh
 set -o pipefail
 make fmt 2>&1 | tee /tmp/fmt-repovec-2-1-2.out
 make check-fmt 2>&1 | tee /tmp/check-fmt-repovec-2-1-2.out
+make typecheck 2>&1 | tee /tmp/typecheck-repovec-2-1-2.out
 make lint 2>&1 | tee /tmp/lint-repovec-2-1-2.out
 make test 2>&1 | tee /tmp/test-repovec-2-1-2.out
 make markdownlint 2>&1 | tee /tmp/markdownlint-repovec-2-1-2.out
@@ -615,11 +633,14 @@ make verus 2>&1 | tee /tmp/verus-repovec-2-1-2.out
 
 Stop after any failed command and inspect its log; the block is a sequence of
 individual gates, not permission to continue after failure. `make lint`
-includes rustdoc, Clippy, and Whitaker; `make test` includes the Python
-runner's tests, Rust targets, and doctests. Preserve compiler admission
-wrappers and the shared Cargo cache. Do not use `/tmp` for build output. The
-documentation-only planning commit requires format, Markdown/spelling, and
-diagram validation; it does not execute these future feature/proof milestones.
+includes Python docstring coverage, rustdoc, Clippy, and Whitaker; `make test`
+includes the gate-runner script tests, Rust targets, and doctests;
+`make markdownlint` runs `make spelling` first, and a regenerated `typos.toml`
+is committed. Every Rust gate builds with the LLVM backend. Preserve compiler
+admission wrappers and the shared Cargo cache. Do not use `/tmp` for build
+output. The documentation-only planning commit requires format,
+Markdown/spelling, and diagram validation; it does not execute these future
+feature/proof milestones.
 
 ## Idempotence and recovery
 
@@ -684,3 +705,9 @@ evidence.
 Revision note (2026-10-20): Expert review tightened crash-safe retirement,
 publication freshness, uncertain persistence, locking, and operator evidence.
 Implementation remains approval-gated; no proof or feature work has begun.
+
+Revision note (2026-11-18): Rebased onto `main` at `df8c445`. The baseline,
+orientation, and gate list now match the development build standard, the
+environment access policy, and the `make typecheck` and spelling gates.
+Cranelift compatibility is recorded as out of scope. The design, contracts, and
+proof obligations are unchanged, and implementation remains approval-gated.

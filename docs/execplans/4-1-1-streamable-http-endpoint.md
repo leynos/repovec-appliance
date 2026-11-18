@@ -56,6 +56,19 @@ authenticated corpus access.
 - Do not add user-facing CLI/configuration or dependency APIs without updating
   the relevant design documents and recording the decision. Use caret
   dependency requirements. Do not edit generated `typos.toml` by hand.
+- Build and test on the LLVM backend that the repository gates use. Cranelift
+  is out of scope: it remains an unsupported compile-time option, and this
+  work must not spend effort on Cranelift compatibility beyond normal Rust
+  code hygiene. Do not choose, reject, or reshape a dependency, feature, or
+  test because of its behaviour under Cranelift, and do not add a codegen
+  backend to `.cargo/config.toml`.
+- Follow the repository rules that landed on `main` after this plan was
+  drafted. Read no process environment outside a composition root, and never
+  mutate the parent environment or working directory in a test; inject values
+  through a seam as "Environment access policy" in `docs/developers-guide.md`
+  requires. Keep each code file within 400 lines. `make lint` now also runs
+  the Whitaker Dylint suite and the rustdoc lint table, so new modules and
+  private items need documentation.
 - Do not introduce `assume`, `admit`, trusted proof bodies, or equivalent
   shortcuts. Do not mark roadmap item 4.1.1 done until implementation and its
   required documentation have been completed and validated.
@@ -125,6 +138,9 @@ authenticated corpus access.
 - [x] (2026-10-20) Validate Mermaid diagrams and the diff; documentation-only
   gates pass. Publication is recorded in the draft PR rather than feature
   completion status.
+- [x] (2026-11-18) Rebase onto `main` at `df8c445` with no conflicts. Record
+  the Cranelift exclusion, the newer repository rules, and `make typecheck` as
+  a milestone gate.
 - [ ] After approval only: implement milestones EP-M1 through EP-M4 and keep
   this plan current at each stopping point.
 
@@ -182,6 +198,15 @@ authenticated corpus access.
   model and representation relation to this plan, and obtain approval before
   selecting Verus or adding proof plumbing. **Date/author:** 2026-10-20,
   planning agent.
+- **Decision:** Treat Cranelift compatibility as out of scope for this work.
+  **Rationale:** The Cranelift experiment found that its compile-time gain was
+  outweighed by a threefold increase in binary size and slower test execution.
+  Cranelift is retained only as an unsupported compile-time option, and the
+  experiment is due to be revisited in about six months (May 2027). The HTTP
+  and SSE stack is therefore selected and tested on the LLVM backend alone; a
+  dependency that fails to build or link under Cranelift is not a defect of
+  this milestone. **Date/author:** 2026-11-18, planning agent, on the user's
+  instruction.
 
 ## Outcomes & retrospective
 
@@ -405,7 +430,8 @@ controls here, then propose an explicit EP-P proof milestone for approval. That
 conditional milestone must pin the verifier in `tools/verus/VERSION` and
 `tools/verus/SHA256SUMS`, use `prover-tools verus install --repo-root .`, and
 pass `prover-tools verus run --repo-root . --proof-file verus/mcp_transport.rs`
-in addition to `make check-fmt`, `make lint`, and `make test`. Prove the
+in addition to `make check-fmt`, `make typecheck`, `make lint`, and
+`make test`. Prove the
 selected semantic property for all admissible inputs with substantive lemmas
 and a refinement relationship to the executable kernel; a disconnected model is
 insufficient. Do not add proof files, a stub gate, or speculative solver
@@ -532,33 +558,32 @@ after documentation and all gates pass.
 ### EP-M1 — protocol and adapter feasibility
 
 **Requirements and gaps:** ROADMAP-4.1.1 and ADR-002 protocol/tooling decision.
-**End state:** Inspect the official SDK first; discard it without a prototype
-if its documented interfaces already contradict the required boundary.
-Otherwise compare the minimum SDK and Axum prototypes using the same contract
-cases. Retain one path and record exact versions/features in ADR 002. Keep
-prototypes in repository scratch space, never a `/tmp` build target, and remove
-them before the milestone commit. Run `make check-fmt`, `make lint`, and
+**End state:** Inspect the official SDK first; discard it without a prototype if
+its documented interfaces already contradict the required boundary. Otherwise
+compare the minimum SDK and Axum prototypes using the same contract cases.
+Retain one path and record exact versions/features in ADR 002. Keep prototypes
+in repository scratch space, never a `/tmp` build target, and remove them before
+the milestone commit. Run `make check-fmt`, `make typecheck`, `make lint`, and
 `make test` sequentially; the retained repository must be green. **Acceptance
 evidence:** Protocol contract cases establish POST JSON, POST SSE, GET SSE, 202
 handling, invalid version, and unsupported media/method behaviour; the chosen
 path passes every in-scope case. **Conformance check:** Requirements match the
-pinned revision; design boundaries remain intact; 2025-11-25 remains the
-target; no new public interface, dependency, trust boundary, or persisted
-format is introduced; trace links are current. **Recovery:** Delete the
-disposable prototype and repeat the comparison from the contract cases.
-**Remaining gaps:** No shipped listener or application backend. **Compatibility
-decision:** none.
+pinned revision; design boundaries remain intact; 2025-11-25 remains the target;
+no new public interface, dependency, trust boundary, or persisted format is
+introduced; trace links are current. **Recovery:** Delete the disposable
+prototype and repeat the comparison from the contract cases. **Remaining gaps:**
+No shipped listener or application backend. **Compatibility decision:** none.
 
 ### EP-M2 — tested transport contracts
 
 **Requirements and gaps:** Dispatch, envelope validation, response mode,
-correlation, and bounded message ownership for ROADMAP-4.1.1. **End state:**
-Add failing unit tests, capture the intended red evidence, then implement the
-pure contract types and validators that make them pass. Introduce `src/lib.rs`
-and the application ports together with their tested consumers. Do not add
-endpoint BDD bindings until EP-M3 can make them pass. No ignored,
-expected-failure, staged-away, or restored failing tests are permitted at this
-milestone boundary. Run `make check-fmt`, `make lint`, and `make test`
+correlation, and bounded message ownership for ROADMAP-4.1.1. **End state:** Add
+failing unit tests, capture the intended red evidence, then implement the pure
+contract types and validators that make them pass. Introduce `src/lib.rs` and
+the application ports together with their tested consumers. Do not add endpoint
+BDD bindings until EP-M3 can make them pass. No ignored, expected-failure,
+staged-away, or restored failing tests are permitted at this milestone boundary.
+Run `make check-fmt`, `make typecheck`, `make lint`, and `make test`
 sequentially and commit only the green plateau. **Acceptance evidence:** The
 focused contract suite first fails on missing validation behaviour, then passes
 for both success and rejection partitions. **Conformance check:** Recheck
@@ -576,12 +601,12 @@ correlation, framing, bounds, and runtime wiring. **End state:** Injected test
 composition serves JSON POST, SSE POST, and GET SSE over loopback; production
 composition fails closed. Each exchange owns bounded response delivery. The SSE
 stream has no replay or session generation; the ADR records the accepted
-temporary gap against 2025-11-25 reconnection recommendations. Run
-`make check-fmt`, `make lint`, and `make test` sequentially after the
-milestone. The daemon's startup checks still run synchronously before the serve
-runtime starts. **Acceptance evidence:** BDD and socket tests observe expected
-headers, status, content type, complete JSON/SSE frames, correlation under
-duplicate IDs, resource-limit failures, closed production composition, and
+temporary gap against 2025-11-25 reconnection recommendations. Run `make
+check-fmt`, `make typecheck`, `make lint`, and `make test` sequentially after
+the milestone. The daemon's startup checks still run synchronously before the
+serve runtime starts. **Acceptance evidence:** BDD and socket tests observe
+expected headers, status, content type, complete JSON/SSE frames, correlation
+under duplicate IDs, resource-limit failures, closed production composition, and
 clean shutdown. **Conformance check:** Confirm versioned wire contract; no
 session, Origin, or stdio implementation leaked into this milestone; no
 unapproved public API, dependency, trust boundary, or persisted format; keep
@@ -597,12 +622,12 @@ lifecycle/replay, grepai bridge, HTTPS deployment, and remote corpus queries.
 acceptance for ROADMAP-4.1.1. **End state:** Design/ADR/developer documentation
 reflects implementation; user guide documents the persistent listener and
 unavailable response; roadmap item 4.1.1 is marked done only after all
-implementation evidence passes. Run `make fmt`, `make markdownlint`, and
-`make nixie` sequentially after doc changes. Then run `make check-fmt`,
-`make lint`, and `make test` sequentially. **Acceptance evidence:** All gate
-transcripts are recorded in this plan, the roadmap checkbox and design are
-accurate, and a loopback client can exercise the injected transport while the
-shipped composition remains closed. **Conformance check:** Reconcile
+implementation evidence passes. Run `make fmt`, `make markdownlint`, and `make
+nixie` sequentially after doc changes. Then run `make check-fmt`, `make
+typecheck`, `make lint`, and `make test` sequentially. **Acceptance evidence:**
+All gate transcripts are recorded in this plan, the roadmap checkbox and design
+are accurate, and a loopback client can exercise the injected transport while
+the shipped composition remains closed. **Conformance check:** Reconcile
 discoveries against roadmap, technical design, ADR 002, and the pinned
 specification; verify all trace links and boundaries. **Recovery:** Keep the
 implementation complete but leave roadmap unchecked if any required gate or
@@ -616,12 +641,14 @@ Run repository commands from the root of the candidate worktree. Do not start
 implementation commands before this plan is explicitly approved. Delegate gates
 to the `scrutineer` agent, the exclusive full-gate runner for this candidate.
 Run formatting before format checks, lint, and tests; never overlap gates. At
-each major implementation milestone, run the three project code gates
+each major implementation milestone, run the four project code gates
 sequentially in this order; do not run them concurrently:
 
 ```sh
 set -o pipefail
 make check-fmt 2>&1 | tee /tmp/repovec-check-fmt-4-1-1.out
+set -o pipefail
+make typecheck 2>&1 | tee /tmp/repovec-typecheck-4-1-1.out
 set -o pipefail
 make lint 2>&1 | tee /tmp/repovec-lint-4-1-1.out
 set -o pipefail
@@ -698,6 +725,9 @@ Planning validation (2026-10-20): `make fmt`, `make check-fmt`,
 passed. The spelling generator left `typos.toml` unchanged. Runtime lint and
 tests are reserved for implementation milestones because this change is
 documentation-only. Record later command output and deviations here.
+
+Rebase validation (2026-11-18): the two planning commits replayed onto `main`
+at `df8c445` without conflict, and `git range-diff` shows both unchanged.
 
 ## Interfaces and dependencies
 

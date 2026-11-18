@@ -45,8 +45,26 @@ to 2.2, 2.3.2, and 2.3.3. The roadmap remains unchecked during planning.
   Git pushes, automatic credential refresh, or repository removal in this task.
 - Keep Rust modules below 400 lines, use semantic error enums, and retain the
   strict lint baseline. No compatibility wrappers for new or private APIs.
-- Run formatting, format checks, lint, and tests sequentially. Use the shared
-  Cargo cache and normal compiler admission. Disk exhaustion stops the work.
+- Run formatting, format checks, type checks, lint, and tests sequentially. Use
+  the shared Cargo cache and normal compiler admission. Disk exhaustion stops
+  the work.
+- Follow the development build standard in `docs/developers-guide.md`: the
+  gates require the pinned mold linker and toolchain checked by
+  `make check-build-tools`. Do not add a codegen backend to any Cargo profile.
+- Cranelift compatibility is out of scope. The Cranelift experiment found that
+  its build-time gains were outweighed by a threefold increase in binary size
+  and slower test execution, so it remains only an unsupported compile-time
+  option, to be revisited after about six months (not before May 2027). Make no
+  dependency, design, linking, or test accommodation for Cranelift beyond
+  normal Rust code hygiene, and do not treat a Cranelift-only failure as a
+  defect of this task.
+- `clippy.toml` disallows reading or mutating the process environment and
+  `std::env::set_current_dir`. Give each Git child its working directory through
+  `Command::current_dir`, never by changing the process directory.
+- `make lint` enforces complete Python docstring coverage through
+  `interrogate` over `integration-tests`, `scripts`, and `tests`. Any Python
+  fixture added by this task carries full docstrings and lives under one of
+  those targets, or its directory is added to `INTERROGATE_TARGETS`.
 
 ## Tolerances (exception triggers)
 
@@ -101,7 +119,11 @@ accounts as a normal test dependency.
 - [x] (2026-10-20) Completed Pandalump/Wafflecat, Telefono/Dinolump, and
   Buzzy Bee/Doggylump reviews; revised commit-point, deadline, configuration
   inspection, process draining, deployment, and shared composition contracts.
-- [ ] Validate and commit the planning documents; push and open a draft PR.
+- [x] (2026-10-20) Validated and committed the planning documents; pushed and
+  opened draft pull request #191.
+- [x] (2026-11-18) Rebased onto `main` at `df8c445` without conflicts and
+  revised this plan for the build standard, relocated ADRs, the extended gate
+  set, and the removal of Cranelift from scope.
 - [ ] Obtain explicit plan approval.
 - [ ] M1: establish contracts, identity model, and executable test seams.
 - [ ] M2: implement safe initial mirror publication.
@@ -118,14 +140,25 @@ unnecessary.
 
 CodeGraph was requested and its skill loaded, but no CodeGraph tools were
 exposed in this session, including after tool discovery. Wyvern used focused
-source reads; no graph-indexing success is claimed. The pinned toolchain is
-`nightly-2026-03-12`; borrow-checker posture is unknown and no design decision
-here depends on a particular borrow-checker mode.
+source reads; no graph-indexing success is claimed. The pinned toolchain was
+`nightly-2026-03-12` when this plan was drafted and is `nightly-2026-11-13` at
+the rebased baseline; Dependabot advances it regularly, so read
+`rust-toolchain.toml` rather than this note. Borrow-checker posture is unknown
+and no design decision here depends on a particular borrow-checker mode.
 
-The actual Makefile runs documentation generation, Clippy, and Whitaker through
-`make lint`, and a Python gate runner plus Rust tests/doctests through
-`make test`. Follow these targets rather than substituting the shorter command
+The actual Makefile runs `interrogate`, documentation generation, Clippy, and
+Whitaker through `make lint`, and the gate-runner script tests plus Rust tests
+and doctests through `make test`. `make typecheck` runs `cargo check` with the
+gate flags. Follow these targets rather than substituting the shorter command
 examples in repository guidance.
+
+Between drafting and the 2026-11-18 rebase, `main` adopted the development
+build standard (pinned mold linker, `make check-build-tools`, composed gate
+`RUSTFLAGS`), the estate rustfmt profile and lint tables, source-file spelling
+enforcement, `rstest` 0.28, and the `docs/adrs/adr-nnnn-title-slug.md` naming
+scheme. None of these changes alters the mirror design. `main` also recorded
+that Cranelift is not adopted; the constraint above takes it out of scope for
+this task altogether.
 
 ## Decision log
 
@@ -188,15 +221,17 @@ fixtures stay beside mirror tests.
 
 ## Conformance basis
 
-Baseline: commit `7763a99f5dff25547a972888ed26d6381c465bb9`. No separate terms
-of reference or mirror-specific ADR exists at this baseline. Local labels below
-provide traceability; they are not invented upstream requirement IDs.
+Baseline: commit `df8c445b3a85b4be01da2c8b3e71f82a21e1082c`, the `main` head
+this branch was rebased onto on 2026-11-18. The plan was drafted against
+`7763a99f5dff25547a972888ed26d6381c465bb9`. No separate terms of reference or
+mirror-specific ADR exists at either baseline. Local labels below provide
+traceability; they are not invented upstream requirement IDs.
 
 - C1: `docs/roadmap.md`, task 2.3.1, and
   `docs/repovec-appliance-technical-design.md`, “Worktrees and checkout
   layout”: canonical bare clone and incremental fetch → M2/M3 → real-Git ref
   comparison.
-- C2: `docs/adr-001-repovec-directory-provisioning.md` and
+- C2: `docs/adrs/adr-0001-repovec-directory-provisioning.md` and
   `docs/users-guide.md`, directory ownership contract → M1/M2 → traversal,
   symlink, ownership, and permission tests.
 - C3: technical design, “Authentication: device flow”, and
@@ -454,10 +489,11 @@ postconditions, representation relation, and candidate lemmas first. Require
 substantive Verus proofs over the executable kernel (or an explicitly checked
 refinement), with satisfiable premises and negative controls. Add a pinned
 `make verify-mirrors` target invoking Verus and make it an explicit milestone
-acceptance gate alongside `make check-fmt`, `make lint`, and `make test`. Never
-use `assume`, `admit`, external proof bodies, or equivalent shortcuts. Keep
-unproved theorem statements in documentation until implementation exposes the
-actual verification conditions. Integration tests remain mandatory.
+acceptance gate alongside `make check-fmt`, `make typecheck`, `make lint`, and
+`make test`. Never use `assume`, `admit`, external proof bodies, or equivalent
+shortcuts. Keep unproved theorem statements in documentation until
+implementation exposes the actual verification conditions. Integration tests
+remain mandatory.
 
 ## Milestones and plateaus
 
@@ -550,14 +586,16 @@ version. Add a dependency note to roadmap 6.3.1 so future provisioning installs
 Git; do not claim that this task provisions a complete appliance.
 
 Update `docs/repovec-appliance-technical-design.md` and add the next available
-`docs/adr-NNN-git-mirror-synchronization.md` for transport, publication,
-credentials, ref ownership, and verification boundaries. Reference the ADR from
-the design and `docs/contents.md`. Document internal interfaces in the
-technical design's mirror component section and reuse/test conventions in
-`docs/developers-guide.md`. Update `docs/users-guide.md` with path, Git
-prerequisite, permissions, example invocation, failure/retry behaviour, and
-explicitly pending automatic reconciliation. Update the repository-layout
-section if module structure changes.
+`docs/adrs/adr-nnnn-git-mirror-synchronization.md` (`adr-0002` at the rebased
+baseline, following the documentation style guide's ADR template) for
+transport, publication, credentials, ref ownership, and verification
+boundaries. Reference the ADR from the design and `docs/contents.md`. Document
+internal interfaces in the technical design's mirror component section and
+reuse/test conventions in `docs/developers-guide.md`. Update
+`docs/users-guide.md` with path, Git prerequisite, permissions, example
+invocation, failure/retry behaviour, and explicitly pending automatic
+reconciliation. Update the repository-layout section if module structure
+changes.
 
 Reconcile all obligations and source-document decisions, run the full gates,
 and mark only roadmap item 2.3.1 checked with a `Done:` explanation. Update
@@ -592,13 +630,15 @@ assertions with no ignored new cases. Unit and behavioural tests run both
 before and after each affected change.
 
 Delegate full milestone gates to `scrutineer`, sequentially, with logs under
-`/tmp/231-M<N>-<gate>.out`. Run `make build`, `make check-fmt`, `make lint`, and
-`make test` after each major milestone, with `make fmt` first if formatting
-changed. Documentation changes additionally require `make markdownlint` and
-`make nixie`. `make markdownlint` includes spelling generation; never edit
-`typos.toml` manually. Unrelated generated spelling changes require a separate
-base PR under repository policy. Follow compiler admission; do not create a
-private Cargo cache or bypass wrappers.
+`/tmp/231-M<N>-<gate>.out`. Run `make build`, `make check-fmt`,
+`make typecheck`, `make lint`, and `make test` after each major milestone, with
+`make fmt` first if formatting changed. These targets need the pinned build
+tools; run `make check-build-tools` first and `make install-build-tools` if it
+reports a missing prerequisite. Documentation changes additionally require
+`make markdownlint` and `make nixie`. `make markdownlint` includes spelling
+generation; never edit `typos.toml` manually. Unrelated generated spelling
+changes require a separate base PR under repository policy. Follow compiler
+admission; do not create a private Cargo cache or bypass wrappers.
 
 An authorized operator can later run the example against an accessible GitHub
 repository, then inspect the result:
@@ -660,3 +700,9 @@ Revision note (2026-10-20, expert review): clarified commit points and
 indeterminate completion, shared per-call budgets, bounded draining, safe
 configuration inspection, and deployment/E2E prerequisites. These refine
 acceptance without expanding into worktrees or reconciliation scheduling.
+
+Revision note (2026-11-18, rebase): rebased onto `main` at `df8c445`. Updated
+the conformance baseline, ADR paths, toolchain note, and gate list (adding
+`make typecheck`, the build-tool prerequisites, `interrogate`, and the
+`set_current_dir` prohibition). Recorded that Cranelift compatibility is out of
+scope. The contracts, verification obligations, and milestones are unchanged.

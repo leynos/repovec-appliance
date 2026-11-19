@@ -800,6 +800,13 @@ record any difference as a revision note before writing code.
       102 unit tests, and integration suites covering protocol, continuation
       confinement, failures, budgets, generated page histories, a third
       non-repository profile, and all five BDD scenarios.
+- [x] (2026-11-19) M2 gates. All six deterministic gates passed sequentially on
+      the M2 tree: `make check-fmt`, `make typecheck`, `make lint` (interrogate
+      100%, `cargo doc`, Clippy, Whitaker), `make test` (790 unit tests, 136
+      doctests, 13 script tests), `make markdownlint` (including spelling), and
+      `make nixie`. Logs are `/tmp/m2-check-fmt.out`, `/tmp/m2-typecheck.out`,
+      `/tmp/m2-lint.out`, `/tmp/m2-test.out`, `/tmp/m2-markdownlint.out`, and
+      `/tmp/m2-nixie.out`. M2 is committed at `0bae1bf`.
 - [ ] M3: observable composition, documentation, and roadmap completion.
 
 ## Surprises & discoveries

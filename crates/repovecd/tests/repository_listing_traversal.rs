@@ -20,7 +20,7 @@ use pretty_assertions::assert_eq;
 use repovec_core::{github_oauth::AccessToken, repository_listing::RepositoryListingError};
 use repovec_test_helpers::{
     recording_http::{ORIGIN_TOKEN, RecordedRequest, RecordingServer, ScriptedResponse},
-    repository_listing_wire::{USER_TOKEN, link_header},
+    repository_listing_wire::{LinkRelation, USER_TOKEN, link_header},
 };
 use repovecd::github_repository_client::{
     GitHubCredential,
@@ -64,7 +64,7 @@ fn credential() -> GitHubCredential {
 fn a_non_repository_profile_pages_without_repository_knowledge() {
     let server = RecordingServer::start(vec![
         ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second_page(), "next"))
+            .with_header("Link", &link_header(&second_page(), LinkRelation::Next))
             .with_body(r#"{"items":[{"id":1,"label":"first"},{"id":2,"label":"second"}]}"#),
         ScriptedResponse::new(200).with_body(r#"{"items":[{"id":3,"label":"third"}]}"#),
     ])
@@ -184,7 +184,7 @@ fn a_continuation_outside_the_profile_is_still_confined() {
     let foreign = format!("{ORIGIN_TOKEN}/user/repos?per_page=50&page=2");
     let server = RecordingServer::start(vec![
         ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&foreign, "next"))
+            .with_header("Link", &link_header(&foreign, LinkRelation::Next))
             .with_body(r#"{"items":[]}"#),
     ])
     .expect("the scripted server should start");

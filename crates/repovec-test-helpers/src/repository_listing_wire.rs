@@ -27,19 +27,64 @@ pub const USER_QUERY: &[(&str, &str)] = &[
 /// The fixed query the installation repository profile sends.
 pub const INSTALLATION_QUERY: &[(&str, &str)] = &[("per_page", "100")];
 
+/// One repository record a wire fixture describes.
+///
+/// A record names three things the adapter reads, so a test passes them as one
+/// value rather than as a positional run of a number and two strings.
+#[derive(Clone, Copy, Debug)]
+pub struct Repository<'a> {
+    /// Identifier GitHub reported.
+    pub id: u64,
+    /// Login of the owner GitHub reported.
+    pub owner: &'a str,
+    /// Repository name GitHub reported.
+    pub name: &'a str,
+}
+
+/// A relation name a test's `Link` header carries.
+///
+/// The variants cover the relation lists the listing contract distinguishes;
+/// [`LinkRelation::NextThenLast`] is the space-separated list GitHub sends for
+/// a page that is not the last one.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LinkRelation {
+    /// The next continuation of the listing.
+    Next,
+    /// The last page of the listing.
+    Last,
+    /// A relation list naming next before last.
+    NextThenLast,
+}
+
+impl LinkRelation {
+    /// Returns the `rel` parameter text this relation writes.
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Next => "next",
+            Self::Last => "last",
+            Self::NextThenLast => "next last",
+        }
+    }
+}
+
 /// Builds one repository JSON object with every field the adapter reads.
 ///
 /// # Examples
 ///
 /// ```
-/// use repovec_test_helpers::repository_listing_wire::repository_json;
+/// use repovec_test_helpers::repository_listing_wire::{Repository, repository_json};
 ///
-/// let record = repository_json(1, "octocat", "hello-world");
+/// let record = repository_json(Repository {
+///     id: 1,
+///     owner: "octocat",
+///     name: "hello-world",
+/// });
 ///
 /// assert!(record.contains(r#""owner":{"login":"octocat"}"#));
 /// ```
 #[must_use]
-pub fn repository_json(id: u64, owner: &str, name: &str) -> String {
+pub fn repository_json(repository: Repository<'_>) -> String {
+    let Repository { id, owner, name } = repository;
     format!(
         concat!(
             r#"{{"id":{id},"name":"{name}","private":false,"#,
@@ -56,9 +101,13 @@ pub fn repository_json(id: u64, owner: &str, name: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use repovec_test_helpers::repository_listing_wire::{bare_page, repository_json};
+/// use repovec_test_helpers::repository_listing_wire::{Repository, bare_page, repository_json};
 ///
-/// let body = bare_page(&[repository_json(1, "octocat", "hello-world")]);
+/// let body = bare_page(&[repository_json(Repository {
+///     id: 1,
+///     owner: "octocat",
+///     name: "hello-world",
+/// })]);
 ///
 /// assert!(body.starts_with('['));
 /// ```
@@ -70,9 +119,17 @@ pub fn bare_page(items: &[String]) -> String { format!("[{}]", items.join(",")) 
 /// # Examples
 ///
 /// ```
-/// use repovec_test_helpers::repository_listing_wire::{envelope_page, repository_json};
+/// use repovec_test_helpers::repository_listing_wire::{
+///     Repository,
+///     envelope_page,
+///     repository_json,
+/// };
 ///
-/// let body = envelope_page(&[repository_json(1, "acme", "billing")]);
+/// let body = envelope_page(&[repository_json(Repository {
+///     id: 1,
+///     owner: "acme",
+///     name: "billing",
+/// })]);
 ///
 /// assert!(body.contains(r#""total_count":1"#));
 /// ```
@@ -99,7 +156,7 @@ pub fn envelope_page(items: &[String]) -> String {
 /// assert!(user_page(2).ends_with("&page=2"));
 /// ```
 #[must_use]
-pub fn user_page(page: u32) -> String { page_target("/user/repos", USER_QUERY, page) }
+pub fn user_page(page: u32) -> String { page_target(USER_PROFILE, page) }
 
 /// Builds the path and query of one installation-mode page request.
 ///
@@ -114,25 +171,23 @@ pub fn user_page(page: u32) -> String { page_target("/user/repos", USER_QUERY, p
 /// );
 /// ```
 #[must_use]
-pub fn installation_page(page: u32) -> String {
-    page_target("/installation/repositories", INSTALLATION_QUERY, page)
-}
+pub fn installation_page(page: u32) -> String { page_target(INSTALLATION_PROFILE, page) }
 
 /// Builds a `Link` header value naming one continuation.
 ///
 /// # Examples
 ///
 /// ```
-/// use repovec_test_helpers::repository_listing_wire::link_header;
+/// use repovec_test_helpers::repository_listing_wire::{LinkRelation, link_header};
 ///
 /// assert_eq!(
-///     link_header("/user/repos?page=2", "next"),
+///     link_header("/user/repos?page=2", LinkRelation::Next),
 ///     r#"</user/repos?page=2>; rel="next""#
 /// );
 /// ```
 #[must_use]
-pub fn link_header(target: &str, relation: &str) -> String {
-    format!("<{target}>; rel=\"{relation}\"")
+pub fn link_header(target: &str, relation: LinkRelation) -> String {
+    format!("<{target}>; rel=\"{}\"", relation.as_str())
 }
 
 /// A request target split into its path and decoded query parameters.
@@ -182,10 +237,31 @@ pub fn decode_target(target: &str) -> Result<DecodedTarget, url::ParseError> {
     })
 }
 
-/// Builds a page target from a path, its fixed query, and a page number.
-fn page_target(path: &str, fixed_query: &[(&str, &str)], page: u32) -> String {
-    let mut target = path.to_owned();
-    for (index, (key, value)) in fixed_query.iter().enumerate() {
+/// The request shape one listing profile sends for every page.
+#[derive(Clone, Copy, Debug)]
+struct PageProfile {
+    /// Path of every page request.
+    path: &'static str,
+    /// Query fixed for the whole traversal, in request order.
+    fixed_query: &'static [(&'static str, &'static str)],
+}
+
+/// The user repository profile.
+const USER_PROFILE: PageProfile = PageProfile {
+    path: "/user/repos",
+    fixed_query: USER_QUERY,
+};
+
+/// The installation repository profile.
+const INSTALLATION_PROFILE: PageProfile = PageProfile {
+    path: "/installation/repositories",
+    fixed_query: INSTALLATION_QUERY,
+};
+
+/// Builds a page target from a profile and a page number.
+fn page_target(profile: PageProfile, page: u32) -> String {
+    let mut target = profile.path.to_owned();
+    for (index, (key, value)) in profile.fixed_query.iter().enumerate() {
         target.push(if index == 0 { '?' } else { '&' });
         target.push_str(key);
         target.push('=');

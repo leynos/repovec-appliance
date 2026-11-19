@@ -14,7 +14,14 @@ use pretty_assertions::assert_eq;
 use repovec_core::repository_listing::{RepositoryListing, RepositoryListingError, ResourceBudget};
 use repovec_test_helpers::{
     recording_http::{ORIGIN_TOKEN, RecordingServer, ScriptedResponse},
-    repository_listing_wire::{bare_page, link_header, repository_json, user_page},
+    repository_listing_wire::{
+        LinkRelation,
+        Repository,
+        bare_page,
+        link_header,
+        repository_json,
+        user_page,
+    },
 };
 use repovecd::github_repository_client::ListingLimits;
 use rstest::rstest;
@@ -26,7 +33,13 @@ const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 fn page_of(count: usize) -> String {
     let items = (1_u64..)
         .take(count)
-        .map(|id| repository_json(id, "acme", "repository"))
+        .map(|id| {
+            repository_json(Repository {
+                id,
+                owner: "acme",
+                name: "repository",
+            })
+        })
         .collect::<Vec<_>>();
     bare_page(&items)
 }
@@ -34,7 +47,7 @@ fn page_of(count: usize) -> String {
 /// Builds a page whose `Link` header names the next page.
 fn continuation_page(count: usize, next: u32) -> ScriptedResponse {
     ScriptedResponse::new(200)
-        .with_header("Link", &link_header(&user_page(next), "next"))
+        .with_header("Link", &link_header(&user_page(next), LinkRelation::Next))
         .with_body(page_of(count))
 }
 
@@ -48,43 +61,106 @@ fn expect_failure(
     }
 }
 
-#[test]
-fn a_page_exactly_at_the_record_budget_is_accepted() {
-    let limits = ListingLimits::defaults().with_max_records(3);
-    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(page_of(3))])
-        .expect("the scripted server should start");
-    let client = user_client(&server.origin(), limits, TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
-
-    let repositories = client
-        .list_repositories()
-        .expect("a terminal page exactly at the budget is valid");
-
-    assert_eq!(
-        repositories.len(),
-        3,
-        "the boundary page must be returned whole"
-    );
+/// A budget boundary the adapter must decide exactly where it is crossed.
+#[derive(Clone, Copy, Debug)]
+enum BudgetProbe {
+    /// A terminal page exactly at the record budget.
+    RecordsAccepted,
+    /// A terminal page holding one record past the record budget.
+    RecordsRefused,
+    /// A single terminal page that fills a one-page budget.
+    PagesAccepted,
+    /// A body exactly at the page-byte budget.
+    PageBytesAccepted,
+    /// A body one byte past the page-byte budget.
+    PageBytesRefused,
 }
 
-#[test]
-fn a_page_one_record_past_the_budget_fails_without_a_listing() {
-    let limits = ListingLimits::defaults().with_max_records(2);
-    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(page_of(3))])
+/// The outcome a budget probe expects from its listing.
+#[derive(Clone, Copy, Debug)]
+enum Expectation {
+    /// The listing completes with this many records.
+    Records(usize),
+    /// The listing fails naming this exhausted budget and its limit.
+    Exhausted(ResourceBudget, u64),
+}
+
+impl BudgetProbe {
+    /// Returns the body the probe serves.
+    fn body(self) -> String {
+        match self {
+            Self::RecordsAccepted | Self::RecordsRefused => page_of(3),
+            Self::PagesAccepted | Self::PageBytesAccepted | Self::PageBytesRefused => page_of(1),
+        }
+    }
+
+    /// Returns the size of the served body in bytes.
+    fn body_bytes(self) -> u64 {
+        // A test body is far smaller than `u64::MAX`, so saturation is only a
+        // total-function guard rather than an expected outcome.
+        u64::try_from(self.body().len()).unwrap_or(u64::MAX)
+    }
+
+    /// Returns the limits the probe configures.
+    fn limits(self) -> ListingLimits {
+        match self {
+            Self::RecordsAccepted => ListingLimits::defaults().with_max_records(3),
+            Self::RecordsRefused => ListingLimits::defaults().with_max_records(2),
+            Self::PagesAccepted => ListingLimits::defaults().with_max_pages(1),
+            Self::PageBytesAccepted => {
+                ListingLimits::defaults().with_max_page_bytes(self.body_bytes())
+            }
+            Self::PageBytesRefused => {
+                ListingLimits::defaults().with_max_page_bytes(self.body_bytes().saturating_sub(1))
+            }
+        }
+    }
+
+    /// Returns the outcome the probe expects.
+    fn expected(self) -> Expectation {
+        match self {
+            Self::RecordsAccepted => Expectation::Records(3),
+            Self::PagesAccepted | Self::PageBytesAccepted => Expectation::Records(1),
+            Self::RecordsRefused => Expectation::Exhausted(ResourceBudget::Records, 2),
+            Self::PageBytesRefused => Expectation::Exhausted(
+                ResourceBudget::PageBytes,
+                self.body_bytes().saturating_sub(1),
+            ),
+        }
+    }
+}
+
+#[rstest]
+#[case::records_at_the_budget(BudgetProbe::RecordsAccepted)]
+#[case::records_past_the_budget(BudgetProbe::RecordsRefused)]
+#[case::pages_at_the_budget(BudgetProbe::PagesAccepted)]
+#[case::page_bytes_at_the_budget(BudgetProbe::PageBytesAccepted)]
+#[case::page_bytes_past_the_budget(BudgetProbe::PageBytesRefused)]
+fn a_budget_boundary_is_decided_where_it_is_crossed(#[case] probe: BudgetProbe) {
+    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(probe.body())])
         .expect("the scripted server should start");
-    let client = user_client(&server.origin(), limits, TEST_TIMEOUT)
+    let client = user_client(&server.origin(), probe.limits(), TEST_TIMEOUT)
         .expect("a user-mode adapter should construct");
 
-    let error = expect_failure(client.list_repositories());
+    let result = client.list_repositories();
 
-    assert_eq!(
-        error,
-        RepositoryListingError::ResourceLimitExceeded {
-            budget: ResourceBudget::Records,
-            limit: 2,
-        },
-        "the record budget must be named when it is crossed"
-    );
+    match probe.expected() {
+        Expectation::Records(count) => {
+            let repositories = result.expect("a terminal page inside every budget is valid");
+            assert_eq!(
+                repositories.len(),
+                count,
+                "the boundary page must be returned whole for {probe:?}"
+            );
+        }
+        Expectation::Exhausted(budget, limit) => {
+            assert_eq!(
+                expect_failure(result),
+                RepositoryListingError::ResourceLimitExceeded { budget, limit },
+                "the exhausted budget must be named for {probe:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -116,21 +192,6 @@ fn a_record_budget_crossed_on_a_later_page_fails_the_whole_listing() {
 }
 
 #[test]
-fn a_page_budget_of_one_admits_a_single_terminal_page() {
-    let limits = ListingLimits::defaults().with_max_pages(1);
-    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(page_of(1))])
-        .expect("the scripted server should start");
-    let client = user_client(&server.origin(), limits, TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
-
-    let repositories = client
-        .list_repositories()
-        .expect("one terminal page fits a one-page budget");
-
-    assert_eq!(repositories.len(), 1, "the single page must be returned");
-}
-
-#[test]
 fn an_endless_continuation_is_bounded_by_the_page_budget() {
     let limits = ListingLimits::defaults().with_max_pages(3);
     let script = (1..=4)
@@ -158,45 +219,6 @@ fn an_endless_continuation_is_bounded_by_the_page_budget() {
 }
 
 #[test]
-fn a_body_exactly_at_the_page_byte_budget_is_accepted() {
-    let body = page_of(1);
-    let budget = u64::try_from(body.len()).expect("a test body length fits in u64");
-    let limits = ListingLimits::defaults().with_max_page_bytes(budget);
-    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(body)])
-        .expect("the scripted server should start");
-    let client = user_client(&server.origin(), limits, TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
-
-    let repositories = client
-        .list_repositories()
-        .expect("a body exactly at the byte budget is accepted");
-
-    assert_eq!(repositories.len(), 1, "the boundary body must decode");
-}
-
-#[test]
-fn a_body_one_byte_past_the_page_byte_budget_fails() {
-    let body = page_of(1);
-    let budget = u64::try_from(body.len() - 1).expect("a test body length fits in u64");
-    let limits = ListingLimits::defaults().with_max_page_bytes(budget);
-    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(body)])
-        .expect("the scripted server should start");
-    let client = user_client(&server.origin(), limits, TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
-
-    let error = expect_failure(client.list_repositories());
-
-    assert_eq!(
-        error,
-        RepositoryListingError::ResourceLimitExceeded {
-            budget: ResourceBudget::PageBytes,
-            limit: budget,
-        },
-        "an oversized body must be rejected before it is decoded"
-    );
-}
-
-#[test]
 fn the_cumulative_byte_budget_counts_every_accepted_page() {
     let body = page_of(1);
     let page_bytes = u64::try_from(body.len()).expect("a test body length fits in u64");
@@ -205,7 +227,7 @@ fn the_cumulative_byte_budget_counts_every_accepted_page() {
         .with_max_total_bytes(page_bytes);
     let server = RecordingServer::start(vec![
         ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&user_page(2), "next"))
+            .with_header("Link", &link_header(&user_page(2), LinkRelation::Next))
             .with_body(body.clone()),
         ScriptedResponse::new(200).with_body(body),
     ])
@@ -230,8 +252,16 @@ fn total_count_never_admits_an_extra_record() {
     let limits = ListingLimits::defaults().with_max_records(1);
     let envelope = format!(
         r#"{{"total_count":99,"repositories":[{},{}]}}"#,
-        repository_json(1, "acme", "one"),
-        repository_json(2, "acme", "two")
+        repository_json(Repository {
+            id: 1,
+            owner: "acme",
+            name: "one"
+        }),
+        repository_json(Repository {
+            id: 2,
+            owner: "acme",
+            name: "two"
+        })
     );
     let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(envelope)])
         .expect("the scripted server should start");
@@ -255,7 +285,11 @@ fn a_reported_total_larger_than_the_items_is_only_informational() {
     let limits = ListingLimits::defaults().with_max_records(1);
     let envelope = format!(
         r#"{{"total_count":99,"repositories":[{}]}}"#,
-        repository_json(1, "acme", "one")
+        repository_json(Repository {
+            id: 1,
+            owner: "acme",
+            name: "one"
+        })
     );
     let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(envelope)])
         .expect("the scripted server should start");
@@ -290,7 +324,10 @@ fn an_unretainable_page_is_not_followed(
     #[case] limits: ListingLimits,
     #[case] budget: ResourceBudget,
 ) {
-    let header = link_header(&format!("{ORIGIN_TOKEN}{}", user_page(2)), "next");
+    let header = link_header(
+        &format!("{ORIGIN_TOKEN}{}", user_page(2)),
+        LinkRelation::Next,
+    );
     let server = RecordingServer::start(vec![
         ScriptedResponse::new(200)
             .with_header("Link", &header)

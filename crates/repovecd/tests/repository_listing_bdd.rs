@@ -17,6 +17,8 @@ use repovec_core::repository_listing::{
 use repovec_test_helpers::{
     recording_http::{RecordingServer, ScriptedResponse},
     repository_listing_wire::{
+        LinkRelation,
+        Repository,
         bare_page,
         envelope_page,
         installation_page,
@@ -99,7 +101,11 @@ fn world() -> ListingWorld {
 impl ListingWorld {
     /// Appends a record to the numbered page and remembers its label.
     fn add_record(&mut self, page: usize, login: &str, name: &str) {
-        let record = repository_json(1, login, name);
+        let record = repository_json(Repository {
+            id: 1,
+            owner: login,
+            name,
+        });
         while self.pages.len() <= page {
             self.pages.push(Page::new(Vec::new()));
         }
@@ -141,7 +147,7 @@ fn script(world: &ListingWorld) -> Vec<ScriptedResponse> {
             };
             if page.has_next {
                 let next = target(world.principal, number);
-                response.with_header("Link", &link_header(&next, "next"))
+                response.with_header("Link", &link_header(&next, LinkRelation::Next))
             } else {
                 response
             }

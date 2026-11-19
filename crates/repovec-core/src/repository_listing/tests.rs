@@ -57,30 +57,19 @@ fn owner_rejects_empty_and_control_bearing_logins(#[case] login: &str) {
     );
 }
 
-#[test]
-fn repository_name_rejects_empty_value() {
-    let error = RepositoryName::new("").expect_err("an empty repository name must not be accepted");
+#[rstest]
+#[case::empty("", "must not be empty")]
+#[case::control_bearing("repo\r\nname", "must not contain control characters")]
+fn repository_name_rejects_invalid_values(#[case] name: &str, #[case] reason: &'static str) {
+    let error = RepositoryName::new(name).expect_err("an invalid repository name must be refused");
 
     assert_eq!(
         error,
         RepositoryListingError::InvalidInput {
             field: "repository name",
-            reason: "must not be empty",
+            reason,
         },
-    );
-}
-
-#[test]
-fn repository_name_rejects_control_characters() {
-    let error = RepositoryName::new("repo\r\nname")
-        .expect_err("a control-bearing repository name must not be accepted");
-
-    assert_eq!(
-        error,
-        RepositoryListingError::InvalidInput {
-            field: "repository name",
-            reason: "must not contain control characters",
-        },
+        "repository name {name:?} must be rejected with its documented reason",
     );
 }
 

@@ -33,6 +33,8 @@ use repovec_core::repository_listing::{
 use repovec_test_helpers::{
     recording_http::{RecordingServer, ScriptedResponse},
     repository_listing_wire::{
+        LinkRelation,
+        Repository,
         bare_page,
         envelope_page,
         installation_page,
@@ -107,7 +109,13 @@ fn served_histories() -> impl Strategy<Value = (Principal, Vec<Vec<Record>>)> {
 fn body_of(principal: Principal, page: &[Record]) -> String {
     let items = page
         .iter()
-        .map(|record| repository_json(record.id, record.owner, record.name))
+        .map(|record| {
+            repository_json(Repository {
+                id: record.id,
+                owner: record.owner,
+                name: record.name,
+            })
+        })
         .collect::<Vec<_>>();
     match principal {
         Principal::User => bare_page(&items),
@@ -136,7 +144,7 @@ fn script_of(principal: Principal, pages: &[Vec<Record>]) -> Vec<ScriptedRespons
                 response
             } else {
                 let next = target(principal, page_number);
-                response.with_header("Link", &link_header(&next, "next"))
+                response.with_header("Link", &link_header(&next, LinkRelation::Next))
             }
         })
         .collect()

@@ -15,7 +15,14 @@ use pretty_assertions::assert_eq;
 use repovec_core::repository_listing::{RateLimitInfo, RepositoryListing, RepositoryListingError};
 use repovec_test_helpers::{
     recording_http::{RecordingServer, ScriptedResponse},
-    repository_listing_wire::{bare_page, link_header, repository_json, user_page},
+    repository_listing_wire::{
+        LinkRelation,
+        Repository,
+        bare_page,
+        link_header,
+        repository_json,
+        user_page,
+    },
 };
 use repovecd::github_repository_client::{GitHubRepositoryClient, ListingLimits};
 use rstest::rstest;
@@ -196,7 +203,27 @@ fn an_unanswered_request_is_a_transport_failure() {
         reason: "page records do not match their schema",
     }
 )]
-fn a_body_outside_the_contract_is_an_invalid_response(
+#[case::empty_name(
+    Profile::User,
+    concat!(
+        r#"[{"id":2,"name":"","private":false,"default_branch":"main","#,
+        r#""owner":{"login":"acme"}}]"#
+    ),
+    RepositoryListingError::InvalidResponse {
+        reason: "repository name is invalid",
+    }
+)]
+#[case::zero_identifier(
+    Profile::Installation,
+    concat!(
+        r#"{"total_count":1,"repositories":[{"id":0,"name":"one","#,
+        r#""private":false,"default_branch":"main","owner":{"login":"acme"}}]}"#
+    ),
+    RepositoryListingError::InvalidResponse {
+        reason: "repository identifier must be positive",
+    }
+)]
+fn a_body_outside_the_contract_fails_the_listing(
     #[case] profile: Profile,
     #[case] body: &str,
     #[case] expected: RepositoryListingError,
@@ -234,55 +261,23 @@ fn an_object_body_is_not_a_user_listing() {
     );
 }
 
-#[rstest]
-#[case::empty_name(
-    Profile::User,
-    concat!(
-        r#"[{"id":2,"name":"","private":false,"default_branch":"main","#,
-        r#""owner":{"login":"acme"}}]"#
-    ),
-    RepositoryListingError::InvalidResponse {
-        reason: "repository name is invalid",
-    }
-)]
-#[case::zero_identifier(
-    Profile::Installation,
-    concat!(
-        r#"{"total_count":1,"repositories":[{"id":0,"name":"one","#,
-        r#""private":false,"default_branch":"main","owner":{"login":"acme"}}]}"#
-    ),
-    RepositoryListingError::InvalidResponse {
-        reason: "repository identifier must be positive",
-    }
-)]
-fn a_record_outside_the_domain_shape_fails_the_listing(
-    #[case] profile: Profile,
-    #[case] body: &str,
-    #[case] expected: RepositoryListingError,
-) {
-    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(body)])
-        .expect("the scripted server should start");
-    let client = adapter(profile, &server.origin())
-        .expect("an adapter for the named profile should construct");
-
-    let result = client.list_repositories();
-
-    assert_eq!(
-        result.err(),
-        Some(expected),
-        "one unusable record must fail the whole listing"
-    );
-}
-
 #[test]
 fn a_failure_on_a_later_page_returns_no_prefix() {
     let second = user_page(2);
     let server = RecordingServer::start(vec![
         ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, "next"))
+            .with_header("Link", &link_header(&second, LinkRelation::Next))
             .with_body(bare_page(&[
-                repository_json(1, "acme", "one"),
-                repository_json(2, "acme", "two"),
+                repository_json(Repository {
+                    id: 1,
+                    owner: "acme",
+                    name: "one",
+                }),
+                repository_json(Repository {
+                    id: 2,
+                    owner: "acme",
+                    name: "two",
+                }),
             ])),
         ScriptedResponse::new(500),
     ])
@@ -309,9 +304,17 @@ fn a_malformed_record_after_accepted_pages_returns_no_prefix() {
     let second = user_page(2);
     let server = RecordingServer::start(vec![
         ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, "next"))
-            .with_body(bare_page(&[repository_json(1, "acme", "one")])),
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(2, "acme", "")])),
+            .with_header("Link", &link_header(&second, LinkRelation::Next))
+            .with_body(bare_page(&[repository_json(Repository {
+                id: 1,
+                owner: "acme",
+                name: "one",
+            })])),
+        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(Repository {
+            id: 2,
+            owner: "acme",
+            name: "",
+        })])),
     ])
     .expect("the scripted server should start");
     let client =

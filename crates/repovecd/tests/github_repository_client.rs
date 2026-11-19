@@ -16,6 +16,8 @@ use repovec_test_helpers::{
     repository_listing_wire::{
         INSTALLATION_QUERY,
         INSTALLATION_TOKEN,
+        LinkRelation,
+        Repository,
         USER_QUERY,
         USER_TOKEN,
         bare_page,
@@ -27,6 +29,7 @@ use repovec_test_helpers::{
     },
 };
 use repovecd::github_repository_client::ListingLimits;
+use rstest::rstest;
 
 /// The request deadline the workflow tests allow themselves.
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
@@ -34,8 +37,16 @@ const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 #[test]
 fn user_mode_sends_the_documented_request() {
     let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(bare_page(&[
-        repository_json(1, "octocat", "hello-world"),
-        repository_json(2, "acme", "service"),
+        repository_json(Repository {
+            id: 1,
+            owner: "octocat",
+            name: "hello-world",
+        }),
+        repository_json(Repository {
+            id: 2,
+            owner: "acme",
+            name: "service",
+        }),
     ]))])
     .expect("the scripted server should start");
     let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
@@ -99,8 +110,16 @@ fn user_mode_sends_the_documented_request() {
 fn installation_mode_reads_the_repositories_envelope() {
     let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(envelope_page(
         &[
-            repository_json(7, "acme", "billing"),
-            repository_json(8, "acme", "portal"),
+            repository_json(Repository {
+                id: 7,
+                owner: "acme",
+                name: "billing",
+            }),
+            repository_json(Repository {
+                id: 8,
+                owner: "acme",
+                name: "portal",
+            }),
         ],
     ))])
     .expect("the scripted server should start");
@@ -147,9 +166,13 @@ fn installation_mode_reads_the_repositories_envelope() {
 
 #[test]
 fn a_short_page_without_a_next_link_completes() {
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(1, "acme", "one")])),
-    ])
+    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(bare_page(&[
+        repository_json(Repository {
+            id: 1,
+            owner: "acme",
+            name: "one",
+        }),
+    ]))])
     .expect("the scripted server should start");
     let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
         .expect("a user-mode adapter should construct");
@@ -172,9 +195,17 @@ fn an_absolute_next_link_pages_in_request_order() {
     let absolute = format!("{ORIGIN_TOKEN}{second}");
     let server = RecordingServer::start(vec![
         ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&absolute, "next"))
-            .with_body(bare_page(&[repository_json(1, "acme", "one")])),
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(2, "acme", "two")])),
+            .with_header("Link", &link_header(&absolute, LinkRelation::Next))
+            .with_body(bare_page(&[repository_json(Repository {
+                id: 1,
+                owner: "acme",
+                name: "one",
+            })])),
+        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(Repository {
+            id: 2,
+            owner: "acme",
+            name: "two",
+        })])),
     ])
     .expect("the scripted server should start");
     let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
@@ -201,63 +232,63 @@ fn an_absolute_next_link_pages_in_request_order() {
     );
 }
 
-#[test]
-fn a_relative_next_link_is_resolved_against_the_current_request() {
-    let second = user_page(2);
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, "next"))
-            .with_body(bare_page(&[repository_json(1, "acme", "one")])),
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(2, "acme", "two")])),
-    ])
-    .expect("the scripted server should start");
-    let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
-
-    let repositories = client
-        .list_repositories()
-        .expect("a relative continuation keeps the listing origin");
-
-    assert_eq!(
-        repositories.len(),
-        2,
-        "both pages must be observed, got {repositories:?}"
-    );
+/// The ways a first page can present the continuation it names.
+#[derive(Clone, Copy, Debug)]
+enum ContinuationPresentation {
+    /// One relative `next` link.
+    Relative,
+    /// A relation list naming `next` alongside `last`.
+    RelationList,
+    /// A `last` link in a header that precedes the one naming `next`.
+    SeparateHeaders,
+    /// A next link with an extra quoted parameter holding a comma and a quote.
+    QuotedParameter,
 }
 
-#[test]
-fn a_relation_list_alongside_next_is_followed() {
-    let second = user_page(2);
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, "next last"))
-            .with_body(bare_page(&[repository_json(1, "acme", "one")])),
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(2, "acme", "two")])),
-    ])
-    .expect("the scripted server should start");
-    let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
-
-    let repositories = client
-        .list_repositories()
-        .expect("a relation list naming next is still a continuation");
-
-    assert_eq!(
-        repositories.len(),
-        2,
-        "the next relation in a list must be followed"
-    );
+impl ContinuationPresentation {
+    /// Returns the `Link` header values this presentation sends.
+    fn values(self, target: &str) -> Vec<String> {
+        match self {
+            Self::Relative => vec![link_header(target, LinkRelation::Next)],
+            Self::RelationList => vec![link_header(target, LinkRelation::NextThenLast)],
+            Self::SeparateHeaders => vec![
+                link_header(target, LinkRelation::Last),
+                link_header(target, LinkRelation::Next),
+            ],
+            Self::QuotedParameter => vec![format!(
+                "{link}; title=\"a,b\\\"c\"",
+                link = link_header(target, LinkRelation::Next)
+            )],
+        }
+    }
 }
 
-#[test]
-fn the_next_link_is_found_across_several_headers() {
+#[rstest]
+#[case::relative(ContinuationPresentation::Relative)]
+#[case::relation_list(ContinuationPresentation::RelationList)]
+#[case::separate_headers(ContinuationPresentation::SeparateHeaders)]
+#[case::quoted_parameter(ContinuationPresentation::QuotedParameter)]
+fn a_next_link_is_followed_however_the_header_presents_it(
+    #[case] presentation: ContinuationPresentation,
+) {
     let second = user_page(2);
+    let first_page = presentation
+        .values(&second)
+        .iter()
+        .fold(ScriptedResponse::new(200), |response, value| {
+            response.with_header("Link", value)
+        });
     let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, "last"))
-            .with_header("Link", &link_header(&second, "next"))
-            .with_body(bare_page(&[repository_json(1, "acme", "one")])),
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(2, "acme", "two")])),
+        first_page.with_body(bare_page(&[repository_json(Repository {
+            id: 1,
+            owner: "acme",
+            name: "one",
+        })])),
+        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(Repository {
+            id: 2,
+            owner: "acme",
+            name: "two",
+        })])),
     ])
     .expect("the scripted server should start");
     let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
@@ -265,40 +296,21 @@ fn the_next_link_is_found_across_several_headers() {
 
     let repositories = client
         .list_repositories()
-        .expect("separate Link headers must be parsed independently");
+        .expect("a continuation stays on the listing it was reported for");
 
     assert_eq!(
-        repositories.len(),
-        2,
-        "the next relation may arrive in a later header"
+        repositories
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        vec!["acme/one".to_owned(), "acme/two".to_owned()],
+        "both pages must be observed in order for {presentation:?}"
     );
-}
-
-#[test]
-fn quoted_parameters_do_not_break_continuation_selection() {
-    let second = user_page(2);
-    let header = format!(
-        "{link}; title=\"a,b\\\"c\"",
-        link = link_header(&second, "next")
-    );
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &header)
-            .with_body(bare_page(&[repository_json(1, "acme", "one")])),
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(2, "acme", "two")])),
-    ])
-    .expect("the scripted server should start");
-    let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
-
-    let repositories = client
-        .list_repositories()
-        .expect("a quoted parameter holding a comma is still valid");
-
+    let requests = server.requests();
     assert_eq!(
-        repositories.len(),
-        2,
-        "quoted parameters must not split the link-value"
+        requests.get(1).map(|request| request.target.as_str()),
+        Some(second.as_str()),
+        "the continuation must request the reported page for {presentation:?}"
     );
 }
 
@@ -337,7 +349,11 @@ fn unknown_fields_and_a_null_default_branch_are_accepted() {
 #[test]
 fn a_completed_listing_logs_counts_without_naming_repositories_or_secrets() {
     let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(bare_page(&[
-        repository_json(1, "acme", "confidential-project"),
+        repository_json(Repository {
+            id: 1,
+            owner: "acme",
+            name: "confidential-project",
+        }),
     ]))])
     .expect("the scripted server should start");
     let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)

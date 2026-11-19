@@ -7,6 +7,8 @@
 
 #[path = "common/listing_composition.rs"]
 mod listing_composition;
+#[path = "common/listing_observation.rs"]
+mod listing_observation;
 
 use std::io;
 
@@ -16,13 +18,15 @@ use listing_composition::{
     EncryptedUserTokens,
     ReversibleEncryptor,
     UnusedUserTokens,
-    run_buffered,
 };
+use listing_observation::observe;
 use repovec_core::github_oauth::AccessToken;
 use repovec_test_helpers::{
     recording_http::{RecordingServer, ScriptedResponse},
     repository_listing_wire::{
         INSTALLATION_TOKEN,
+        LinkRelation,
+        Repository,
         USER_TOKEN,
         bare_page,
         envelope_page,
@@ -42,23 +46,34 @@ use repovecd::{
         run_listing,
     },
 };
+use rstest::rstest;
 
 #[test]
 fn installation_mode_writes_every_observation_after_success() {
     let server = RecordingServer::start(vec![
         ScriptedResponse::new(200)
-            .with_body(envelope_page(&[repository_json(7, "acme", "billing")]))
+            .with_body(envelope_page(&[repository_json(Repository {
+                id: 7,
+                owner: "acme",
+                name: "billing",
+            })]))
             .with_header(
                 "Link",
-                &link_header(&format!("{{origin}}{}", installation_page(2)), "next"),
+                &link_header(
+                    &format!("{{origin}}{}", installation_page(2)),
+                    LinkRelation::Next,
+                ),
             ),
-        ScriptedResponse::new(200)
-            .with_body(envelope_page(&[repository_json(8, "acme", "portal")])),
+        ScriptedResponse::new(200).with_body(envelope_page(&[repository_json(Repository {
+            id: 8,
+            owner: "acme",
+            name: "portal",
+        })])),
     ])
     .expect("the scripted server should start");
     let stdin = format!("{INSTALLATION_TOKEN}\n").into_bytes();
 
-    let (status, stdout, stderr) = run_buffered(
+    let observed = observe(
         &server,
         ListingMode::InstallationStdin,
         &mut stdin.as_slice(),
@@ -66,28 +81,13 @@ fn installation_mode_writes_every_observation_after_success() {
     )
     .expect("the composition fixture should run");
 
-    assert_eq!(
-        status,
-        RunStatus::Success,
-        "a completed traversal must succeed"
-    );
-    assert_eq!(
-        stdout, "acme/billing\nacme/portal\n",
-        "every observation must be written in page order"
-    );
-    assert!(
-        stderr.is_empty(),
-        "a successful run must write no diagnostic"
-    );
+    observed.assert_succeeded("acme/billing\nacme/portal\n");
     assert_eq!(
         server.request_count(),
         2,
         "both pages must be requested exactly once"
     );
-    assert!(
-        !stdout.contains(INSTALLATION_TOKEN) && !stderr.contains(INSTALLATION_TOKEN),
-        "no stream may reveal the installation token"
-    );
+    observed.assert_hides(INSTALLATION_TOKEN);
 }
 
 #[test]
@@ -100,17 +100,17 @@ fn user_store_mode_loads_the_encrypted_credential() {
     store
         .store_token(&AccessToken::new(USER_TOKEN, ["repo"]))
         .expect("the token should be stored");
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(
-            1,
-            "octocat",
-            "hello-world",
-        )])),
-    ])
+    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(bare_page(&[
+        repository_json(Repository {
+            id: 1,
+            owner: "octocat",
+            name: "hello-world",
+        }),
+    ]))])
     .expect("the scripted server should start");
     let mut stdin = io::empty();
 
-    let (status, stdout, stderr) = run_buffered(
+    let observed = observe(
         &server,
         ListingMode::UserStore { root },
         &mut stdin,
@@ -118,19 +118,7 @@ fn user_store_mode_loads_the_encrypted_credential() {
     )
     .expect("the composition fixture should run");
 
-    assert_eq!(
-        status,
-        RunStatus::Success,
-        "the stored credential must be usable"
-    );
-    assert_eq!(
-        stdout, "octocat/hello-world\n",
-        "the observation must be written once"
-    );
-    assert!(
-        stderr.is_empty(),
-        "a successful run must write no diagnostic"
-    );
+    observed.assert_succeeded("octocat/hello-world\n");
     let requests = server.requests();
     let request = requests
         .first()
@@ -147,88 +135,41 @@ fn user_store_mode_loads_the_encrypted_credential() {
     );
 }
 
-#[test]
-fn empty_standard_input_fails_before_any_request() {
-    let server = RecordingServer::start(Vec::new()).expect("the scripted server should start");
-    let mut stdin = io::empty();
-
-    let (status, stdout, stderr) = run_buffered(
-        &server,
-        ListingMode::InstallationStdin,
-        &mut stdin,
-        &UnusedUserTokens,
-    )
-    .expect("the composition fixture should run");
-
-    assert_eq!(
-        status,
-        RunStatus::CredentialFailure,
-        "an empty credential must fail before the traversal"
-    );
-    assert!(
-        stdout.is_empty(),
-        "a credential failure must write no observation"
-    );
-    assert!(
-        stderr.contains("standard input"),
-        "the diagnostic must name the credential source: {stderr}"
-    );
-    assert_eq!(
-        server.request_count(),
-        0,
-        "no request may be attempted without a credential"
-    );
+/// A standard-input payload an installation-mode run must refuse.
+#[derive(Clone, Copy, Debug)]
+enum RefusedInput {
+    /// No bytes at all.
+    Empty,
+    /// One byte past the ceiling, so the token line is not even well formed.
+    Oversize,
 }
 
-#[test]
-fn oversize_standard_input_fails_before_any_request() {
-    let server = RecordingServer::start(Vec::new()).expect("the scripted server should start");
-    let input = vec![b'a'; MAX_INSTALLATION_TOKEN_BYTES.saturating_add(1)];
-    let mut stdin = input.as_slice();
+impl RefusedInput {
+    /// Returns the bytes the run reads.
+    fn bytes(self) -> Vec<u8> {
+        match self {
+            Self::Empty => Vec::new(),
+            Self::Oversize => vec![b'a'; MAX_INSTALLATION_TOKEN_BYTES.saturating_add(1)],
+        }
+    }
 
-    let (status, stdout, stderr) = run_buffered(
-        &server,
-        ListingMode::InstallationStdin,
-        &mut stdin,
-        &UnusedUserTokens,
-    )
-    .expect("the composition fixture should run");
-
-    assert_eq!(
-        status,
-        RunStatus::CredentialFailure,
-        "an oversize credential must fail before the traversal"
-    );
-    assert!(
-        stdout.is_empty(),
-        "a credential failure must write no observation"
-    );
-    assert!(
-        stderr.contains("exceeds 16 KiB"),
-        "the diagnostic must name the crossed limit: {stderr}"
-    );
-    assert_eq!(
-        server.request_count(),
-        0,
-        "no request may be attempted with an oversize credential"
-    );
+    /// Returns the text the diagnostic must contain for this payload.
+    const fn cause(self) -> &'static str {
+        match self {
+            Self::Empty => "standard input",
+            Self::Oversize => "exceeds 16 KiB",
+        }
+    }
 }
 
-#[test]
-fn a_late_failure_writes_no_repository_output() {
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_body(envelope_page(&[repository_json(7, "acme", "billing")]))
-            .with_header(
-                "Link",
-                &link_header(&format!("{{origin}}{}", installation_page(2)), "next"),
-            ),
-        ScriptedResponse::new(401),
-    ])
-    .expect("the scripted server should start");
-    let stdin = format!("{INSTALLATION_TOKEN}\n").into_bytes();
+#[rstest]
+#[case::empty(RefusedInput::Empty)]
+#[case::oversize(RefusedInput::Oversize)]
+fn installation_input_outside_the_contract_is_refused(#[case] input: RefusedInput) {
+    let server = RecordingServer::start(Vec::new()).expect("the scripted server should start");
+    let stdin = input.bytes();
 
-    let (status, stdout, stderr) = run_buffered(
+    let observed = observe(
         &server,
         ListingMode::InstallationStdin,
         &mut stdin.as_slice(),
@@ -236,35 +177,66 @@ fn a_late_failure_writes_no_repository_output() {
     )
     .expect("the composition fixture should run");
 
+    observed.assert_refused(RunStatus::CredentialFailure, input.cause());
     assert_eq!(
-        status,
-        RunStatus::ListingFailure,
-        "a rejected later page must fail the whole listing"
+        server.request_count(),
+        0,
+        "no request may be attempted for {input:?}"
     );
+}
+
+#[test]
+fn a_late_failure_writes_no_repository_output() {
+    let server = RecordingServer::start(vec![
+        ScriptedResponse::new(200)
+            .with_body(envelope_page(&[repository_json(Repository {
+                id: 7,
+                owner: "acme",
+                name: "billing",
+            })]))
+            .with_header(
+                "Link",
+                &link_header(
+                    &format!("{{origin}}{}", installation_page(2)),
+                    LinkRelation::Next,
+                ),
+            ),
+        ScriptedResponse::new(401),
+    ])
+    .expect("the scripted server should start");
+    let stdin = format!("{INSTALLATION_TOKEN}\n").into_bytes();
+
+    let observed = observe(
+        &server,
+        ListingMode::InstallationStdin,
+        &mut stdin.as_slice(),
+        &UnusedUserTokens,
+    )
+    .expect("the composition fixture should run");
+
+    observed.assert_refused(RunStatus::ListingFailure, "authentication_rejected");
     assert!(
-        stdout.is_empty(),
-        "the accepted first page must not masquerade as a complete listing"
+        observed.stderr.contains("fresh installation token"),
+        "the diagnostic must state the installation recovery step: {}",
+        observed.stderr
     );
-    assert!(
-        stderr.contains("authentication_rejected"),
-        "the diagnostic must carry the stable category: {stderr}"
-    );
-    assert!(
-        stderr.contains("fresh installation token"),
-        "the diagnostic must state the installation recovery step: {stderr}"
-    );
-    assert!(
-        !stderr.contains(INSTALLATION_TOKEN),
-        "the diagnostic must not reveal the credential"
-    );
+    observed.assert_hides(INSTALLATION_TOKEN);
 }
 
 #[test]
 fn an_output_failure_keeps_the_lines_it_already_wrote() {
     let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(envelope_page(
         &[
-            repository_json(1, "octocat", "hello-world"),
-            repository_json(2, "acme", "service"),
+            repository_json(Repository {
+                id: 1,
+                owner: "octocat",
+                name: "hello-world",
+            }),
+            repository_json(Repository {
+                id: 2,
+                owner: "acme",
+                name: "service",
+            }),
         ],
     ))])
     .expect("the scripted server should start");
@@ -314,7 +286,7 @@ fn a_whitespace_user_credential_fails_before_any_request() {
     let server = RecordingServer::start(Vec::new()).expect("the scripted server should start");
     let mut stdin = io::empty();
 
-    let (status, stdout, stderr) = run_buffered(
+    let observed = observe(
         &server,
         ListingMode::UserStore { root },
         &mut stdin,
@@ -322,16 +294,7 @@ fn a_whitespace_user_credential_fails_before_any_request() {
     )
     .expect("the composition fixture should run");
 
-    assert_eq!(
-        status,
-        RunStatus::ListingFailure,
-        "an unusable stored credential must fail adapter construction"
-    );
-    assert!(stdout.is_empty(), "no observation can precede a request");
-    assert!(
-        stderr.contains("invalid_input"),
-        "the diagnostic must carry the stable category: {stderr}"
-    );
+    observed.assert_refused(RunStatus::ListingFailure, "invalid_input");
     assert_eq!(
         server.request_count(),
         0,
@@ -347,7 +310,7 @@ fn an_unreadable_user_store_fails_before_any_request() {
     let server = RecordingServer::start(Vec::new()).expect("the scripted server should start");
     let mut stdin = io::empty();
 
-    let (status, stdout, stderr) = run_buffered(
+    let observed = observe(
         &server,
         ListingMode::UserStore { root },
         &mut stdin,
@@ -355,19 +318,7 @@ fn an_unreadable_user_store_fails_before_any_request() {
     )
     .expect("the composition fixture should run");
 
-    assert_eq!(
-        status,
-        RunStatus::CredentialFailure,
-        "an unreadable store must fail credential acquisition"
-    );
-    assert!(
-        stdout.is_empty(),
-        "a credential failure must write no observation"
-    );
-    assert!(
-        stderr.contains("could not be loaded"),
-        "the diagnostic must report the acquisition failure: {stderr}"
-    );
+    observed.assert_refused(RunStatus::CredentialFailure, "could not be loaded");
     assert_eq!(
         server.request_count(),
         0,

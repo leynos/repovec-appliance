@@ -362,29 +362,63 @@ where
     if matched_files.is_empty() {
         DocsGatePlan::no_documentation_changes()
     } else {
-        let mut conservative_fallback_files = Vec::new();
-        let mut nixie_required = false;
+        let scan = scan_matched_files(&matched_files, &mut path_contains_mermaid);
+        DocsGatePlan::required(matched_files, scan.fallback_files, scan.nixie_required)
+    }
+}
 
-        for path in &matched_files {
-            if is_docs_tooling_config_path(path) {
-                nixie_required = true;
-                continue;
-            }
+/// Outcome of classifying the documentation files a change touched.
+struct DocsScan {
+    /// Markdown files whose Mermaid content could not be determined.
+    fallback_files: Vec<String>,
+    /// Whether any changed file requires Mermaid validation.
+    nixie_required: bool,
+}
 
-            if !is_markdown_path(path) {
-                continue;
-            }
+/// Classifies each matched documentation input for Mermaid validation.
+///
+/// Tooling configuration paths force validation without inspection, because a
+/// change to them can alter how diagrams are validated. Non-Markdown inputs
+/// cannot contain Mermaid. A Markdown file whose detector reports an unknown
+/// outcome is retained conservatively so a later stage can decide.
+fn scan_matched_files<F>(matched_files: &[String], path_contains_mermaid: &mut F) -> DocsScan
+where
+    F: FnMut(&str) -> MermaidDetection,
+{
+    let mut scan = DocsScan {
+        fallback_files: Vec::new(),
+        nixie_required: false,
+    };
 
-            let detection = path_contains_mermaid(path);
-            if detection.is_unknown() {
-                conservative_fallback_files.push(path.clone());
-            }
+    for path in matched_files {
+        scan.observe(path, path_contains_mermaid);
+    }
 
-            if detection.requires_nixie() {
-                nixie_required = true;
-            }
+    scan
+}
+
+impl DocsScan {
+    /// Folds one matched path into the scan outcome.
+    fn observe<F>(&mut self, path: &str, path_contains_mermaid: &mut F)
+    where
+        F: FnMut(&str) -> MermaidDetection,
+    {
+        if is_docs_tooling_config_path(path) {
+            self.nixie_required = true;
+            return;
         }
 
-        DocsGatePlan::required(matched_files, conservative_fallback_files, nixie_required)
+        if !is_markdown_path(path) {
+            return;
+        }
+
+        let detection = path_contains_mermaid(path);
+        if detection.is_unknown() {
+            self.fallback_files.push(path.to_owned());
+        }
+
+        if detection.requires_nixie() {
+            self.nixie_required = true;
+        }
     }
 }

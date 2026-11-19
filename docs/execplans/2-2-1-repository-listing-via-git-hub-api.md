@@ -1,6 +1,6 @@
 # List accessible GitHub repositories (2.2.1)
 
-Status: APPROVED — implementation in progress (approved 2026-11-19).
+Status: COMPLETE — implemented 2026-11-19; every milestone and gate passed.
 
 This execution plan is a living document. Keep Constraints, Tolerances, Risks,
 Progress, Surprises & discoveries, Decision log, Outcomes & retrospective,
@@ -143,6 +143,11 @@ to generated traversal histories and HTTP continuation tests. Trace C1 (inward
 dependencies and secret confinement) through every milestone to port review,
 redaction tests, and the design-document update. Trace C2 (no partial success)
 through M1/M2 to failures after a successful first page.
+
+At completion, the Progress entries name the test suites and gate logs that
+discharge each trace, the Outcomes entry maps R1, R2, R3, C1, and C2 to that
+evidence, and the design document, ADR 0002, users guide, developers guide, and
+roadmap status note record the delivered state.
 
 Read these references before implementation:
 
@@ -807,9 +812,50 @@ record any difference as a revision note before writing code.
       `make nixie`. Logs are `/tmp/m2-check-fmt.out`, `/tmp/m2-typecheck.out`,
       `/tmp/m2-lint.out`, `/tmp/m2-test.out`, `/tmp/m2-markdownlint.out`, and
       `/tmp/m2-nixie.out`. M2 is committed at `0bae1bf`.
-- [ ] M3: observable composition, documentation, and roadmap completion.
+- [x] (2026-11-19) M3: observable composition and documentation. Added
+      `repository_listing_command` (one credential acquisition, documented
+      run statuses and exit codes, sanitized diagnostics, all-or-nothing
+      stdout), the `list_github_repositories` example, eight offline
+      end-to-end tests, and seven subprocess tests of the built example.
+      Updated the users guide, developers guide, technical design, contents
+      index, and roadmap 2.2.1, and recorded the shared traversal decision in
+      `docs/adrs/adr-0002-shared-github-rest-traversal.md`.
+- [x] (2026-11-19) M3 gates. All seven checks passed sequentially on the M3
+      tree: `make fmt` (no tracked change), `make check-fmt`, `make
+      typecheck`, `make lint` (interrogate 100%, `cargo doc`, Clippy,
+      Whitaker), `make test` (813 nextest tests, 140 doctests, 13 script
+      tests), `make markdownlint` (including spelling), and `make nixie`.
+      Logs are `/tmp/m3-fmt.out`, `/tmp/m3-check-fmt.out`,
+      `/tmp/m3-typecheck.out`, `/tmp/m3-lint.out`, `/tmp/m3-test.out`,
+      `/tmp/m3-markdownlint.out`, and `/tmp/m3-nixie.out`. M3 is committed at
+      `a36bd25`.
 
 ## Surprises & discoveries
+
+2026-11-19, M3: `clippy::cognitive_complexity` counts each `tracing::info!` or
+`tracing::error!` expansion at roughly ten points against a threshold of 9, so
+at most one such call fits in a function and one cannot share a function with a
+`match`. `run_listing` was split into `record_start`, `record_completion`,
+`write_output`, `report_failure`, `write_diagnostic`, and `diagnostic_status`,
+with a `RunContext` holding the span and start instant to stay inside the
+four-argument limit. An experiment that removed only the two `info!` calls
+brought the original function back under the threshold, confirming the cost is
+the macro expansion rather than the matching logic.
+
+2026-11-19, M3: `allow-expect-in-tests` does not cover integration-test helper
+functions, because they are outside a `#[cfg(test)]` module, while
+`clippy::panic_in_result_fn` forbids assertions in a `Result`-returning test.
+The tests therefore return `()` and unwrap only inside the `#[test]` body, and
+every helper propagates with `?` instead of calling `expect`. A blanket
+replacement applied to the wrong region produced four `expect_used` errors in
+exactly those helpers.
+
+2026-11-19, M3: with `[unstable] embed-metadata = false`, the test binary does
+not live in `target/debug/deps`; it sits under
+`target/debug/build/<package>/<hash>/out`. The example's tests walk the test
+binary's ancestors to find `examples/list_github_repositories`, which keeps the
+2026-11-18 decision to avoid a nested `cargo` build and stays correct under a
+custom target directory.
 
 2026-11-19, M2: the continuation identity is checked before the request is
 sent, so a continuation-identity budget too small for the initial request stops
@@ -849,6 +895,20 @@ listing uses its distinct endpoint and response envelope. Verify critical
 contracts against source sections rather than trusting extraction summaries.
 
 ## Decision log
+
+2026-11-19, M3: `run_listing` returns a `RunStatus` rather than an error, so
+one place maps every outcome to a documented exit code: 0 success, 3 credential
+failure, 4 listing failure, 5 output failure, 6 diagnostic failure, with 2
+reserved for a usage error the caller decides before composing a run. A failed
+diagnostic write is its own status because the operator has lost the message
+that explained the earlier failure.
+
+2026-11-19, M3: the composition injects the API endpoint, the limits, both
+output streams, standard input, and the credential loader, so the runnable
+example and the end-to-end tests call the same function. Installation mode
+receives a loader that the test can make fail on any call, which proves the
+mode never reads the user store rather than merely observing that it did not
+this time.
 
 2026-11-19, M2: expose the generic traversal to integration tests through a
 `test-support` Cargo feature and a self dev-dependency
@@ -947,6 +1007,24 @@ specification, so they were renamed `page_0` to `page_n`. The plan was then
 revised as the revision note below records. Documentation gates passed on the
 revised plan: `make fmt`, `make markdownlint` (including spelling), and
 `make nixie`. Still no feature code has been written.
+
+Implementation completed on 2026-11-19. M1 delivered the domain contract and
+shared fixtures, M2 the confined profile-driven traversal and both endpoint
+profiles, and M3 the one-shot composition, runnable example, offline end-to-end
+evidence, and documentation. R1 is discharged by the user-store and
+installation end-to-end cases, R2 by mixed-owner fixtures and the BDD
+scenarios, R3 by generated traversal histories and HTTP continuation tests, C1
+by port review, credential-leak assertions, and the design update, and C2 by
+the late-failure cases that leave stdout empty. All seven deterministic gates
+passed on the M3 tree, and roadmap item 2.2.1 is marked complete with its
+status note.
+
+Formal verification remained not applicable for this transport and
+representation boundary, as the plan anticipated; the rationale is recorded in
+ADR 0002 and section 9.6 of the developers guide. Branch listing (2.2.2) and
+periodic scheduling (2.2.3) are untouched and remain open. The example is the
+documented operator surface until the TUI and `repovectl` compose the same
+module.
 
 ## Research references
 

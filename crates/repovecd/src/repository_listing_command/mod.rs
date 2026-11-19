@@ -12,6 +12,11 @@
 //! same composition without either reaching GitHub or mutating the process
 //! environment.
 //!
+//! The [`cli`] submodule owns the operator command line: it parses the small
+//! argument vector, prints the usage text, and maps every outcome to a
+//! documented exit status. The runnable example supplies only the process
+//! boundary to it, so the command-line behaviour is tested in-process.
+//!
 //! # Examples
 //!
 //! ```
@@ -61,6 +66,7 @@
 //! assert!(stdout.is_empty());
 //! ```
 
+pub mod cli;
 mod credential;
 mod output;
 #[cfg(test)]
@@ -174,8 +180,8 @@ impl RunStatus {
 
     /// Returns the process exit code this status maps to.
     ///
-    /// Exit code 2 is reserved for a usage error, which the runnable example
-    /// decides before it composes a run.
+    /// Exit code 2 is reserved for a usage error, which
+    /// [`cli::run`] decides before it composes a run.
     ///
     /// # Examples
     ///

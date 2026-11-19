@@ -404,8 +404,8 @@ per-request timeouts and finite budgets are the current termination controls.
 The example exposes these defaults in its help/documentation rather than
 silently claiming unlimited enumeration.
 
-Add `crates/repovecd/examples/list_github_repositories.rs` as the composition
-root, calling shared `crates/repovecd/src/repository_listing_command.rs`
+Add `crates/repovecd/examples/list_github_repositories.rs` as the process
+boundary, calling the shared `crates/repovecd/src/repository_listing_command/`
 composition with injected credential reader, endpoint, input, output, and error
 streams. With `--user-store /etc/repovec`, load the existing encrypted token
 through `EncryptedGitHubTokenStore`; with `--installation-token-stdin`, read an
@@ -414,15 +414,18 @@ issued installation token from standard input without echoing it. Read at most
 characters, or interior whitespace, and remove at most one trailing line
 ending. User-store credentials receive the same non-empty/header-safety
 validation before a request. Require exactly one mode. Never accept a literal
-token argument or write installation tokens to disk. A small example-only
-argument parser is sufficient. Print one `owner/name` line per observation only
-after full success, using fallible output writes. Acquisition, validation, and
-traversal failures print a sanitized diagnostic to stderr and exit non-zero
-with no repository stdout. Output I/O failure also exits non-zero but may leave
-partial stdout; output cannot be rolled back after a pipe closes. Test a writer
-that fails after one line. The example is explicitly a diagnostic/library
-demonstration, not a new `repovectl` command. Shared composition code must be
-callable with injected credentials and endpoints for offline end-to-end tests.
+token argument or write installation tokens to disk. A small argument parser is
+sufficient; it lives in the library beside the composition
+(`repository_listing_command::cli`), so the command line is tested in-process
+and the example supplies only the process boundary. Print one `owner/name` line
+per observation only after full success, using fallible output writes.
+Acquisition, validation, and traversal failures print a sanitized diagnostic to
+stderr and exit non-zero with no repository stdout. Output I/O failure also
+exits non-zero but may leave partial stdout; output cannot be rolled back after
+a pipe closes. Test a writer that fails after one line. The example is
+explicitly a diagnostic/library demonstration, not a new `repovectl` command.
+Shared composition code must be callable with injected credentials and
+endpoints for offline end-to-end tests.
 
 Emit structured start, completion, and failure events with principal kind,
 accepted page/record counts, elapsed duration, and sanitized error category. Do
@@ -564,22 +567,28 @@ on late traversal failure, output I/O failure, and credential redaction. These
 tests call the same composition function as the example with injected endpoints
 and streams, asserting its returned exit status.
 
-Actual-example child-process tests cover invalid/mutually exclusive arguments
-and empty, invalid, or oversize stdin, all rejected before networking. The test
-does not start a nested `cargo`. `make test` passes `--all-targets`, so the
-example is built alongside the test binaries; resolve it from
-`std::env::current_exe()` as the sibling `examples/list_github_repositories` of
-the test binary's `deps` directory, which respects custom and coverage target
-directories. Pass that explicit path into the subprocess fixture, and give the
-child an explicit environment through `Command::env_clear` without changing the
-parent's. For a focused run, build the example by hand first with
-`cargo build -p repovecd --example list_github_repositories`. Do not change the
-`test` recipe or `scripts/run_rust_tests.py`: a workflow contract holds the
-recipe to one runner command. An unresolved example path must fail with a
-message naming that build command, never skip. If a nested `cargo` proves
-unavoidable, treat that as a plan revision: the spawn must set
-`CARGO_NET_OFFLINE=true`, join the `nested-cargo-builds` nextest group, and
-satisfy the estate rule `nested-cargo-offline-tests`.
+The command-line surface is library code, so its cases are unit tests rather
+than child-process tests. `repository_listing_command::cli` owns `CliRun`, the
+argument parser, the usage text, and the exit-status mapping, and the unit
+tests drive `cli::run` in-process over injected streams and a fake credential
+loader. They cover invalid and mutually exclusive arguments, a missing argument
+value, non-UTF-8 arguments, the usage text, a failed usage or help write, an
+unavailable user store, and empty, invalid, or oversize standard input, all
+rejected before networking.
+
+This supersedes the revision note's child-process design, whose premises did
+not hold. `make test` passes `--all-targets`, but that builds the example only
+as a libtest harness whose binary ignores the example's arguments, and on a
+clean tree it produces no runnable example for a test to start; hosted CI run
+44612002870 failed exactly there. The fallback this plan permitted — a nested,
+offline `cargo build --example` joined to the `nested-cargo-builds` group — was
+implemented and also failed: on a cold tree the first test in the binary paid
+for a full compile that waited behind compile admission and exceeded its
+300-second allowance, against a 10-minute run ceiling. Moving the command line
+into the library keeps every assertion, removes the build coupling, and leaves
+the example a thin adapter that `cargo clippy --all-targets` still compiles.
+
+The `test` recipe and `scripts/run_rust_tests.py` stay unchanged.
 
 Successful offline HTTP subprocess testing is not claimed: loopback success
 runs through the shared composition function. Live GitHub smoke runs remain
@@ -590,8 +599,8 @@ Every test must fit the nextest budget in `.config/nextest.toml`: a test is
 terminated after 180 seconds, and the whole run after 10 minutes. The
 production 10/30-second timeouts are therefore injected values; timeout and
 page-budget cases construct the adapter with short test timeouts and small
-limits, never by waiting out a production deadline. Bound each child process
-with a deadline and kill it on expiry.
+limits, never by waiting out a production deadline. Bound any future child
+process with a deadline and kill it on expiry.
 
 There is one plain listing output format, so multiformat `insta` snapshots are
 not warranted. Assert typed results and exact short output directly. If an
@@ -829,8 +838,36 @@ record any difference as a revision note before writing code.
       `/tmp/m3-typecheck.out`, `/tmp/m3-lint.out`, `/tmp/m3-test.out`,
       `/tmp/m3-markdownlint.out`, and `/tmp/m3-nixie.out`. M3 is committed at
       `a36bd25`.
+- [x] (2026-11-19) M3 repair: the example's child-process tests assumed that
+      `cargo test --all-targets` builds a runnable example. It builds a libtest
+      harness instead, so hosted CI run 44612002870 failed all seven tests on a
+      clean runner. The command line moved into
+      `repository_listing_command::cli` (`CliRun` plus `run`), the example
+      became a thin process-boundary adapter, and the seven subprocess tests
+      were replaced by fourteen in-process unit tests over injected streams.
+      `.config/nextest.toml` needed no change; the earlier nested-build
+      override was reverted.
 
 ## Surprises & discoveries
+
+2026-11-19, M3 repair: `cargo test --all-targets` does not build a runnable
+example. It compiles `examples/<name>.rs` as a libtest harness — a binary that
+ignores the example's arguments and carries no tests — so a clean target
+directory holds no `examples/<name>` executable at all. The subprocess tests
+had passed locally only because an earlier manual `cargo build --example` had
+left the hardlink behind; on a cold hosted runner every one failed with "no
+example binary found beside …". Removing the hardlink and re-running
+`cargo test --all-targets --no-run` never recreated it, while
+`cargo build --example` did.
+
+2026-11-19, M3 repair: the plan's sanctioned fallback — a nested
+`CARGO_NET_OFFLINE=true` build of the example inside the test — is not viable
+on this host. `cargo build --profile test --example` compiles the whole
+dependency graph in a profile the enclosing gate has not built, and on a cold
+tree that compile waits behind the shared compile-admission queue; the first
+test to run exceeded its 300-second allowance while the nextest run ceiling is
+10 minutes. Focussed `cargo test -p repovecd --test repository_listing_example`
+therefore reported `TIMEOUT [300.004s] (1/7)` before any assertion ran.
 
 2026-11-19, M3: `clippy::cognitive_complexity` counts each `tracing::info!` or
 `tracing::error!` expansion at roughly ten points against a threshold of 9, so
@@ -855,7 +892,10 @@ not live in `target/debug/deps`; it sits under
 `target/debug/build/<package>/<hash>/out`. The example's tests walk the test
 binary's ancestors to find `examples/list_github_repositories`, which keeps the
 2026-11-18 decision to avoid a nested `cargo` build and stays correct under a
-custom target directory.
+custom target directory. **Superseded the same day:** that lookup works only on
+a target directory where the example has already been built by hand. A clean
+tree has no runnable example, so the command line moved into the library; see
+the M3 repair entries below.
 
 2026-11-19, M2: the continuation identity is checked before the request is
 sent, so a continuation-identity budget too small for the initial request stops
@@ -895,6 +935,19 @@ listing uses its distinct endpoint and response envelope. Verify critical
 contracts against source sections rather than trusting extraction summaries.
 
 ## Decision log
+
+2026-11-19, M3 repair: keep the operator command line in the library.
+`repository_listing_command::cli` owns `CliRun`, the argument parser, the usage
+text, and the exit-status mapping, and the example supplies only the process
+boundary and the production credential loader. This keeps every argument,
+usage-text, and exit-status assertion that the child-process tests made, while
+removing all build coupling: no test compiles or starts a binary, so a clean
+target directory, a custom target directory, and the coverage lane's
+`llvm-cov-target` behave identically. It also restores the plan's original "the
+test does not start a nested `cargo`" constraint, which the superseded fallback
+had relaxed. `cargo clippy --workspace --all-targets` still type-checks the
+example, so it cannot rot silently, and the documented
+`cargo run -p repovecd --example list_github_repositories` surface is unchanged.
 
 2026-11-19, M3: `run_listing` returns a `RunStatus` rather than an error, so
 one place maps every outcome to a documented exit code: 0 success, 3 credential
@@ -959,7 +1012,10 @@ instead of building it with a nested `cargo` and reading Cargo metadata. `main`
 now bounds nested `cargo` spawns in tests, requires them offline, and holds the
 `test` recipe to one runner command. `--all-targets` already builds the
 example, so the nested build bought nothing and would have contended for the
-package-cache lock.
+package-cache lock. **Superseded 2026-11-19:** `--all-targets` builds the
+example only as a libtest harness, so no runnable example exists on a clean
+tree. The command line is now library code tested in-process; see the M3 repair
+entry above.
 
 2026-11-18, rebase: read no environment variable in this feature. The workspace
 now denies seven `std::env` methods outside an annotated composition root.

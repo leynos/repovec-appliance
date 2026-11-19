@@ -1670,6 +1670,9 @@ them that way: diagnostics reach an operator terminal, and a captured
 diagnostic must never contain a token. `run_listing` returns a `RunStatus`
 rather than an error, so one place maps every outcome to a documented exit
 code. A new failure class needs a new status and code, not a free-form message.
+`cli::run` returns the process exit status itself: it adds the usage text and
+the rejected command line, which precede a run, and reuses the `RunStatus`
+codes for everything the run reports.
 
 ### 9.5 Test commands and fixture reuse
 
@@ -1686,7 +1689,7 @@ cargo test -p repovecd --test repository_listing_traversal
 cargo test -p repovecd --test repository_listing_properties
 cargo test -p repovecd --test repository_listing_bdd
 cargo test -p repovecd --test repository_listing_e2e
-cargo test -p repovecd --test repository_listing_example
+cargo test -p repovecd --lib repository_listing_command
 ```
 
 The offline evidence never reaches GitHub. `RecordingServer` binds a loopback
@@ -1697,11 +1700,20 @@ fake credentials. The end-to-end fixture drives the same `run_listing`
 composition the runnable example calls, so the test proves the operator-visible
 path rather than a private helper.
 
-The example's own tests locate the built example binary by walking the test
-binary's ancestors. Cargo's metadata embedding is disabled here, so the test
-binary sits under `build/<package>/<hash>/out` rather than beside the example.
-Do not replace that lookup with a nested `cargo` build: `--all-targets` already
-builds the example, and a nested build would contend for the package-cache lock.
+The operator command line lives in `repository_listing_command::cli`, not in
+the example. `CliRun` carries the argument vector and the process boundary, and
+`cli::run` parses the arguments, prints the usage text, and maps every outcome
+to its documented exit status; the example supplies only the process streams
+and the production credential loader. The unit tests drive `cli::run`
+in-process, so they need neither a built binary nor a child process, and a
+clean target directory behaves exactly like a warm one.
+
+Do not move command-line behaviour back into the example, and do not add a test
+that starts the example binary. `cargo test --all-targets` compiles an example
+only as a libtest harness — a binary that ignores the example's arguments — and
+on a clean target directory it produces no runnable example at all, while a
+nested `cargo build --example` inside a test pays for a full compile on every
+cold run and contends for the package-cache lock and compile admission.
 
 ### 9.6 Proof-selection rationale
 

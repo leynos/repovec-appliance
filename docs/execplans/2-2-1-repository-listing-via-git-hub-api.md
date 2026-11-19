@@ -78,8 +78,9 @@ Implementation may add the modules, tests, example, and documentation named
 below, plus exports and manifest entries needed by those files. New runtime
 crates, changes to stored credentials, automatic startup network activity,
 additional user-facing commands, and policy filtering require an accepted plan
-revision. `googletest` and `pretty_assertions` are authorized test
-dependencies; reuse the existing versions of other workspace dependencies.
+revision. `nom-rfc8288` is the one authorized new runtime dependency, used only
+for Link field parsing. `googletest` and `pretty_assertions` are authorized
+test dependencies; reuse the existing versions of other workspace dependencies.
 
 If GitHub's verified endpoint contract contradicts the proposed mode selection
 or continuation validation, record the evidence and options, set status to
@@ -250,10 +251,15 @@ cycle, and resource limit. Rate-limit errors carry optional validated retry
 metadata, not arbitrary response text. Do not attach a raw `reqwest::Error`,
 URL, JSON body, or credential as a printable source where it could leak secrets.
 
-Add `crates/repovecd/src/github_repository_client/mod.rs`, with `wire.rs`,
-`pagination.rs`, and `tests.rs` or smaller feature-oriented siblings. Reuse the
-existing blocking `reqwest` dependency and `serde`. Introduce an explicit
-credential enum in this adapter: `User(AccessToken)` and
+Split the adapter in two. Add `crates/repovecd/src/github_rest/mod.rs`, with
+`traversal.rs`, `profile.rs`, `link.rs`, `limits.rs`, and tests in
+feature-oriented siblings. It owns paginated GET traversal for any GitHub REST
+listing and knows nothing about repositories. Add
+`crates/repovecd/src/github_repository_client/mod.rs`, with `wire.rs` and
+tests. It owns the two repository endpoint profiles, the wire records, their
+validation into domain records, and the `RepositoryListing` implementation.
+Reuse the existing blocking `reqwest` dependency and `serde`. Introduce an
+explicit credential enum in this adapter: `User(AccessToken)` and
 `Installation(InstallationAccessToken)`. The latter is a redacted, non-empty
 bearer wrapper, with no falsely inferred OAuth scopes. It represents an already
 issued token; minting an App token and renewing it remain out of scope.
@@ -278,25 +284,84 @@ failures to the caller. Classify 403 as rate-limited only with rate-limit
 evidence, otherwise forbidden. A 304 is an unexpected status because no
 conditional cache is used.
 
+### Shared traversal and endpoint profiles
+
+Branch listing and open pull request listing (2.2.2) page the same way as
+repository listing, once per repository. Build the traversal once, generic over
+the item type, and let each endpoint describe itself with a small profile:
+
+```rust
+pub(crate) struct EndpointProfile<T> {
+    /// Path below the API origin, for example `/user/repos`.
+    path: &'static str,
+    /// Query pairs fixed for the whole traversal, including `per_page=100`.
+    fixed_query: &'static [(&'static str, &'static str)],
+    /// Where a page keeps its items.
+    items: PageItems,
+    /// Marks the wire record type decoded from each item.
+    record: PhantomData<fn() -> T>,
+}
+
+pub(crate) enum PageItems {
+    /// The body is a JSON array of items.
+    BareArray,
+    /// The body is an object holding the items under this key.
+    Envelope(&'static str),
+}
+```
+
+The traversal takes a client, a credential, validated limits, and a profile. It
+returns every decoded wire record from one completed traversal, with the
+accepted page, record, and byte counts, or a typed error and nothing else. The
+exact signature may change during implementation; the three profile fields and
+the all-or-nothing result may not. The repository client then validates wire
+records into domain records, so an invalid record still fails the whole listing
+before `Ok` is constructed.
+
+Scope and reuse policy: `github_rest` is private to `repovecd`. It is the only
+place that follows a GitHub `Link` continuation, and every GitHub REST listing
+in the daemon must go through it instead of writing its own loop. A new listing
+adds a profile and a wire type, not traversal code. The module owns Link
+selection, continuation confinement, cycle identity, limits, and status
+classification. It does not own domain types, retries, scheduling, or a
+whole-scan budget across many traversals; 2.2.2 and the scheduler decide those.
+This item ships two profiles, user repositories and installation repositories,
+which exercise both `PageItems` variants. It is not a general pagination
+abstraction: no trait is introduced, because every known consumer uses the same
+protocol. Extract a trait only when a second protocol exists to shape it.
+
+No equivalent exists to reuse. `github_oauth_client` makes single form-encoded
+POSTs and follows no continuation, and no workspace dependency offers one.
+
+### Link continuation
+
 Follow the `Link` header's unique `rel="next"`; absence means completion even
 for a full page. A short or empty page with a next link must continue. Parse
-multiple header values and relation token lists, including other relations
-alongside `next`; malformed or ambiguous continuation is an error. A short
-handwritten comma split is insufficient for quoted link parameters. Use a small
-parser for the RFC 8288 Link field grammar, with quoted-string escapes and
-separators recognized by parser state. Preserve all link-values before
-selecting a continuation; an `anchor` parameter on a next link is an
-unsupported-context error, not a link to silently ignore. For duplicate `rel`
-parameters within one link-value, use only the first as RFC 8288 specifies.
-Reject multiple next link-values rather than arbitrarily selecting one.
+the Link field with `nom-rfc8288` 0.4.0, using
+`nom_rfc8288::complete::link_strict`, and keep the crate behind `link.rs` so
+nothing else names its types. The parser returns every link-value with its
+target and its parameters in order, which keeps the evidence this design needs.
+Do not write a Link grammar by hand.
 
-The considered `parse_link_header` 0.4.1 API returns relation-keyed maps, which
-lose the duplicate-relation evidence required here. Its relative-link support
-does not remove that mismatch. Prefer the scoped parser over a new dependency
-plus a second ambiguity detector. Restrict it to Link grammar; use the existing
-URL library for URL resolution, and test the RFC examples and adversarial
-quoted parameters. If its grammar cannot be implemented clearly in small
-functions, reopen the dependency decision rather than growing a generic parser.
+Continuation selection stays ours and is small. Parse each `Link` header value
+separately and concatenate the results, so multiple headers and one
+comma-joined header behave alike. A parse error, or an empty list element, is
+an invalid-continuation error. For each link-value, read only the first `rel`
+parameter as RFC 8288 specifies, and split it on spaces into relation types, so
+other relations alongside `next` are accepted. An `anchor` parameter on a next
+link is an unsupported-context error, not a link to silently ignore. Reject
+multiple next link-values instead of arbitrarily selecting one. Use the
+existing URL library for URL resolution.
+
+`parse_link_header` 0.4.1 was considered first and rejected: it returns
+relation-keyed maps, which lose the duplicate-relation evidence required here.
+`octocrab` 0.54.9 was also examined at source. It confines the credential by
+host and classifies rate limits well, but it splits the Link field on commas,
+lets the last `next` win, reads each body unbounded, and has no page, record,
+or cycle limit. Adopting it would mean giving up those contracts, so the
+blocking `reqwest` adapter stays. `page-turner` 1.0 abstracts only how the next
+request is derived, which is identical for every GitHub listing, and it is
+async-only.
 
 Resolve relative references against the current request, then require the same
 scheme, host, effective port, and listing path as the validated initial
@@ -307,9 +372,10 @@ Preserve endpoint filter semantics across continuation; a next link may change
 paging parameters but may not change or remove the initial
 visibility/affiliation/sort filters. Compare parsed query multisets, reject
 duplicate paging/filter keys, and allow only `page` to vary while retaining
-`per_page=100` and the other initial query values. This is an endpoint-specific
-profile, not a universal GitHub pagination engine. If live documented links
-require additional paging keys, revise this profile and its tests explicitly.
+`per_page=100` and the other initial query values. The initial values are the
+profile's `fixed_query`, so the rule is stated once and holds for every
+profile. If live documented links require additional paging keys, revise the
+traversal and its tests explicitly; do not loosen the rule for one profile.
 Loopback HTTP is permitted only through an explicitly injected test endpoint
 constructor; production construction remains fixed to GitHub HTTPS.
 
@@ -431,6 +497,20 @@ page budget, preserving filters; assert a finite request count and typed
 failure. A temporary bypass of origin validation must make the second-server
 test fail. Use fake credentials exclusively.
 
+Test Link selection at the `link.rs` boundary, not the third-party parser
+itself. Feed it the RFC 8288 examples, a quoted parameter containing a comma
+and an escaped quote, a relation list such as `rel="next last"`, a repeated
+`rel` parameter, an `anchor` on the next link, two next link-values in one
+header and across two headers, an empty list element, and malformed input.
+These tests pin the behaviour this design relies on, so a parser upgrade that
+changes it fails here.
+
+Exercise the shared traversal through both shipped profiles, and once through a
+test-only profile with a different path, fixed query, and envelope key. That
+third profile is the evidence that the traversal carries no repository
+knowledge; a traversal that hard-codes `repositories` or `/user/repos` must
+fail it.
+
 Use `rstest` for the finite case tables and shared fallible setup. Add
 `googletest` and `pretty_assertions` as dev-dependencies at workspace level and
 in crates that use them: match structured errors with `googletest`, and compare
@@ -535,8 +615,9 @@ compatibility layer is needed for this pre-1.0 internal API.
 
 ### M2: Both endpoint modes and complete traversal
 
-Implement the adapter in test-driven slices: first a single authenticated page,
-then both wire shapes, then continuations and failures, then limits and
+Implement the adapter in test-driven slices: first a single authenticated page
+through the shared traversal and one profile, then the second profile and wire
+shape, then Link selection and continuations, then failures, then limits and
 redaction. Before each slice, run the smallest relevant test and record its
 expected failure; implement only enough behaviour to pass, then refactor.
 Exercise the actual traversal in property tests, not a second test-only loop.
@@ -555,7 +636,8 @@ Implement the one-shot example, end-to-end tests, and public usage examples.
 Update `docs/users-guide.md` with both modes, required visibility, installation
 credential provisioning prerequisites, limits, empty success versus failure,
 exit/output semantics, and the non-snapshot guarantee. Update
-`docs/developers-guide.md` with the port, fixture reuse strategy, test
+`docs/developers-guide.md` with the port, the `github_rest` traversal's scope
+and reuse policy, how to add an endpoint profile, fixture reuse strategy, test
 commands, credential seams, and proof-selection rationale. The component
 architecture currently lives in `docs/repovec-appliance-technical-design.md`;
 add the listing boundary, principal distinction, traversal contract, and
@@ -676,8 +758,15 @@ surface errors, and document provisioning prerequisites without implementing
 those workstreams.
 
 Medium impact, medium likelihood: parser edge cases or large responses consume
-excessive resources. Test protocol grammar and finite limits; fail explicitly
-at boundaries. Do not add background retries or parallel page fetching.
+excessive resources. Bound the Link field before parsing it, test the selection
+boundary and finite limits, and fail explicitly at boundaries. Do not add
+background retries or parallel page fetching.
+
+Medium impact, low likelihood: `nom-rfc8288` is a small crate with one
+maintainer. It is confined to `link.rs`, pinned by a caret requirement and the
+lock file, and covered by the boundary tests above, so it can be replaced
+without touching the traversal. If it proves wrong on a case this design needs,
+record the evidence and reopen the dependency decision.
 
 Low impact, medium likelihood: `main` moves again before approval, and the
 lint, build, or environment policy this plan cites changes. Re-check the
@@ -696,6 +785,8 @@ record any difference as a revision note before writing code.
       in the draft PR metadata.
 - [x] (2026-11-18) Rebase onto `main` at `df8c445` without conflicts, and
       revise the plan for the current build, lint, and environment policy.
+- [x] (2026-11-19) Review third-party GitHub and generic clients; adopt
+      `nom-rfc8288` and a profile-driven shared traversal.
 - [ ] Explicit approval of this plan.
 - [ ] M1: domain contract and test support.
 - [ ] M2: endpoint modes and complete traversal.
@@ -758,6 +849,23 @@ now denies seven `std::env` methods outside an annotated composition root.
 Store path, token input, and endpoint already arrive by argument, stream, or
 injection, so no exception is needed.
 
+2026-11-19, review: use `nom-rfc8288` for the Link field grammar instead of a
+handwritten parser. The grammar was the part of this plan most likely to hide
+defects, and the crate returns all link-values and parameters, which is what
+ambiguity detection needs. Selection, confinement, and budgets stay ours
+because no examined client provides them: `octocrab` lacks body, page, and
+cycle limits and parses the Link field loosely, and no generic consumer
+bundling these concerns was found.
+
+2026-11-19, review: make the traversal one function generic over the item type,
+driven by an endpoint profile of path, fixed query, and item location. Roadmap
+item 2.2.2 needs the same traversal for branches and open pull requests, per
+repository, so a repository-specific loop would be duplicated within one
+roadmap step. This reverses the earlier "endpoint-specific, not a pagination
+engine" position. A `page-turner`-style trait was rejected: all known consumers
+share one protocol, so a trait would spread the same continuation logic across
+implementations and share none of the safety.
+
 ## Outcomes & retrospective
 
 The two Wyvern reconnaissance agents and six expert perspectives completed
@@ -798,6 +906,18 @@ Official documentation and parser API checked with Firecrawl on 2026-10-20:
 - [parse_link_header API](https://docs.rs/parse_link_header/0.4.1/parse_link_header/):
   considered parser; relation-keyed output conflicts with ambiguity detection.
 
+Checked with Firecrawl on 2026-11-19:
+
+- [nom-rfc8288 API](https://docs.rs/nom-rfc8288/0.4.0/nom_rfc8288/complete/index.html):
+  adopted parser; `link_strict` returns each link-value with ordered
+  parameters. Version 0.4.0, MIT or Apache-2.0.
+- [octocrab pagination source](https://github.com/XAMPPRocky/octocrab/blob/v0.54.9/src/page.rs):
+  Link splitting, unbounded body collection, and the envelope key list.
+- [octocrab authorization layer](https://github.com/XAMPPRocky/octocrab/blob/v0.54.9/src/service/middleware/auth_header.rs):
+  credential attached only for the configured base and upload hosts.
+- [page-turner API](https://docs.rs/page-turner/1.0.0/page_turner/): generic
+  pagination trait; async-only, no traversal budgets.
+
 Revision note (2026-10-20): initial plan records contracts before
 implementation, explicit credential modes, proportionate verification, and
 gated delivery. Revision note (2026-10-20): incorporated all six experts'
@@ -811,3 +931,10 @@ and the nextest budgets; replaced the nested example build with a path derived
 from the test binary; and recorded that Cranelift is out of scope. The
 behavioural contract, interfaces, and milestones are unchanged, so the plan
 still awaits approval as before.
+
+Revision note (2026-11-19): replaced the handwritten Link grammar with
+`nom-rfc8288`, and restructured the adapter into a shared, profile-driven
+`github_rest` traversal plus a repository client holding two profiles. The
+port, the behavioural contract, the limits, and the milestones are unchanged.
+This adds one runtime dependency and one internal module boundary, both
+recorded in the decision log, and remains subject to approval.

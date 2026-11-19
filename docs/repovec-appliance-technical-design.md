@@ -179,6 +179,19 @@ integration boundary; no custom aggregation policy or disconnected formal model
 is proposed. The ExecPlan records the contracts, resource limits, and
 conditions that would require a substantive Verus proof milestone.
 
+Paginated traversal is proposed as one shared component in `repovecd`, private
+to the daemon, that every GitHub REST listing uses. It is generic over the item
+type. Each endpoint supplies a profile: its path, the fixed query filters that
+must survive continuation, and whether a page is a bare array or an object
+holding the items under a named key. Repository listing supplies two profiles;
+branch and open pull request listing are expected to add their own without new
+traversal code. The component owns Link selection, continuation confinement to
+the initial origin and path, cycle detection, and the page, record, and byte
+limits. It owns no retries, scheduling, or whole-scan budget. The Link field is
+parsed with `nom-rfc8288`; selection of the single `next` target remains
+repository code. No pagination trait is proposed, because every known consumer
+uses the same protocol.
+
 ### Discovery and continuous monitoring
 
 repovecd maintains correctness via a reconcile-first model:

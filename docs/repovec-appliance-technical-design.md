@@ -161,6 +161,37 @@ token against GitHub before enforcing permissions that depend on granted
 scopes; if that lookup fails, permissions remain unknown and the operator must
 complete login again.
 
+### Repository listing proposal (2.2.1)
+
+Status: proposed; implementation requires explicit approval of the
+[repository listing ExecPlan](execplans/2-2-1-repository-listing-via-git-hub-api.md).
+The proposed listing port belongs to `repovec-core`; `repovecd` supplies the
+HTTP adapter and composes credential loading. User OAuth and already-issued
+installation tokens select distinct GitHub endpoints explicitly. App token
+issuance and refresh remain separate work.
+
+The proposal returns observations only after a complete, bounded traversal.
+Later-page failure is an error, never a successful partial inventory. Preserve
+page order and repeated observations; an API traversal is not an atomic remote
+snapshot. Branch policy and reconciliation must interpret those observations in
+their own workstreams. Protocol and generated traversal tests cover this
+integration boundary; no custom aggregation policy or disconnected formal model
+is proposed. The ExecPlan records the contracts, resource limits, and
+conditions that would require a substantive Verus proof milestone.
+
+Paginated traversal is proposed as one shared component in `repovecd`, private
+to the daemon, that every GitHub REST listing uses. It is generic over the item
+type. Each endpoint supplies a profile: its path, the fixed query filters that
+must survive continuation, and whether a page is a bare array or an object
+holding the items under a named key. Repository listing supplies two profiles;
+branch and open pull request listing are expected to add their own without new
+traversal code. The component owns Link selection, continuation confinement to
+the initial origin and path, cycle detection, and the page, record, and byte
+limits. It owns no retries, scheduling, or whole-scan budget. The Link field is
+parsed with `nom-rfc8288`; selection of the single `next` target remains
+repository code. No pagination trait is proposed, because every known consumer
+uses the same protocol.
+
 ### Discovery and continuous monitoring
 
 repovecd maintains correctness via a reconcile-first model:

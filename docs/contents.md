@@ -16,6 +16,9 @@
 
 - [repovec-appliance technical design](repovec-appliance-technical-design.md):
   system architecture, constraints, and design rationale for the appliance.
+- [ADR 0002: Share one confined traversal for GitHub REST listings](adrs/adr-0002-shared-github-rest-traversal.md):
+  why every GitHub REST listing uses one crate-private, profile-driven, bounded
+  traversal.
 - [Complexity antipatterns and refactoring strategies](complexity-antipatterns-and-refactoring-strategies.md):
   maintainability and refactoring reference for contributors working in the
   codebase.
@@ -23,7 +26,7 @@
 ## Plans and execution
 
 - [GitHub repository listing ExecPlan](execplans/2-2-1-repository-listing-via-git-hub-api.md):
-  pre-implementation plan for roadmap item `2.2.1`.
+  implementation plan and delivery evidence for roadmap item `2.2.1`.
 - [Roadmap](roadmap.md): staged implementation plan and task tracking for the
   appliance.
 - [GitHub device-flow OAuth client ExecPlan](execplans/2-1-1-implement-device-flow-oauth-client.md):

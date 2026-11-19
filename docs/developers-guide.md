@@ -1586,3 +1586,130 @@ repository adopted so that contributors moving between the two find the same
 rule and the same diagnostics.
 
 [netsuke-adr-008]: https://github.com/leynos/netsuke/blob/main/docs/adr-008-environment-seam-taxonomy.md
+
+## 9. GitHub repository listing
+
+Repository listing follows the same boundary rule as authentication:
+`repovec_core::repository_listing` owns the port and the domain vocabulary,
+while `repovecd` owns the HTTP adapter and the composition root. The accepted
+traversal decision is recorded in
+[ADR 0002](adrs/adr-0002-shared-github-rest-traversal.md).
+
+### 9.1 Port and representation
+
+`RepositoryListing::list_repositories` returns every observation from one
+completed traversal, in request order and preserving multiplicity, or a
+`RepositoryListingError`. An empty vector is success. Each error variant
+carries a stable `category()` string for diagnostics and metrics; match on
+that, never on message text.
+
+`RepositorySummary` holds validated newtypes (`RepositoryId`, `RepositoryOwner`,
+`RepositoryName`) plus the reported privacy and the optional default branch.
+Wire identifiers are validated during conversion, and a record outside the
+accepted shape fails the whole listing rather than being dropped in silence.
+The adapter applies no filtering by owner type, fork state, archive state, or
+privacy: that policy belongs to branch selection and reconciliation.
+
+### 9.2 `github_rest` scope and reuse policy
+
+`github_rest` is crate-private and owns exactly one job: a bounded, confined,
+paginated GET traversal for GitHub REST listings. It is the only place that
+knows GitHub pagination, and every listing endpoint goes through it.
+
+It owns:
+
+- profile-driven selection of the path, the fixed query, and where a page keeps
+  its items;
+- Link parsing with `nom-rfc8288`, selection of the single `next` target,
+  confinement to the initial origin and path, and cycle detection;
+- page, record, per-body byte, cumulative byte, Link-value, and
+  continuation-identity budgets;
+- classification of HTTP outcomes into the domain error enum.
+
+It does not own retries, backoff, scheduling, whole-scan budgets,
+authentication flows, or persistence; those belong to the caller or to a later
+workstream. Do not add a trait object or a second traversal implementation for
+a new endpoint. Every known consumer speaks the same protocol, so a second
+implementation would duplicate the safety checks rather than share them.
+
+Redirects stay disabled, including on an injected HTTP client: a redirect would
+move a request without the confinement checks ever seeing it.
+
+### 9.3 Adding an endpoint profile
+
+To add a listing:
+
+1. Add a private wire record beside the existing one, decoding only the fields
+   the feature uses. Unknown fields stay tolerated because GitHub adds them
+   routinely; a missing or mistyped required field fails the listing.
+2. Add an `EndpointProfile` constant naming the path, the query fixed for the
+   traversal (including `per_page=100`), and whether the body is a bare array
+   or an envelope holding the items under a named key.
+3. Convert wire records into domain records before returning them, and keep
+   filtering policy out of the adapter.
+4. Reuse the scripted `recording_http` server. Add wire builders and fake
+   credentials to `repovec_test_helpers::repository_listing_wire` only when
+   they are genuinely shared. Cover page order, continuation confinement, cycle
+   detection, each budget, and status classification.
+5. When an integration test must exercise a crate-private seam, extend the
+   `test-support` feature's re-exports. Never widen the production API for a
+   test.
+
+### 9.4 Credential seams
+
+`repository_listing_command::UserTokenLoader` loads the user credential.
+Production composes `EncryptedGitHubTokenStore` with `SystemdCredsEncryptor` and
+`SystemCommandRunner`; tests use a reversible encryptor, or a loader that
+fails if it is called at all, which proves installation mode never reads the
+user store. Installation tokens arrive through the injected `Read` stream,
+bounded to `MAX_INSTALLATION_TOKEN_BYTES` and validated into
+`InstallationAccessToken` before the adapter is built.
+
+Credential and listing errors carry fixed, secret-free `Display` strings. Keep
+them that way: diagnostics reach an operator terminal, and a captured
+diagnostic must never contain a token. `run_listing` returns a `RunStatus`
+rather than an error, so one place maps every outcome to a documented exit
+code. A new failure class needs a new status and code, not a free-form message.
+
+### 9.5 Test commands and fixture reuse
+
+Use focused commands during red/green cycles, then run the full sequential
+gates through the documented Make targets:
+
+```bash
+cargo test -p repovec-core repository_listing
+cargo test -p repovecd --test github_repository_client
+cargo test -p repovecd --test github_repository_client_continuations
+cargo test -p repovecd --test github_repository_client_failures
+cargo test -p repovecd --test github_repository_client_limits
+cargo test -p repovecd --test repository_listing_traversal
+cargo test -p repovecd --test repository_listing_properties
+cargo test -p repovecd --test repository_listing_bdd
+cargo test -p repovecd --test repository_listing_e2e
+cargo test -p repovecd --test repository_listing_example
+```
+
+The offline evidence never reaches GitHub. `RecordingServer` binds a loopback
+listener and scripts statuses, headers, and bodies; `GitHubApiEndpoint::new`
+accepts only a loopback origin, while `GitHubApiEndpoint::github()` is the
+production origin. `repository_listing_wire` holds the shared JSON builders and
+fake credentials. The end-to-end fixture drives the same `run_listing`
+composition the runnable example calls, so the test proves the operator-visible
+path rather than a private helper.
+
+The example's own tests locate the built example binary by walking the test
+binary's ancestors. Cargo's metadata embedding is disabled here, so the test
+binary sits under `build/<package>/<hash>/out` rather than beside the example.
+Do not replace that lookup with a nested `cargo` build: `--all-targets` already
+builds the example, and a nested build would contend for the package-cache lock.
+
+### 9.6 Proof-selection rationale
+
+This boundary is a transport and representation adapter, not a pure policy
+kernel. Its promises (bounded traversal, continuation confinement,
+all-or-nothing results) are stated over real HTTP parsing, and protocol,
+generated-traversal, and end-to-end tests exercise them there. A detached
+formal model would restate the implementation instead of proving the deployed
+composition. Revisit a Verus or Kani milestone only if a pure policy kernel
+with nontrivial arithmetic or invariants is introduced here, such as a
+reconciliation planner.

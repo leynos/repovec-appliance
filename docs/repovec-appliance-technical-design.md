@@ -161,36 +161,59 @@ token against GitHub before enforcing permissions that depend on granted
 scopes; if that lookup fails, permissions remain unknown and the operator must
 complete login again.
 
-### Repository listing proposal (2.2.1)
+### Repository listing (2.2.1)
 
-Status: proposed; implementation requires explicit approval of the
+Status: implemented; see
+[ADR 0002](adrs/adr-0002-shared-github-rest-traversal.md) and the
 [repository listing ExecPlan](execplans/2-2-1-repository-listing-via-git-hub-api.md).
-The proposed listing port belongs to `repovec-core`; `repovecd` supplies the
-HTTP adapter and composes credential loading. User OAuth and already-issued
-installation tokens select distinct GitHub endpoints explicitly. App token
-issuance and refresh remain separate work.
 
-The proposal returns observations only after a complete, bounded traversal.
-Later-page failure is an error, never a successful partial inventory. Preserve
-page order and repeated observations; an API traversal is not an atomic remote
-snapshot. Branch policy and reconciliation must interpret those observations in
-their own workstreams. Protocol and generated traversal tests cover this
-integration boundary; no custom aggregation policy or disconnected formal model
-is proposed. The ExecPlan records the contracts, resource limits, and
-conditions that would require a substantive Verus proof milestone.
+`repovec_core::repository_listing` owns the listing port. It returns every
+observation from one completed traversal, in request order and preserving
+repeated observations, or a typed error and no partial list. An empty list is a
+successful traversal, not an absence signal. Each observation carries the
+numeric repository identifier, the owner login, the repository name, the
+reported privacy, and the default branch when the repository has one. Branch
+policy and reconciliation interpret those observations in their own
+workstreams; the listing boundary applies no filtering by owner type, fork
+state, archive state, or privacy.
 
-Paginated traversal is proposed as one shared component in `repovecd`, private
-to the daemon, that every GitHub REST listing uses. It is generic over the item
-type. Each endpoint supplies a profile: its path, the fixed query filters that
-must survive continuation, and whether a page is a bare array or an object
-holding the items under a named key. Repository listing supplies two profiles;
-branch and open pull request listing are expected to add their own without new
-traversal code. The component owns Link selection, continuation confinement to
-the initial origin and path, cycle detection, and the page, record, and byte
-limits. It owns no retries, scheduling, or whole-scan budget. The Link field is
-parsed with `nom-rfc8288`; selection of the single `next` target remains
-repository code. No pagination trait is proposed, because every known consumer
-uses the same protocol.
+`repovecd` supplies the adapter and the composition:
+
+- `github_repository_client` binds one credential, one API origin, and one
+  `ListingLimits` value, and implements the port.
+- `github_rest` is crate-private plumbing shared by every GitHub REST listing.
+- `repository_listing_command` is the one-shot composition. It acquires one
+  credential, runs a complete traversal, writes one `owner/name` line per
+  observation to standard output only after the traversal succeeded, and
+  reports a failure as a sanitized diagnostic on standard error with a distinct
+  exit code.
+
+The principal is named explicitly by the caller and never inferred from a token
+prefix. An OAuth user credential requests `/user/repos` with the fixed
+affiliation, sort, direction, and `per_page=100` query. An already-issued
+installation token requests `/installation/repositories`, whose body is an
+envelope holding `repositories`. App installation token issuance and refresh
+remain separate work, so the installation credential is supplied by the
+operator.
+
+Paginated traversal is one component in `repovecd`, private to the daemon and
+generic over the item type. Each endpoint supplies a profile: its path, the
+query fixed for the whole traversal, and whether a page is a bare array or an
+object holding the items under a named key. Repository listing supplies two
+profiles; branch and pull request listing add their own without new traversal
+code. The component owns Link selection with `nom-rfc8288`, continuation
+confinement to the initial origin and path, cycle detection, and the page,
+record, response-body, cumulative-byte, Link-value, and continuation-identity
+limits. It owns no retries, scheduling, or whole-scan budget. Redirects are
+disabled so a request cannot move without the confinement checks seeing it.
+
+A traversal is finite by construction: 10 000 pages, 1 000 000 records, 8 MiB
+per response body, 64 MiB of cumulative response bytes, 16 KiB per Link value,
+and 16 KiB per retained continuation identity by default. Reaching a bound is a
+typed failure, never a truncated listing reported as success. A later-page
+failure fails the whole listing, and an API traversal is not an atomic remote
+snapshot. Protocol and generated traversal tests cover this integration
+boundary; no custom aggregation policy or disconnected formal model is required.
 
 ### Discovery and continuous monitoring
 

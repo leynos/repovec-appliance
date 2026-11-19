@@ -793,10 +793,42 @@ record any difference as a revision note before writing code.
       port), shared fixture builders in `repovec-test-helpers`, and the BDD
       specification file. 24 unit tests, 6 fixture contract tests, and 22
       doctests pass.
-- [ ] M2: endpoint modes and complete traversal.
+- [x] (2026-11-19) M2: endpoint modes and complete traversal. Added the
+      crate-private `github_rest` traversal (profile, Link selection and
+      confinement, budgets, status classification) and the
+      `github_repository_client` adapter with both endpoint profiles. Evidence:
+      102 unit tests, and integration suites covering protocol, continuation
+      confinement, failures, budgets, generated page histories, a third
+      non-repository profile, and all five BDD scenarios.
 - [ ] M3: observable composition, documentation, and roadmap completion.
 
 ## Surprises & discoveries
+
+2026-11-19, M2: the continuation identity is checked before the request is
+sent, so a continuation-identity budget too small for the initial request stops
+the traversal with zero requests. This is deliberate: a request whose identity
+cannot be retained could never be recognized if it recurred. The test records
+this ordering.
+
+2026-11-19, M2: Rust integration tests share a `tests/common` module per test
+binary, so any helper a binary does not use is dead code, and the workspace
+denies `allow`. The fixtures now live in `repovec-test-helpers` (a library,
+where unused public items never warn) and each remaining shared helper sits in
+its own module of `tests/common`, declared by every binary that needs it.
+
+2026-11-19, M2: Whitaker's `module_max_lines` counts a module's file, so the
+scripted server had to be split. `recording_http` now keeps the listener and
+its worker thread, with `expectation` holding the scripted responses and
+recorded requests and `wire` owning request parsing and response writing. Each
+file stays well below the 400-line cap.
+
+2026-11-19, M2: the installed Whitaker suite is a rolling release, so a gate
+that passed when `main` merged can fail afterwards without any source change.
+At the start of the M2 gate run the tip flagged two pre-existing functions in
+`repovec-ci`; that repair belongs to its own change (PR #265), and this branch
+merges it rather than duplicating it. The same run flagged one branch cluster
+in this milestone's `link` module, which now compares origins as one derived
+tuple.
 
 The OAuth credential store intentionally discards scope metadata. Repository
 listing cannot use its empty scope list as an authorization decision. GitHub
@@ -810,6 +842,20 @@ listing uses its distinct endpoint and response envelope. Verify critical
 contracts against source sections rather than trusting extraction summaries.
 
 ## Decision log
+
+2026-11-19, M2: expose the generic traversal to integration tests through a
+`test-support` Cargo feature and a self dev-dependency
+(`repovecd = { path = ".", features = ["test-support"] }`). The third
+non-repository profile must run through the real traversal, and only
+`cfg(any(test, feature = "test-support"))` can make crate-private code visible
+to an integration test without widening the production API. The feature adds a
+re-export of crate-private seams only; a plain `cargo build --lib` enables
+nothing.
+
+2026-11-19, M2: `repository_listing_wire` in `repovec-test-helpers` owns the
+wire fixtures, the documented request targets, and the fake credentials. Both
+the adapter tests and future listing tests (2.2.2) need the same protocol
+vocabulary, so it is shared rather than copied per binary.
 
 2026-10-20, planning: propose separate explicit user and installation modes,
 with caller-owned token provisioning. This satisfies R1 without expanding into

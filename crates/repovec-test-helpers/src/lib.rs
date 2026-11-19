@@ -40,7 +40,9 @@ use repovec_core::appliance::systemd_units::{
 use tracing_subscriber::fmt::MakeWriter;
 
 mod interest;
+pub mod recording_http;
 pub mod repository_listing;
+pub mod repository_listing_wire;
 
 pub use interest::anchor_interest_cache;
 

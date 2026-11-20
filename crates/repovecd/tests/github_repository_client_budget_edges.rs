@@ -196,39 +196,67 @@ struct LaterByteBudget {
     why: &'static str,
 }
 
+/// The byte budgets whose later-page crossing the matrix exercises.
+#[derive(Clone, Copy, Debug)]
+enum ByteBudget {
+    /// One page's body exceeds the per-page byte budget.
+    Page,
+    /// One page's `Link` header exceeds its byte budget.
+    LinkHeader,
+    /// The accepted pages together exceed the aggregate byte budget.
+    Total,
+}
+
+impl ByteBudget {
+    /// Returns the domain budget this crossing must name.
+    const fn reported(self) -> ResourceBudget {
+        match self {
+            Self::Page => ResourceBudget::PageBytes,
+            Self::LinkHeader => ResourceBudget::LinkHeaderBytes,
+            Self::Total => ResourceBudget::TotalBytes,
+        }
+    }
+}
+
 /// Builds a later-page scenario for one profile and one byte budget.
-fn later_byte_budget(profile: Profile, budget: ResourceBudget) -> LaterByteBudget {
+fn later_byte_budget(profile: Profile, budget: ByteBudget) -> LaterByteBudget {
     let first_page_bytes = page_bytes(&profile.page(1));
     let header = link_header(&profile.next_page(2), LinkRelation::Next);
     match budget {
-        ResourceBudget::LinkHeaderBytes => LaterByteBudget {
+        ByteBudget::LinkHeader => LaterByteBudget {
             profile,
             limits: ListingLimits::defaults().with_max_link_header_bytes(header_bytes(&header)),
-            budget,
             limit: reported_header_limit(&header),
+            budget: budget.reported(),
             why: "a Link header over its budget on a later page must fail the listing",
         },
-        _ => LaterByteBudget {
+        ByteBudget::Page => LaterByteBudget {
             profile,
             limits: ListingLimits::defaults().with_max_page_bytes(first_page_bytes),
-            budget: ResourceBudget::PageBytes,
             limit: first_page_bytes,
+            budget: budget.reported(),
             why: "a body over its page budget on a later page must fail the listing",
+        },
+        ByteBudget::Total => LaterByteBudget {
+            profile,
+            limits: ListingLimits::defaults().with_max_total_bytes(first_page_bytes),
+            limit: first_page_bytes,
+            budget: budget.reported(),
+            why: "accepted pages over the aggregate budget must fail the listing",
         },
     }
 }
 
 #[rstest]
-#[case::user_page_bytes(later_byte_budget(Profile::User, ResourceBudget::PageBytes))]
-#[case::user_link_header_bytes(later_byte_budget(Profile::User, ResourceBudget::LinkHeaderBytes))]
-#[case::installation_page_bytes(later_byte_budget(
-    Profile::Installation,
-    ResourceBudget::PageBytes
-))]
+#[case::user_page_bytes(later_byte_budget(Profile::User, ByteBudget::Page))]
+#[case::user_link_header_bytes(later_byte_budget(Profile::User, ByteBudget::LinkHeader))]
+#[case::user_total_bytes(later_byte_budget(Profile::User, ByteBudget::Total))]
+#[case::installation_page_bytes(later_byte_budget(Profile::Installation, ByteBudget::Page))]
 #[case::installation_link_header_bytes(later_byte_budget(
     Profile::Installation,
-    ResourceBudget::LinkHeaderBytes
+    ByteBudget::LinkHeader
 ))]
+#[case::installation_total_bytes(later_byte_budget(Profile::Installation, ByteBudget::Total))]
 fn a_later_page_over_a_byte_budget_fails_the_whole_listing(#[case] case: LaterByteBudget) {
     let LaterByteBudget {
         profile,

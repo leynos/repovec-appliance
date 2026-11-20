@@ -133,12 +133,26 @@ struct LaterPageFailure {
     expected: RepositoryListingError::TransportFailure,
     why: "a later page that outlives its deadline must fail the whole listing",
 })]
+#[case::forbidden(LaterPageFailure {
+    profile: Profile::User,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(403).with_header("X-RateLimit-Remaining", "4999"),
+    expected: RepositoryListingError::Forbidden,
+    why: "an unexplained later 403 is a permission failure, not throttling",
+})]
 #[case::installation_rejection(LaterPageFailure {
     profile: Profile::Installation,
     deadline: TEST_TIMEOUT,
     second: ScriptedResponse::new(401),
     expected: RepositoryListingError::AuthenticationRejected,
     why: "the enveloped profile must not return its accepted page either",
+})]
+#[case::installation_forbidden(LaterPageFailure {
+    profile: Profile::Installation,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(403).with_header("X-RateLimit-Remaining", "4999"),
+    expected: RepositoryListingError::Forbidden,
+    why: "the enveloped profile must report an unexplained later 403 as a refusal",
 })]
 #[case::installation_malformed_record(LaterPageFailure {
     profile: Profile::Installation,

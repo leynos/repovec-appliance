@@ -497,10 +497,11 @@ response cannot stand in for the page the endpoint promises. Test optional/null
 default branch and unknown JSON fields as success cases. Because no one test
 file may exceed 400 lines, the later-page cases live in
 `crates/repovecd/tests/github_repository_client_atomicity.rs` and must cover a
-rejected status, an invalid record, a rate-limited response, and a timeout
-after accepted pages, over both shipped profiles. The byte-budget edges — an
-exact-boundary success for the aggregate and `Link`-header budgets, and a
-later-page crossing of each — live in
+rejected status, an invalid record, an ordinary `403` refusal, a rate-limited
+response, and a timeout after accepted pages, over both shipped profiles. The
+byte-budget edges — an exact-boundary success for the aggregate and `Link`
+header budgets, and a later-page crossing of the page, aggregate and `Link`
+header budgets — live in
 `crates/repovecd/tests/github_repository_client_budget_edges.rs`, over both
 profiles.
 
@@ -937,6 +938,14 @@ record any difference as a revision note before writing code.
       the exact request count and the absence of a listing. The file exists
       because `github_repository_client_limits.rs` is already near the
       400-line cap.
+- [x] (2026-11-20) Assessment A1 r8 repair. The r8 reply (comment 7029740916)
+      found two remaining evidence gaps. The later-page budget matrix now also
+      crosses the aggregate byte budget, over both profiles, asserting the
+      typed budget and limit and exactly two requests; the earlier aggregate
+      crossing in `github_repository_client_limits.rs` proved only the error.
+      The later-page failure matrix also gained an ordinary `403` refusal over
+      both profiles, alongside the rate-limited `403`, so every error category
+      the plan names has later-page evidence.
 
 ## Surprises & discoveries
 

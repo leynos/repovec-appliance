@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 
 use repovec_core::repository_listing::{RepositoryListingError, ResourceBudget};
 use reqwest::{
+    StatusCode,
     Url,
     blocking::{Client, Response},
     header::{ACCEPT, HeaderValue, LINK, USER_AGENT},
@@ -22,7 +23,7 @@ use super::{
     limits::ListingLimits,
     link::{ContinuationContext, continuation_identity, next_continuation},
     profile::{EndpointProfile, PageItems},
-    status::classify_error,
+    status::{MAX_ERROR_BODY_BYTES, classify_error},
 };
 
 /// The GitHub REST API version this client requests.
@@ -154,7 +155,7 @@ impl<T: DeserializeOwned> TraversalRunner<'_, T> {
         let response = send(self.client, url, self.credential)?;
         let status = response.status();
         if !status.is_success() {
-            return Err(classify_error(status, response.headers()));
+            return Err(classify_failure(status, response));
         }
         let links = response
             .headers()
@@ -185,11 +186,25 @@ impl<T: DeserializeOwned> TraversalRunner<'_, T> {
             return Err(limit_reached(ResourceBudget::Records, limits.max_records()));
         }
 
+        // A page is accepted only once its status, body, and continuation have
+        // all validated, so a failure here must not leave the page counted.
+        let next = next_continuation(&links, url, context)?;
         state.records.extend(records);
         state.pages = pages;
         state.bytes = bytes;
-        next_continuation(&links, url, context)
+        Ok(next)
     }
+}
+
+/// Classifies a rejected response, reading a bounded part of its error body.
+///
+/// GitHub signals a secondary rate limit only in the error message, so the
+/// body is needed to tell a limit from a refusal. A body that cannot be read
+/// or is over the cap contributes no evidence; the status still classifies.
+fn classify_failure(status: StatusCode, response: Response) -> RepositoryListingError {
+    let headers = response.headers().clone();
+    let body = read_bounded(response, MAX_ERROR_BODY_BYTES).unwrap_or_default();
+    classify_error(status, &headers, &body)
 }
 
 /// Accumulated observations and accepted bytes.

@@ -491,7 +491,11 @@ required fields, and body/header/aggregate-byte/record/page limit boundaries,
 including exact-boundary success and rejection after earlier accepted pages. A
 fault that returns the collected prefix on error must be rejected by a test
 with a non-empty prefix. Test optional/null default branch and unknown JSON
-fields as success cases.
+fields as success cases. Because no one test file may exceed 400 lines, the
+later-page cases live in
+`crates/repovecd/tests/github_repository_client_atomicity.rs` and must cover a
+rejected status, an invalid record, a rate-limited response, and a timeout
+after accepted pages, over both shipped profiles.
 
 For confinement/progress, use local recording HTTP servers on distinct ports.
 Assert exact method, path, query, bearer header, API version, and user agent.
@@ -511,7 +515,11 @@ test fail. Use fake credentials exclusively.
 Classify a `403` by evidence rather than by the presence of any rate-limit
 header: `Retry-After` or an exhausted `x-ratelimit-remaining` is a rate limit,
 while a reset time alone is not, because GitHub sends `x-ratelimit-*` on
-ordinary responses. A `403` with quota remaining is an access refusal.
+ordinary responses. A `403` with quota remaining is an access refusal unless
+GitHub's error message reports a secondary limit, which it documents separately
+from the headers and sends without `Retry-After` in some cases. Read at most 8
+KiB of an error body to find that message, treat an unreadable or unparsable
+body as no evidence, and keep the message out of diagnostics.
 
 Test Link selection at the `link.rs` boundary, not the third-party parser
 itself. Feed it the RFC 8288 examples, a quoted parameter containing a comma
@@ -876,8 +884,50 @@ record any difference as a revision note before writing code.
       profiles. Both plan-mandated mutation witnesses were executed against the
       repaired tree and reverted. The example now installs a structured
       `INFO` subscriber, so its documented events are observable.
+- [x] (2026-11-20) Assessment A1 r4 repairs. The follow-up assessment (comment
+      7026607455) found three remaining items; each was reproduced against
+      source before repair. (a) A documented secondary-limit `403` can arrive
+      with quota remaining and no `Retry-After`, so the evidence rule now also
+      accepts GitHub's documented error message, read from at most 8 KiB of
+      the error body and never echoed; an ordinary `403` and a `403` with a
+      quota remaining but no limit message both stay refusals. (b) A page was
+      counted as accepted before its continuation was validated, so a failure
+      event could overstate the work it reached; the continuation is now
+      validated first, and captured-event tests assert `pages=0`/`records=0`
+      for a first-page failure and `pages=1`/`records=1` for a second-page one.
+      (c) The failure matrix gained later-page rate-limited and timeout cases,
+      plus an installation-profile later-page case, each asserting the typed
+      error, the exact request count, and the absence of a listing. The three
+      affected test binaries were split by concern
+      (`github_repository_client_atomicity.rs`,
+      `github_repository_client_events.rs`) to stay inside the 400-line cap.
 
 ## Surprises & discoveries
+
+2026-11-20, assessment A1 r4: GitHub's documentation names three separate
+signals for a rate limit and makes none of them universal. An exhausted primary
+budget shows as `x-ratelimit-remaining: 0`; a secondary limit shows as an error
+message that says so, with `Retry-After` described as something that "may" be
+supplied; a response can therefore be a genuine secondary limit with quota
+remaining and no header at all. Header-only classification was therefore still
+wrong in exactly the case the operator most needs to distinguish, because the
+remedy differs: wait, or ask for access.
+
+2026-11-20, assessment A1 r4: an accepted-count claim has to follow the last
+validation of the response it describes, not merely its decoding. The counts
+were updated from a successfully decoded page whose `Link` header had not yet
+been checked, so a failure event reported work that the traversal never
+accepted. The fix is ordering rather than a new type, and the regression test
+had to capture the log events to observe it at all.
+
+2026-11-20, assessment A1 r4: `tests/common` is compiled whole into every
+integration-test binary, so adding a helper module for two binaries made its
+items dead code in the other five, which the workspace denies. Test binaries
+here therefore have to use every declared helper or the module cannot exist;
+the split files keep their own small constructors and deadlines instead, which
+is why `github_repository_client_atomicity.rs` and
+`github_repository_client_events.rs` each exercise both credential profiles
+rather than sharing a profile helper.
 
 2026-11-19, assessment A1: `nom-rfc8288` hands back parameter names and
 relation values exactly as the server spelled them. RFC 8288 section 2.1.1
@@ -986,6 +1036,32 @@ contracts against source sections rather than trusting extraction summaries.
 
 ## Decision log
 
+2026-11-20, assessment A1 r4: extend the `403` evidence rule with GitHub's
+documented secondary-limit message instead of dropping the header evidence. The
+amended plan's "header evidence only" rule was too narrow: GitHub documents
+secondary-limit responses that carry neither `Retry-After` nor an exhausted
+quota, and only the message distinguishes them from a refusal. The message is
+read from a bounded error body (8 KiB) as JSON, matched on its `message` field
+for the documented wording, never logged, and treated as absent when the body
+cannot be read or parsed, so a hostile endpoint cannot force unbounded
+allocation or change the classification. The ordinary-`403` and quota-remaining
+regressions stay.
+
+2026-11-20, assessment A1 r4: validate a page's continuation before accepting
+its counts. Acceptance means "this page contributes to a trustworthy scan", and
+a page whose `Link` header cannot be confined never does; counting it made the
+failure event describe work the traversal would not have kept. The records and
+bytes are computed first because the budgets must be checked before anything is
+retained, and the accumulator is updated only after the last validation
+succeeds.
+
+2026-11-20, assessment A1 r4: split the two over-long test binaries by concern
+rather than raising the size cap or duplicating fixtures. `atomicity` owns
+"nothing survives a later failure"; `events` owns "one terminal event with
+honest counts". Both name each case after the guarantee it checks, and neither
+shares a helper with the other because `tests/common` cannot hold one without
+making it dead code in the binaries that do not use it.
+
 2026-11-19, assessment A1: compare link parameter names and the registered
 `next` relation case-insensitively, and keep the comparison on the
 repository-owned side of the `nom-rfc8288` boundary. The parser owns the
@@ -1000,7 +1076,10 @@ only. `Retry-After` is GitHub's secondary-limit signal and an exhausted
 responses and proves nothing about the refusal. The plan required "rate-limit
 evidence" without saying which headers supply it; the reset timestamp was read
 as sufficient, which was too weak to distinguish a refusal from a wait, so the
-stronger rule is recorded here and in the verification plan.
+stronger rule is recorded here and in the verification plan. **Amended
+2026-11-20:** the header list was still incomplete; the documented
+secondary-limit message is now the third evidence source, read from a bounded
+error body.
 
 2026-11-19, assessment A1: emit the run's completion event after the domain
 conversion and after the output write, and give every failure event the

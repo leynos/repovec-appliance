@@ -211,11 +211,15 @@ limits. Registered relation types and Link parameter names are compared
 case-insensitively, as RFC 8288 requires; treating only the lowercase spelling
 as a continuation would end a valid listing early and report it complete. A
 `403` response is classified as rate limiting only on positive evidence: a
-`Retry-After` header or an exhausted `x-ratelimit-remaining` budget. A reset
-timestamp alone is not evidence, because GitHub sends `x-ratelimit-*` on
-ordinary responses; such a response stays an access refusal. It owns no
-retries, scheduling, or whole-scan budget. Redirects are disabled so a request
-cannot move without the confinement checks seeing it.
+`Retry-After` header, an exhausted `x-ratelimit-remaining` budget, or the error
+message GitHub documents for a secondary limit. A reset timestamp alone is not
+evidence, because GitHub sends `x-ratelimit-*` on ordinary responses; such a
+response stays an access refusal. The message is read from at most 8 KiB of the
+error body, and an unreadable or unparsable body contributes no evidence, so
+failure handling stays bounded and a malformed endpoint cannot change the
+classification. Neither the message nor any other error-body text reaches a
+diagnostic. It owns no retries, scheduling, or whole-scan budget. Redirects are
+disabled so a request cannot move without the confinement checks seeing it.
 
 A traversal is finite by construction: 10 000 pages, 1 000 000 records, 8 MiB
 per response body, 64 MiB of cumulative response bytes, 16 KiB per Link value,

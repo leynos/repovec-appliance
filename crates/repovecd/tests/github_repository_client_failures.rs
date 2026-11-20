@@ -13,17 +13,7 @@ use common::{installation_client::installation_client, user_client::user_client}
 use googletest::prelude::*;
 use pretty_assertions::assert_eq;
 use repovec_core::repository_listing::{RateLimitInfo, RepositoryListing, RepositoryListingError};
-use repovec_test_helpers::{
-    recording_http::{RecordingServer, ScriptedResponse},
-    repository_listing_wire::{
-        LinkRelation,
-        Repository,
-        bare_page,
-        link_header,
-        repository_json,
-        user_page,
-    },
-};
+use repovec_test_helpers::recording_http::{RecordingServer, ScriptedResponse};
 use repovecd::github_repository_client::{GitHubRepositoryClient, ListingLimits};
 use rstest::rstest;
 
@@ -262,24 +252,15 @@ fn an_object_body_is_not_a_user_listing() {
 }
 
 #[test]
-fn a_failure_on_a_later_page_returns_no_prefix() {
-    let second = user_page(2);
+fn a_secondary_limit_message_without_retry_headers_is_throttling() {
+    let message = concat!(
+        r#"{"message":"You have exceeded a secondary rate limit. "#,
+        r#"Please wait a few minutes before you try again."}"#
+    );
     let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, LinkRelation::Next))
-            .with_body(bare_page(&[
-                repository_json(Repository {
-                    id: 1,
-                    owner: "acme",
-                    name: "one",
-                }),
-                repository_json(Repository {
-                    id: 2,
-                    owner: "acme",
-                    name: "two",
-                }),
-            ])),
-        ScriptedResponse::new(500),
+        ScriptedResponse::new(403)
+            .with_header("X-RateLimit-Remaining", "4999")
+            .with_body(message),
     ])
     .expect("the scripted server should start");
     let client =
@@ -289,49 +270,14 @@ fn a_failure_on_a_later_page_returns_no_prefix() {
 
     assert_eq!(
         result.err(),
-        Some(RepositoryListingError::UnexpectedStatus { status: 500 }),
-        "two accepted records must not survive a failed third page as success"
-    );
-    assert_eq!(
-        server.request_count(),
-        2,
-        "the failure must end the traversal"
-    );
-}
-
-#[test]
-fn a_malformed_record_after_accepted_pages_returns_no_prefix() {
-    let second = user_page(2);
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, LinkRelation::Next))
-            .with_body(bare_page(&[repository_json(Repository {
-                id: 1,
-                owner: "acme",
-                name: "one",
-            })])),
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(Repository {
-            id: 2,
-            owner: "acme",
-            name: "",
-        })])),
-    ])
-    .expect("the scripted server should start");
-    let client =
-        adapter(Profile::User, &server.origin()).expect("a user-mode adapter should construct");
-
-    let result = client.list_repositories();
-
-    assert_eq!(
-        result.err(),
-        Some(RepositoryListingError::InvalidResponse {
-            reason: "repository name is invalid",
+        Some(RepositoryListingError::RateLimited {
+            retry: RateLimitInfo::new(None, None),
         }),
-        "validation must cover every page, not only the first"
+        "the documented secondary-limit message must yield wait guidance, not a permission error"
     );
     assert_eq!(
         server.request_count(),
-        2,
-        "the failing page must not be retried"
+        1,
+        "a throttled request must not be retried"
     );
 }

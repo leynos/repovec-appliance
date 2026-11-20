@@ -193,8 +193,12 @@ complete one. A repository observed twice is listed twice.
 Standard error carries a sanitized diagnostic naming a stable failure category
 and, where one exists, the operator recovery step: sign in again for a rejected
 user credential, supply a fresh installation token for a rejected installation
-credential, or wait for the rate-limit reset. The diagnostic never contains the
-credential.
+credential, or wait before retrying. A rate-limit diagnostic reports the delay
+GitHub supplied, or states that GitHub supplied no retry metadata — a secondary
+limit can arrive with neither `Retry-After` nor a reset time. A `403` that
+carries no rate-limit evidence is reported as a permission refusal instead, so
+it is not mistaken for a wait. The diagnostic never contains the credential or
+any part of GitHub's error text.
 
 The example also installs a structured event subscriber at `INFO` that writes
 the run's start, completion, and failure events to standard error, including

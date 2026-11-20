@@ -109,6 +109,39 @@ fn terminal_page() -> ScriptedResponse {
 }
 
 #[test]
+fn a_mixed_case_next_relation_still_continues_the_listing() {
+    let header = format!("<{}>; Rel=\"NeXt\"", user_page(2));
+    let server = RecordingServer::start(vec![
+        ScriptedResponse::new(200)
+            .with_header("Link", &header)
+            .with_body(bare_page(&[repository_json(Repository {
+                id: 1,
+                owner: "acme",
+                name: "one",
+            })])),
+        terminal_page(),
+    ])
+    .expect("the scripted server should start");
+    let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
+        .expect("a user-mode adapter should construct");
+
+    let repositories = client
+        .list_repositories()
+        .expect("a case-insensitive relation names an ordinary continuation");
+
+    assert_eq!(
+        repositories.len(),
+        2,
+        "the second page must be requested and returned"
+    );
+    assert_eq!(
+        server.request_count(),
+        2,
+        "a mixed-case next relation must not end the listing early"
+    );
+}
+
+#[test]
 fn two_next_targets_are_rejected_before_a_second_request() {
     let header = format!(
         "{first}, {second}",

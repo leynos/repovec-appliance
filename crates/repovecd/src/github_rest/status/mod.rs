@@ -34,9 +34,15 @@ pub(crate) fn classify_error(status: StatusCode, headers: &HeaderMap) -> Reposit
 }
 
 /// Reports whether the headers evidence a rate limit rather than a refusal.
+///
+/// GitHub includes the `x-ratelimit-*` headers on ordinary responses, so a
+/// reset time alone says nothing about why a request was refused. A `403` is a
+/// rate limit only when the primary budget is exhausted (`remaining` is `0`)
+/// or GitHub supplied a `Retry-After`, which is its secondary-limit signal.
+/// Any other `403` is an access refusal, and telling the operator to wait
+/// would hide the real remedy.
 fn has_rate_limit_evidence(headers: &HeaderMap) -> bool {
     headers.contains_key(RETRY_AFTER)
-        || headers.contains_key(RATE_LIMIT_RESET_HEADER)
         || headers
             .get(RATE_LIMIT_REMAINING_HEADER)
             .is_some_and(|remaining| remaining.as_bytes() == b"0")

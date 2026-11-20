@@ -502,14 +502,24 @@ userinfo, and changed filters. The second server must observe zero requests for
 a rejected continuation or redirect. Generate continuation histories that
 include cycles and fresh paging query values on the same permitted path to the
 page budget, preserving filters; assert a finite request count and typed
-failure. A temporary bypass of origin validation must make the second-server
+failure. Those generated histories live in
+`crates/repovecd/tests/repository_listing_pagination_properties.rs`, run over
+both shipped profiles, and assert exact request counts as well as the typed
+outcome. A temporary bypass of origin validation must make the second-server
 test fail. Use fake credentials exclusively.
+
+Classify a `403` by evidence rather than by the presence of any rate-limit
+header: `Retry-After` or an exhausted `x-ratelimit-remaining` is a rate limit,
+while a reset time alone is not, because GitHub sends `x-ratelimit-*` on
+ordinary responses. A `403` with quota remaining is an access refusal.
 
 Test Link selection at the `link.rs` boundary, not the third-party parser
 itself. Feed it the RFC 8288 examples, a quoted parameter containing a comma
 and an escaped quote, a relation list such as `rel="next last"`, a repeated
 `rel` parameter, an `anchor` on the next link, two next link-values in one
-header and across two headers, an empty list element, and malformed input.
+header and across two headers, an empty list element, malformed input, and
+mixed-case spellings of the parameter name and of the registered `next`
+relation, which RFC 8288 section 2.1.1 requires to compare case-insensitively.
 These tests pin the behaviour this design relies on, so a parser upgrade that
 changes it fails here.
 
@@ -847,8 +857,48 @@ record any difference as a revision note before writing code.
       were replaced by fourteen in-process unit tests over injected streams.
       `.config/nextest.toml` needed no change; the earlier nested-build
       override was reverted.
+- [x] (2026-11-19) Assessment A1 repairs. The hosted completeness assessment
+      (comment 7023827653) reported three correctness defects and several
+      verification gaps; all were reproduced against source before repair:
+      (a) `next` relations were matched case-sensitively, so RFC 8288 permits a
+      valid listing to end early and report completion — now compared
+      case-insensitively with three unit cases and an end-to-end continuation
+      case; (b) any `x-ratelimit-reset` header turned a `403` into a rate limit,
+      hiding an access refusal — now only `Retry-After` or an exhausted
+      `x-ratelimit-remaining` counts as evidence, with a regression case; (c)
+      the completion event was emitted before domain validation and before the
+      output was written — completion now follows every successful observation,
+      and failure events carry the accepted page and record counts through a
+      new `AcceptedWork` value. Verification gaps closed: generated histories
+      now span 1–32 pages, and
+      `crates/repovecd/tests/repository_listing_pagination_properties.rs` adds
+      generated fresh and cyclic histories with exact request counts over both
+      profiles. Both plan-mandated mutation witnesses were executed against the
+      repaired tree and reverted. The example now installs a structured
+      `INFO` subscriber, so its documented events are observable.
 
 ## Surprises & discoveries
+
+2026-11-19, assessment A1: `nom-rfc8288` hands back parameter names and
+relation values exactly as the server spelled them. RFC 8288 section 2.1.1
+requires registered relation types to compare case-insensitively, and HTTP
+field parameter names are conventionally case-insensitive, so the platform
+crate deliberately does no canonicalization. Matching only `rel="next"` was
+therefore a silent completeness defect: an otherwise valid listing ended at the
+first capitalized link and was reported as complete, which no typed error or
+count revealed.
+
+2026-11-19, assessment A1: GitHub documents `x-ratelimit-*` as ordinary
+response headers, not as rate-limit-only signals, and its secondary-limit
+signal is `Retry-After`. Inferring "rate limited" from a reset timestamp
+therefore reclassified a permission refusal as a wait-and-retry condition, and
+the operator would have waited for a remedy that could not arrive.
+
+2026-11-19, assessment A1: `clippy::too_many_arguments` applies to private
+helpers as well, so threading accepted page and record counts into the failure
+event needed a value type rather than two more parameters. `AcceptedWork`
+became that value, and it also gives the success path one place to state what a
+completed traversal accepted.
 
 2026-11-19, M3 repair: `cargo test --all-targets` does not build a runnable
 example. It compiles `examples/<name>.rs` as a libtest harness — a binary that
@@ -935,6 +985,41 @@ listing uses its distinct endpoint and response envelope. Verify critical
 contracts against source sections rather than trusting extraction summaries.
 
 ## Decision log
+
+2026-11-19, assessment A1: compare link parameter names and the registered
+`next` relation case-insensitively, and keep the comparison on the
+repository-owned side of the `nom-rfc8288` boundary. The parser owns the
+grammar; deciding which relation names a continuation is this crate's policy,
+and RFC 8288 makes case-insensitivity part of that policy. The alternative —
+patching or wrapping the third-party parser — would put a repository rule in a
+dependency and still need this comparison.
+
+2026-11-19, assessment A1: classify a `403` from positive rate-limit evidence
+only. `Retry-After` is GitHub's secondary-limit signal and an exhausted
+`x-ratelimit-remaining` is its primary one; a reset time accompanies ordinary
+responses and proves nothing about the refusal. The plan required "rate-limit
+evidence" without saying which headers supply it; the reset timestamp was read
+as sufficient, which was too weak to distinguish a refusal from a wait, so the
+stronger rule is recorded here and in the verification plan.
+
+2026-11-19, assessment A1: emit the run's completion event after the domain
+conversion and after the output write, and give every failure event the
+accepted page and record counts. A completion event that precedes validation or
+a failed write describes a run that produced no usable output, and it was the
+only place the plan's event contract could be satisfied without reporting a
+false success. For a traversal failure the counts come from the adapter that
+owns the traversal; the composition's failure event reports the sanitized
+category and elapsed time, because the domain port deliberately returns no
+partial records.
+
+2026-11-19, assessment A1: two review suggestions are recorded as justified
+non-changes. Trybuild coverage is not applicable: this feature introduces no
+macro, no feature-gated public contract, and no compile-fail surface, and the
+only feature is a crate-internal `test-support` re-export exercised by
+integration tests. The `UnexpectedStatus { status }` variant keeps its numeric
+status because it is the bounded, documented error surface the plan specifies
+for unmodelled responses, and operators need the status to diagnose a proxy or
+gateway in the path.
 
 2026-11-19, M3 repair: keep the operator command line in the library.
 `repository_listing_command::cli` owns `CliRun`, the argument parser, the usage

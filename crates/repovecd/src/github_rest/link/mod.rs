@@ -77,20 +77,48 @@ fn next_targets<'a>(
     Ok(targets)
 }
 
+/// The parameter name carrying a link's relation types.
+const RELATION_PARAMETER: &str = "rel";
+
+/// The parameter name carrying a link context that overrides the request URL.
+const ANCHOR_PARAMETER: &str = "anchor";
+
+/// The registered relation type naming the next page of a listing.
+const NEXT_RELATION: &str = "next";
+
 /// Returns the target of one link-value when its first `rel` names `next`.
+///
+/// Registered relation types are compared case-insensitively (RFC 8288,
+/// section 2.1.1), and HTTP field parameter names are conventionally
+/// case-insensitive, so a server sending `Rel="NeXt"` still names the next
+/// page. Treating only lowercase as a continuation would let a valid listing
+/// end early and be reported as complete.
 fn next_target<'a>(data: &LinkData<'a>) -> Result<Option<&'a str>, RepositoryListingError> {
-    let relation = data.params.iter().find(|param| param.key == "rel");
+    let relation = data
+        .params
+        .iter()
+        .find(|param| parameter_is(param.key, RELATION_PARAMETER));
     let Some(value) = relation.and_then(|param| param.val.as_deref()) else {
         return Ok(None);
     };
-    if !value.split(' ').any(|token| token == "next") {
+    if !value
+        .split(' ')
+        .any(|token| token.eq_ignore_ascii_case(NEXT_RELATION))
+    {
         return Ok(None);
     }
-    if data.params.iter().any(|param| param.key == "anchor") {
+    if data
+        .params
+        .iter()
+        .any(|param| parameter_is(param.key, ANCHOR_PARAMETER))
+    {
         return Err(invalid("an anchored next link has no listing context"));
     }
     Ok(Some(data.url))
 }
+
+/// Reports whether a link parameter's name is `expected`, ignoring case.
+fn parameter_is(name: &str, expected: &str) -> bool { name.eq_ignore_ascii_case(expected) }
 
 /// Resolves a target against the current request and confines it.
 fn resolve(

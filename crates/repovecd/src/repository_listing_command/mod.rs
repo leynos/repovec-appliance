@@ -258,10 +258,7 @@ pub fn run_listing(run: &mut ListingRun<'_>) -> RunStatus {
     };
     record_start(&context);
     match attempt(run) {
-        Ok(repositories) => {
-            record_completion(&context, repositories.len());
-            write_output(run, &repositories, &context)
-        }
+        Ok(repositories) => write_output(run, &repositories, &context),
         Err(failure) => report_failure(run, principal, &failure, &context),
     }
 }
@@ -297,18 +294,26 @@ fn list(
     GitHubRepositoryClient::new(endpoint.clone(), credential, limits)?.list_repositories()
 }
 
-/// Writes the observations and maps the outcome to a status.
+/// Writes the observations, then records completion, and maps the outcome.
+///
+/// Completion is recorded only after every observation reached the output
+/// stream, so a failed write never leaves a completion event describing a run
+/// the operator did not receive.
 fn write_output(
     run: &mut ListingRun<'_>,
     repositories: &[RepositorySummary],
     context: &RunContext<'_>,
 ) -> RunStatus {
     match output::write_observations(run.stdout, repositories) {
-        Ok(()) => RunStatus::Success,
+        Ok(()) => {
+            record_completion(context, repositories.len());
+            RunStatus::Success
+        }
         Err(failure) => {
             error!(
                 parent: context.span,
                 category = "output_failure",
+                records = repositories.len(),
                 elapsed_ms = context.elapsed_ms(),
                 "repository listing output failed"
             );

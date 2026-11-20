@@ -5,14 +5,25 @@
 //! through a listing. The traversal and the diagnostics are exercised end to
 //! end against a loopback server.
 
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    time::Instant,
+};
 
-use repovec_core::repository_listing::RepositorySummary;
-use repovec_test_helpers::repository_listing::RepositoryFixture;
+use repovec_core::{github_oauth::AccessToken, repository_listing::RepositorySummary};
+use repovec_test_helpers::{capture_logs, repository_listing::RepositoryFixture};
+use tracing::info_span;
 
 use super::{
+    CredentialError,
+    ListingMode,
+    ListingRun,
+    RunContext,
+    RunStatus,
+    UserTokenLoader,
     credential::{MAX_INSTALLATION_TOKEN_BYTES, read_installation_token},
     output::write_observations,
+    write_output,
 };
 
 /// A token value that is header-safe and unmistakably fake.
@@ -190,4 +201,90 @@ fn repository(id: u64, owner: &str, name: &str) -> RepositorySummary {
     RepositoryFixture::public(id, owner, name)
         .build()
         .expect("a fixture with a valid identity should build")
+}
+
+/// A credential loader that refuses, for tests that never acquire one.
+struct NoUserStore;
+
+impl UserTokenLoader for NoUserStore {
+    fn load_user_token(&self, _root: &camino::Utf8Path) -> Result<AccessToken, CredentialError> {
+        Err(CredentialError::UserStore {
+            reason: "not used by this test".to_owned(),
+        })
+    }
+}
+
+/// Runs `write_output` over `writer` and returns its status and captured logs.
+fn write_with_logs(
+    writer: &mut dyn Write,
+    repositories: &[RepositorySummary],
+) -> (RunStatus, String) {
+    let loader = NoUserStore;
+    let span = info_span!("repository_listing.test");
+    let context = RunContext {
+        span: &span,
+        started: Instant::now(),
+    };
+    let mut stdin = io::empty();
+    let mut stderr = Vec::new();
+    let mut run = ListingRun {
+        mode: ListingMode::InstallationStdin,
+        endpoint: crate::github_repository_client::GitHubApiEndpoint::github(),
+        limits: crate::github_repository_client::ListingLimits::defaults(),
+        load_user_token: &loader,
+        stdin: &mut stdin,
+        stdout: writer,
+        stderr: &mut stderr,
+    };
+
+    capture_logs(|| write_output(&mut run, repositories, &context))
+        .expect("capturing logs should succeed")
+}
+
+#[test]
+fn a_completed_output_is_logged_after_every_observation_is_written() {
+    let repositories = [repository(1, "octocat", "hello-world")];
+    let mut writer = Vec::new();
+
+    let (status, logs) = write_with_logs(&mut writer, &repositories);
+
+    assert_eq!(status, RunStatus::Success, "the write must succeed");
+    assert!(
+        logs.contains("repository listing run completed"),
+        "a successful write must be observable: {logs}"
+    );
+    assert!(
+        logs.contains("records=1"),
+        "the completion event must carry the accepted record count: {logs}"
+    );
+}
+
+#[test]
+fn a_failed_output_is_not_logged_as_a_completed_run() {
+    let repositories = [
+        repository(1, "octocat", "hello-world"),
+        repository(2, "acme", "service"),
+    ];
+    let first_line = "octocat/hello-world\n";
+    let mut writer = ByteBudgetWriter::new(first_line.len());
+
+    let (status, logs) = write_with_logs(&mut writer, &repositories);
+
+    assert_eq!(
+        status,
+        RunStatus::OutputFailure,
+        "a stream that rejects a line must fail the run"
+    );
+    assert!(
+        !logs.contains("repository listing run completed"),
+        "a failed write must not be described as a completed run: {logs}"
+    );
+    assert!(
+        logs.contains("repository listing output failed"),
+        "the output failure must be observable: {logs}"
+    );
+    assert!(
+        logs.contains("records=2"),
+        "the failure event must carry the accepted record count: {logs}"
+    );
 }

@@ -51,7 +51,21 @@ impl UserTokenLoader for EncryptedUserTokens {
     }
 }
 
+/// Installs the subscriber the run's structured events are reported through.
+///
+/// Events go to standard error, leaving standard output for `owner/name`
+/// lines. The level is `INFO`, the level the composition's own events use; a
+/// process that already configured a subscriber keeps it.
+fn install_event_subscriber() {
+    let _ignored = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_target(false)
+        .with_writer(io::stderr)
+        .try_init();
+}
+
 fn main() -> ExitCode {
+    install_event_subscriber();
     let arguments: Vec<OsString> = std::env::args_os().skip(1).collect();
     let process_stdin = io::stdin();
     let mut stdin = process_stdin.lock();

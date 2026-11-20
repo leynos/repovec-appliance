@@ -48,6 +48,44 @@ pub(crate) struct Traversal<T> {
     pub(crate) bytes: u64,
 }
 
+/// Work a traversal accepted, whether or not it completed.
+///
+/// Counts are safe to report: they describe how far a run got without naming
+/// or carrying any accepted value.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct AcceptedWork {
+    /// Pages accepted.
+    pub(crate) pages: u64,
+    /// Records accepted.
+    pub(crate) records: u64,
+}
+
+/// A failed traversal, with the work it accepted before failing.
+///
+/// The records themselves are dropped, because a failed scan must never look
+/// like a complete one. The counts survive so diagnostics can report how far a
+/// failed traversal got without exposing any accepted value.
+#[derive(Debug)]
+pub(crate) struct TraversalFailure {
+    /// The typed error explaining the failure.
+    pub(crate) error: RepositoryListingError,
+    /// Work accepted before the failure.
+    pub(crate) accepted: AcceptedWork,
+}
+
+impl TraversalFailure {
+    /// Pairs an error with the accumulator's accepted work.
+    fn new<T>(error: RepositoryListingError, state: &Accumulator<T>) -> Self {
+        Self {
+            error,
+            accepted: AcceptedWork {
+                pages: state.pages,
+                records: u64::try_from(state.records.len()).unwrap_or(u64::MAX),
+            },
+        }
+    }
+}
+
 /// One paginated listing walk, bound to one client, credential and profile.
 pub(crate) struct TraversalRunner<'a, T> {
     /// HTTP client reused for every page.
@@ -67,15 +105,18 @@ impl<T: DeserializeOwned> TraversalRunner<'_, T> {
     ///
     /// # Errors
     ///
-    /// Returns the typed error for a rejected status, an invalid
+    /// Returns [`TraversalFailure`] for a rejected status, an invalid
     /// continuation, a cycle, a transport failure, a malformed body, or an
-    /// exhausted budget.
-    pub(crate) fn run(&self) -> Result<Traversal<T>, RepositoryListingError> {
+    /// exhausted budget. The accepted counts travel with the error so the
+    /// failure can be reported without exposing any accepted record.
+    pub(crate) fn run(&self) -> Result<Traversal<T>, TraversalFailure> {
         let context = self.context();
         let mut state = Accumulator::new();
         let mut current = Some(self.initial.clone());
         while let Some(url) = current {
-            current = self.fetch_page(&url, &context, &mut state)?;
+            current = self
+                .fetch_page(&url, &context, &mut state)
+                .map_err(|error| TraversalFailure::new(error, &state))?;
         }
         Ok(state.finish())
     }

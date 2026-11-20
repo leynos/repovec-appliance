@@ -83,6 +83,24 @@ fn a_remaining_budget_without_reset_is_still_a_refusal() {
 }
 
 #[test]
+fn a_reset_header_with_remaining_quota_is_still_a_refusal() {
+    let error = classify_error(
+        StatusCode::FORBIDDEN,
+        &headers(&[
+            ("x-ratelimit-remaining", "42"),
+            ("x-ratelimit-reset", "1700000000"),
+        ]),
+    );
+
+    assert_eq!(
+        error,
+        RepositoryListingError::Forbidden,
+        "GitHub sends rate-limit headers on ordinary responses, so a reset time alone must not \
+         turn an access refusal into a rate limit"
+    );
+}
+
+#[test]
 fn too_many_requests_is_rate_limited_without_metadata() {
     let error = classify_error(StatusCode::TOO_MANY_REQUESTS, &HeaderMap::new());
 

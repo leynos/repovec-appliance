@@ -383,3 +383,37 @@ fn a_completed_listing_logs_counts_without_naming_repositories_or_secrets() {
         "logs must not record repository names by default: {logs}"
     );
 }
+
+#[test]
+fn a_record_outside_the_domain_fails_without_a_completion_event() {
+    let server = RecordingServer::start(vec![ScriptedResponse::new(200).with_body(bare_page(&[
+        repository_json(Repository {
+            id: 1,
+            owner: "acme",
+            name: "",
+        }),
+    ]))])
+    .expect("the scripted server should start");
+    let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
+        .expect("a user-mode adapter should construct");
+
+    let (result, logs) = repovec_test_helpers::capture_logs(|| client.list_repositories())
+        .expect("capturing logs should succeed");
+
+    assert!(
+        result.is_err(),
+        "a record the domain rejects must fail the listing, got {result:?}"
+    );
+    assert!(
+        !logs.contains("repository listing completed"),
+        "a rejected record must not be reported as a completed listing: {logs}"
+    );
+    assert!(
+        logs.contains("repository listing failed"),
+        "the rejection must be observable: {logs}"
+    );
+    assert!(
+        logs.contains("pages=1") && logs.contains("records=1"),
+        "the failure event must carry the accepted counts: {logs}"
+    );
+}

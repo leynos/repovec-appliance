@@ -88,9 +88,12 @@ fn record() -> impl Strategy<Value = Record> {
         .prop_map(|(id, owner, name)| Record { id, owner, name })
 }
 
-/// Generates between one and eight pages of zero to one hundred records.
+/// Generates between one and thirty-two pages of zero to one hundred records.
+///
+/// The plan's generated range is 1–32 pages, so the terminal page is reached
+/// after as many continuations as a small real listing would need.
 fn page_histories() -> impl Strategy<Value = Vec<Vec<Record>>> {
-    prop::collection::vec(prop::collection::vec(record(), 0..=FULL_PAGE), 1..=8)
+    prop::collection::vec(prop::collection::vec(record(), 0..=FULL_PAGE), 1..=32)
 }
 
 /// Generates both shipped profiles alongside a page history.

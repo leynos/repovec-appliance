@@ -186,7 +186,10 @@ state, archive state, or privacy.
   credential, runs a complete traversal, writes one `owner/name` line per
   observation to standard output only after the traversal succeeded, and
   reports a failure as a sanitized diagnostic on standard error with a distinct
-  exit code.
+  exit code. Its completion event is emitted only after domain validation and
+  the output write both succeeded; a failure event carries the sanitized
+  category, elapsed time, and, for a traversal failure, the accepted page and
+  record counts supplied by the adapter that owns the traversal.
 
 The principal is named explicitly by the caller and never inferred from a token
 prefix. An OAuth user credential requests `/user/repos` with the fixed
@@ -204,8 +207,15 @@ profiles; branch and pull request listing add their own without new traversal
 code. The component owns Link selection with `nom-rfc8288`, continuation
 confinement to the initial origin and path, cycle detection, and the page,
 record, response-body, cumulative-byte, Link-value, and continuation-identity
-limits. It owns no retries, scheduling, or whole-scan budget. Redirects are
-disabled so a request cannot move without the confinement checks seeing it.
+limits. Registered relation types and Link parameter names are compared
+case-insensitively, as RFC 8288 requires; treating only the lowercase spelling
+as a continuation would end a valid listing early and report it complete. A
+`403` response is classified as rate limiting only on positive evidence: a
+`Retry-After` header or an exhausted `x-ratelimit-remaining` budget. A reset
+timestamp alone is not evidence, because GitHub sends `x-ratelimit-*` on
+ordinary responses; such a response stays an access refusal. It owns no
+retries, scheduling, or whole-scan budget. Redirects are disabled so a request
+cannot move without the confinement checks seeing it.
 
 A traversal is finite by construction: 10 000 pages, 1 000 000 records, 8 MiB
 per response body, 64 MiB of cumulative response bytes, 16 KiB per Link value,

@@ -102,7 +102,7 @@ pub fn traverse<T: DeserializeOwned>(
         initial,
         limits: traversal.limits,
     };
-    let completed = runner.run()?;
+    let completed = runner.run().map_err(|failure| failure.error)?;
     Ok(TraversalEvidence {
         records: completed.records,
         pages: completed.pages,

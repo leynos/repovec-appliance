@@ -75,6 +75,16 @@ const PATH_ONLY_NEXT: &str = r#"</user/repos?visibility=all&per_page=100&page=3>
 /// A next link whose relation list also names last.
 const NEXT_THEN_LAST: &str = r#"</user/repos?visibility=all&per_page=100&page=3>; rel="next last""#;
 
+/// A next link whose relation type uses mixed case.
+const MIXED_CASE_RELATION: &str = r#"</user/repos?visibility=all&per_page=100&page=3>; rel="NeXt""#;
+
+/// A next link whose relation list and parameter name use mixed case.
+const MIXED_CASE_EVERYWHERE: &str =
+    r#"</user/repos?visibility=all&per_page=100&page=3>; Rel="NeXt LaSt""#;
+
+/// A next link whose anchor parameter uses mixed case.
+const MIXED_CASE_ANCHOR: &str = r##"</user/repos?page=2>; rel="next"; Anchor="#section""##;
+
 /// A next link carrying an extra quoted parameter with a comma and a quote.
 const QUOTED_NEXT: &str =
     r#"</user/repos?visibility=all&per_page=100&page=3>; rel="next"; title="a,b\"c""#;
@@ -95,6 +105,11 @@ enum Resolution {
 #[case::absolute_next(&[ABSOLUTE_NEXT], Resolution::Target(PAGE_THREE))]
 #[case::path_only_next(&[PATH_ONLY_NEXT], Resolution::Target(PAGE_THREE))]
 #[case::relation_list(&[NEXT_THEN_LAST], Resolution::Target(PAGE_THREE))]
+#[case::mixed_case_relation(&[MIXED_CASE_RELATION], Resolution::Target(PAGE_THREE))]
+#[case::mixed_case_relation_and_parameter(
+    &[MIXED_CASE_EVERYWHERE],
+    Resolution::Target(PAGE_THREE)
+)]
 #[case::quoted_parameter(&[QUOTED_NEXT], Resolution::Target(PAGE_THREE))]
 #[case::reordered_filters(&[REORDERED_NEXT], Resolution::Target(REORDERED_PAGE_THREE))]
 #[case::first_relation_parameter_only(
@@ -122,6 +137,10 @@ enum Resolution {
 )]
 #[case::anchored_next(
     &[r##"</user/repos?page=2>; rel="next"; anchor="#section""##],
+    Resolution::Rejected("an anchored next link has no listing context")
+)]
+#[case::mixed_case_anchor(
+    &[MIXED_CASE_ANCHOR],
     Resolution::Rejected("an anchored next link has no listing context")
 )]
 fn a_next_continuation_is_selected_only_when_the_header_is_unambiguous(

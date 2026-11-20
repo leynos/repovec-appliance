@@ -196,6 +196,12 @@ user credential, supply a fresh installation token for a rejected installation
 credential, or wait for the rate-limit reset. The diagnostic never contains the
 credential.
 
+The example also installs a structured event subscriber at `INFO` that writes
+the run's start, completion, and failure events to standard error, including
+the principal kind, accepted page and record counts, elapsed time, and the
+sanitized failure category. Standard output stays reserved for `owner/name`
+lines, so the events never disturb a consumer that reads the listing alone.
+
 ### Resource limits
 
 Each traversal is bounded to 10 000 pages, 1 000 000 records, 8 MiB per

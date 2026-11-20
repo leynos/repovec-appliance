@@ -43,7 +43,7 @@ pub use crate::github_rest::{
 };
 use crate::github_rest::{
     profile::{EndpointProfile, PageItems},
-    traversal::TraversalRunner,
+    traversal::{AcceptedWork, Traversal, TraversalFailure, TraversalRunner},
 };
 
 /// Connection deadline applied by the default HTTP client.
@@ -169,28 +169,24 @@ impl RepositoryListing for GitHubRepositoryClient {
             principal = self.credential.principal().as_str()
         );
         let started = Instant::now();
-        match self.traverse(&span) {
-            Ok((records, pages, bytes)) => {
-                record_completion(&span, started, pages, bytes);
-                into_domain(records)
-            }
-            Err(error) => {
-                record_failure(&span, started, &error);
-                Err(error)
-            }
-        }
+        let traversal = match self.traverse(&span) {
+            Ok(traversal) => traversal,
+            Err(failure) => return Err(report_traversal_failure(&span, started, failure)),
+        };
+        finish(&span, started, traversal)
     }
 }
 
 impl GitHubRepositoryClient {
     /// Runs the traversal for this credential's profile.
-    fn traverse(
-        &self,
-        span: &Span,
-    ) -> Result<(Vec<RepositoryWire>, u64, u64), RepositoryListingError> {
+    fn traverse(&self, span: &Span) -> Result<Traversal<RepositoryWire>, TraversalFailure> {
         let profile = self.profile();
-        let initial =
-            span.in_scope(|| self.endpoint.request_url(profile.path, profile.fixed_query))?;
+        let initial = span
+            .in_scope(|| self.endpoint.request_url(profile.path, profile.fixed_query))
+            .map_err(|error| TraversalFailure {
+                error,
+                accepted: AcceptedWork::default(),
+            })?;
         let runner = TraversalRunner {
             client: &self.http,
             credential: &self.credential,
@@ -198,8 +194,7 @@ impl GitHubRepositoryClient {
             initial,
             limits: self.limits,
         };
-        let traversal = runner.run()?;
-        Ok((traversal.records, traversal.pages, traversal.bytes))
+        runner.run()
     }
 
     /// Returns the profile the bound credential kind pages.
@@ -209,6 +204,42 @@ impl GitHubRepositoryClient {
             PrincipalKind::Installation => &INSTALLATION_REPOSITORIES,
         }
     }
+}
+
+/// Validates a completed traversal, then records it as complete.
+///
+/// Conversion runs first: a traversal that accepted pages but returned a
+/// record the domain rejects has failed, and logging completion before the
+/// validation would describe a failed run as a completed one.
+fn finish(
+    span: &Span,
+    started: Instant,
+    traversal: Traversal<RepositoryWire>,
+) -> Result<Vec<RepositorySummary>, RepositoryListingError> {
+    let accepted = AcceptedWork {
+        pages: traversal.pages,
+        records: u64::try_from(traversal.records.len()).unwrap_or(u64::MAX),
+    };
+    match into_domain(traversal.records) {
+        Ok(repositories) => {
+            record_completion(span, started, traversal.pages, traversal.bytes);
+            Ok(repositories)
+        }
+        Err(error) => {
+            record_failure(span, started, &error, accepted);
+            Err(error)
+        }
+    }
+}
+
+/// Records a failed traversal and returns the error it carries.
+fn report_traversal_failure(
+    span: &Span,
+    started: Instant,
+    failure: TraversalFailure,
+) -> RepositoryListingError {
+    record_failure(span, started, &failure.error, failure.accepted);
+    failure.error
 }
 
 /// Converts the wire records of a completed traversal into domain summaries.
@@ -232,11 +263,18 @@ fn record_completion(span: &Span, started: Instant, pages: u64, bytes: u64) {
     );
 }
 
-/// Records a failed traversal under a stable category.
-fn record_failure(span: &Span, started: Instant, error: &RepositoryListingError) {
+/// Records a failed traversal under a stable category and its accepted work.
+fn record_failure(
+    span: &Span,
+    started: Instant,
+    error: &RepositoryListingError,
+    accepted: AcceptedWork,
+) {
     info!(
         parent: span,
         category = error.category(),
+        pages = accepted.pages,
+        records = accepted.records,
         elapsed_ms = elapsed_ms(started),
         "repository listing failed"
     );

@@ -22,8 +22,9 @@ not an atomic snapshot of GitHub. An unsuccessful traversal returns a typed
 error and no partial list. This distinction protects future reconciliation from
 treating a failed scan as evidence that repositories have disappeared.
 
-This pull request contains the plan only. Approval authorizes the
-implementation milestones below; it does not mark roadmap item 2.2.1 done.
+This pull request carries the plan and, once approved, the implementation it
+authorizes. Approval authorizes the implementation milestones below; it does
+not mark roadmap item 2.2.1 done.
 
 ## Constraints
 
@@ -911,6 +912,16 @@ record any difference as a revision note before writing code.
       The later-page matrix, now including the unexpected-success cases, is one
       parameterized test over a case struct, which is how the file clears the
       CodeScene duplication and argument-count rules without a suppression.
+- [x] (2026-11-20) Assessment A1 r6 repair. The r6 reply (comment 7028784339)
+      found no new runtime defect but held that this plan's later-page matrix
+      was not complete: the malformed-record, rate-limit and timeout cases ran
+      only under the user profile, while the plan requires later-page cases
+      over both shipped profiles. Those three cases are now parameterized over
+      the installation profile as well, using an enveloped malformed page, so
+      every profile exercises a rejected status, an invalid record, a
+      rate-limited response and a timeout after an accepted page. The reply's
+      minor plan inconsistency is also corrected: the introduction no longer
+      says the pull request contains the plan only.
 
 ## Surprises & discoveries
 

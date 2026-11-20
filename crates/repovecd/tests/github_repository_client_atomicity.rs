@@ -140,6 +140,37 @@ struct LaterPageFailure {
     expected: RepositoryListingError::AuthenticationRejected,
     why: "the enveloped profile must not return its accepted page either",
 })]
+#[case::installation_malformed_record(LaterPageFailure {
+    profile: Profile::Installation,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(200).with_body(envelope_page(&[repository_json(Repository {
+        id: 2,
+        owner: "acme",
+        name: "",
+    })])),
+    expected: RepositoryListingError::InvalidResponse {
+        reason: "repository name is invalid",
+    },
+    why: "the enveloped profile must validate every page, not only the first",
+})]
+#[case::installation_rate_limited(LaterPageFailure {
+    profile: Profile::Installation,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(403)
+        .with_header("X-RateLimit-Remaining", "0")
+        .with_header("X-RateLimit-Reset", "1700000000"),
+    expected: RepositoryListingError::RateLimited {
+        retry: RateLimitInfo::new(None, Some(1_700_000_000)),
+    },
+    why: "a throttled later page must fail the enveloped listing with its retry metadata",
+})]
+#[case::installation_timed_out(LaterPageFailure {
+    profile: Profile::Installation,
+    deadline: EXPIRING_TIMEOUT,
+    second: ScriptedResponse::new(200).with_delay(SLOW_RESPONSE),
+    expected: RepositoryListingError::TransportFailure,
+    why: "a later page that outlives its deadline must fail the enveloped listing too",
+})]
 #[case::accepted(LaterPageFailure {
     profile: Profile::User,
     deadline: TEST_TIMEOUT,

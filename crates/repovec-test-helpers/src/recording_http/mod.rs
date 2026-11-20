@@ -26,8 +26,14 @@
 //! let origin = server.origin();
 //!
 //! // A client bound to `origin` would now receive the scripted body.
-//! assert!(origin.starts_with("http://127.0.0.1:"));
-//! assert!(server.requests().is_empty());
+//! assert!(
+//!     origin.starts_with("http://127.0.0.1:"),
+//!     "the server should listen on an ephemeral loopback port, got {origin}"
+//! );
+//! assert!(
+//!     server.requests().is_empty(),
+//!     "no client has sent a request yet"
+//! );
 //!
 //! # Ok::<(), std::io::Error>(())
 //! ```
@@ -49,7 +55,7 @@ use std::{
 };
 
 pub use expectation::{RecordedRequest, ScriptedResponse};
-pub use wire::ORIGIN_TOKEN;
+pub use wire::{ORIGIN_AUTHORITY_TOKEN, ORIGIN_TOKEN};
 use wire::{read_request, write_response};
 
 /// How long an idle connection is held open before the server gives up on it.
@@ -159,6 +165,19 @@ fn run(listener: &TcpListener, origin: &str, script: Vec<ScriptedResponse>, shar
     }
 }
 
+/// Restores blocking mode and bounds both directions of one conversation.
+///
+/// The listener is non-blocking so the accept loop can observe the shutdown
+/// flag, and every accepted socket inherits that mode. A client that stops
+/// reading must not park the worker thread either: the read and write timeouts
+/// bound each wait, and once one expires the connection is closed and the
+/// accept loop resumes.
+fn prepare_connection(stream: &TcpStream) -> io::Result<()> {
+    stream.set_nonblocking(false)?;
+    stream.set_read_timeout(Some(CONNECTION_IDLE_TIMEOUT))?;
+    stream.set_write_timeout(Some(CONNECTION_IDLE_TIMEOUT))
+}
+
 /// Serves every request one connection sends, recording each one.
 fn serve(
     stream: TcpStream,
@@ -166,10 +185,7 @@ fn serve(
     pending: &mut VecDeque<ScriptedResponse>,
     shared: &Shared,
 ) {
-    if stream
-        .set_read_timeout(Some(CONNECTION_IDLE_TIMEOUT))
-        .is_err()
-    {
+    if prepare_connection(&stream).is_err() {
         return;
     }
     let Ok(reader_stream) = stream.try_clone() else {
@@ -186,6 +202,86 @@ fn serve(
             .unwrap_or_else(|| ScriptedResponse::new(500));
         if write_response(&mut writer, origin, &response).is_err() {
             return;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Regression tests for connection handling in the recording server.
+    //!
+    //! A client that stops reading must not park the worker thread: the
+    //! connection's write timeout is what lets `shutdown` complete. The body is
+    //! larger than the combined loopback socket buffers, so the server's write
+    //! cannot complete while the client holds the connection open without
+    //! reading.
+
+    use std::{
+        io::Write,
+        net::TcpStream,
+        sync::mpsc,
+        thread,
+        time::{Duration, Instant},
+    };
+
+    use super::{CONNECTION_IDLE_TIMEOUT, RecordingServer, ScriptedResponse};
+
+    /// A body larger than the loopback buffers on both sides of the connection.
+    const UNREAD_BODY_BYTES: usize = 16 * 1024 * 1024;
+
+    /// How long the shutdown may take before the connection is deemed stuck.
+    ///
+    /// The write timeout bounds each blocked send, not the whole write: a send
+    /// that moves some bytes resets the timer. A stalled 16 MiB write was
+    /// measured at about six seconds before it reported a timeout, so the
+    /// budget leaves a wide margin for a loaded host while still failing a
+    /// worker that never returns.
+    const SHUTDOWN_BUDGET: Duration = Duration::from_secs(30);
+
+    #[test]
+    fn a_stalled_reader_cannot_block_shutdown() {
+        let mut server = RecordingServer::start(vec![
+            ScriptedResponse::new(200).with_body("x".repeat(UNREAD_BODY_BYTES)),
+        ])
+        .expect("the recording server must start on a loopback port");
+
+        let mut client = TcpStream::connect(server.origin().trim_start_matches("http://"))
+            .expect("the client must connect to the recording server");
+        client
+            .write_all(b"GET /stalled HTTP/1.1\r\nHost: loopback\r\n\r\n")
+            .expect("the request must be written to the recording server");
+
+        wait_until_recorded(&server);
+
+        let (is_finished, finished) = mpsc::channel();
+        let shutdown = thread::spawn(move || {
+            server.shutdown();
+            let _ignored = is_finished.send(());
+        });
+
+        let outcome = finished.recv_timeout(SHUTDOWN_BUDGET);
+        assert!(
+            outcome.is_ok(),
+            "shutdown must complete once the write timeout expires, but the worker thread was \
+             still blocked after {SHUTDOWN_BUDGET:?}"
+        );
+        shutdown.join().expect("the shutdown thread must not panic");
+
+        // Held until now so the write was genuinely still pending; the client
+        // is dropped only after the server has stopped.
+        drop(client);
+    }
+
+    /// Waits until the server has recorded the request, which happens before
+    /// its response is written.
+    fn wait_until_recorded(server: &RecordingServer) {
+        let deadline = Instant::now() + CONNECTION_IDLE_TIMEOUT * 2;
+        while server.request_count() == 0 {
+            assert!(
+                Instant::now() < deadline,
+                "the server must record the request before writing the response"
+            );
+            thread::sleep(Duration::from_millis(5));
         }
     }
 }

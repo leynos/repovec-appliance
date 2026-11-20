@@ -126,11 +126,14 @@ const fn reauthentication(principal: PrincipalKind) -> &'static str {
 
 /// Returns the wait a rate-limited caller can observe from validated metadata.
 fn rate_limit_guidance(retry: RateLimitInfo) -> String {
-    match (retry.retry_after_seconds, retry.reset_unix_seconds) {
-        (Some(seconds), _) => format!("wait at least {seconds} seconds before retrying"),
-        (None, Some(reset)) => {
-            format!("wait until the rate-limit window resets at Unix time {reset}")
+    match (retry.retry_after(), retry.reset()) {
+        (Some(delay), _) => {
+            format!("wait at least {} seconds before retrying", delay.as_secs())
         }
+        (None, Some(reset)) => format!(
+            "wait until the rate-limit window resets at Unix time {}",
+            reset.as_unix_seconds()
+        ),
         (None, None) => "wait before retrying; GitHub supplied no retry metadata".to_owned(),
     }
 }

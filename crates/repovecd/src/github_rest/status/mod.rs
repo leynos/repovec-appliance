@@ -5,7 +5,9 @@
 //! documents for secondary limits; otherwise it is a refusal of access.
 //! Nothing here retries, prompts for a login, or falls back to public data.
 
-use repovec_core::repository_listing::{RateLimitInfo, RepositoryListingError};
+use std::time::Duration;
+
+use repovec_core::repository_listing::{RateLimitInfo, RateLimitReset, RepositoryListingError};
 use reqwest::{
     StatusCode,
     header::{HeaderMap, RETRY_AFTER},
@@ -98,13 +100,20 @@ fn rate_limited(headers: &HeaderMap) -> RepositoryListingError {
     }
 }
 
-/// Returns the whole number of seconds in `Retry-After`, ignoring a date form.
-fn retry_after(headers: &HeaderMap) -> Option<u64> {
-    headers.get(RETRY_AFTER)?.to_str().ok()?.trim().parse().ok()
+/// Returns the delay in `Retry-After`, ignoring a date form.
+fn retry_after(headers: &HeaderMap) -> Option<Duration> {
+    headers
+        .get(RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+        .map(Duration::from_secs)
 }
 
-/// Returns the reset time in Unix seconds reported by GitHub.
-fn reset_unix_seconds(headers: &HeaderMap) -> Option<u64> {
+/// Returns the reset moment reported by GitHub.
+fn reset_unix_seconds(headers: &HeaderMap) -> Option<RateLimitReset> {
     headers
         .get(RATE_LIMIT_RESET_HEADER)?
         .to_str()
@@ -112,6 +121,7 @@ fn reset_unix_seconds(headers: &HeaderMap) -> Option<u64> {
         .trim()
         .parse()
         .ok()
+        .map(RateLimitReset::from_unix_seconds)
 }
 
 #[cfg(test)]

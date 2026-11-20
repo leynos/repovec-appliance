@@ -11,7 +11,12 @@ use std::time::Duration;
 
 use common::{installation_client::installation_client, user_client::user_client};
 use pretty_assertions::assert_eq;
-use repovec_core::repository_listing::{RateLimitInfo, RepositoryListing, RepositoryListingError};
+use repovec_core::repository_listing::{
+    RateLimitInfo,
+    RateLimitReset,
+    RepositoryListing,
+    RepositoryListingError,
+};
 use repovec_test_helpers::{
     recording_http::{RecordingServer, ScriptedResponse},
     repository_listing_wire::{
@@ -122,7 +127,7 @@ struct LaterPageFailure {
         .with_header("X-RateLimit-Remaining", "0")
         .with_header("X-RateLimit-Reset", "1700000000"),
     expected: RepositoryListingError::RateLimited {
-        retry: RateLimitInfo::new(None, Some(1_700_000_000)),
+        retry: RateLimitInfo::new(None, Some(RateLimitReset::from_unix_seconds(1_700_000_000))),
     },
     why: "a throttled later page must fail the listing with its retry metadata",
 })]
@@ -174,7 +179,7 @@ struct LaterPageFailure {
         .with_header("X-RateLimit-Remaining", "0")
         .with_header("X-RateLimit-Reset", "1700000000"),
     expected: RepositoryListingError::RateLimited {
-        retry: RateLimitInfo::new(None, Some(1_700_000_000)),
+        retry: RateLimitInfo::new(None, Some(RateLimitReset::from_unix_seconds(1_700_000_000))),
     },
     why: "a throttled later page must fail the enveloped listing with its retry metadata",
 })]

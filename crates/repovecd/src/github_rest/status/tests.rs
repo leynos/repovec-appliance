@@ -1,6 +1,8 @@
 //! Unit tests for status classification.
 
-use repovec_core::repository_listing::{RateLimitInfo, RepositoryListingError};
+use std::time::Duration;
+
+use repovec_core::repository_listing::{RateLimitInfo, RateLimitReset, RepositoryListingError};
 use reqwest::{StatusCode, header::HeaderMap};
 use rstest::rstest;
 
@@ -48,7 +50,7 @@ fn a_forbidden_response_with_retry_after_is_rate_limited() {
     assert_eq!(
         error,
         RepositoryListingError::RateLimited {
-            retry: RateLimitInfo::new(Some(60), None),
+            retry: RateLimitInfo::new(Some(Duration::from_secs(60)), None),
         },
         "a 403 carrying retry metadata is a rate limit"
     );
@@ -67,7 +69,7 @@ fn an_exhausted_primary_limit_is_rate_limited() {
     assert_eq!(
         error,
         RepositoryListingError::RateLimited {
-            retry: RateLimitInfo::new(None, Some(1_700_000_000)),
+            retry: RateLimitInfo::new(None, Some(RateLimitReset::from_unix_seconds(1_700_000_000))),
         },
         "an exhausted primary budget is a rate limit"
     );
@@ -112,7 +114,7 @@ fn too_many_requests_is_rate_limited_without_metadata() {
     assert_eq!(
         error,
         RepositoryListingError::RateLimited {
-            retry: RateLimitInfo::new(None, None),
+            retry: RateLimitInfo::default(),
         },
         "429 is a rate limit even without retry metadata"
     );
@@ -141,7 +143,7 @@ fn a_non_numeric_retry_after_is_ignored() {
     assert_eq!(
         error,
         RepositoryListingError::RateLimited {
-            retry: RateLimitInfo::new(None, None),
+            retry: RateLimitInfo::default(),
         },
         "an HTTP-date retry value is not turned into a bogus number"
     );
@@ -159,7 +161,7 @@ fn a_secondary_limit_message_with_quota_remaining_is_rate_limited() {
     assert_eq!(
         error,
         RepositoryListingError::RateLimited {
-            retry: RateLimitInfo::new(None, None),
+            retry: RateLimitInfo::default(),
         },
         "GitHub documents the error message as the secondary-limit signal, and Retry-After is \
          optional, so the message alone must classify the response"
@@ -209,7 +211,7 @@ fn a_rate_limit_message_on_a_429_reports_the_validated_reset() {
     assert_eq!(
         error,
         RepositoryListingError::RateLimited {
-            retry: RateLimitInfo::new(None, Some(1_700_000_000)),
+            retry: RateLimitInfo::new(None, Some(RateLimitReset::from_unix_seconds(1_700_000_000))),
         },
         "the message must not displace the reset metadata the headers carry"
     );

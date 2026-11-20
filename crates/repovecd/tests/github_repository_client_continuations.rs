@@ -13,7 +13,7 @@ use googletest::prelude::*;
 use pretty_assertions::assert_eq;
 use repovec_core::repository_listing::{RepositoryListing, RepositoryListingError};
 use repovec_test_helpers::{
-    recording_http::{ORIGIN_TOKEN, RecordingServer, ScriptedResponse},
+    recording_http::{ORIGIN_AUTHORITY_TOKEN, ORIGIN_TOKEN, RecordingServer, ScriptedResponse},
     repository_listing_wire::{
         LinkRelation,
         Repository,
@@ -211,33 +211,51 @@ fn an_off_origin_continuation_never_reaches_the_second_server() {
     );
 }
 
+#[test]
+fn the_case_placeholders_match_the_recording_server_constants() {
+    assert_eq!(
+        (ORIGIN_TOKEN, ORIGIN_AUTHORITY_TOKEN),
+        ("{origin}", "{origin_authority}"),
+        "the case templates below spell the fixture placeholders literally"
+    );
+}
+
+// Each case names the whole continuation target, so the placeholders show
+// where the server's own origin belongs. The userinfo case names its
+// authority explicitly: user information belongs before the authority, which
+// prefixing the origin cannot express.
 #[rstest]
-#[case::changed_path(Profile::User, "/installation/repositories?per_page=100&page=2")]
+#[case::changed_path(
+    Profile::User,
+    "{origin}/installation/repositories?per_page=100&page=2"
+)]
 #[case::added_filter(
     Profile::User,
-    "/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&sort=full_name&\
-     direction=asc&per_page=100&type=all&page=2"
+    "{origin}/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&\
+     sort=full_name&direction=asc&per_page=100&type=all&page=2"
 )]
 #[case::changed_filter(
     Profile::User,
-    "/user/repos?visibility=private&affiliation=owner,collaborator,organization_member&\
+    "{origin}/user/repos?visibility=private&affiliation=owner,collaborator,organization_member&\
      sort=full_name&direction=asc&per_page=100&page=2"
 )]
-#[case::dropped_filter(Profile::User, "/user/repos?per_page=100&page=2")]
+#[case::dropped_filter(Profile::User, "{origin}/user/repos?per_page=100&page=2")]
 #[case::fragment(
     Profile::User,
-    "/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&sort=full_name&\
-     direction=asc&per_page=100&page=2#section"
+    "{origin}/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&\
+     sort=full_name&direction=asc&per_page=100&page=2#section"
 )]
 #[case::userinfo(
     Profile::User,
-    "{origin_scheme}//user:secret@127.0.0.1:1/user/repos?visibility=all&affiliation=owner,\
+    "http://user:secret@{origin_authority}/user/repos?visibility=all&affiliation=owner,\
      collaborator,organization_member&sort=full_name&direction=asc&per_page=100&page=2"
 )]
-#[case::installation_changes_endpoint(Profile::Installation, "/user/repos?per_page=100&page=2")]
-fn a_continuation_outside_the_listing_is_rejected(#[case] profile: Profile, #[case] suffix: &str) {
-    let target = format!("{ORIGIN_TOKEN}{suffix}").replace("{origin_scheme}", "http:");
-    let server = RecordingServer::start(vec![opening_page(profile, &target), last_page(profile)])
+#[case::installation_changes_endpoint(
+    Profile::Installation,
+    "{origin}/user/repos?per_page=100&page=2"
+)]
+fn a_continuation_outside_the_listing_is_rejected(#[case] profile: Profile, #[case] target: &str) {
+    let server = RecordingServer::start(vec![opening_page(profile, target), last_page(profile)])
         .expect("the scripted server should start");
     let client = client_for(profile, &server.origin())
         .expect("an adapter for the named profile should construct");

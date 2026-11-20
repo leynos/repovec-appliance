@@ -148,6 +148,8 @@ operator-visible surface today is the diagnostics example
 `list_github_repositories`; the TUI and `repovectl` call the same library
 composition in later roadmap items.
 
+<!-- tested-example: users-guide-github-repository-listing -->
+
 ```bash
 cargo run -p repovecd --example list_github_repositories -- \
     --user-store /etc/repovec
@@ -176,9 +178,12 @@ transcript.
 ### Output and exit status
 
 Standard output carries exactly one `owner/name` line per repository, in API
-page order, and only after the complete traversal succeeded. A failure writes
-nothing to standard output, because a partial list must not look like a
-complete one. A repository observed twice is listed twice.
+page order, and only after the complete traversal succeeded. The command holds
+every observation until then, so a failure before writing begins leaves
+standard output empty: a partial list must not look like a complete one. Once
+writing has begun, a write failure can leave the lines already written in
+place, so a consumer should accept the listing only when the command exits 0. A
+repository observed twice is listed twice.
 
 - Exit 0: success, including an empty listing (empty standard output).
 - Exit 2: usage error.

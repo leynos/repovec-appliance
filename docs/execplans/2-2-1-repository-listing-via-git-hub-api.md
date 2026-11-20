@@ -955,6 +955,22 @@ record any difference as a revision note before writing code.
       same `AcceptedWork` the failure events use, still after domain
       validation, and both completion tests assert `pages=1` and `records=1`.
       The two stale passages now state the approval and implementation dates.
+- [x] (2026-11-20) Formal review r11 repair. The formal review (5988869796)
+      raised thirteen inline findings. Each was checked against the source and
+      the still-valid ones were repaired: the loopback check accepts bracketed
+      IPv6 literals; the recording server restores blocking mode and sets a
+      write timeout, with a stalled-reader regression test; repository JSON
+      fixtures are serialized through `serde_json` rather than formatted; the
+      continuation fixtures state a userinfo target that reaches the userinfo
+      check, and the first traversal request is asserted as a full target; the
+      `other_path` confinement case now isolates the path check; `RateLimitInfo`
+      carries a `Duration` delay and a `RateLimitReset` newtype, with
+      documented parameters and returns on the new public listing API; every
+      test and doctest assertion carries a diagnostic; and the `repovec-ci`
+      crate root was split into `plan` and `scan` modules to stay under the
+      400-line cap. The users guide now limits its empty-output guarantee to
+      failures before writing begins and marks its example for the shared
+      loader, which the repository does not yet provide.
 
 ## Surprises & discoveries
 

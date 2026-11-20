@@ -46,8 +46,16 @@
 //!
 //! let repositories = listing.list_repositories()?;
 //!
-//! assert_eq!(repositories.len(), 1);
-//! assert_eq!(repositories[0].to_string(), "octocat/hello-world");
+//! assert_eq!(
+//!     repositories.len(),
+//!     1,
+//!     "the listing should return one repository"
+//! );
+//! assert_eq!(
+//!     repositories[0].to_string(),
+//!     "octocat/hello-world",
+//!     "the summary should render as owner/name"
+//! );
 //!
 //! # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
 //! ```
@@ -59,7 +67,7 @@ mod summary;
 #[cfg(test)]
 mod tests;
 
-pub use error::{RateLimitInfo, RepositoryListingError, ResourceBudget};
+pub use error::{RateLimitInfo, RateLimitReset, RepositoryListingError, ResourceBudget};
 pub use identity::{RepositoryId, RepositoryName, RepositoryOwner};
 pub use summary::RepositorySummary;
 
@@ -83,12 +91,18 @@ pub use summary::RepositorySummary;
 ///     }
 /// }
 ///
-/// assert!(EmptyListing.list_repositories()?.is_empty());
+/// assert!(
+///     EmptyListing.list_repositories()?.is_empty(),
+///     "an empty listing should return no observations"
+/// );
 ///
 /// # Ok::<(), RepositoryListingError>(())
 /// ```
 pub trait RepositoryListing {
     /// Returns every repository observation from one completed traversal.
+    ///
+    /// # Returns
+    /// Every observation, in request order and preserving multiplicity.
     ///
     /// # Errors
     ///

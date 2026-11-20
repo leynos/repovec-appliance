@@ -25,9 +25,17 @@ fn default_builder_reports_a_public_repository_on_main() {
     let repository =
         repository_summary(1, "octocat", "hello-world").expect("the fixture should be valid");
 
-    assert_eq!(repository.to_string(), "octocat/hello-world");
+    assert_eq!(
+        repository.to_string(),
+        "octocat/hello-world",
+        "the fixture should render as owner/name"
+    );
     assert!(!repository.is_private(), "the default should be public");
-    assert_eq!(repository.default_branch(), Some("main"));
+    assert_eq!(
+        repository.default_branch(),
+        Some("main"),
+        "the default fixture should report main"
+    );
 }
 
 #[test]
@@ -36,8 +44,15 @@ fn explicit_builder_keeps_privacy_and_missing_default_branch() {
         .build()
         .expect("the fixture should be valid");
 
-    assert!(repository.is_private());
-    assert_eq!(repository.default_branch(), None);
+    assert!(
+        repository.is_private(),
+        "the private fixture must report itself as private"
+    );
+    assert_eq!(
+        repository.default_branch(),
+        None,
+        "the private fixture should report no default branch"
+    );
 }
 
 #[test]
@@ -54,15 +69,28 @@ fn numbered_builders_are_distinct_and_ordered() {
             "octocat/repo-2".to_owned(),
             "octocat/repo-3".to_owned(),
         ],
+        "the numbered fixtures should render one per index in order"
     );
 }
 
 #[test]
 fn fixture_builders_reject_invalid_identifiers() {
-    assert!(repository_summary(0, "octocat", "hello-world").is_err());
-    assert!(repository_summary(1, "", "hello-world").is_err());
-    assert!(repository_summary(1, "octocat", "").is_err());
-    assert!(numbered_repositories("", 1).is_err());
+    assert!(
+        repository_summary(0, "octocat", "hello-world").is_err(),
+        "a zero identifier must be refused"
+    );
+    assert!(
+        repository_summary(1, "", "hello-world").is_err(),
+        "an empty owner must be refused"
+    );
+    assert!(
+        repository_summary(1, "octocat", "").is_err(),
+        "an empty repository name must be refused"
+    );
+    assert!(
+        numbered_repositories("", 1).is_err(),
+        "an empty owner must be refused by the numbered builder"
+    );
 }
 
 #[test]

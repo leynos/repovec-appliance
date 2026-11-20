@@ -40,13 +40,21 @@ const GITHUB_ORIGIN: &str = "https://api.github.com/";
 ///
 /// assert_eq!(
 ///     GitHubApiEndpoint::github().as_str(),
-///     "https://api.github.com/"
+///     "https://api.github.com/",
+///     "the production endpoint should keep its documented origin"
 /// );
 ///
 /// let loopback = GitHubApiEndpoint::new("http://127.0.0.1:8080")?;
-/// assert_eq!(loopback.as_str(), "http://127.0.0.1:8080/");
+/// assert_eq!(
+///     loopback.as_str(),
+///     "http://127.0.0.1:8080/",
+///     "a loopback endpoint should keep its normalized origin"
+/// );
 ///
-/// assert!(GitHubApiEndpoint::new("http://api.github.com").is_err());
+/// assert!(
+///     GitHubApiEndpoint::new("http://api.github.com").is_err(),
+///     "plain HTTP to a public host must be refused"
+/// );
 ///
 /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
 /// ```
@@ -118,12 +126,22 @@ fn is_permitted_origin(url: &Url) -> bool {
 }
 
 /// Reports whether a host names this machine.
+///
+/// The URL parser serializes an IPv6 literal in brackets (`[::1]`), so the
+/// brackets are removed before the address is parsed; comparing the raw host
+/// text would reject a loopback endpoint the contract permits.
 fn is_loopback_host(host: &str) -> bool {
-    host == "localhost"
-        || host == "::1"
-        || host
+    let address = host
+        .strip_prefix('[')
+        .and_then(|text| text.strip_suffix(']'))
+        .unwrap_or(host);
+    address == "localhost"
+        || address
             .parse::<std::net::Ipv4Addr>()
-            .is_ok_and(|address| address.is_loopback())
+            .is_ok_and(|parsed| parsed.is_loopback())
+        || address
+            .parse::<std::net::Ipv6Addr>()
+            .is_ok_and(|parsed| parsed.is_loopback())
 }
 
 /// Builds the typed failure for an unusable API origin.
@@ -131,5 +149,78 @@ const fn invalid_endpoint(reason: &'static str) -> RepositoryListingError {
     RepositoryListingError::InvalidInput {
         field: "api endpoint",
         reason,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Origin-permission cases for [`GitHubApiEndpoint::new`].
+    //!
+    //! Plain HTTP is admitted only for a loopback host, whichever address
+    //! family expresses it; HTTPS is admitted for any host. Each case names
+    //! the host form and the outcome its contract requires.
+
+    use rstest::rstest;
+
+    use super::{GitHubApiEndpoint, is_loopback_host};
+
+    #[rstest]
+    #[case::ipv4_loopback("http://127.0.0.1:8080/")]
+    #[case::ipv4_loopback_range("http://127.0.0.2:8080/")]
+    #[case::ipv6_loopback("http://[::1]:8080/")]
+    #[case::ipv6_loopback_without_port("http://[::1]/")]
+    #[case::named_loopback("http://localhost:8080/")]
+    fn plain_http_to_a_loopback_host_is_permitted(#[case] origin: &str) {
+        let endpoint =
+            GitHubApiEndpoint::new(origin).expect("a loopback origin over plain HTTP is permitted");
+
+        assert_eq!(
+            endpoint.as_str(),
+            origin,
+            "the endpoint must keep the origin text it accepted"
+        );
+    }
+
+    #[rstest]
+    #[case::public_ipv4("http://api.github.com/")]
+    #[case::public_ipv6("http://[::2]/")]
+    fn plain_http_to_a_non_loopback_host_is_refused(#[case] origin: &str) {
+        let error = GitHubApiEndpoint::new(origin)
+            .expect_err("plain HTTP to a non-loopback host must be refused");
+
+        assert!(
+            matches!(
+                error,
+                repovec_core::repository_listing::RepositoryListingError::InvalidInput {
+                    field: "api endpoint",
+                    ..
+                }
+            ),
+            "{origin} must be refused as an invalid endpoint, got {error:?}"
+        );
+    }
+
+    #[rstest]
+    #[case::https_public_host("https://api.github.com/")]
+    #[case::https_ipv6("https://[::2]/")]
+    fn https_is_permitted_for_any_host(#[case] origin: &str) {
+        GitHubApiEndpoint::new(origin)
+            .expect("HTTPS is permitted for a host outside the loopback range");
+    }
+
+    #[test]
+    fn every_loopback_address_form_is_recognized() {
+        for host in ["localhost", "127.0.0.1", "127.1.2.3", "::1", "[::1]"] {
+            assert!(
+                is_loopback_host(host),
+                "{host} names this machine and must be recognized as loopback"
+            );
+        }
+        for host in ["api.github.com", "10.0.0.1", "::2", "[::2]"] {
+            assert!(
+                !is_loopback_host(host),
+                "{host} is not loopback and must not be recognized as such"
+            );
+        }
     }
 }

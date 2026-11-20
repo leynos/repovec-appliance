@@ -1,9 +1,12 @@
 //! Unit tests for the repository listing domain contract.
 
+use std::time::Duration;
+
 use rstest::rstest;
 
 use super::{
     RateLimitInfo,
+    RateLimitReset,
     RepositoryId,
     RepositoryListingError,
     RepositoryName,
@@ -30,7 +33,11 @@ fn repository_id_preserves_positive_values() {
     let id = RepositoryId::new(u64::MAX).expect("a positive identifier should be accepted");
 
     assert_eq!(id.get(), u64::MAX, "the identifier should be preserved");
-    assert_eq!(id.to_string(), "18446744073709551615");
+    assert_eq!(
+        id.to_string(),
+        "18446744073709551615",
+        "the identifier should render as its decimal value"
+    );
 }
 
 #[rstest]
@@ -83,11 +90,27 @@ fn summary_exposes_validated_components() {
     .with_details(true, None);
 
     assert_eq!(repository.id().get(), 11, "the identifier should be kept");
-    assert_eq!(repository.owner().as_str(), "acme");
-    assert_eq!(repository.name().as_str(), "widgets");
+    assert_eq!(
+        repository.owner().as_str(),
+        "acme",
+        "the owner should be kept"
+    );
+    assert_eq!(
+        repository.name().as_str(),
+        "widgets",
+        "the name should be kept"
+    );
     assert!(repository.is_private(), "the privacy flag should be kept");
-    assert_eq!(repository.default_branch(), None);
-    assert_eq!(repository.to_string(), "acme/widgets");
+    assert_eq!(
+        repository.default_branch(),
+        None,
+        "an absent default branch should be kept absent"
+    );
+    assert_eq!(
+        repository.to_string(),
+        "acme/widgets",
+        "the summary should render as owner/name"
+    );
 }
 
 #[test]
@@ -99,8 +122,15 @@ fn summary_keeps_default_branch_when_reported() {
     )
     .with_details(false, Some("trunk".to_owned()));
 
-    assert_eq!(repository.default_branch(), Some("trunk"));
-    assert!(!repository.is_private());
+    assert_eq!(
+        repository.default_branch(),
+        Some("trunk"),
+        "the reported default branch should be kept"
+    );
+    assert!(
+        !repository.is_private(),
+        "a public repository must not report itself as private"
+    );
 }
 
 #[rstest]
@@ -156,7 +186,16 @@ fn every_error_exposes_a_stable_category(
 
 #[test]
 fn rate_limit_metadata_reports_any_supplied_value() {
-    assert!(!RateLimitInfo::default().has_retry_metadata());
-    assert!(RateLimitInfo::new(Some(1), None).has_retry_metadata());
-    assert!(RateLimitInfo::new(None, Some(1)).has_retry_metadata());
+    assert!(
+        !RateLimitInfo::default().has_retry_metadata(),
+        "metadata built from no supplied value must report none"
+    );
+    assert!(
+        RateLimitInfo::new(Some(Duration::from_secs(1)), None).has_retry_metadata(),
+        "a supplied retry delay must count as retry metadata"
+    );
+    assert!(
+        RateLimitInfo::new(None, Some(RateLimitReset::from_unix_seconds(1))).has_retry_metadata(),
+        "a supplied reset moment must count as retry metadata"
+    );
 }

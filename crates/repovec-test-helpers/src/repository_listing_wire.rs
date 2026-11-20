@@ -69,6 +69,11 @@ impl LinkRelation {
 
 /// Builds one repository JSON object with every field the adapter reads.
 ///
+/// The object is serialized rather than formatted, so a name or login that
+/// carries a quote, backslash or control character still produces the JSON
+/// GitHub would send. Object keys are written in the serializer's sorted
+/// order; no test depends on the field order of this fixture.
+///
 /// # Examples
 ///
 /// ```
@@ -80,20 +85,32 @@ impl LinkRelation {
 ///     name: "hello-world",
 /// });
 ///
-/// assert!(record.contains(r#""owner":{"login":"octocat"}"#));
+/// assert!(
+///     record.contains(r#""owner":{"login":"octocat"}"#),
+///     "the owner login should be nested under its owner object"
+/// );
+///
+/// let quoted = repository_json(Repository {
+///     id: 2,
+///     owner: "acme",
+///     name: r#"a"b"#,
+/// });
+/// assert!(
+///     quoted.contains(r#""name":"a\"b""#),
+///     "a quote in the name should be escaped rather than end the string"
+/// );
 /// ```
 #[must_use]
 pub fn repository_json(repository: Repository<'_>) -> String {
     let Repository { id, owner, name } = repository;
-    format!(
-        concat!(
-            r#"{{"id":{id},"name":"{name}","private":false,"#,
-            r#""default_branch":"main","owner":{{"login":"{owner}"}}}}"#
-        ),
-        id = id,
-        name = name,
-        owner = owner
-    )
+    serde_json::json!({
+        "id": id,
+        "name": name,
+        "private": false,
+        "default_branch": "main",
+        "owner": { "login": owner },
+    })
+    .to_string()
 }
 
 /// Builds a bare JSON array body from repository objects.
@@ -109,7 +126,10 @@ pub fn repository_json(repository: Repository<'_>) -> String {
 ///     name: "hello-world",
 /// })]);
 ///
-/// assert!(body.starts_with('['));
+/// assert!(
+///     body.starts_with('['),
+///     "a bare page should be a JSON array, got {body}"
+/// );
 /// ```
 #[must_use]
 pub fn bare_page(items: &[String]) -> String { format!("[{}]", items.join(",")) }
@@ -131,7 +151,10 @@ pub fn bare_page(items: &[String]) -> String { format!("[{}]", items.join(",")) 
 ///     name: "billing",
 /// })]);
 ///
-/// assert!(body.contains(r#""total_count":1"#));
+/// assert!(
+///     body.contains(r#""total_count":1"#),
+///     "the envelope should count its single record, got {body}"
+/// );
 /// ```
 #[must_use]
 pub fn envelope_page(items: &[String]) -> String {
@@ -152,8 +175,14 @@ pub fn envelope_page(items: &[String]) -> String {
 /// ```
 /// use repovec_test_helpers::repository_listing_wire::user_page;
 ///
-/// assert!(user_page(2).starts_with("/user/repos?visibility=all&"));
-/// assert!(user_page(2).ends_with("&page=2"));
+/// assert!(
+///     user_page(2).starts_with("/user/repos?visibility=all&"),
+///     "a user page should start with the profile's path and fixed filters"
+/// );
+/// assert!(
+///     user_page(2).ends_with("&page=2"),
+///     "a user page should end with the requested page number"
+/// );
 /// ```
 #[must_use]
 pub fn user_page(page: u32) -> String { page_target(USER_PROFILE, page) }
@@ -167,7 +196,8 @@ pub fn user_page(page: u32) -> String { page_target(USER_PROFILE, page) }
 ///
 /// assert_eq!(
 ///     installation_page(2),
-///     "/installation/repositories?per_page=100&page=2"
+///     "/installation/repositories?per_page=100&page=2",
+///     "an installation page should carry the installation path and query"
 /// );
 /// ```
 #[must_use]
@@ -182,7 +212,8 @@ pub fn installation_page(page: u32) -> String { page_target(INSTALLATION_PROFILE
 ///
 /// assert_eq!(
 ///     link_header("/user/repos?page=2", LinkRelation::Next),
-///     r#"</user/repos?page=2>; rel="next""#
+///     r#"</user/repos?page=2>; rel="next""#,
+///     "a next link should wrap its target and name the next relation"
 /// );
 /// ```
 #[must_use]
@@ -217,10 +248,14 @@ pub struct DecodedTarget {
 ///
 /// let target = decode_target("/user/repos?affiliation=owner%2Ccollaborator")?;
 ///
-/// assert_eq!(target.path, "/user/repos");
+/// assert_eq!(
+///     target.path, "/user/repos",
+///     "the decoded path should keep the request path"
+/// );
 /// assert_eq!(
 ///     target.query,
-///     vec![("affiliation".to_owned(), "owner,collaborator".to_owned())]
+///     vec![("affiliation".to_owned(), "owner,collaborator".to_owned())],
+///     "the query should be decoded into its key and value"
 /// );
 ///
 /// # Ok::<(), url::ParseError>(())

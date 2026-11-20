@@ -19,6 +19,14 @@ use super::expectation::{RecordedRequest, ScriptedResponse};
 /// keeps the script declarative.
 pub const ORIGIN_TOKEN: &str = "{origin}";
 
+/// The placeholder a scripted header uses to name the server's authority.
+///
+/// A target that carries user information cannot be built by prefixing
+/// [`ORIGIN_TOKEN`], because the information belongs before the authority.
+/// This token expands to `host:port`, so the script writes the scheme and any
+/// user information around it.
+pub const ORIGIN_AUTHORITY_TOKEN: &str = "{origin_authority}";
+
 /// Reads one request head, returning `None` when the connection closes.
 pub(super) fn read_request(reader: &mut BufReader<TcpStream>) -> Option<RecordedRequest> {
     let mut request_line = String::new();
@@ -70,7 +78,7 @@ pub(super) fn write_response(
     for (name, value) in &response.headers {
         head.push_str(name);
         head.push_str(": ");
-        head.push_str(&value.replace(ORIGIN_TOKEN, origin));
+        head.push_str(&resolve_placeholders(value, origin));
         head.push_str("\r\n");
     }
     head.push_str("Content-Length: ");
@@ -79,6 +87,16 @@ pub(super) fn write_response(
     stream.write_all(head.as_bytes())?;
     stream.write_all(&response.body)?;
     stream.flush()
+}
+
+/// Replaces the origin and authority placeholders with the server's own.
+///
+/// [`ORIGIN_TOKEN`] is replaced first; it is not a substring of
+/// [`ORIGIN_AUTHORITY_TOKEN`], so the order is only for clarity.
+fn resolve_placeholders(value: &str, origin: &str) -> String {
+    value
+        .replace(ORIGIN_TOKEN, origin)
+        .replace(ORIGIN_AUTHORITY_TOKEN, origin.trim_start_matches("http://"))
 }
 
 /// Returns the reason phrase for a status code the tests use.

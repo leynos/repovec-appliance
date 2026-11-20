@@ -2463,6 +2463,7 @@ version = "0.1.0"
 dependencies = [
  "insta",
  "repovec-core",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
  "url",

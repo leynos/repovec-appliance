@@ -23,7 +23,11 @@ use super::{RepositoryId, RepositoryName, RepositoryOwner};
 /// )
 /// .with_details(false, Some("main".to_owned()));
 ///
-/// assert_eq!(repository.to_string(), "octocat/hello-world");
+/// assert_eq!(
+///     repository.to_string(),
+///     "octocat/hello-world",
+///     "the summary should render as owner/name"
+/// );
 ///
 /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
 /// ```
@@ -47,6 +51,14 @@ impl RepositorySummary {
     /// Privacy defaults to public and the default branch to absent; call
     /// [`Self::with_details`] to supply the values GitHub reported.
     ///
+    /// # Parameters
+    /// - `id`: Validated repository identifier.
+    /// - `owner`: Validated owner login.
+    /// - `name`: Validated repository name.
+    ///
+    /// # Returns
+    /// A public observation with no default branch.
+    ///
     /// # Examples
     ///
     /// ```
@@ -63,8 +75,15 @@ impl RepositorySummary {
     ///     RepositoryName::new("hello-world")?,
     /// );
     ///
-    /// assert!(!repository.is_private());
-    /// assert_eq!(repository.default_branch(), None);
+    /// assert!(
+    ///     !repository.is_private(),
+    ///     "the default summary should be public"
+    /// );
+    /// assert_eq!(
+    ///     repository.default_branch(),
+    ///     None,
+    ///     "the default summary should report no default branch"
+    /// );
     ///
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
@@ -81,6 +100,13 @@ impl RepositorySummary {
 
     /// Sets the privacy flag and default branch reported by GitHub.
     ///
+    /// # Parameters
+    /// - `is_private`: Whether GitHub reports the repository as private.
+    /// - `default_branch`: Default branch GitHub reported, absent for a repository with no commits.
+    ///
+    /// # Returns
+    /// The observation carrying the supplied details.
+    ///
     /// # Examples
     ///
     /// ```
@@ -92,8 +118,15 @@ impl RepositorySummary {
     /// )
     /// .with_details(true, Some("trunk".to_owned()));
     ///
-    /// assert!(repository.is_private());
-    /// assert_eq!(repository.default_branch(), Some("trunk"));
+    /// assert!(
+    ///     repository.is_private(),
+    ///     "the explicit summary should be private"
+    /// );
+    /// assert_eq!(
+    ///     repository.default_branch(),
+    ///     Some("trunk"),
+    ///     "the reported default branch should be kept"
+    /// );
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
     #[must_use]
@@ -105,6 +138,9 @@ impl RepositorySummary {
 
     /// Returns the numeric repository identifier.
     ///
+    /// # Returns
+    /// The validated identifier.
+    ///
     /// # Examples
     ///
     /// ```
@@ -114,7 +150,7 @@ impl RepositorySummary {
     ///     RepositoryOwner::new("octocat")?,
     ///     RepositoryName::new("hello-world")?,
     /// );
-    /// assert_eq!(repository.id().get(), 1);
+    /// assert_eq!(repository.id().get(), 1, "the identifier should be kept");
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
     #[must_use]
@@ -122,6 +158,9 @@ impl RepositorySummary {
 
     /// Returns the owner login.
     ///
+    /// # Returns
+    /// The validated owner login.
+    ///
     /// # Examples
     ///
     /// ```
@@ -131,7 +170,11 @@ impl RepositorySummary {
     ///     RepositoryOwner::new("octocat")?,
     ///     RepositoryName::new("hello-world")?,
     /// );
-    /// assert_eq!(repository.owner().as_str(), "octocat");
+    /// assert_eq!(
+    ///     repository.owner().as_str(),
+    ///     "octocat",
+    ///     "the owner should be kept"
+    /// );
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
     #[must_use]
@@ -139,6 +182,9 @@ impl RepositorySummary {
 
     /// Returns the repository name.
     ///
+    /// # Returns
+    /// The validated repository name.
+    ///
     /// # Examples
     ///
     /// ```
@@ -148,13 +194,20 @@ impl RepositorySummary {
     ///     RepositoryOwner::new("octocat")?,
     ///     RepositoryName::new("hello-world")?,
     /// );
-    /// assert_eq!(repository.name().as_str(), "hello-world");
+    /// assert_eq!(
+    ///     repository.name().as_str(),
+    ///     "hello-world",
+    ///     "the name should be kept"
+    /// );
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
     #[must_use]
     pub const fn name(&self) -> &RepositoryName { &self.name }
 
     /// Returns whether GitHub reports the repository as private.
+    ///
+    /// # Returns
+    /// `true` for a private repository.
     ///
     /// # Examples
     ///
@@ -166,13 +219,20 @@ impl RepositorySummary {
     ///     RepositoryName::new("hello-world")?,
     /// )
     /// .with_details(true, None);
-    /// assert!(repository.is_private());
+    /// assert!(
+    ///     repository.is_private(),
+    ///     "the privacy flag should be reported"
+    /// );
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
     #[must_use]
     pub const fn is_private(&self) -> bool { self.is_private }
 
     /// Returns the default branch name, absent for a repository with no commits.
+    ///
+    /// # Returns
+    /// The default branch name, or `None` when the repository has no
+    /// commits.
     ///
     /// # Examples
     ///
@@ -184,7 +244,11 @@ impl RepositorySummary {
     ///     RepositoryName::new("hello-world")?,
     /// )
     /// .with_details(false, Some("main".to_owned()));
-    /// assert_eq!(repository.default_branch(), Some("main"));
+    /// assert_eq!(
+    ///     repository.default_branch(),
+    ///     Some("main"),
+    ///     "the accessor should return the reported branch"
+    /// );
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
     #[must_use]

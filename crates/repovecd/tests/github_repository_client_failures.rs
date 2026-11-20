@@ -12,7 +12,12 @@ use std::time::Duration;
 use common::{installation_client::installation_client, user_client::user_client};
 use googletest::prelude::*;
 use pretty_assertions::assert_eq;
-use repovec_core::repository_listing::{RateLimitInfo, RepositoryListing, RepositoryListingError};
+use repovec_core::repository_listing::{
+    RateLimitInfo,
+    RateLimitReset,
+    RepositoryListing,
+    RepositoryListingError,
+};
 use repovec_test_helpers::{
     recording_http::{RecordingServer, ScriptedResponse},
     repository_listing_wire::{Repository, bare_page, repository_json},
@@ -101,13 +106,13 @@ fn an_installation_credential_rejection_is_the_same_error() {
 #[rstest]
 #[case::retry_after(
     ScriptedResponse::new(429).with_header("Retry-After", "60"),
-    RateLimitInfo::new(Some(60), None)
+    RateLimitInfo::new(Some(Duration::from_secs(60)), None)
 )]
 #[case::exhausted_window(
     ScriptedResponse::new(403)
         .with_header("X-RateLimit-Remaining", "0")
         .with_header("X-RateLimit-Reset", "1700000000"),
-    RateLimitInfo::new(None, Some(1_700_000_000))
+    RateLimitInfo::new(None, Some(RateLimitReset::from_unix_seconds(1_700_000_000)))
 )]
 fn a_throttled_page_reports_only_validated_metadata(
     #[case] response: ScriptedResponse,
@@ -274,7 +279,7 @@ fn a_secondary_limit_message_without_retry_headers_is_throttling() {
     assert_eq!(
         result.err(),
         Some(RepositoryListingError::RateLimited {
-            retry: RateLimitInfo::new(None, None),
+            retry: RateLimitInfo::default(),
         }),
         "the documented secondary-limit message must yield wait guidance, not a permission error"
     );

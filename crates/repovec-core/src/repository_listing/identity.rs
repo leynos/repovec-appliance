@@ -18,8 +18,8 @@ use super::RepositoryListingError;
 ///
 /// let id = RepositoryId::new(42)?;
 ///
-/// assert_eq!(id.get(), 42);
-/// assert!(RepositoryId::new(0).is_err());
+/// assert_eq!(id.get(), 42, "the identifier should be kept");
+/// assert!(RepositoryId::new(0).is_err(), "zero must be refused");
 ///
 /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
 /// ```
@@ -28,6 +28,12 @@ pub struct RepositoryId(u64);
 
 impl RepositoryId {
     /// Creates a repository identifier, rejecting zero.
+    ///
+    /// # Parameters
+    /// - `value`: Candidate identifier reported by GitHub.
+    ///
+    /// # Returns
+    /// The identifier, when `value` is a positive number.
     ///
     /// # Errors
     ///
@@ -39,8 +45,12 @@ impl RepositoryId {
     /// ```
     /// use repovec_core::repository_listing::RepositoryId;
     ///
-    /// assert_eq!(RepositoryId::new(1)?.get(), 1);
-    /// assert!(RepositoryId::new(0).is_err());
+    /// assert_eq!(
+    ///     RepositoryId::new(1)?.get(),
+    ///     1,
+    ///     "a positive identifier should be kept"
+    /// );
+    /// assert!(RepositoryId::new(0).is_err(), "zero must be refused");
     ///
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
@@ -56,12 +66,19 @@ impl RepositoryId {
 
     /// Returns the numeric identifier.
     ///
+    /// # Returns
+    /// The identifier value GitHub reported.
+    ///
     /// # Examples
     ///
     /// ```
     /// use repovec_core::repository_listing::RepositoryId;
     ///
-    /// assert_eq!(RepositoryId::new(7)?.get(), 7);
+    /// assert_eq!(
+    ///     RepositoryId::new(7)?.get(),
+    ///     7,
+    ///     "the accessor should return the identifier"
+    /// );
     ///
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
@@ -80,8 +97,15 @@ impl fmt::Display for RepositoryId {
 /// ```
 /// use repovec_core::repository_listing::RepositoryOwner;
 ///
-/// assert_eq!(RepositoryOwner::new("octocat")?.as_str(), "octocat");
-/// assert!(RepositoryOwner::new("").is_err());
+/// assert_eq!(
+///     RepositoryOwner::new("octocat")?.as_str(),
+///     "octocat",
+///     "the login should be kept"
+/// );
+/// assert!(
+///     RepositoryOwner::new("").is_err(),
+///     "an empty login must be refused"
+/// );
 ///
 /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
 /// ```
@@ -90,6 +114,12 @@ pub struct RepositoryOwner(String);
 
 impl RepositoryOwner {
     /// Creates an owner login, rejecting empty or control-bearing values.
+    ///
+    /// # Parameters
+    /// - `value`: Candidate account login reported by GitHub.
+    ///
+    /// # Returns
+    /// The validated login.
     ///
     /// # Errors
     ///
@@ -101,8 +131,15 @@ impl RepositoryOwner {
     /// ```
     /// use repovec_core::repository_listing::RepositoryOwner;
     ///
-    /// assert_eq!(RepositoryOwner::new("octocat")?.as_str(), "octocat");
-    /// assert!(RepositoryOwner::new("").is_err());
+    /// assert_eq!(
+    ///     RepositoryOwner::new("octocat")?.as_str(),
+    ///     "octocat",
+    ///     "the constructor should keep the login"
+    /// );
+    /// assert!(
+    ///     RepositoryOwner::new("").is_err(),
+    ///     "an empty login must be refused"
+    /// );
     ///
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
@@ -114,12 +151,19 @@ impl RepositoryOwner {
 
     /// Returns the owner login as reported by GitHub.
     ///
+    /// # Returns
+    /// The account login.
+    ///
     /// # Examples
     ///
     /// ```
     /// use repovec_core::repository_listing::RepositoryOwner;
     ///
-    /// assert_eq!(RepositoryOwner::new("octocat")?.as_str(), "octocat");
+    /// assert_eq!(
+    ///     RepositoryOwner::new("octocat")?.as_str(),
+    ///     "octocat",
+    ///     "the accessor should return the login"
+    /// );
     ///
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
@@ -142,8 +186,15 @@ impl AsRef<str> for RepositoryOwner {
 /// ```
 /// use repovec_core::repository_listing::RepositoryName;
 ///
-/// assert_eq!(RepositoryName::new("repovec")?.as_str(), "repovec");
-/// assert!(RepositoryName::new("").is_err());
+/// assert_eq!(
+///     RepositoryName::new("repovec")?.as_str(),
+///     "repovec",
+///     "the name should be kept"
+/// );
+/// assert!(
+///     RepositoryName::new("").is_err(),
+///     "an empty name must be refused"
+/// );
 ///
 /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
 /// ```
@@ -152,6 +203,12 @@ pub struct RepositoryName(String);
 
 impl RepositoryName {
     /// Creates a repository name, rejecting empty or control-bearing values.
+    ///
+    /// # Parameters
+    /// - `value`: Candidate repository name reported by GitHub.
+    ///
+    /// # Returns
+    /// The validated repository name.
     ///
     /// # Errors
     ///
@@ -163,8 +220,15 @@ impl RepositoryName {
     /// ```
     /// use repovec_core::repository_listing::RepositoryName;
     ///
-    /// assert_eq!(RepositoryName::new("repovec")?.as_str(), "repovec");
-    /// assert!(RepositoryName::new("").is_err());
+    /// assert_eq!(
+    ///     RepositoryName::new("repovec")?.as_str(),
+    ///     "repovec",
+    ///     "the constructor should keep the name"
+    /// );
+    /// assert!(
+    ///     RepositoryName::new("").is_err(),
+    ///     "an empty name must be refused"
+    /// );
     ///
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```
@@ -176,12 +240,19 @@ impl RepositoryName {
 
     /// Returns the repository name as reported by GitHub.
     ///
+    /// # Returns
+    /// The repository name.
+    ///
     /// # Examples
     ///
     /// ```
     /// use repovec_core::repository_listing::RepositoryName;
     ///
-    /// assert_eq!(RepositoryName::new("repovec")?.as_str(), "repovec");
+    /// assert_eq!(
+    ///     RepositoryName::new("repovec")?.as_str(),
+    ///     "repovec",
+    ///     "the accessor should return the name"
+    /// );
     ///
     /// # Ok::<(), repovec_core::repository_listing::RepositoryListingError>(())
     /// ```

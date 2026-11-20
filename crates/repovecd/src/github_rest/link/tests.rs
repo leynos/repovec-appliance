@@ -171,7 +171,11 @@ fn a_next_continuation_is_selected_only_when_the_header_is_unambiguous(
 #[rstest]
 #[case::other_origin("https://evil.example/user/repos?visibility=all&per_page=100&page=2")]
 #[case::downgrade("http://api.github.com/user/repos?visibility=all&per_page=100&page=2")]
-#[case::other_path("https://api.github.com/installation/repositories?per_page=100")]
+// The path is the only difference from `current`: the fixed query is intact,
+// so removing the path check would leave this continuation accepted.
+#[case::other_path(
+    "https://api.github.com/installation/repositories?visibility=all&per_page=100&page=2"
+)]
 #[case::userinfo("https://user:secret@api.github.com/user/repos?visibility=all&per_page=100")]
 #[case::fragment("https://api.github.com/user/repos?visibility=all&per_page=100&page=2#x")]
 #[case::added_filter(

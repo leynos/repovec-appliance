@@ -3,236 +3,12 @@
 use cap_std::fs_utf8::Dir;
 
 mod documentation_inputs;
+mod plan;
+mod scan;
 
-use documentation_inputs::{
-    is_docs_tooling_config_path,
-    is_documentation_input,
-    is_markdown_path,
-    normalize_path,
-    path_contains_mermaid,
-};
-
-/// The reason the documentation gate should or should not run.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DocsGateReason {
-    /// At least one documentation input changed.
-    DocumentationChanged,
-    /// No changed-file list was available, so the safe fallback is to run.
-    MissingChangedFiles,
-    /// The changed-file list was available and did not include docs inputs.
-    NoDocumentationChanges,
-}
-
-impl DocsGateReason {
-    /// Returns the stable identifier used by workflow logging and ruleset docs.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use repovec_ci::DocsGateReason;
-    ///
-    /// assert_eq!(
-    ///     DocsGateReason::DocumentationChanged.as_str(),
-    ///     "documentation-changed"
-    /// );
-    /// assert_eq!(
-    ///     DocsGateReason::MissingChangedFiles.as_str(),
-    ///     "missing-changed-files"
-    /// );
-    /// assert_eq!(
-    ///     DocsGateReason::NoDocumentationChanges.as_str(),
-    ///     "no-documentation-changes"
-    /// );
-    /// ```
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::DocumentationChanged => "documentation-changed",
-            Self::MissingChangedFiles => "missing-changed-files",
-            Self::NoDocumentationChanges => "no-documentation-changes",
-        }
-    }
-}
-
-/// The computed plan for the documentation gate.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DocsGatePlan {
-    /// Documentation paths that matched the input policy.
-    matched_files: Vec<String>,
-    /// Markdown paths whose contents could not be inspected safely.
-    conservative_fallback_files: Vec<String>,
-    /// Whether the documentation checks must run for this change.
-    docs_gate_required: bool,
-    /// Whether Mermaid syntax validation must run for this change.
-    nixie_required: bool,
-    /// Why the policy selected or skipped the documentation checks.
-    reason: DocsGateReason,
-}
-
-impl DocsGatePlan {
-    /// Creates a plan for required documentation validation.
-    #[must_use]
-    const fn required(
-        matched_files: Vec<String>,
-        conservative_fallback_files: Vec<String>,
-        nixie_required: bool,
-    ) -> Self {
-        Self {
-            matched_files,
-            conservative_fallback_files,
-            docs_gate_required: true,
-            nixie_required,
-            reason: DocsGateReason::DocumentationChanged,
-        }
-    }
-
-    /// Creates a plan for the conservative missing-input fallback.
-    #[must_use]
-    const fn missing_changed_files() -> Self {
-        Self {
-            matched_files: Vec::new(),
-            conservative_fallback_files: Vec::new(),
-            docs_gate_required: true,
-            nixie_required: true,
-            reason: DocsGateReason::MissingChangedFiles,
-        }
-    }
-
-    /// Creates a plan for skipping documentation validation.
-    #[must_use]
-    const fn no_documentation_changes() -> Self {
-        Self {
-            matched_files: Vec::new(),
-            conservative_fallback_files: Vec::new(),
-            docs_gate_required: false,
-            nixie_required: false,
-            reason: DocsGateReason::NoDocumentationChanges,
-        }
-    }
-
-    /// Returns whether the documentation gate should run.
-    ///
-    /// `should_run()` is a semantic alias for
-    /// [`docs_gate_required()`](Self::docs_gate_required) and exists for
-    /// convenience and compatibility with external callers. Both methods return
-    /// the underlying `self.docs_gate_required` field.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
-    ///
-    /// let plan = evaluate_docs_gate_with(["docs/roadmap.md"], |_path| MermaidDetection::Absent);
-    ///
-    /// assert!(plan.should_run());
-    /// ```
-    #[must_use]
-    pub const fn should_run(&self) -> bool { self.docs_gate_required }
-
-    /// Returns whether the documentation gate should run.
-    ///
-    /// This is the canonical accessor for the underlying
-    /// `self.docs_gate_required` field. [`should_run()`](Self::should_run) is
-    /// provided as a semantic alias for convenience and compatibility.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
-    ///
-    /// let plan = evaluate_docs_gate_with(["Cargo.toml"], |_path| MermaidDetection::Absent);
-    ///
-    /// assert!(!plan.docs_gate_required());
-    /// ```
-    #[must_use]
-    pub const fn docs_gate_required(&self) -> bool { self.docs_gate_required }
-
-    /// Returns whether Mermaid validation should run.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
-    ///
-    /// let plan = evaluate_docs_gate_with(["docs/users-guide.md"], |_path| MermaidDetection::Present);
-    ///
-    /// assert!(plan.nixie_required());
-    /// ```
-    #[must_use]
-    pub const fn nixie_required(&self) -> bool { self.nixie_required }
-
-    /// Returns the reason for the decision.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use repovec_ci::{DocsGateReason, MermaidDetection, evaluate_docs_gate_with};
-    ///
-    /// let plan =
-    ///     evaluate_docs_gate_with(std::iter::empty::<&str>(), |_path| MermaidDetection::Absent);
-    ///
-    /// assert_eq!(plan.reason(), DocsGateReason::MissingChangedFiles);
-    /// ```
-    #[must_use]
-    pub const fn reason(&self) -> DocsGateReason { self.reason }
-
-    /// Returns the docs inputs that triggered the documentation gate.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
-    ///
-    /// let plan = evaluate_docs_gate_with(
-    ///     ["docs/roadmap.md", "crates/repovec-core/src/lib.rs"],
-    ///     |_path| MermaidDetection::Absent,
-    /// );
-    ///
-    /// assert_eq!(plan.matched_files(), &["docs/roadmap.md".to_string()]);
-    /// ```
-    #[must_use]
-    pub fn matched_files(&self) -> &[String] { &self.matched_files }
-
-    /// Returns files that triggered a conservative Mermaid-validation fallback.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use repovec_ci::{MermaidDetection, evaluate_docs_gate_with};
-    ///
-    /// let plan = evaluate_docs_gate_with(["docs/users-guide.md"], |_path| MermaidDetection::Unknown);
-    ///
-    /// assert_eq!(
-    ///     plan.conservative_fallback_files(),
-    ///     &["docs/users-guide.md".to_string()]
-    /// );
-    /// ```
-    #[must_use]
-    pub fn conservative_fallback_files(&self) -> &[String] { &self.conservative_fallback_files }
-}
-
-/// The result of checking whether a documentation input contains Mermaid.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MermaidDetection {
-    /// The file contents contain a Mermaid code fence.
-    Present,
-    /// The file contents were read successfully and contain no Mermaid code fence.
-    Absent,
-    /// The file could not be read, so Mermaid validation must run conservatively.
-    Unknown,
-}
-
-impl MermaidDetection {
-    /// Reports whether this result requires Mermaid validation.
-    ///
-    /// For example, `Absent` skips Nixie, while `Present` and `Unknown` run it.
-    const fn requires_nixie(self) -> bool { !matches!(self, Self::Absent) }
-
-    /// Reports whether the content read failed and needs a conservative fallback.
-    ///
-    /// For example, `Unknown` records the path for fallback reporting.
-    const fn is_unknown(self) -> bool { matches!(self, Self::Unknown) }
-}
+use documentation_inputs::{is_documentation_input, normalize_path, path_contains_mermaid};
+pub use plan::{DocsGatePlan, DocsGateReason, MermaidDetection};
+use scan::scan_matched_files;
 
 /// Evaluates whether documentation validation should run for the provided file
 /// list.
@@ -249,8 +25,15 @@ impl MermaidDetection {
 ///     .expect("current directory should be available");
 /// let plan = evaluate_docs_gate_in(&root, ["docs/roadmap.md"]);
 ///
-/// assert!(plan.should_run());
-/// assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
+/// assert!(
+///     plan.should_run(),
+///     "a documentation change should require the docs gate"
+/// );
+/// assert_eq!(
+///     plan.reason(),
+///     DocsGateReason::DocumentationChanged,
+///     "a documentation change should report its reason"
+/// );
 /// ```
 ///
 /// ```
@@ -261,10 +44,24 @@ impl MermaidDetection {
 ///     |_path| MermaidDetection::Absent,
 /// );
 ///
-/// assert!(plan.should_run());
-/// assert!(!plan.nixie_required());
-/// assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
-/// assert_eq!(plan.matched_files(), &["docs/roadmap.md".to_string()]);
+/// assert!(
+///     plan.should_run(),
+///     "a documentation change should require the docs gate"
+/// );
+/// assert!(
+///     !plan.nixie_required(),
+///     "a document without Mermaid should skip Nixie"
+/// );
+/// assert_eq!(
+///     plan.reason(),
+///     DocsGateReason::DocumentationChanged,
+///     "a documentation change should report its reason"
+/// );
+/// assert_eq!(
+///     plan.matched_files(),
+///     &["docs/roadmap.md".to_string()],
+///     "only the documentation input should be matched"
+/// );
 /// ```
 ///
 /// ```
@@ -274,8 +71,15 @@ impl MermaidDetection {
 ///     repovec_ci::MermaidDetection::Absent
 /// });
 ///
-/// assert!(!plan.should_run());
-/// assert_eq!(plan.reason(), DocsGateReason::NoDocumentationChanges);
+/// assert!(
+///     !plan.should_run(),
+///     "a non-documentation change should skip the docs gate"
+/// );
+/// assert_eq!(
+///     plan.reason(),
+///     DocsGateReason::NoDocumentationChanges,
+///     "the skipped gate should report that no documentation changed"
+/// );
 /// ```
 ///
 /// ```
@@ -284,9 +88,19 @@ impl MermaidDetection {
 /// let plan =
 ///     evaluate_docs_gate_with(std::iter::empty::<&str>(), |_path| MermaidDetection::Absent);
 ///
-/// assert!(plan.should_run());
-/// assert!(plan.nixie_required());
-/// assert_eq!(plan.reason(), DocsGateReason::MissingChangedFiles);
+/// assert!(
+///     plan.should_run(),
+///     "a missing file list should run the docs gate conservatively"
+/// );
+/// assert!(
+///     plan.nixie_required(),
+///     "a missing file list should also run Mermaid validation"
+/// );
+/// assert_eq!(
+///     plan.reason(),
+///     DocsGateReason::MissingChangedFiles,
+///     "the fallback should report its reason"
+/// );
 /// ```
 ///
 /// ```
@@ -296,9 +110,19 @@ impl MermaidDetection {
 ///     MermaidDetection::Absent
 /// });
 ///
-/// assert!(plan.should_run());
-/// assert!(plan.nixie_required());
-/// assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
+/// assert!(
+///     plan.should_run(),
+///     "a tooling-config change should run the docs gate"
+/// );
+/// assert!(
+///     plan.nixie_required(),
+///     "a tooling-config change should also run Mermaid validation"
+/// );
+/// assert_eq!(
+///     plan.reason(),
+///     DocsGateReason::DocumentationChanged,
+///     "a tooling-config change should report its reason"
+/// );
 /// ```
 #[must_use]
 pub fn evaluate_docs_gate_in<I, S>(root: &Dir, changed_files: I) -> DocsGatePlan
@@ -324,15 +148,26 @@ where
 ///     }
 /// });
 ///
-/// assert!(plan.docs_gate_required());
-/// assert!(plan.nixie_required());
-/// assert_eq!(plan.reason(), DocsGateReason::DocumentationChanged);
+/// assert!(
+///     plan.docs_gate_required(),
+///     "both inputs are documentation or tooling configuration"
+/// );
+/// assert!(
+///     plan.nixie_required(),
+///     "one matched document contains Mermaid"
+/// );
+/// assert_eq!(
+///     plan.reason(),
+///     DocsGateReason::DocumentationChanged,
+///     "a documentation change should report its reason"
+/// );
 /// assert_eq!(
 ///     plan.matched_files(),
 ///     &[
 ///         "README.md".to_string(),
 ///         ".markdownlint-cli2.jsonc".to_string()
-///     ]
+///     ],
+///     "both documentation inputs should be matched"
 /// );
 /// ```
 #[must_use]
@@ -364,61 +199,5 @@ where
     } else {
         let scan = scan_matched_files(&matched_files, &mut path_contains_mermaid);
         DocsGatePlan::required(matched_files, scan.fallback_files, scan.nixie_required)
-    }
-}
-
-/// Outcome of classifying the documentation files a change touched.
-struct DocsScan {
-    /// Markdown files whose Mermaid content could not be determined.
-    fallback_files: Vec<String>,
-    /// Whether any changed file requires Mermaid validation.
-    nixie_required: bool,
-}
-
-/// Classifies each matched documentation input for Mermaid validation.
-///
-/// Tooling configuration paths force validation without inspection, because a
-/// change to them can alter how diagrams are validated. Non-Markdown inputs
-/// cannot contain Mermaid. A Markdown file whose detector reports an unknown
-/// outcome is retained conservatively so a later stage can decide.
-fn scan_matched_files<F>(matched_files: &[String], path_contains_mermaid: &mut F) -> DocsScan
-where
-    F: FnMut(&str) -> MermaidDetection,
-{
-    let mut scan = DocsScan {
-        fallback_files: Vec::new(),
-        nixie_required: false,
-    };
-
-    for path in matched_files {
-        scan.observe(path, path_contains_mermaid);
-    }
-
-    scan
-}
-
-impl DocsScan {
-    /// Folds one matched path into the scan outcome.
-    fn observe<F>(&mut self, path: &str, path_contains_mermaid: &mut F)
-    where
-        F: FnMut(&str) -> MermaidDetection,
-    {
-        if is_docs_tooling_config_path(path) {
-            self.nixie_required = true;
-            return;
-        }
-
-        if !is_markdown_path(path) {
-            return;
-        }
-
-        let detection = path_contains_mermaid(path);
-        if detection.is_unknown() {
-            self.fallback_files.push(path.to_owned());
-        }
-
-        if detection.requires_nixie() {
-            self.nixie_required = true;
-        }
     }
 }

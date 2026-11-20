@@ -19,7 +19,7 @@ use blocking_client::blocking_client;
 use pretty_assertions::assert_eq;
 use repovec_core::{github_oauth::AccessToken, repository_listing::RepositoryListingError};
 use repovec_test_helpers::{
-    recording_http::{ORIGIN_TOKEN, RecordedRequest, RecordingServer, ScriptedResponse},
+    recording_http::{ORIGIN_TOKEN, RecordingServer, ScriptedResponse},
     repository_listing_wire::{LinkRelation, USER_TOKEN, link_header},
 };
 use repovecd::github_repository_client::{
@@ -105,9 +105,10 @@ fn a_non_repository_profile_pages_without_repository_knowledge() {
     assert_eq!(evidence.pages, 2, "both pages must be counted");
     let requests = server.requests();
     assert_eq!(
-        requests.first().map(RecordedRequest::path),
-        Some("/widgets"),
-        "the traversal must request the profile's path, not a repository path"
+        requests.first().map(|request| request.target.as_str()),
+        Some("/widgets?kind=all&per_page=50"),
+        "the first request must send the profile's own path and fixed query, not a repository \
+         target"
     );
     assert_eq!(
         requests.get(1).map(|request| request.target.as_str()),

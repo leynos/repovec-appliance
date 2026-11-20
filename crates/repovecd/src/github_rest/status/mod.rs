@@ -28,7 +28,12 @@ const RATE_LIMIT_REMAINING_HEADER: &str = "x-ratelimit-remaining";
 /// The wording GitHub's error message uses for every limit response.
 const RATE_LIMIT_MESSAGE_MARKER: &str = "rate limit";
 
-/// Classifies a non-success status, keeping only bounded retry metadata.
+/// Classifies any status other than the documented page success, keeping only
+/// bounded retry metadata.
+///
+/// A 2xx status other than `200` is not the page both listing endpoints
+/// document, so it surfaces as [`RepositoryListingError::UnexpectedStatus`]
+/// rather than as success.
 ///
 /// # Errors
 ///

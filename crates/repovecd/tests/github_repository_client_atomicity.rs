@@ -1,7 +1,7 @@
 //! Page-atomicity tests for the GitHub repository listing adapter.
 //!
 //! A listing either completes or fails: a caller may never receive the pages
-//! that were accepted before a later failure. Each test scripts one accepted
+//! that were accepted before a later failure. Each case scripts one accepted
 //! page followed by a failing one and asserts the typed error, the exact
 //! request count, and the absence of any listing value.
 
@@ -25,7 +25,8 @@ use repovec_test_helpers::{
         user_page,
     },
 };
-use repovecd::github_repository_client::ListingLimits;
+use repovecd::github_repository_client::{GitHubRepositoryClient, ListingLimits};
+use rstest::rstest;
 
 /// The request deadline the atomicity tests allow themselves.
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
@@ -36,178 +37,164 @@ const EXPIRING_TIMEOUT: Duration = Duration::from_millis(500);
 /// The delay the timeout case scripts, well above its request deadline.
 const SLOW_RESPONSE: Duration = Duration::from_secs(5);
 
-#[test]
-fn a_failure_on_a_later_page_returns_no_prefix() {
-    let second = user_page(2);
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, LinkRelation::Next))
-            .with_body(bare_page(&[
-                repository_json(Repository {
-                    id: 1,
-                    owner: "acme",
-                    name: "one",
-                }),
-                repository_json(Repository {
-                    id: 2,
-                    owner: "acme",
-                    name: "two",
-                }),
-            ])),
-        ScriptedResponse::new(500),
-    ])
-    .expect("the scripted server should start");
-    let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
-
-    let result = client.list_repositories();
-
-    assert_eq!(
-        result.err(),
-        Some(RepositoryListingError::UnexpectedStatus { status: 500 }),
-        "two accepted records must not survive a failed third page as success"
-    );
-    assert_eq!(
-        server.request_count(),
-        2,
-        "the failure must end the traversal"
-    );
+/// Which credential kind an adapter under test presents.
+///
+/// The two profiles differ in both the page representation they accept and the
+/// endpoint path they follow, so each case names one rather than repeating the
+/// pairing at every call site.
+#[derive(Clone, Copy, Debug)]
+enum Profile {
+    /// A user credential, whose pages are bare arrays.
+    User,
+    /// An installation credential, whose pages are enveloped.
+    Installation,
 }
 
-#[test]
-fn a_malformed_record_after_accepted_pages_returns_no_prefix() {
-    let second = user_page(2);
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, LinkRelation::Next))
-            .with_body(bare_page(&[repository_json(Repository {
-                id: 1,
-                owner: "acme",
-                name: "one",
-            })])),
-        ScriptedResponse::new(200).with_body(bare_page(&[repository_json(Repository {
-            id: 2,
-            owner: "acme",
-            name: "",
-        })])),
-    ])
-    .expect("the scripted server should start");
-    let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
+impl Profile {
+    /// Wraps one page's records in the representation this profile expects.
+    fn page(self, records: &[String]) -> String {
+        match self {
+            Self::User => bare_page(records),
+            Self::Installation => envelope_page(records),
+        }
+    }
 
-    let result = client.list_repositories();
+    /// Returns the second-page URL the first page advertises as `next`.
+    fn next_page(self) -> String {
+        match self {
+            Self::User => user_page(2),
+            Self::Installation => installation_page(2),
+        }
+    }
 
-    assert_eq!(
-        result.err(),
-        Some(RepositoryListingError::InvalidResponse {
-            reason: "repository name is invalid",
-        }),
-        "validation must cover every page, not only the first"
-    );
-    assert_eq!(
-        server.request_count(),
-        2,
-        "the failing page must not be retried"
-    );
+    /// Builds an adapter for this profile at a loopback origin.
+    fn client(
+        self,
+        origin: &str,
+        deadline: Duration,
+    ) -> Result<GitHubRepositoryClient, RepositoryListingError> {
+        match self {
+            Self::User => user_client(origin, ListingLimits::defaults(), deadline),
+            Self::Installation => installation_client(origin, ListingLimits::defaults(), deadline),
+        }
+    }
 }
 
-#[test]
-fn a_rate_limited_page_after_accepted_pages_returns_no_prefix() {
-    let second = user_page(2);
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, LinkRelation::Next))
-            .with_body(bare_page(&[repository_json(Repository {
-                id: 1,
-                owner: "acme",
-                name: "one",
-            })])),
-        ScriptedResponse::new(403)
-            .with_header("X-RateLimit-Remaining", "0")
-            .with_header("X-RateLimit-Reset", "1700000000"),
-    ])
-    .expect("the scripted server should start");
-    let client = user_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
-        .expect("a user-mode adapter should construct");
-
-    let result = client.list_repositories();
-
-    assert_eq!(
-        result.err(),
-        Some(RepositoryListingError::RateLimited {
-            retry: RateLimitInfo::new(None, Some(1_700_000_000)),
-        }),
-        "a throttled later page must fail the listing with its retry metadata"
-    );
-    assert_eq!(
-        server.request_count(),
-        2,
-        "the throttled page must end the traversal without a retry"
-    );
+/// One scripted later-page failure and the outcome it must produce.
+struct LaterPageFailure {
+    /// The credential profile the traversal runs under.
+    profile: Profile,
+    /// The request deadline the adapter is given.
+    deadline: Duration,
+    /// The response the second page returns.
+    second: ScriptedResponse,
+    /// The typed error the whole listing must report.
+    expected: RepositoryListingError,
+    /// Why this failure must not leak the accepted page, stated in the assertion.
+    why: &'static str,
 }
 
-#[test]
-fn a_timed_out_page_after_accepted_pages_returns_no_prefix() {
-    let second = user_page(2);
+#[rstest]
+#[case::server_error(LaterPageFailure {
+    profile: Profile::User,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(500),
+    expected: RepositoryListingError::UnexpectedStatus { status: 500 },
+    why: "two accepted records must not survive a failed third page as success",
+})]
+#[case::malformed_record(LaterPageFailure {
+    profile: Profile::User,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(200).with_body(bare_page(&[repository_json(Repository {
+        id: 2,
+        owner: "acme",
+        name: "",
+    })])),
+    expected: RepositoryListingError::InvalidResponse {
+        reason: "repository name is invalid",
+    },
+    why: "validation must cover every page, not only the first",
+})]
+#[case::rate_limited(LaterPageFailure {
+    profile: Profile::User,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(403)
+        .with_header("X-RateLimit-Remaining", "0")
+        .with_header("X-RateLimit-Reset", "1700000000"),
+    expected: RepositoryListingError::RateLimited {
+        retry: RateLimitInfo::new(None, Some(1_700_000_000)),
+    },
+    why: "a throttled later page must fail the listing with its retry metadata",
+})]
+#[case::timed_out(LaterPageFailure {
+    profile: Profile::User,
+    deadline: EXPIRING_TIMEOUT,
+    second: ScriptedResponse::new(200).with_delay(SLOW_RESPONSE),
+    expected: RepositoryListingError::TransportFailure,
+    why: "a later page that outlives its deadline must fail the whole listing",
+})]
+#[case::installation_rejection(LaterPageFailure {
+    profile: Profile::Installation,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(401),
+    expected: RepositoryListingError::AuthenticationRejected,
+    why: "the enveloped profile must not return its accepted page either",
+})]
+#[case::accepted(LaterPageFailure {
+    profile: Profile::User,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(202).with_body(bare_page(&[repository_json(Repository {
+        id: 2,
+        owner: "acme",
+        name: "two",
+    })])),
+    expected: RepositoryListingError::UnexpectedStatus { status: 202 },
+    why: "a valid-looking 202 body is not the page the endpoint documents",
+})]
+#[case::partial_content(LaterPageFailure {
+    profile: Profile::User,
+    deadline: TEST_TIMEOUT,
+    second: ScriptedResponse::new(206).with_body(bare_page(&[repository_json(Repository {
+        id: 2,
+        owner: "acme",
+        name: "two",
+    })])),
+    expected: RepositoryListingError::UnexpectedStatus { status: 206 },
+    why: "a valid-looking 206 body is not the page the endpoint documents",
+})]
+fn a_failure_on_a_later_page_returns_no_prefix(#[case] failure: LaterPageFailure) {
+    let LaterPageFailure {
+        profile,
+        deadline,
+        second,
+        expected,
+        why,
+    } = failure;
+    let first = profile.page(&[repository_json(Repository {
+        id: 1,
+        owner: "acme",
+        name: "one",
+    })]);
     let server = RecordingServer::start(vec![
         ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, LinkRelation::Next))
-            .with_body(bare_page(&[repository_json(Repository {
-                id: 1,
-                owner: "acme",
-                name: "one",
-            })])),
-        ScriptedResponse::new(200).with_delay(SLOW_RESPONSE),
+            .with_header(
+                "Link",
+                &link_header(&profile.next_page(), LinkRelation::Next),
+            )
+            .with_body(first),
+        second,
     ])
     .expect("the scripted server should start");
-    let client = user_client(
-        &server.origin(),
-        ListingLimits::defaults(),
-        EXPIRING_TIMEOUT,
-    )
-    .expect("a user-mode adapter should construct");
+    let client = profile
+        .client(&server.origin(), deadline)
+        .expect("an adapter for the named profile should construct");
 
     let result = client.list_repositories();
 
-    assert_eq!(
-        result.err(),
-        Some(RepositoryListingError::TransportFailure),
-        "a later page that outlives its deadline must fail the whole listing"
-    );
+    assert_eq!(result.err(), Some(expected), "{why} (profile {profile:?})");
     assert_eq!(
         server.request_count(),
         2,
-        "the timed-out page must end the traversal without a retry"
-    );
-}
-
-#[test]
-fn an_installation_failure_on_a_later_page_returns_no_prefix() {
-    let second = installation_page(2);
-    let server = RecordingServer::start(vec![
-        ScriptedResponse::new(200)
-            .with_header("Link", &link_header(&second, LinkRelation::Next))
-            .with_body(envelope_page(&[repository_json(Repository {
-                id: 1,
-                owner: "acme",
-                name: "one",
-            })])),
-        ScriptedResponse::new(401),
-    ])
-    .expect("the scripted server should start");
-    let client = installation_client(&server.origin(), ListingLimits::defaults(), TEST_TIMEOUT)
-        .expect("an installation-mode adapter should construct");
-
-    let result = client.list_repositories();
-
-    assert_eq!(
-        result.err(),
-        Some(RepositoryListingError::AuthenticationRejected),
-        "the enveloped profile must not return its accepted page either"
-    );
-    assert_eq!(
-        server.request_count(),
-        2,
-        "the rejected page must end the traversal without a retry"
+        "a failure on a later page must end the traversal without a retry"
     );
 }

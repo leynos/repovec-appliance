@@ -221,6 +221,11 @@ classification. Neither the message nor any other error-body text reaches a
 diagnostic. It owns no retries, scheduling, or whole-scan budget. Redirects are
 disabled so a request cannot move without the confinement checks seeing it.
 
+Only `200` is a page. Both listing endpoints document `200` for a successful
+page, and any other status — including another 2xx such as `206` or `202` —
+fails the listing with a typed error, so a partial or unfulfilled response can
+never be reported as a completed scan.
+
 A traversal is finite by construction: 10 000 pages, 1 000 000 records, 8 MiB
 per response body, 64 MiB of cumulative response bytes, 16 KiB per Link value,
 and 16 KiB per retained continuation identity by default. Reaching a bound is a

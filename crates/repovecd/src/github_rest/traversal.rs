@@ -154,7 +154,11 @@ impl<T: DeserializeOwned> TraversalRunner<'_, T> {
 
         let response = send(self.client, url, self.credential)?;
         let status = response.status();
-        if !status.is_success() {
+        // Both listing endpoints document exactly `200` for a page. Any other
+        // 2xx is not that page: a `206` may carry a partial body and a `202`
+        // may carry no page at all, so accepting them could report a listing
+        // the server never promised.
+        if status != StatusCode::OK {
             return Err(classify_failure(status, response));
         }
         let links = response

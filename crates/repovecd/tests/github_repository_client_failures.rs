@@ -13,7 +13,10 @@ use common::{installation_client::installation_client, user_client::user_client}
 use googletest::prelude::*;
 use pretty_assertions::assert_eq;
 use repovec_core::repository_listing::{RateLimitInfo, RepositoryListing, RepositoryListingError};
-use repovec_test_helpers::recording_http::{RecordingServer, ScriptedResponse};
+use repovec_test_helpers::{
+    recording_http::{RecordingServer, ScriptedResponse},
+    repository_listing_wire::{Repository, bare_page, repository_json},
+};
 use repovecd::github_repository_client::{GitHubRepositoryClient, ListingLimits};
 use rstest::rstest;
 
@@ -279,5 +282,35 @@ fn a_secondary_limit_message_without_retry_headers_is_throttling() {
         server.request_count(),
         1,
         "a throttled request must not be retried"
+    );
+}
+
+#[rstest]
+#[case::accepted(202)]
+#[case::partial_content(206)]
+fn an_unexpected_success_status_is_not_a_listing(#[case] status: u16) {
+    let server =
+        RecordingServer::start(vec![ScriptedResponse::new(status).with_body(bare_page(&[
+            repository_json(Repository {
+                id: 1,
+                owner: "acme",
+                name: "one",
+            }),
+        ]))])
+        .expect("the scripted server should start");
+    let client =
+        adapter(Profile::User, &server.origin()).expect("a user-mode adapter should construct");
+
+    let result = client.list_repositories();
+
+    assert_eq!(
+        result.err(),
+        Some(RepositoryListingError::UnexpectedStatus { status }),
+        "only the documented 200 is a page, so {status} must not become a listing"
+    );
+    assert_eq!(
+        server.request_count(),
+        1,
+        "an unexpected success status must not be retried"
     );
 }

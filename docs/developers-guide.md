@@ -1693,8 +1693,9 @@ cargo test -p repovecd --lib repository_listing_command
 ```
 
 The offline evidence never reaches GitHub. `RecordingServer` binds a loopback
-listener and scripts statuses, headers, and bodies; `GitHubApiEndpoint::new`
-accepts only a loopback origin, while `GitHubApiEndpoint::github()` is the
+listener and scripts statuses, headers, and bodies. `GitHubApiEndpoint::new`
+accepts a loopback origin over plain HTTP and any HTTPS origin, refusing plain
+HTTP to a host that is not loopback; `GitHubApiEndpoint::github()` is the
 production origin. `repository_listing_wire` holds the shared JSON builders and
 fake credentials. The end-to-end fixture drives the same `run_listing`
 composition the runnable example calls, so the test proves the operator-visible

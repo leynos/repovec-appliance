@@ -490,9 +490,11 @@ requests, and no successful output. Include 401, ordinary 403, rate-limited
 required fields, and body/header/aggregate-byte/record/page limit boundaries,
 including exact-boundary success and rejection after earlier accepted pages. A
 fault that returns the collected prefix on error must be rejected by a test
-with a non-empty prefix. Test optional/null default branch and unknown JSON
-fields as success cases. Because no one test file may exceed 400 lines, the
-later-page cases live in
+with a non-empty prefix. Only the documented `200` is a page: `202`, `206` and
+any other 2xx status fail the listing, because a partial or unfulfilled
+response cannot stand in for the page the endpoint promises. Test optional/null
+default branch and unknown JSON fields as success cases. Because no one test
+file may exceed 400 lines, the later-page cases live in
 `crates/repovecd/tests/github_repository_client_atomicity.rs` and must cover a
 rejected status, an invalid record, a rate-limited response, and a timeout
 after accepted pages, over both shipped profiles.
@@ -895,12 +897,20 @@ record any difference as a revision note before writing code.
       event could overstate the work it reached; the continuation is now
       validated first, and captured-event tests assert `pages=0`/`records=0`
       for a first-page failure and `pages=1`/`records=1` for a second-page one.
-      (c) The failure matrix gained later-page rate-limited and timeout cases,
-      plus an installation-profile later-page case, each asserting the typed
-      error, the exact request count, and the absence of a listing. The three
-      affected test binaries were split by concern
-      (`github_repository_client_atomicity.rs`,
-      `github_repository_client_events.rs`) to stay inside the 400-line cap.
+- [x] (2026-11-20) Assessment A1 r5 repair. The r5 reply (comment 7027940594)
+      found that the traversal accepted every 2xx status, so a `206` or `202`
+      carrying a syntactically valid body could complete a listing the endpoint
+      never promised; both listing endpoints document exactly `200`. The
+      traversal now accepts only `200` and classifies every other status,
+      including other 2xx values, through the typed error path. First-page
+      cases in `github_repository_client_failures.rs` and later-page cases in
+      `github_repository_client_atomicity.rs` cover `202` and `206` and assert
+      the typed error, the request count, and the absence of a listing. The same
+      reply's documentation note was confirmed and corrected: the developers
+      guide had claimed `GitHubApiEndpoint::new` accepts only a loopback origin.
+      The later-page matrix, now including the unexpected-success cases, is one
+      parameterized test over a case struct, which is how the file clears the
+      CodeScene duplication and argument-count rules without a suppression.
 
 ## Surprises & discoveries
 
@@ -1035,6 +1045,15 @@ listing uses its distinct endpoint and response envelope. Verify critical
 contracts against source sections rather than trusting extraction summaries.
 
 ## Decision log
+
+2026-11-20, assessment A1 r5: accept only `200` as a page. Both listing
+endpoints document `200` for a successful page, and a 2xx class test accepts
+statuses that carry a different promise: `206` may hold a partial
+representation and `202` may hold no page at all, yet either could decode into
+a valid-looking array and be reported as a complete listing. Treating every
+other status through the existing typed-error path keeps the completion claim
+tied to the response the endpoint actually documents, at the cost of failing a
+server that invents a success status the API does not define.
 
 2026-11-20, assessment A1 r4: extend the `403` evidence rule with GitHub's
 documented secondary-limit message instead of dropping the header evidence. The

@@ -7,7 +7,10 @@
 use std::collections::VecDeque;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use cap_std::{ambient_authority, fs_utf8::Dir};
+use cap_std::{
+    ambient_authority,
+    fs_utf8::{Dir, DirEntry},
+};
 
 /// Directories holding Rust sources the policy governs.
 pub const SOURCE_ROOTS: [&str; 1] = ["crates"];
@@ -26,7 +29,7 @@ pub fn repository_root() -> Utf8PathBuf {
         .join("..")
 }
 
-/// Collect every `.rs` file under one root, depth first.
+/// Collect every `.rs` file under one root, breadth first.
 ///
 /// Paths are reported relative to the repository root, because the
 /// absolute one is built from this crate's manifest directory and reads
@@ -57,43 +60,79 @@ pub fn repository_root() -> Utf8PathBuf {
 pub fn rust_sources(root: &Utf8Path, relative: &str) -> Result<Vec<(Utf8PathBuf, String)>, String> {
     let directory = Dir::open_ambient_dir(root, ambient_authority())
         .map_err(|error| format!("open {root}: {error}"))?;
-    let mut pending = VecDeque::from([(directory, Utf8PathBuf::from(relative))]);
-    let mut sources = Vec::new();
+    let mut walk = SourceWalk {
+        pending: VecDeque::from([(directory, Utf8PathBuf::from(relative))]),
+        sources: Vec::new(),
+    };
 
-    while let Some((current, prefix)) = pending.pop_front() {
+    while let Some((current, prefix)) = walk.pending.pop_front() {
+        walk.collect_directory(&current, &prefix)?;
+    }
+
+    Ok(walk.sources)
+}
+
+/// Breadth-first accumulator for the source walk.
+struct SourceWalk {
+    /// Directories still to visit, each with its repository-relative prefix.
+    pending: VecDeque<(Dir, Utf8PathBuf)>,
+    /// Collected source paths and contents, in visit order.
+    sources: Vec<(Utf8PathBuf, String)>,
+}
+
+impl SourceWalk {
+    /// Scans one directory level, queuing children and collecting sources.
+    fn collect_directory(&mut self, current: &Dir, prefix: &Utf8Path) -> Result<(), String> {
         let entries = current
             .entries()
             .map_err(|error| format!("read {prefix}: {error}"))?;
         for candidate in entries {
             let entry = candidate.map_err(|error| format!("entry under {prefix}: {error}"))?;
-            let name = entry
-                .file_name()
-                .map_err(|error| format!("name: {error}"))?;
-            let path = prefix.join(&name);
-            let file_type = entry
-                .file_type()
-                .map_err(|error| format!("type of {path}: {error}"))?;
-            if file_type.is_symlink() {
-                return Err(format!(
-                    concat!(
-                        "{path} is a symlink; the scan does not follow one, so ",
-                        "a source reached through it would not be read"
-                    ),
-                    path = path
-                ));
-            }
-            if file_type.is_dir() {
-                let child = current
-                    .open_dir(&name)
-                    .map_err(|error| format!("open {path}: {error}"))?;
-                pending.push_back((child, path));
-            } else if path.extension() == Some(SOURCE_EXTENSION) {
-                let contents = current
-                    .read_to_string(&name)
-                    .map_err(|error| format!("read {path}: {error}"))?;
-                sources.push((path, contents));
-            }
+            self.visit_entry(current, prefix, &entry)?;
         }
+        Ok(())
     }
-    Ok(sources)
+
+    /// Classifies one entry, rejecting links and reading Rust files.
+    fn visit_entry(
+        &mut self,
+        current: &Dir,
+        prefix: &Utf8Path,
+        entry: &DirEntry,
+    ) -> Result<(), String> {
+        let name = entry
+            .file_name()
+            .map_err(|error| format!("name: {error}"))?;
+        let path = prefix.join(&name);
+        let kind = entry
+            .file_type()
+            .map_err(|error| format!("type of {path}: {error}"))?;
+
+        if kind.is_symlink() {
+            return Err(symlink_error(&path));
+        }
+        if kind.is_dir() {
+            let child = current
+                .open_dir(&name)
+                .map_err(|error| format!("open {path}: {error}"))?;
+            self.pending.push_back((child, path));
+        } else if path.extension() == Some(SOURCE_EXTENSION) {
+            let contents = current
+                .read_to_string(&name)
+                .map_err(|error| format!("read {path}: {error}"))?;
+            self.sources.push((path, contents));
+        }
+        Ok(())
+    }
+}
+
+/// Reports a symlink as a scan error rather than silently stepping over it.
+fn symlink_error(path: &Utf8Path) -> String {
+    format!(
+        concat!(
+            "{path} is a symlink; the scan does not follow one, so ",
+            "a source reached through it would not be read"
+        ),
+        path = path
+    )
 }

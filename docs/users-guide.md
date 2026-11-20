@@ -140,6 +140,94 @@ Roadmap item `2.1.1` provides the runtime client, encrypted token-store
 adapter, and mock-server test binary. The interactive TUI login screen is a
 later roadmap item and will call this authentication surface.
 
+## GitHub repository listing
+
+repovec-appliance can enumerate the repositories one GitHub principal can see.
+Listing is read-only: it sends no GitHub mutation and persists no result. The
+operator-visible surface today is the diagnostics example
+`list_github_repositories`; the TUI and `repovectl` call the same library
+composition in later roadmap items.
+
+<!-- tested-example: users-guide-github-repository-listing -->
+
+```bash
+cargo run -p repovecd --example list_github_repositories -- \
+    --user-store /etc/repovec
+cargo run -p repovecd --example list_github_repositories -- --help
+```
+
+### Credential modes
+
+Exactly one credential mode is required:
+
+- `--user-store <DIR>` loads the encrypted user credential written by the
+  device flow, below the named directory (production: `/etc/repovec`). It lists
+  the repositories that user can see: owned, collaborator, and
+  organization-member repositories.
+- `--installation-token-stdin` reads an already-issued GitHub App installation
+  access token from standard input. It lists the repositories that installation
+  was granted. Issuing and refreshing installation tokens is separate work;
+  obtain a token from GitHub App tooling and pipe it in.
+
+The installation token is read as one line, at most 16 KiB. A single trailing
+`\r\n` or `\n` is accepted; an empty value, interior whitespace, a second line,
+or more than 16 KiB is rejected before any request is sent. Never pass a token
+as a command-line argument, write it to a log, or paste it into a shared shell
+transcript.
+
+### Output and exit status
+
+Standard output carries exactly one `owner/name` line per repository, in API
+page order, and only after the complete traversal succeeded. The command holds
+every observation until then, so a failure before writing begins leaves
+standard output empty: a partial list must not look like a complete one. Once
+writing has begun, a write failure can leave the lines already written in
+place, so a consumer should accept the listing only when the command exits 0. A
+repository observed twice is listed twice.
+
+- Exit 0: success, including an empty listing (empty standard output).
+- Exit 2: usage error.
+- Exit 3: no credential could be acquired; no request was sent.
+- Exit 4: the listing failed, including a rejected credential, a forbidden
+  request, rate limiting, a transport failure, a malformed response or
+  continuation, a repeated page, or an exhausted budget.
+- Exit 5: writing the observations failed. Standard output can hold the lines
+  written before the failure, because a stream cannot be rolled back.
+- Exit 6: writing the failure diagnostic failed.
+
+Standard error carries a sanitized diagnostic naming a stable failure category
+and, where one exists, the operator recovery step: sign in again for a rejected
+user credential, supply a fresh installation token for a rejected installation
+credential, or wait before retrying. A rate-limit diagnostic reports the delay
+GitHub supplied, or states that GitHub supplied no retry metadata — a secondary
+limit can arrive with neither `Retry-After` nor a reset time. A `403` that
+carries no rate-limit evidence is reported as a permission refusal instead, so
+it is not mistaken for a wait. The diagnostic never contains the credential or
+any part of GitHub's error text.
+
+The example also installs a structured event subscriber at `INFO` that writes
+the run's start, completion, and failure events to standard error, including
+the principal kind, accepted page and record counts, elapsed time, and the
+sanitized failure category. Standard output stays reserved for `owner/name`
+lines, so the events never disturb a consumer that reads the listing alone.
+
+### Resource limits
+
+Each traversal is bounded to 10 000 pages, 1 000 000 records, 8 MiB per
+response body, 64 MiB of cumulative response bytes, 16 KiB per Link header
+value, and 16 KiB per retained continuation identity. Exceeding a budget fails
+the listing rather than returning a truncated result. A continuation is
+followed only while it stays on the original origin and path.
+
+### Not a snapshot
+
+The listing is not an atomic snapshot of GitHub. If repository access changes
+while pages are being fetched, the result can miss a repository that became
+visible after an earlier page was fetched, or repeat one that moved between
+pages. Treat the observations as evidence from an interval rather than an
+authoritative global inventory, and keep reconciliation policy in its own
+workstream.
+
 ## Qdrant service
 
 repovec-appliance ships Qdrant as an appliance-internal Podman Quadlet.

@@ -498,7 +498,11 @@ default branch and unknown JSON fields as success cases. Because no one test
 file may exceed 400 lines, the later-page cases live in
 `crates/repovecd/tests/github_repository_client_atomicity.rs` and must cover a
 rejected status, an invalid record, a rate-limited response, and a timeout
-after accepted pages, over both shipped profiles.
+after accepted pages, over both shipped profiles. The byte-budget edges — an
+exact-boundary success for the aggregate and `Link`-header budgets, and a
+later-page crossing of each — live in
+`crates/repovecd/tests/github_repository_client_budget_edges.rs`, over both
+profiles.
 
 For confinement/progress, use local recording HTTP servers on distinct ports.
 Assert exact method, path, query, bearer header, API version, and user agent.
@@ -922,6 +926,17 @@ record any difference as a revision note before writing code.
       rate-limited response and a timeout after an accepted page. The reply's
       minor plan inconsistency is also corrected: the introduction no longer
       says the pull request contains the plan only.
+- [x] (2026-11-20) Assessment A1 r7 repair. The r7 reply (comment 7029193531)
+      held that the budget verification was incomplete: no case showed a
+      listing succeeding exactly at the cumulative-byte or `Link`-header
+      budget, and no case showed a per-body or `Link`-header crossing after an
+      accepted page. The new
+      `crates/repovecd/tests/github_repository_client_budget_edges.rs` adds
+      both exact-boundary successes and both later-page crossings, each over
+      both shipped profiles; every later-page case asserts the typed error,
+      the exact request count and the absence of a listing. The file exists
+      because `github_repository_client_limits.rs` is already near the
+      400-line cap.
 
 ## Surprises & discoveries
 

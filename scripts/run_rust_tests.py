@@ -21,6 +21,12 @@ Gates run in order and the first rejection ends the run, with the gate
 named and Cargo's own exit code propagated so nextest's 100 is not
 flattened to 1.
 
+The doctest gate must also *find* doctests. Cargo reports success when it
+collects none, so an unconditional gate that passes with zero tests
+cannot tell a documented workspace from one whose examples were lost in
+a refactor. The gate therefore reads the harness summary and rejects a
+run that reported no passing doctests.
+
 Child processes go through Plumbum because that is the runner
 ``docs/scripting-standards.md`` names. The estate is moving to Cuprum,
 which this repository already uses for the integration harness in
@@ -29,6 +35,7 @@ which this repository already uses for the integration harness in
 
 from __future__ import annotations
 
+import re
 import shlex
 import sys
 from collections.abc import Iterator
@@ -52,10 +59,22 @@ class Gate:
         Human-readable gate name, used in the failure message.
     argv
         Arguments passed to Cargo, excluding the executable itself.
+    requires_tests
+        Whether a successful run must also report at least one passing
+        test. This is what makes a doctest gate fail on an empty
+        collection rather than on a non-zero exit alone.
+
+    Examples
+    --------
+    >>> Gate("unit tests", ["nextest", "run"]).requires_tests
+    False
+    >>> Gate("doctests", ["test", "--doc"], requires_tests=True).name
+    'doctests'
     """
 
     name: str
     argv: list[str]
+    requires_tests: bool = False
 
 
 @Parameter(name="*")
@@ -94,6 +113,25 @@ def split_flags(flags: str | None) -> list[str]:
     return shlex.split(flags or "")
 
 
+DOCTEST_RESULT = re.compile(r"^test result: ok\. (\d+) passed", re.MULTILINE)
+
+
+def count_passed(output: str) -> int:
+    """Count the passing tests in Cargo's harness summaries.
+
+    Cargo prints one summary line per test binary, so the workspace total
+    is the sum of every ``passed`` field rather than the last one.
+
+    Examples
+    --------
+    >>> count_passed("test result: ok. 7 passed; 0 failed; 0 ignored")
+    7
+    >>> count_passed("running 0 tests")
+    0
+    """
+    return sum(int(match.group(1)) for match in DOCTEST_RESULT.finditer(output))
+
+
 def _nextest_available(cargo: BaseCommand) -> bool:
     """Report whether ``cargo nextest`` can be run."""
     code, _, _ = cargo["nextest", "--version"].run(retcode=None)
@@ -123,9 +161,11 @@ def plan_gates(
     repository's continuous integration ran no doctests at all
     (repovec-appliance #107).
 
-    Running the gate unconditionally costs one extra compilation on a
-    workspace with no doctests, where it reports zero tests and passes.
-    That is the right trade against silently skipping it.
+    Running the gate unconditionally costs one extra compilation. The
+    gate also requires at least one passing doctest, so a run that
+    collects nothing is a rejection rather than a pass: this repository
+    documents its public API with examples, and losing them must be
+    visible to the gate rather than to a later reviewer.
     """
     unit_test_argv = (
         ["nextest", "run", "--no-tests", "pass", *test_flags, *build_jobs]
@@ -134,19 +174,40 @@ def plan_gates(
     )
     return [
         Gate("unit tests", unit_test_argv),
-        Gate("doctests", ["test", "--doc", *doctest_flags, *build_jobs]),
+        Gate(
+            "doctests",
+            ["test", "--doc", *doctest_flags, *build_jobs],
+            requires_tests=True,
+        ),
     ]
 
 
-def _run_gates(cargo: BaseCommand, gates: list[Gate]) -> Iterator[tuple[Gate, int]]:
-    """Run each gate in turn, yielding its exit code, until one rejects.
+def _run_gates(
+    cargo: BaseCommand, gates: list[Gate]
+) -> Iterator[tuple[Gate, int, str]]:
+    """Run each gate in turn, yielding it, its exit code and its output.
 
-    Cargo's output is inherited rather than captured, so a developer sees
-    the failures as they happen instead of after the run.
+    A gate that must count tests has its output captured and replayed, so
+    the count can be read from the harness summary. Every other gate
+    inherits the terminal, so a developer sees failures as they happen.
+
+    Examples
+    --------
+    Running ``[Gate("doctests", ["test", "--doc"], requires_tests=True)]``
+    yields one ``(gate, code, out)`` tuple whose ``out`` holds the
+    captured harness summary, so the caller can count passing tests. A
+    gate without ``requires_tests`` yields ``out == ""`` because its
+    output went straight to the terminal.
     """
     for gate in gates:
-        code, _, _ = cargo[gate.argv].run(retcode=None, stdout=None, stderr=None)
-        yield gate, code
+        if gate.requires_tests:
+            code, out, err = cargo[gate.argv].run(retcode=None)
+            print(out, end="")
+            print(err, end="", file=sys.stderr)
+        else:
+            code, _, _ = cargo[gate.argv].run(retcode=None, stdout=None, stderr=None)
+            out = ""
+        yield gate, code, out
         if code != 0:
             return
 
@@ -160,6 +221,13 @@ def main(*, options: GateOptions = GateOptions()) -> None:
     options
         Runner configuration. ``Parameter(name="*")`` flattens it, so
         each field is still spelled as its own command-line flag.
+
+    Examples
+    --------
+    ``make test`` runs both gates and exits ``0`` when they pass.
+    A failing unit test propagates the runner's exit code instead of
+    being masked by the doctest gate that follows. A doctest gate that
+    collects nothing exits ``1`` with a message naming the gate.
     """
     command = local[options.cargo]
     gates = plan_gates(
@@ -169,7 +237,7 @@ def main(*, options: GateOptions = GateOptions()) -> None:
         build_jobs=split_flags(options.build_jobs),
     )
     with local.env(RUSTFLAGS=options.rust_flags):
-        for gate, code in _run_gates(command, gates):
+        for gate, code, output in _run_gates(command, gates):
             if code != 0:
                 print(
                     f"error: the {gate.name} gate rejected the workspace "
@@ -177,6 +245,13 @@ def main(*, options: GateOptions = GateOptions()) -> None:
                     file=sys.stderr,
                 )
                 sys.exit(code)
+            if gate.requires_tests and count_passed(output) == 0:
+                print(
+                    f"error: the {gate.name} gate ran no tests; a gate that "
+                    "passes on an empty collection cannot detect lost examples",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
 
 if __name__ == "__main__":

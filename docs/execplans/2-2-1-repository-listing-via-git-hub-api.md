@@ -22,9 +22,10 @@ not an atomic snapshot of GitHub. An unsuccessful traversal returns a typed
 error and no partial list. This distinction protects future reconciliation from
 treating a failed scan as evidence that repositories have disappeared.
 
-This pull request carries the plan and, once approved, the implementation it
-authorizes. Approval authorizes the implementation milestones below; it does
-not mark roadmap item 2.2.1 done.
+This pull request carries the approved plan and the implementation it
+authorizes. The plan was approved on 2026-11-19 and implemented the same day;
+roadmap item 2.2.1 is marked complete, and branch listing (2.2.2) and periodic
+scheduling (2.2.3) remain open.
 
 ## Constraints
 
@@ -946,6 +947,14 @@ record any difference as a revision note before writing code.
       The later-page failure matrix also gained an ordinary `403` refusal over
       both profiles, alongside the rate-limited `403`, so every error category
       the plan names has later-page evidence.
+- [x] (2026-11-20) Assessment A1 r9 repair. The r9 reply (comment 7031415374)
+      found the adapter's completion event carried pages and bytes but not the
+      accepted record count, which the event contract above requires, and that
+      the Purpose and retrospective text still claimed the plan awaited
+      approval. The completion event now reports both accepted counts from the
+      same `AcceptedWork` the failure events use, still after domain
+      validation, and both completion tests assert `pages=1` and `records=1`.
+      The two stale passages now state the approval and implementation dates.
 
 ## Surprises & discoveries
 
@@ -1263,9 +1272,10 @@ The two Wyvern reconnaissance agents and six expert perspectives completed
 planning review. Findings were incorporated: aggregate memory accounting,
 realistic installation scenarios, honest stdout guarantees, parser grammar and
 prior-art comparison, explicit subprocess limits, useful sanitized events, and
-non-vacuous property domains. No feature code, tests, proof artefacts, or
-roadmap completion have been implemented. The plan awaits explicit user
-approval. Delivery evidence will be recorded here after each milestone.
+non-vacuous property domains. At the close of planning on 2026-10-20 no feature
+code, tests, proof artefacts, or roadmap completion had been implemented and
+the plan awaited explicit approval; the approval arrived on 2026-11-19, and the
+implementation record follows below.
 
 Plan-only validation on 2026-10-20 passed sequentially: `make fmt`,
 `make check-fmt`, `make markdownlint` (including spelling), `make nixie`, and

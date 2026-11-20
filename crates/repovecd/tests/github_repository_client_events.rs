@@ -56,8 +56,8 @@ fn a_completed_listing_logs_counts_without_naming_repositories_or_secrets() {
         "a completed listing must be observable: {logs}"
     );
     assert!(
-        logs.contains("pages=1"),
-        "the completion event must carry the page count: {logs}"
+        logs.contains("pages=1") && logs.contains("records=1"),
+        "the completion event must carry the accepted page and record counts: {logs}"
     );
     assert!(
         !logs.contains(USER_TOKEN),
@@ -190,8 +190,8 @@ fn a_completed_installation_listing_logs_its_counts() {
         "the enveloped listing should complete, got {result:?}"
     );
     assert!(
-        logs.contains("pages=1"),
-        "the completion event must carry the page count: {logs}"
+        logs.contains("pages=1") && logs.contains("records=1"),
+        "the enveloped completion event must carry the accepted page and record counts: {logs}"
     );
     assert!(
         !logs.contains(INSTALLATION_TOKEN),

@@ -190,6 +190,9 @@ state, archive state, or privacy.
   the output write both succeeded; a failure event carries the sanitized
   category, elapsed time, and, for a traversal failure, the accepted page and
   record counts supplied by the adapter that owns the traversal.
+- The adapter records its own completion only after domain validation, carrying
+  the accepted page and record counts and the total response-body bytes, so a
+  completed run and a failed one report the same counts in the same vocabulary.
 
 The principal is named explicitly by the caller and never inferred from a token
 prefix. An OAuth user credential requests `/user/repos` with the fixed

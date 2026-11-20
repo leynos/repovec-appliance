@@ -222,7 +222,7 @@ fn finish(
     };
     match into_domain(traversal.records) {
         Ok(repositories) => {
-            record_completion(span, started, traversal.pages, traversal.bytes);
+            record_completion(span, started, accepted, traversal.bytes);
             Ok(repositories)
         }
         Err(error) => {
@@ -253,10 +253,15 @@ fn into_domain(
 }
 
 /// Records a completed traversal.
-fn record_completion(span: &Span, started: Instant, pages: u64, bytes: u64) {
+///
+/// The event carries the same accepted page and record counts a failure event
+/// reports, so an operator comparing a completed run with a failed one sees
+/// the same vocabulary on both.
+fn record_completion(span: &Span, started: Instant, accepted: AcceptedWork, bytes: u64) {
     info!(
         parent: span,
-        pages,
+        pages = accepted.pages,
+        records = accepted.records,
         bytes,
         elapsed_ms = elapsed_ms(started),
         "repository listing completed"

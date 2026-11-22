@@ -279,6 +279,10 @@ pub enum RepositoryListingError {
 impl RepositoryListingError {
     /// Returns a short stable category for sanitized diagnostics and metrics.
     ///
+    /// # Returns
+    /// A snake-case identifier such as `"rate_limited"` that stays stable
+    /// across releases, so dashboards and log filters may key on it.
+    ///
     /// # Examples
     ///
     /// ```

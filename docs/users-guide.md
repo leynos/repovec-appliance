@@ -149,7 +149,6 @@ operator-visible surface today is the diagnostics example
 composition in later roadmap items.
 
 <!-- tested-example: users-guide-github-repository-listing -->
-
 ```bash
 cargo run -p repovecd --example list_github_repositories -- \
     --user-store /etc/repovec

@@ -6,6 +6,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 
 pub mod appliance;
 pub mod github_oauth;
+pub mod repository_listing;
 
 /// Relative filename for the encrypted GitHub OAuth bearer credential.
 pub const GITHUB_OAUTH_TOKEN_CREDENTIAL_FILE: &str = "github-oauth-token.cred";

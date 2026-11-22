@@ -161,6 +161,82 @@ token against GitHub before enforcing permissions that depend on granted
 scopes; if that lookup fails, permissions remain unknown and the operator must
 complete login again.
 
+### Repository listing (2.2.1)
+
+Status: implemented; see
+[ADR 0002](adrs/adr-0002-shared-github-rest-traversal.md) and the
+[repository listing ExecPlan](execplans/2-2-1-repository-listing-via-git-hub-api.md).
+
+`repovec_core::repository_listing` owns the listing port. It returns every
+observation from one completed traversal, in request order and preserving
+repeated observations, or a typed error and no partial list. An empty list is a
+successful traversal, not an absence signal. Each observation carries the
+numeric repository identifier, the owner login, the repository name, the
+reported privacy, and the default branch when the repository has one. Branch
+policy and reconciliation interpret those observations in their own
+workstreams; the listing boundary applies no filtering by owner type, fork
+state, archive state, or privacy.
+
+`repovecd` supplies the adapter and the composition:
+
+- `github_repository_client` binds one credential, one API origin, and one
+  `ListingLimits` value, and implements the port.
+- `github_rest` is crate-private plumbing shared by every GitHub REST listing.
+- `repository_listing_command` is the one-shot composition. It acquires one
+  credential, runs a complete traversal, writes one `owner/name` line per
+  observation to standard output only after the traversal succeeded, and
+  reports a failure as a sanitized diagnostic on standard error with a distinct
+  exit code. Its completion event is emitted only after domain validation and
+  the output write both succeeded; a failure event carries the sanitized
+  category, elapsed time, and, for a traversal failure, the accepted page and
+  record counts supplied by the adapter that owns the traversal.
+- The adapter records its own completion only after domain validation, carrying
+  the accepted page and record counts and the total response-body bytes, so a
+  completed run and a failed one report the same counts in the same vocabulary.
+
+The principal is named explicitly by the caller and never inferred from a token
+prefix. An OAuth user credential requests `/user/repos` with the fixed
+affiliation, sort, direction, and `per_page=100` query. An already-issued
+installation token requests `/installation/repositories`, whose body is an
+envelope holding `repositories`. App installation token issuance and refresh
+remain separate work, so the installation credential is supplied by the
+operator.
+
+Paginated traversal is one component in `repovecd`, private to the daemon and
+generic over the item type. Each endpoint supplies a profile: its path, the
+query fixed for the whole traversal, and whether a page is a bare array or an
+object holding the items under a named key. Repository listing supplies two
+profiles; branch and pull request listing add their own without new traversal
+code. The component owns Link selection with `nom-rfc8288`, continuation
+confinement to the initial origin and path, cycle detection, and the page,
+record, response-body, cumulative-byte, Link-value, and continuation-identity
+limits. Registered relation types and Link parameter names are compared
+case-insensitively, as RFC 8288 requires; treating only the lowercase spelling
+as a continuation would end a valid listing early and report it complete. A
+`403` response is classified as rate limiting only on positive evidence: a
+`Retry-After` header, an exhausted `x-ratelimit-remaining` budget, or the error
+message GitHub documents for a secondary limit. A reset timestamp alone is not
+evidence, because GitHub sends `x-ratelimit-*` on ordinary responses; such a
+response stays an access refusal. The message is read from at most 8 KiB of the
+error body, and an unreadable or unparsable body contributes no evidence, so
+failure handling stays bounded and a malformed endpoint cannot change the
+classification. Neither the message nor any other error-body text reaches a
+diagnostic. It owns no retries, scheduling, or whole-scan budget. Redirects are
+disabled so a request cannot move without the confinement checks seeing it.
+
+Only `200` is a page. Both listing endpoints document `200` for a successful
+page, and any other status — including another 2xx such as `206` or `202` —
+fails the listing with a typed error, so a partial or unfulfilled response can
+never be reported as a completed scan.
+
+A traversal is finite by construction: 10 000 pages, 1 000 000 records, 8 MiB
+per response body, 64 MiB of cumulative response bytes, 16 KiB per Link value,
+and 16 KiB per retained continuation identity by default. Reaching a bound is a
+typed failure, never a truncated listing reported as success. A later-page
+failure fails the whole listing, and an API traversal is not an atomic remote
+snapshot. Protocol and generated traversal tests cover this integration
+boundary; no custom aggregation policy or disconnected formal model is required.
+
 ### Discovery and continuous monitoring
 
 repovecd maintains correctness via a reconcile-first model:

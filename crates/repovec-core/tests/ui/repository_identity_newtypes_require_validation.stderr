@@ -1,0 +1,44 @@
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/ui/repository_identity_newtypes_require_validation.rs:7:27
+  |
+7 |     let _constructed_id = RepositoryId(1);
+  |                           ^^^^^^^^^^^^
+  |
+  = note: a struct named `RepositoryId` exists in another namespace
+note: constructor is not visible here due to private fields
+ --> src/repository_listing/identity.rs
+  |
+  | pub struct RepositoryId(u64);
+  |                         ^^^ private field
+
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/ui/repository_identity_newtypes_require_validation.rs:8:30
+  |
+8 |     let _constructed_owner = RepositoryOwner("octocat".to_owned());
+  |                              ^^^^^^^^^^^^^^^
+  |
+  = note: a struct named `RepositoryOwner` exists in another namespace
+note: constructor is not visible here due to private fields
+ --> src/repository_listing/identity.rs
+  |
+  | pub struct RepositoryOwner(String);
+  |                            ^^^^^^ private field
+
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/ui/repository_identity_newtypes_require_validation.rs:9:29
+  |
+9 |     let _constructed_name = RepositoryName("hello-world".to_owned());
+  |                             ^^^^^^^^^^^^^^
+  |
+  = note: a struct named `RepositoryName` exists in another namespace
+note: constructor is not visible here due to private fields
+ --> src/repository_listing/identity.rs
+  |
+  | pub struct RepositoryName(String);
+  |                           ^^^^^^ private field
+
+error[E0616]: field `0` of struct `RepositoryOwner` is private
+  --> tests/ui/repository_identity_newtypes_require_validation.rs:12:32
+   |
+12 |         let _raw_owner = owner.0;
+   |                                ^ private field

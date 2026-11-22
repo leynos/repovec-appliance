@@ -181,11 +181,20 @@ flow without requiring a browser on the VM.
 Objective: repovecd can enumerate accessible repositories and their branches,
 determining which branches are active per the configured policy.
 
-- [ ] 2.2.1. Implement repository listing via GitHub API
+- [x] 2.2.1. Implement repository listing via GitHub API
   - Query the GitHub API for repositories accessible to the authenticated
     user or installation.
   - Support both personal and organization repositories.
   - Paginate results correctly.
+  - Status: complete. `repovec-core` exposes the `RepositoryListing` port and
+    `RepositorySummary` observation, and `repovecd` supplies the blocking
+    adapter for `/user/repos` and `/installation/repositories`, one confined
+    and bounded traversal shared by every GitHub REST listing, and the
+    one-shot `repository_listing_command` composition driven by the
+    `list_github_repositories` example. Protocol, property, behavioural, and
+    end-to-end tests run offline against a loopback server. The traversal
+    decision is recorded in `adrs/adr-0002-shared-github-rest-traversal.md`,
+    and the operator-visible behaviour is documented in the users guide.
 - [ ] 2.2.2. Implement branch listing and active-branch evaluation
   - For each repository, list branches and evaluate the active branch policy:
     default branch always active, branches with recent pushes, branches

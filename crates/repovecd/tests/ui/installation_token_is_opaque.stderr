@@ -1,0 +1,16 @@
+error[E0616]: field `value` of struct `InstallationAccessToken` is private
+  --> tests/ui/installation_token_is_opaque.rs:12:28
+   |
+12 |     let _raw_value = token.value;
+   |                            ^^^^^ private field
+
+error[E0624]: method `secret` is private
+  --> tests/ui/installation_token_is_opaque.rs:13:25
+   |
+13 |     let _secret = token.secret();
+   |                         ^^^^^^ private method
+   |
+  ::: src/github_rest/credential.rs
+   |
+   |     pub(crate) fn secret(&self) -> &str { &self.value }
+   |     ----------------------------------- private method defined here

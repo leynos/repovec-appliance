@@ -16,7 +16,10 @@
 
 pub mod github_device_flow;
 pub mod github_oauth_client;
+pub mod github_repository_client;
+mod github_rest;
 pub mod github_token_store;
+pub mod repository_listing_command;
 
 #[cfg(test)]
 mod tracing_test;

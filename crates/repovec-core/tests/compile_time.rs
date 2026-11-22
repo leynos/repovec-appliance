@@ -25,4 +25,5 @@ fn opaque_secrets_and_observer_bounds_fail_to_compile() {
     tests.compile_fail("tests/ui/github_oauth_secret_wrappers_are_opaque.rs");
     tests.compile_fail("tests/ui/qdrant_api_key_is_opaque.rs");
     tests.compile_fail("tests/ui/qdrant_quadlet_observer_requires_send_sync.rs");
+    tests.compile_fail("tests/ui/repository_identity_newtypes_require_validation.rs");
 }

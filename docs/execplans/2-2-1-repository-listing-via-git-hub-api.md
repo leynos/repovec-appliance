@@ -971,6 +971,17 @@ record any difference as a revision note before writing code.
       400-line cap. The users guide now limits its empty-output guarantee to
       failures before writing begins and marks its example for the shared
       loader, which the repository does not yet provide.
+- [x] (2026-11-22) Formal review r12 follow-up. CodeRabbit's answers to the
+      r11 dispositions left two threads partially resolved. The public
+      `RepositoryListingError::category` accessor now documents its `# Returns`
+      value, and the users' guide's `tested-example` marker now sits
+      immediately before its fence, as the style guide requires. The two
+      standing pre-merge warnings were re-examined: the compile-time row was
+      valid, so the new repository identity newtypes gained a compile-fail
+      fixture and the Decision log's "no compile-fail surface" claim was
+      corrected; the domain-architecture row keeps its recorded justified
+      non-change, now with the stable-category compatibility reason, and the
+      port documentation states who decides listing scope.
 
 ## Surprises & discoveries
 
@@ -1170,14 +1181,29 @@ owns the traversal; the composition's failure event reports the sanitized
 category and elapsed time, because the domain port deliberately returns no
 partial records.
 
-2026-11-19, assessment A1: two review suggestions are recorded as justified
-non-changes. Trybuild coverage is not applicable: this feature introduces no
-macro, no feature-gated public contract, and no compile-fail surface, and the
-only feature is a crate-internal `test-support` re-export exercised by
-integration tests. The `UnexpectedStatus { status }` variant keeps its numeric
-status because it is the bounded, documented error surface the plan specifies
-for unmodelled responses, and operators need the status to diagnose a proxy or
-gateway in the path.
+2026-11-19, assessment A1, **amended 2026-11-22**: two review suggestions were
+first recorded as justified non-changes. The trybuild part is now implemented:
+the claim that the feature introduces no compile-fail surface was wrong.
+`RepositoryId`, `RepositoryOwner`, and `RepositoryName` are public tuple
+structs with private fields, so `RepositoryId(1)` and `.0` access bypass their
+validating constructors. A new fixture under `crates/repovec-core/tests/ui/`
+covers that, registered in the crate's existing single driver at
+`crates/repovec-core/tests/compile_time.rs`. `InstallationAccessToken` needs no
+fixture: it is exported publicly but its field is private, and the only way to
+read it outside the crate is the redacting `Debug` implementation, which the
+doctest exercises. The `test-support` seam needs none either: the self
+dev-dependency enables the feature for every test target and for the trybuild
+generated project, so a fixture asserting the seam's absence would compile.
+
+The `UnexpectedStatus { status }` variant keeps its numeric status because it
+is the bounded, documented error surface the plan specifies for unmodelled
+responses. The adapter translates every modelled status into a semantic
+variant, so the number survives only as diagnostic metadata for the residual
+case, and operators need it to diagnose a proxy or gateway in the path.
+`RepositoryListingError::category` returns a stable identifier documented in
+the users' guide, and that diagnostic contract already exposes the status
+family; removing the number would be a user-facing compatibility change the
+approved plan does not provide for.
 
 2026-11-19, M3 repair: keep the operator command line in the library.
 `repository_listing_command::cli` owns `CliRun`, the argument parser, the usage

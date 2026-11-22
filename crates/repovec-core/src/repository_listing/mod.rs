@@ -74,9 +74,14 @@ pub use summary::RepositorySummary;
 /// A source of repositories visible to one bound principal.
 ///
 /// Implementations bind a credential, an endpoint, and resource limits when
-/// they are constructed. A successful call represents every observation from
-/// one completed traversal, not an atomic snapshot of GitHub: repositories
-/// changed during the scan may be omitted or repeated.
+/// they are constructed. Which repositories a listing covers is the
+/// implementation's decision: an adapter chooses its provider's visibility,
+/// affiliation, and installation scope when it binds the credential, and the
+/// port promises only what one completed traversal observed.
+///
+/// A successful call represents every observation from one completed
+/// traversal, not an atomic snapshot of GitHub: repositories changed during
+/// the scan may be omitted or repeated.
 ///
 /// # Examples
 ///

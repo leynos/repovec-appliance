@@ -1,24 +1,28 @@
 """Contract tests for the nextest timeout budget the coverage lane needs.
 
-``crates/repovec-core/tests/compile_time.rs`` drives ``trybuild``, which
-compiles each UI fixture as its own crate. Under ``cargo llvm-cov`` every
-compilation unit in that fixture build is instrumented, so the profile budget
-expires while the fixtures are still compiling. Measured on PR #216, run
-41348216522: 627 tests passed and this one was killed at 180 s, failing the
-``coverage`` job without a diagnostic from the test itself.
+The ``compile_time`` binaries drive ``trybuild``, which compiles each UI
+fixture as its own crate in a generated project. Under ``cargo llvm-cov``
+every compilation unit in that fixture build is instrumented, so the profile
+budget expires while the fixtures are still compiling. Measured on PR #216,
+run 41348216522: 627 tests passed and the core driver was killed at 180 s,
+failing the ``coverage`` job without a diagnostic from the test itself.
 
 The profile itself restates the budgets the coverage action would have
 written had the file been absent, because the action leaves an existing file
-untouched. The remedy for the fixture build is then a narrow override in
+untouched. The remedy for each fixture build is then a narrow override in
 ``.config/nextest.toml``: a longer budget for that one test, which asserts
 compile failures and contributes no coverage. Skipping it would stop guarding
-the opaque wrapper types, and a workspace-wide budget increase would hide a
-genuine hang in every other test.
+the opaque types, and a workspace-wide budget increase would hide a genuine
+hang in every other test.
 
-Both properties are contractual: the override must still select the test by
-its exact name, and its total budget must exceed the default it supersedes.
+Both properties are contractual for every driver named in
+``COMPILE_TIME_TESTS``: the override must select the test by its exact name,
+and its total budget must exceed the default it supersedes. Adding a package
+with a compile-time contract means adding its driver's test name here, so the
+new override receives the same regression protection.
 
-Mutation proof, recorded 2026-11-01; each applied alone and reverted:
+Mutation proof, recorded 2026-11-01 for the core driver; each applied alone
+and reverted:
 
 - deleting ``.config/nextest.toml`` fails
   ``test_the_compile_time_fixture_build_has_a_longer_budget``;
@@ -37,10 +41,15 @@ import tomllib
 import typing as typ
 from pathlib import Path
 
+import pytest
+
 CONFIG_PATH = Path(__file__).resolve().parents[2] / ".config" / "nextest.toml"
 
-#: The ``trybuild`` driver the override exists for.
-COMPILE_TIME_TEST = "opaque_secrets_and_observer_bounds_fail_to_compile"
+#: The ``trybuild`` drivers the per-test overrides exist for.
+COMPILE_TIME_TESTS = (
+    "opaque_secrets_and_observer_bounds_fail_to_compile",
+    "installation_token_field_and_accessor_stay_private",
+)
 
 #: Nextest's default: 60 s per period, terminated after three periods.
 DEFAULT_BUDGET_SECONDS = 180.0
@@ -75,12 +84,12 @@ def _budget(override: dict[str, object]) -> float:
     return _seconds(str(timeout["period"])) * int(timeout.get("terminate-after", 1))
 
 
-def _compile_time_overrides() -> list[dict[str, object]]:
-    """Return the overrides whose filter names the trybuild test."""
+def _compile_time_overrides(test_name: str) -> list[dict[str, object]]:
+    """Return the overrides whose filter names the given trybuild test."""
     return [
         override
         for override in _overrides()
-        if COMPILE_TIME_TEST in str(override.get("filter", ""))
+        if test_name in str(override.get("filter", ""))
     ]
 
 
@@ -103,33 +112,36 @@ def test_the_profile_keeps_the_coverage_action_budgets() -> None:
     )
 
 
-def test_the_compile_time_fixture_build_has_a_longer_budget() -> None:
+@pytest.mark.parametrize("test_name", COMPILE_TIME_TESTS)
+def test_the_compile_time_fixture_build_has_a_longer_budget(test_name: str) -> None:
     """Scenario: the instrumented fixture build outruns the default budget.
 
     Invariant: an override selects the trybuild test and allows longer than
     the 180 s default, so instrumentation cannot turn a passing contract
     into a reported timeout.
     """
-    overrides = _compile_time_overrides()
+    overrides = _compile_time_overrides(test_name)
 
-    assert overrides, f"no override in {CONFIG_PATH} names {COMPILE_TIME_TEST}"
+    assert overrides, f"no override in {CONFIG_PATH} names {test_name}"
     budgets = [_budget(override) for override in overrides]
     assert max(budgets) > DEFAULT_BUDGET_SECONDS, (
-        f"the longest budget for {COMPILE_TIME_TEST} is {max(budgets)} s, "
+        f"the longest budget for {test_name} is {max(budgets)} s, "
         f"which does not exceed the {DEFAULT_BUDGET_SECONDS} s default"
     )
 
 
-def test_the_override_selects_the_compile_time_test_exactly() -> None:
+@pytest.mark.parametrize("test_name", COMPILE_TIME_TESTS)
+def test_the_override_selects_the_compile_time_test_exactly(test_name: str) -> None:
     """Scenario: the override is broadened or drifts to another test.
 
     Invariant: the filter selects the test by an exact-match ``test(=…)``
     expression, so the longer budget cannot silently cover unrelated tests
     or stop covering this one.
     """
-    exact = f"test(={COMPILE_TIME_TEST})"
+    exact = f"test(={test_name})"
     filters = [
-        str(override.get("filter", "")) for override in _compile_time_overrides()
+        str(override.get("filter", ""))
+        for override in _compile_time_overrides(test_name)
     ]
 
     assert exact in filters, (

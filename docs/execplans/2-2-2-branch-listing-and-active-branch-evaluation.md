@@ -328,7 +328,7 @@ plans, include tests so that the dominant cost is visible.
   parser in the adapter and carry `UnixSeconds(u64)` into the domain.
   Rationale: date arithmetic is a classic source of defects; `time` is already
   in the lockfile; the domain stays integer-only, which suits Verus. The
-  rejected alternative, a hand-written fixed-format parser, would need its own
+  rejected alternative, a handwritten fixed-format parser, would need its own
   calendar proof. Date/Author: 2026-11-22, planning agent.
 - D7. Decision: classify evidence failures. `authentication_rejected`,
   `rate_limited`, and `transport_failure` are credential-wide: discovery stops

@@ -977,11 +977,15 @@ record any difference as a revision note before writing code.
       value, and the users' guide's `tested-example` marker now sits
       immediately before its fence, as the style guide requires. The two
       standing pre-merge warnings were re-examined: the compile-time row was
-      valid, so the new repository identity newtypes gained a compile-fail
+      valid, so the repository identity newtypes gained a compile-fail
       fixture and the Decision log's "no compile-fail surface" claim was
-      corrected; the domain-architecture row keeps its recorded justified
-      non-change, now with the stable-category compatibility reason, and the
-      port documentation states who decides listing scope.
+      corrected. The r12 assessment then identified the remaining half: the
+      publicly re-exported `InstallationAccessToken` had no fixture either, so
+      `crates/repovecd` gained its own single trybuild driver proving the
+      field and crate-private accessor stay private. The domain-architecture
+      row keeps its recorded justified non-change, now with the
+      stable-category compatibility reason, and the port documentation states
+      who decides listing scope.
 
 ## Surprises & discoveries
 
@@ -1188,12 +1192,15 @@ the claim that the feature introduces no compile-fail surface was wrong.
 structs with private fields, so `RepositoryId(1)` and `.0` access bypass their
 validating constructors. A new fixture under `crates/repovec-core/tests/ui/`
 covers that, registered in the crate's existing single driver at
-`crates/repovec-core/tests/compile_time.rs`. `InstallationAccessToken` needs no
-fixture: it is exported publicly but its field is private, and the only way to
-read it outside the crate is the redacting `Debug` implementation, which the
-doctest exercises. The `test-support` seam needs none either: the self
-dev-dependency enables the feature for every test target and for the trybuild
-generated project, so a fixture asserting the seam's absence would compile.
+`crates/repovec-core/tests/compile_time.rs`. `InstallationAccessToken` is
+publicly re-exported, so a fixture under `crates/repovecd/tests/ui/` now proves
+that both its field and its crate-private `secret` accessor fail to compile
+from outside the adapter, driven by the single driver in
+`crates/repovecd/tests/compile_time.rs`; the redacting `Debug` doctest covers
+the rendering, not the privacy. Only the `test-support` seam still needs no
+fixture: the self dev-dependency enables the feature for every test target and
+for the trybuild generated project, so a fixture asserting the seam's absence
+would compile, which is the outcome the check permits us to record.
 
 The `UnexpectedStatus { status }` variant keeps its numeric status because it
 is the bounded, documented error surface the plan specifies for unmodelled

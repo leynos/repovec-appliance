@@ -99,7 +99,7 @@ def test_the_profile_keeps_the_coverage_action_budgets() -> None:
     Invariant: the profile restates the action's slow-timeout and sets a global
     timeout, so a stalled test is still terminated and the whole run still has
     a ceiling instead of falling back to nextest's unset defaults. The ceiling
-    is 20 minutes, above the warm-up scripts' allowances, which run inside it.
+    is 35 minutes, above the warm-up scripts' allowances, which run inside it.
     """
     profile = _profile()
 
@@ -108,7 +108,7 @@ def test_the_profile_keeps_the_coverage_action_budgets() -> None:
         "terminate-after": 1,
         "grace-period": "5s",
     }, f"the coverage action's slow-timeout is not restated: {profile!r}"
-    assert profile.get("global-timeout") == "20m", (
+    assert profile.get("global-timeout") == "35m", (
         f"the profile's global-timeout is not the one set for the warm-up scripts: {profile!r}"
     )
 

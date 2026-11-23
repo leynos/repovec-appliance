@@ -65,7 +65,7 @@ UBICLOUD_PLACEMENT: typ.Final = {
     ("ci.yml", "lint"): ("ubicloud-standard-4", 30),
     ("ci.yml", "docs-gate"): ("ubicloud-standard-2", 30),
     ("ci.yml", "systemd-gate"): ("ubicloud-standard-2", 15),
-    ("ci.yml", "coverage"): ("ubicloud-standard-2", 25),
+    ("ci.yml", "coverage"): ("ubicloud-standard-2", 45),
 }
 
 #: Jobs that answer main alone and therefore carry no fork fallback. The

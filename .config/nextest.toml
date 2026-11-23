@@ -4,7 +4,7 @@
 # configuration exists: `ensure_nextest_config` writes a temporary file when the
 # resolved path is absent, and leaves an existing file alone. Because this file
 # exists, the defaults it would have supplied are restated here, so the coverage
-# lane keeps its 180 s termination policy and a ceiling on the run (20 minutes
+# lane keeps its 180 s termination policy and a ceiling on the run (35 minutes
 # here, since the warm-up scripts below run inside it) instead of falling back
 # to nextest's 60 s period with no global timeout.
 #
@@ -15,10 +15,12 @@ experimental = ["setup-scripts"]
 [profile.default]
 slow-timeout = { period = "180s", terminate-after = 1, grace-period = "5s" }
 # The whole run, setup scripts included (a script still running when it expires
-# is terminated). It sits above the three warm-up allowances below (1,020 s in
-# all) and below the 25-minute `test` and `coverage` jobs, so nextest reports an
-# overrun itself and the job is not cancelled without a log.
-global-timeout = "20m"
+# is terminated). It sits above the three warm-up allowances below (1,860 s in
+# all) and below the 45-minute `coverage` job, so nextest reports an overrun
+# itself and the job is not cancelled without a log. The allowances are sized
+# from PR #271's first coverage run: with no restored cache, the core fixture
+# build alone was still compiling at its earlier 480 s allowance.
+global-timeout = "35m"
 
 # The `compile_time` binaries drive `trybuild`, which compiles each UI fixture
 # as its own crate in a generated project and therefore rebuilds the package and
@@ -66,21 +68,21 @@ test-group = "nested-cargo-builds"
 # these tests warms only that test's build. A failing test in a warm-up makes the
 # script fail, and nextest then reports that test's own output rather than
 # running the tests it serves. Every command is `--frozen` (locked and offline).
-# The allowances sum to 1,020 s, which `global-timeout` stays above.
+# The allowances sum to 1,860 s, which `global-timeout` stays above.
 #
 # A new test that starts a nested build needs an entry in the override above and
 # a script and rule here.
 [scripts.setup.warm-core-compile-time]
 command = "cargo test --frozen --all-features -p repovec-core --test compile_time"
-slow-timeout = { period = "120s", terminate-after = 4 }
+slow-timeout = { period = "120s", terminate-after = 8 }
 
 [scripts.setup.warm-daemon-compile-time]
 command = "cargo test --frozen --all-features -p repovecd --test compile_time"
-slow-timeout = { period = "120s", terminate-after = 3 }
+slow-timeout = { period = "120s", terminate-after = 5 }
 
 [scripts.setup.warm-environment-policy-lint]
 command = "cargo test --frozen --all-features -p repovec-ci --test environment_policy_lint_ui"
-slow-timeout = { period = "60s", terminate-after = 3 }
+slow-timeout = { period = "60s", terminate-after = 5 }
 
 [[profile.default.scripts]]
 filter = 'binary_id(=repovec-core::compile_time)'

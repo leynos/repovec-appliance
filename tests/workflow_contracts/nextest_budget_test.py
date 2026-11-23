@@ -96,9 +96,10 @@ def _compile_time_overrides(test_name: str) -> list[dict[str, object]]:
 def test_the_profile_keeps_the_coverage_action_budgets() -> None:
     """Scenario: this file exists, so the coverage action writes none of its own.
 
-    Invariant: the profile restates the action's slow-timeout and global
+    Invariant: the profile restates the action's slow-timeout and sets a global
     timeout, so a stalled test is still terminated and the whole run still has
-    a ceiling instead of falling back to nextest's unset defaults.
+    a ceiling instead of falling back to nextest's unset defaults. The ceiling
+    is 20 minutes, above the warm-up scripts' allowances, which run inside it.
     """
     profile = _profile()
 
@@ -107,8 +108,8 @@ def test_the_profile_keeps_the_coverage_action_budgets() -> None:
         "terminate-after": 1,
         "grace-period": "5s",
     }, f"the coverage action's slow-timeout is not restated: {profile!r}"
-    assert profile.get("global-timeout") == "10m", (
-        f"the coverage action's global-timeout is not restated: {profile!r}"
+    assert profile.get("global-timeout") == "20m", (
+        f"the profile's global-timeout is not the one set for the warm-up scripts: {profile!r}"
     )
 
 

@@ -52,17 +52,6 @@ fn fixture_manifest() -> PathBuf {
         .join("Cargo.toml")
 }
 
-/// The target directory the fixture lints into.
-///
-/// It sits under the repository's own `target`, which the build already warms
-/// and `cargo clean` removes, so the fixture's dependencies compile once and not
-/// once per run in a directory that is thrown away.
-fn fixture_target_directory() -> PathBuf {
-    repository_root()
-        .join("target")
-        .join("environment-policy-lint-ui")
-}
-
 /// Lint the fixture with the repository's Clippy configuration.
 ///
 /// The child's environment is composed explicitly: the target directory is
@@ -70,7 +59,19 @@ fn fixture_target_directory() -> PathBuf {
 /// caller's flags cannot change the diagnostics being asserted, and colour is
 /// disabled so the caller's `CARGO_TERM_COLOR` cannot interleave escape
 /// sequences with the text the assertions match.
-fn lint_fixture(target_directory: &Path) -> Result<String, String> {
+///
+/// The target directory sits under the repository's own `target`, which the
+/// build already warms and `cargo clean` removes, so the fixture's dependencies
+/// compile once and not once per run in a directory that is thrown away. It is
+/// built here, from the manifest directory, rather than passed in, so the
+/// estate's nested-cargo rule can see that the directory is private.
+fn lint_fixture() -> Result<String, String> {
+    let target_directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("target")
+        .join("environment-policy-lint-ui");
+    let build_directory = target_directory.join("build");
     let output = Command::new(env!("CARGO"))
         .arg("clippy")
         .arg("--quiet")
@@ -81,7 +82,7 @@ fn lint_fixture(target_directory: &Path) -> Result<String, String> {
         .arg("clippy::disallowed_methods")
         .env("CLIPPY_CONF_DIR", repository_root())
         .env("CARGO_TARGET_DIR", target_directory)
-        .env("CARGO_BUILD_BUILD_DIR", target_directory.join("build"))
+        .env("CARGO_BUILD_BUILD_DIR", build_directory)
         .env("RUSTFLAGS", "")
         .env("CARGO_TERM_COLOR", "never")
         // The fixture has no dependencies, so nothing needs the network.
@@ -119,8 +120,7 @@ fn diagnostic_block<'output>(diagnostics: &'output str, method: &str) -> Option<
 /// contributor is told what to do instead of only what not to do.
 #[test]
 fn every_prohibited_environment_method_is_reported_with_its_remedy() {
-    let diagnostics =
-        lint_fixture(&fixture_target_directory()).expect("the fixture should fail Clippy");
+    let diagnostics = lint_fixture().expect("the fixture should fail Clippy");
 
     for (method, remedy) in REPORTED_METHODS {
         let block = diagnostic_block(&diagnostics, method);

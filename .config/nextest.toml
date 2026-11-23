@@ -4,11 +4,21 @@
 # configuration exists: `ensure_nextest_config` writes a temporary file when the
 # resolved path is absent, and leaves an existing file alone. Because this file
 # exists, the defaults it would have supplied are restated here, so the coverage
-# lane keeps its 180 s termination policy and its 10-minute ceiling on the run
-# instead of falling back to nextest's 60 s period with no global timeout.
+# lane keeps its 180 s termination policy and a ceiling on the run (20 minutes
+# here, since the warm-up scripts below run inside it) instead of falling back
+# to nextest's 60 s period with no global timeout.
+#
+# Setup scripts are experimental in the nextest versions the coverage action may
+# install, so the configuration opts in; newer versions accept the entry.
+experimental = ["setup-scripts"]
+
 [profile.default]
 slow-timeout = { period = "180s", terminate-after = 1, grace-period = "5s" }
-global-timeout = "10m"
+# The whole run, setup scripts included (a script still running when it expires
+# is terminated). It sits above the three warm-up allowances below (1,020 s in
+# all) and below the 25-minute `test` and `coverage` jobs, so nextest reports an
+# overrun itself and the job is not cancelled without a log.
+global-timeout = "20m"
 
 # The `compile_time` binaries drive `trybuild`, which compiles each UI fixture
 # as its own crate in a generated project and therefore rebuilds the package and
@@ -41,3 +51,45 @@ max-threads = 1
 [[profile.default.overrides]]
 filter = 'binary(=compile_time) | binary(=environment_policy_lint_ui)'
 test-group = "nested-cargo-builds"
+
+# Each of those tests compiles inside its own timed body: trybuild builds every
+# UI fixture as a crate of its own, and the lint test runs Clippy on a fixture
+# package. On a cold `target` directory, or a host whose shared compile pool is
+# queueing, the first run spends its whole allowance waiting for compile slots
+# and is killed with no failing assertion (#270). These scripts run each binary
+# once before any test starts, under an allowance of their own, so the timed
+# bodies find the generated projects built: trybuild keeps its project under
+# `target/tests/trybuild/<package>` and reuses it while the flags match, and the
+# scripts take the same `RUSTFLAGS` and `--all-features` as the gate.
+#
+# One script per binary, selected by `binary_id`, so a run that selects one of
+# these tests warms only that test's build. A failing test in a warm-up makes the
+# script fail, and nextest then reports that test's own output rather than
+# running the tests it serves. Every command is `--frozen` (locked and offline).
+# The allowances sum to 1,020 s, which `global-timeout` stays above.
+#
+# A new test that starts a nested build needs an entry in the override above and
+# a script and rule here.
+[scripts.setup.warm-core-compile-time]
+command = "cargo test --frozen --all-features -p repovec-core --test compile_time"
+slow-timeout = { period = "120s", terminate-after = 4 }
+
+[scripts.setup.warm-daemon-compile-time]
+command = "cargo test --frozen --all-features -p repovecd --test compile_time"
+slow-timeout = { period = "120s", terminate-after = 3 }
+
+[scripts.setup.warm-environment-policy-lint]
+command = "cargo test --frozen --all-features -p repovec-ci --test environment_policy_lint_ui"
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+[[profile.default.scripts]]
+filter = 'binary_id(=repovec-core::compile_time)'
+setup = "warm-core-compile-time"
+
+[[profile.default.scripts]]
+filter = 'binary_id(=repovecd::compile_time)'
+setup = "warm-daemon-compile-time"
+
+[[profile.default.scripts]]
+filter = 'binary_id(=repovec-ci::environment_policy_lint_ui)'
+setup = "warm-environment-policy-lint"

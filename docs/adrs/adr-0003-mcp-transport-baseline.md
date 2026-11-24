@@ -1,4 +1,6 @@
-# Architectural decision record (ADR) 002: MCP transport baseline
+# Architectural decision record (ADR) 0003: MCP transport baseline
+
+Renumbered from 002 on 2026-11-24 (duplicate number).
 
 ## Status
 
@@ -79,7 +81,7 @@ included in the approval request.
 ## Migration plan
 
 After explicit approval, follow the
-[Streamable HTTP execution plan](execplans/4-1-1-streamable-http-endpoint.md).
+[Streamable HTTP execution plan](../execplans/4-1-1-streamable-http-endpoint.md).
 Record the dependency decision and executable evidence in that plan. Update
 this ADR to Accepted only when the user accepts the proposed baseline. Future
 protocol migration must update the roadmap, design, client documentation, and

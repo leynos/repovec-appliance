@@ -19,12 +19,11 @@
 - [ADR 0002: Share one confined traversal for GitHub REST listings](adrs/adr-0002-shared-github-rest-traversal.md):
   why every GitHub REST listing uses one crate-private, profile-driven, bounded
   traversal.
+- [ADR 0003: MCP transport baseline](adrs/adr-0003-mcp-transport-baseline.md):
+  proposed protocol version and security boundary for the HTTP transport.
 - [Complexity antipatterns and refactoring strategies](complexity-antipatterns-and-refactoring-strategies.md):
   maintainability and refactoring reference for contributors working in the
   codebase.
-
-- [MCP transport baseline decision](adr-002-mcp-transport-baseline.md): proposed
-  protocol version and security boundary for the HTTP transport.
 
 ## Plans and execution
 
@@ -47,7 +46,6 @@
   service units.
 - [Migration notes for 0.2.0](migrations/0-2-0.md): compatibility guidance for
   callers updating to the Qdrant Quadlet observer trait-object API.
-
 - [Streamable HTTP endpoint ExecPlan](execplans/4-1-1-streamable-http-endpoint.md):
   pre-implementation plan for roadmap item `4.1.1`.
 

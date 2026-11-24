@@ -22,7 +22,7 @@ The plan pins MCP protocol revision 2025-11-25 because the requested GET
 endpoint, sessions, and disconnect semantics are incompatible with the current
 2026-07-28 revision. Approval of this plan must explicitly accept the pin and
 the fail-closed delivery boundary recorded in
-[`docs/adr-002-mcp-transport-baseline.md`](../adr-002-mcp-transport-baseline.md).
+[`docs/adrs/adr-0003-mcp-transport-baseline.md`](../adrs/adr-0003-mcp-transport-baseline.md).
 This milestone provides transport foundations; it does not complete public,
 authenticated corpus access.
 
@@ -57,18 +57,37 @@ authenticated corpus access.
   the relevant design documents and recording the decision. Use caret
   dependency requirements. Do not edit generated `typos.toml` by hand.
 - Build and test on the LLVM backend that the repository gates use. Cranelift
-  is out of scope: it remains an unsupported compile-time option, and this
-  work must not spend effort on Cranelift compatibility beyond normal Rust
-  code hygiene. Do not choose, reject, or reshape a dependency, feature, or
-  test because of its behaviour under Cranelift, and do not add a codegen
-  backend to `.cargo/config.toml`.
+  is out of scope: it remains an unsupported compile-time option, and this work
+  must not spend effort on Cranelift compatibility beyond normal Rust code
+  hygiene. Do not choose, reject, or reshape a dependency, feature, or test
+  because of its behaviour under Cranelift, and do not add a codegen backend to
+  `.cargo/config.toml`.
 - Follow the repository rules that landed on `main` after this plan was
   drafted. Read no process environment outside a composition root, and never
   mutate the parent environment or working directory in a test; inject values
   through a seam as "Environment access policy" in `docs/developers-guide.md`
-  requires. Keep each code file within 400 lines. `make lint` now also runs
-  the Whitaker Dylint suite and the rustdoc lint table, so new modules and
-  private items need documentation.
+  requires. Keep each code file within 400 lines. `make lint` now also runs the
+  Whitaker Dylint suite and the rustdoc lint table, so new modules and private
+  items need documentation. Whitaker's `macro_aware_cognitive_complexity` holds
+  every function to a complexity of 9 (`dylint.toml`), which bounds the size of
+  each dispatch and validation function. Every `assert!`, `assert_eq!`, and
+  `assert_ne!` needs a diagnostic message, and a lint may be relaxed only with
+  an item-scoped `#[expect(lint, reason = "...")]`.
+- Instrument request handling with `tracing` spans and structured fields, as
+  the "Observability" section of `AGENTS.md` requires. Do not hold a span guard
+  across an `.await`, do not install a global recorder or subscriber outside
+  the binary's composition root, and keep request bodies, credentials, and
+  unbounded values out of events and metric labels.
+- Before adding a port, helper, or test fixture, sweep the workspace for
+  equivalent behaviour, as the "Abstraction / port / helper policy" in
+  `AGENTS.md` requires, and record the scope and reuse policy of anything new in
+  `docs/repovec-mcpd-architecture.md`.
+- Keep each test well inside the nextest budget in `.config/nextest.toml`: the
+  default profile terminates a test after one 180-second period. A test that
+  starts a nested Cargo or `rustc` build needs an exact-name override, the
+  `nested-cargo-builds` test group, and a warm-up setup script in that file.
+- ADRs live in `docs/adrs/` with four-digit numbers, as the documentation
+  style guide requires.
 - Do not introduce `assume`, `admit`, trusted proof bodies, or equivalent
   shortcuts. Do not mark roadmap item 4.1.1 done until implementation and its
   required documentation have been completed and validated.
@@ -88,9 +107,11 @@ authenticated corpus access.
   the SDK fit.
 - The anticipated change scope is `crates/repovec-mcpd`, workspace
   `Cargo.toml`/`Cargo.lock`, `docs/roadmap.md`, this plan,
-  `docs/repovec-mcpd-architecture.md`, the technical design, ADR 002, the
-  developer guide, `docs/contents.md`, and the users guide. Other paths or a
-  materially larger diff require explicit review before proceeding.
+  `docs/repovec-mcpd-architecture.md`, the technical design, ADR 0003, the
+  developer guide, `docs/contents.md`, and the users guide. A loopback test
+  client shared with other crates may also touch `crates/repovec-test-helpers`.
+  Other paths or a materially larger diff require explicit review before
+  proceeding.
 - Any unresolved ambiguity in normative status codes, GET stream ownership,
   response correlation, body limits, or shipped startup behaviour is a stop
   condition before implementation of that contract.
@@ -111,7 +132,7 @@ authenticated corpus access.
   oversized bodies, or slow clients can consume unbounded resources. Define
   limits at the adapter boundary and test rejection, timeout, and shutdown.
 - **Protocol/design mismatch — high severity, high likelihood.** The existing
-  technical design referenced the transport without a version. ADR 002 and the
+  technical design referenced the transport without a version. ADR 0003 and the
   linked design update propose resolving this by pinning 2025-11-25; this
   remains a proposal until the user approves the plan.
 - **GET event ownership before sessions — medium severity, medium likelihood.**
@@ -141,6 +162,11 @@ authenticated corpus access.
 - [x] (2026-11-18) Rebase onto `main` at `df8c445` with no conflicts. Record
   the Cranelift exclusion, the newer repository rules, and `make typecheck` as
   a milestone gate.
+- [x] (2026-11-24) Rebase onto `main` at `e8ed310` with no conflicts. Renumber
+  the ADR to 0003 and move it to `docs/adrs/`, because `main` published a
+  different ADR 0002. Recheck every observation, reference, and blocker in this
+  plan against that tree and record the differences under "Surprises &
+  discoveries".
 - [ ] After approval only: implement milestones EP-M1 through EP-M4 and keep
   this plan current at each stopping point.
 
@@ -151,13 +177,62 @@ authenticated corpus access.
   stream endpoints and protocol-level sessions were removed in 2026-07-28;
   revision 2025-11-25 defines GET SSE and session management. **Impact:** An
   unversioned interpretation would change roadmap scope. The proposed baseline
-  is explicit and awaits approval in ADR 002.
+  is explicit and awaits approval in ADR 0003.
 - **Observation:** The daemon currently validates startup and exits; it has no
   listener or protocol handler. **Evidence:** `crates/repovec-mcpd/src/main.rs`
   calls `repovec_core::appliance::daemon_startup::run_daemon_startup()` and
   then returns. **Impact:** The first runtime change must preserve the
   synchronous startup check, then create one persistent async serving runtime;
-  it must not nest runtimes.
+  it must not nest runtimes. Rechecked at `e8ed310` on 2026-11-24: `main.rs` is
+  unchanged in substance, and the crate still has no `src/lib.rs` and no
+  `tests/` directory.
+- **Observation:** `main` published a different ADR under the number this
+  plan's ADR used. **Evidence:**
+  `docs/adrs/adr-0002-shared-github-rest-traversal.md` landed with roadmap item
+  2.2.1, and the documentation style guide now requires
+  `docs/adrs/adr-nnnn-title-slug.md` with unique four-digit numbers.
+  **Impact:** This branch's ADR is the later, unpublished one, so it was
+  renumbered to 0003, moved to `docs/adrs/`, and every inbound link was
+  updated. Open pull request #100 proposes unrelated ADRs under the older
+  `docs/adr-003-…` naming; whichever branch merges second must renumber.
+- **Observation:** The workspace lockfile already resolves the candidate HTTP
+  stack, although no workspace crate depends on it directly. **Evidence:** At
+  `e8ed310`, `Cargo.lock` holds `axum` 0.8.9, `hyper` 1.10.1, and
+  `tokio-stream` 0.1.18. `axum` arrives through `tonic` (from `qdrant-client`)
+  and the `oauth2-test-server` development dependency. `repovec-mcpd` itself
+  declares only `repovec-core` and `tracing-subscriber`, plus
+  `repovec-test-helpers` for tests. **Impact:** EP-M1 should weigh versions
+  that unify with the lockfile, to avoid compiling a second copy of the stack.
+  This does not select Axum; the feasibility comparison still decides.
+- **Observation:** The workspace already carries the async runtime and every
+  authorized test tool. **Evidence:** The root `Cargo.toml` declares `tokio`
+  1.48.0 with `macros`, `rt-multi-thread`, and `time`; `rstest` 0.28.0;
+  `rstest-bdd` 0.5.0; `googletest` 0.14.4; `pretty_assertions` 1.4.1; `insta`
+  1.47.2; `proptest` 1.11.0; and `trybuild` 1.0.117. **Impact:** These are
+  manifest additions to `repovec-mcpd`, not new workspace dependencies. Any
+  further `tokio` feature, such as `net` or `signal`, is a workspace manifest
+  change to record in the ADR.
+- **Observation:** A loopback HTTP test fixture exists, but it faces the other
+  way. **Evidence:** `repovec_test_helpers::recording_http` is a scripted
+  server that records requests from a blocking client; roadmap item 2.2.1 added
+  it for the GitHub listing adapters. `repovecd` uses `reqwest` 0.12 with its
+  blocking client, declared in that crate and not in the workspace table.
+  **Impact:** The MCP tests need a client that drives this daemon's listener,
+  including a streamed SSE body, so `recording_http` cannot be reused as it
+  stands. Follow its conventions (ephemeral loopback port, origin injected into
+  the code under test), and decide in EP-M1 whether a test client belongs in
+  `repovec-test-helpers` or stays local to `repovec-mcpd`.
+- **Observation:** No test exercises the `repovec-mcpd` binary. **Evidence:**
+  The startup contract is tested in
+  `crates/repovec-core/src/appliance/daemon_startup/` (`tests.rs` and
+  `tests_live.rs`); no test in the workspace starts the `repovec-mcpd`
+  executable. **Impact:** The serve handoff needs its own evidence, and the
+  startup tests in `repovec-core` must keep passing unchanged.
+- **Observation:** The conditional proof tooling this plan names is absent.
+  **Evidence:** At `e8ed310` there is no `tools/verus/` directory and no
+  `verus/` directory; `tools/` holds only the `mold` pin. **Impact:** None for
+  the baseline design, which selects no proof. A later proof milestone would
+  have to add that tooling as part of its own approved scope.
 
 ## Decision log
 
@@ -225,8 +300,9 @@ tracing, calls synchronous startup validation in `repovec-core`, and exits. The
 implementation retains these startup checks, then creates one persistent async
 runtime and a loopback listener at `127.0.0.1:8080`; it must not create a
 nested runtime. The listener returns 503 while backend or security policies are
-absent. Its manifest currently has no HTTP framework or SSE dependency.
-`Cargo.toml` holds workspace dependency versions. The design and security
+absent. Its manifest currently has no HTTP framework or SSE dependency, and no
+async runtime: `tokio` is a workspace dependency that this crate does not yet
+use. `Cargo.toml` holds workspace dependency versions. The design and security
 boundary are in `docs/repovec-appliance-technical-design.md`; adjacent roadmap
 items separate session management (4.1.2), Origin policy (4.1.3), and the
 grepai stdio bridge (4.2).
@@ -243,7 +319,7 @@ Read these references before implementation:
 
 - [Technical design: remote endpoint and MCP transport/security
   invariants](../repovec-appliance-technical-design.md).
-- [ADR 002: MCP transport baseline](../adr-002-mcp-transport-baseline.md).
+- [ADR 0003: MCP transport baseline](../adrs/adr-0003-mcp-transport-baseline.md).
 - [Roadmap items 4.1.1–4.2](../roadmap.md).
 - [Rust testing with rstest fixtures](../rust-testing-with-rstest-fixtures.md).
 - [Rust doctest and DRY guide](../rust-doctest-dry-guide.md), for any public
@@ -279,24 +355,27 @@ Protocol references checked through Firecrawl:
   explicitly out of scope.
 - `docs/repovec-appliance-technical-design.md`, “MCP transport and security
   invariants” and “Bridging to grepai MCP tools”: transport and security
-  architecture; current planned linkage to ADR 002.
-- Repository baseline: `7763a99f5dff25547a972888ed26d6381c465bb9`; this
-  identifies the inspected source tree, not a specification revision.
-- `docs/adr-002-mcp-transport-baseline.md`, proposed decision: pin 2025-11-25,
-  keep test dependencies injected, and keep shipping composition fail-closed.
+  architecture; current planned linkage to ADR 0003.
+- Repository baseline: `e8ed31007f784742620c8a73959c998964fae871`, inspected
+  again on 2026-11-24 after the rebase; the plan was first drafted against
+  `7763a99f5dff25547a972888ed26d6381c465bb9`. This identifies the inspected
+  source tree, not a specification revision.
+- `docs/adrs/adr-0003-mcp-transport-baseline.md`, proposed decision: pin
+  2025-11-25, keep test dependencies injected, and keep shipping composition
+  fail-closed.
 - Governing standard: MCP Streamable HTTP 2025-11-25 at the dated specification
   URL linked above, with its specified 2025-03-26 fallback when the
   protocol-version header and negotiated context are absent. The 2026-07-28
   revision is documented as a non-target pending a separate architecture
   decision.
 - No Terms of Reference or other ADR specific to transport exists beyond ADR
-  002. Any new durable architectural choice must update that ADR and the
+  0003. Any new durable architectural choice must update that ADR and the
   technical design before the affected milestone is accepted.
 
 Trace links:
 
 ```plaintext
-ROADMAP-4.1.1 -> TDD-MCP-TRANSPORT -> ADR-002 -> EP-M1..EP-M4 -> HTTP contract tests
+ROADMAP-4.1.1 -> TDD-MCP-TRANSPORT -> ADR-0003 -> EP-M1..EP-M4 -> HTTP contract tests
 ROADMAP-4.1.2/4.1.3/4.2 -> explicit exclusions -> no session/origin/stdio implementation
 ```
 
@@ -428,15 +507,15 @@ unbounded routing kernel emerges, stop before adding it; specify its abstract
 state, representation relation, lemmas, trusted assumptions, and mutation
 controls here, then propose an explicit EP-P proof milestone for approval. That
 conditional milestone must pin the verifier in `tools/verus/VERSION` and
-`tools/verus/SHA256SUMS`, use `prover-tools verus install --repo-root .`, and
-pass `prover-tools verus run --repo-root . --proof-file verus/mcp_transport.rs`
-in addition to `make check-fmt`, `make typecheck`, `make lint`, and
-`make test`. Prove the
-selected semantic property for all admissible inputs with substantive lemmas
-and a refinement relationship to the executable kernel; a disconnected model is
-insufficient. Do not add proof files, a stub gate, or speculative solver
-plumbing in the baseline design. Tests remain necessary for HTTP, SSE framing,
-runtime wiring, and the fail-closed composition even if a later proof
+`tools/verus/SHA256SUMS` (neither exists yet), use
+`prover-tools verus install --repo-root .`, and pass
+`prover-tools verus run --repo-root . --proof-file verus/mcp_transport.rs` in
+addition to `make check-fmt`, `make typecheck`, `make lint`, and `make test`.
+Prove the selected semantic property for all admissible inputs with substantive
+lemmas and a refinement relationship to the executable kernel; a disconnected
+model is insufficient. Do not add proof files, a stub gate, or speculative
+solver plumbing in the baseline design. Tests remain necessary for HTTP, SSE
+framing, runtime wiring, and the fail-closed composition even if a later proof
 discharges a semantic lemma. No unproved theorem may be made to compile with
 assumptions or stubs.
 
@@ -460,19 +539,20 @@ protocol rules in a cohesive transport module and keep HTTP request/response
 types at the adapter edge.
 
 Use stable scenario/test names and injected clocks; never mutate the parent
-process environment. Preserve existing startup-failure binary tests and test
-the new serve handoff through the same production composition function with
-injected startup checks and an ephemeral listener. A test-only executable may
-exercise this function in a child process; no bypass switch belongs in the
-shipping binary. Also assert the real binary invokes this composition after
-successful validation through the existing startup seam.
+process environment. Preserve the existing startup tests in
+`crates/repovec-core/src/appliance/daemon_startup/` and test the new serve
+handoff through the same production composition function with injected startup
+checks and an ephemeral listener. A test-only executable may exercise this
+function in a child process; no bypass switch belongs in the shipping binary.
+Also assert the real binary invokes this composition after successful
+validation through the existing startup seam.
 
 The first approved milestone compares the official Rust SDK with a thin Axum
 adapter using the same pinned black-box contract cases. It may inspect
 dependencies and run a disposable prototype; it may not select new protocol
 semantics or introduce production exposure. Retain only the option that passes
 the contract cases and respects the ownership/security boundaries, then record
-the exact crate version and features in ADR 002 before dependency changes.
+the exact crate version and features in ADR 0003 before dependency changes.
 
 Implement the transport in separable modules such as `transport::contract`,
 `transport::http`, and `transport::sse` where the existing crate structure
@@ -540,7 +620,7 @@ inputs. Add real loopback end-to-end tests because this change establishes an
 HTTP network boundary. Do not use external grepai, TLS, or a public service in
 these tests.
 
-Update `docs/repovec-appliance-technical-design.md` and ADR 002 with the final
+Update `docs/repovec-appliance-technical-design.md` and ADR 0003 with the final
 adapter/port, version, startup, listener, limits, and the accepted deviation
 from 2025-11-25 reconnect guidance. Add `docs/repovec-mcpd-architecture.md` to
 document the internal port, ownership, and reuse rules. Update
@@ -557,42 +637,43 @@ after documentation and all gates pass.
 
 ### EP-M1 — protocol and adapter feasibility
 
-**Requirements and gaps:** ROADMAP-4.1.1 and ADR-002 protocol/tooling decision.
-**End state:** Inspect the official SDK first; discard it without a prototype if
-its documented interfaces already contradict the required boundary. Otherwise
-compare the minimum SDK and Axum prototypes using the same contract cases.
-Retain one path and record exact versions/features in ADR 002. Keep prototypes
-in repository scratch space, never a `/tmp` build target, and remove them before
-the milestone commit. Run `make check-fmt`, `make typecheck`, `make lint`, and
-`make test` sequentially; the retained repository must be green. **Acceptance
-evidence:** Protocol contract cases establish POST JSON, POST SSE, GET SSE, 202
-handling, invalid version, and unsupported media/method behaviour; the chosen
-path passes every in-scope case. **Conformance check:** Requirements match the
-pinned revision; design boundaries remain intact; 2025-11-25 remains the target;
-no new public interface, dependency, trust boundary, or persisted format is
-introduced; trace links are current. **Recovery:** Delete the disposable
-prototype and repeat the comparison from the contract cases. **Remaining gaps:**
-No shipped listener or application backend. **Compatibility decision:** none.
+**Requirements and gaps:** ROADMAP-4.1.1 and ADR-0003 protocol/tooling
+decision. **End state:** Inspect the official SDK first; discard it without a
+prototype if its documented interfaces already contradict the required
+boundary. Otherwise compare the minimum SDK and Axum prototypes using the same
+contract cases. Retain one path and record exact versions/features in ADR 0003.
+Keep prototypes in repository scratch space, never a `/tmp` build target, and
+remove them before the milestone commit. Run `make check-fmt`, `make typecheck`,
+`make lint`, and `make test` sequentially; the retained repository must be
+green. **Acceptance evidence:** Protocol contract cases establish POST JSON,
+POST SSE, GET SSE, 202 handling, invalid version, and unsupported media/method
+behaviour; the chosen path passes every in-scope case. **Conformance check:**
+Requirements match the pinned revision; design boundaries remain intact;
+2025-11-25 remains the target; no new public interface, dependency, trust
+boundary, or persisted format is introduced; trace links are current.
+**Recovery:** Delete the disposable prototype and repeat the comparison from
+the contract cases. **Remaining gaps:** No shipped listener or application
+backend. **Compatibility decision:** none.
 
 ### EP-M2 — tested transport contracts
 
 **Requirements and gaps:** Dispatch, envelope validation, response mode,
-correlation, and bounded message ownership for ROADMAP-4.1.1. **End state:** Add
-failing unit tests, capture the intended red evidence, then implement the pure
-contract types and validators that make them pass. Introduce `src/lib.rs` and
-the application ports together with their tested consumers. Do not add endpoint
-BDD bindings until EP-M3 can make them pass. No ignored, expected-failure,
-staged-away, or restored failing tests are permitted at this milestone boundary.
-Run `make check-fmt`, `make typecheck`, `make lint`, and `make test`
-sequentially and commit only the green plateau. **Acceptance evidence:** The
-focused contract suite first fails on missing validation behaviour, then passes
-for both success and rejection partitions. **Conformance check:** Recheck
-ROADMAP-4.1.1 clauses, domain purity, selected adapter, upstream assumptions,
-dependency changes, trust boundary, and trace links. Ports are owned by the
-daemon application, not its HTTP adapter. **Recovery:** Revert the complete
-milestone commit if necessary; preserve red and green transcripts in this plan.
-**Remaining gaps:** Executable HTTP adapter and BDD/socket evidence.
-**Compatibility decision:** none.
+correlation, and bounded message ownership for ROADMAP-4.1.1. **End state:**
+Add failing unit tests, capture the intended red evidence, then implement the
+pure contract types and validators that make them pass. Introduce `src/lib.rs`
+and the application ports together with their tested consumers. Do not add
+endpoint BDD bindings until EP-M3 can make them pass. No ignored,
+expected-failure, staged-away, or restored failing tests are permitted at this
+milestone boundary. Run `make check-fmt`, `make typecheck`, `make lint`, and
+`make test` sequentially and commit only the green plateau. **Acceptance
+evidence:** The focused contract suite first fails on missing validation
+behaviour, then passes for both success and rejection partitions. **Conformance
+check:** Recheck ROADMAP-4.1.1 clauses, domain purity, selected adapter,
+upstream assumptions, dependency changes, trust boundary, and trace links.
+Ports are owned by the daemon application, not its HTTP adapter. **Recovery:**
+Revert the complete milestone commit if necessary; preserve red and green
+transcripts in this plan. **Remaining gaps:** Executable HTTP adapter and
+BDD/socket evidence. **Compatibility decision:** none.
 
 ### EP-M3 — HTTP/SSE adapter and bounded routing
 
@@ -601,13 +682,13 @@ correlation, framing, bounds, and runtime wiring. **End state:** Injected test
 composition serves JSON POST, SSE POST, and GET SSE over loopback; production
 composition fails closed. Each exchange owns bounded response delivery. The SSE
 stream has no replay or session generation; the ADR records the accepted
-temporary gap against 2025-11-25 reconnection recommendations. Run `make
-check-fmt`, `make typecheck`, `make lint`, and `make test` sequentially after
-the milestone. The daemon's startup checks still run synchronously before the
-serve runtime starts. **Acceptance evidence:** BDD and socket tests observe
+temporary gap against 2025-11-25 reconnection recommendations. Run
+`make check-fmt`, `make typecheck`, `make lint`, and `make test` sequentially
+after the milestone. The daemon's startup checks still run synchronously before
+the serve runtime starts. **Acceptance evidence:** BDD and socket tests observe
 expected headers, status, content type, complete JSON/SSE frames, correlation
-under duplicate IDs, resource-limit failures, closed production composition, and
-clean shutdown. **Conformance check:** Confirm versioned wire contract; no
+under duplicate IDs, resource-limit failures, closed production composition,
+and clean shutdown. **Conformance check:** Confirm versioned wire contract; no
 session, Origin, or stdio implementation leaked into this milestone; no
 unapproved public API, dependency, trust boundary, or persisted format; keep
 trace links current. **Recovery:** Revert adapter wiring while retaining tests
@@ -622,18 +703,18 @@ lifecycle/replay, grepai bridge, HTTPS deployment, and remote corpus queries.
 acceptance for ROADMAP-4.1.1. **End state:** Design/ADR/developer documentation
 reflects implementation; user guide documents the persistent listener and
 unavailable response; roadmap item 4.1.1 is marked done only after all
-implementation evidence passes. Run `make fmt`, `make markdownlint`, and `make
-nixie` sequentially after doc changes. Then run `make check-fmt`, `make
-typecheck`, `make lint`, and `make test` sequentially. **Acceptance evidence:**
-All gate transcripts are recorded in this plan, the roadmap checkbox and design
-are accurate, and a loopback client can exercise the injected transport while
-the shipped composition remains closed. **Conformance check:** Reconcile
-discoveries against roadmap, technical design, ADR 002, and the pinned
-specification; verify all trace links and boundaries. **Recovery:** Keep the
-implementation complete but leave roadmap unchecked if any required gate or
-upstream update fails; correct the evidence and rerun the affected sequential
-gates. **Remaining gaps:** Explicitly list the later roadmap items above.
-**Compatibility decision:** none.
+implementation evidence passes. Run `make fmt`, `make markdownlint`, and
+`make nixie` sequentially after doc changes. Then run `make check-fmt`,
+`make typecheck`, `make lint`, and `make test` sequentially. **Acceptance
+evidence:** All gate transcripts are recorded in this plan, the roadmap
+checkbox and design are accurate, and a loopback client can exercise the
+injected transport while the shipped composition remains closed. **Conformance
+check:** Reconcile discoveries against roadmap, technical design, ADR 0003, and
+the pinned specification; verify all trace links and boundaries. **Recovery:**
+Keep the implementation complete but leave roadmap unchecked if any required
+gate or upstream update fails; correct the evidence and rerun the affected
+sequential gates. **Remaining gaps:** Explicitly list the later roadmap items
+above. **Compatibility decision:** none.
 
 ## Concrete steps
 
@@ -726,8 +807,12 @@ passed. The spelling generator left `typos.toml` unchanged. Runtime lint and
 tests are reserved for implementation milestones because this change is
 documentation-only. Record later command output and deviations here.
 
-Rebase validation (2026-11-18): the two planning commits replayed onto `main`
-at `df8c445` without conflict, and `git range-diff` shows both unchanged.
+Rebase validation (2026-11-18): the two planning commits replayed onto `main` at
+`df8c445` without conflict, and `git range-diff` shows both unchanged.
+
+Rebase validation (2026-11-24): the three planning commits replayed onto `main`
+at `e8ed310` without conflict. The only `range-diff` change is context in
+`docs/contents.md`, where `main` added the 2.2.1 plan and ADR 0002.
 
 ## Interfaces and dependencies
 
@@ -736,7 +821,7 @@ Create `crates/repovec-mcpd/src/application.rs` for port ownership and
 Axum, Hyper, or socket types. Use these conceptual signatures, refining the
 async spelling to the selected stack without changing their contracts:
 
-```rust,no_run
+```rust,ignore
 trait McpBackend {
     async fn request(&self, owner: ExchangeOwner, request: RpcRequest,
         output: BoundedPostSink) -> Result<(), BackendError>;
@@ -772,8 +857,8 @@ test binding. Axum's documented SSE response and `KeepAlive` facilities are a
 candidate. Resolve the actual caret version and features from current workspace
 and upstream documentation in EP-M1. `rstest`, `rstest-bdd`, `googletest`,
 `pretty_assertions`, `insta`, and `proptest` are authorized test tools for the
-specified cases; verify whether each already exists in the workspace and add
-only what the tests require.
+specified cases. All six are already workspace dependencies; add to the
+`repovec-mcpd` manifest only what the tests require.
 
 ## Revision note
 
@@ -783,3 +868,12 @@ approval gate. Expert review revisions corrected the green milestone rule, made
 resource and lifecycle contracts concrete, and added mandatory operator
 documentation. No implementation has started; documentation gates, publication,
 and user approval remain.
+
+Revision (2026-11-18): rebased onto `main`, recorded the Cranelift exclusion
+and the newer repository rules, and added `make typecheck` to each milestone.
+
+Revision (2026-11-24): rebased onto `main` at `e8ed310`; renumbered the ADR to
+0003 under `docs/adrs/`; refreshed the repository baseline, dependency
+observations, test-fixture references, and constraints against the current
+tree. The blocker is unchanged: this plan and ADR 0003 await explicit approval,
+and no implementation has started.

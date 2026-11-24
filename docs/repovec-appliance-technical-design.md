@@ -342,9 +342,9 @@ add/remove projects and start/stop corresponding indexers.
 ### MCP transport and security invariants
 
 The proposed
-[MCP transport baseline decision](adr-002-mcp-transport-baseline.md) records
-the protocol-version conflict and the bounded delivery of roadmap item 4.1.1.
-Its [execution plan](execplans/4-1-1-streamable-http-endpoint.md) awaits
+[ADR 0003: MCP transport baseline](adrs/adr-0003-mcp-transport-baseline.md)
+records the protocol-version conflict and the bounded delivery of roadmap item
+4.1.1. Its [execution plan](execplans/4-1-1-streamable-http-endpoint.md) awaits
 approval; the following describes the target architecture, not a shipped
 endpoint.
 

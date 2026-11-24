@@ -559,42 +559,6 @@ run on the newer head, which reports every one of them.
 `dependabot-automerge.yml` runs on `pull_request_target` and merges, so it is
 out of scope.
 
-`tests/workflow_contracts/pr_concurrency_test.py` holds the rule for every
-workflow declaring a `pull_request` trigger. It reads `on:` as a mapping, a
-list or a bare name under both the quoted key and PyYAML's boolean `True`, and
-refuses a workflow declaring both. It keeps a floor of `ci.yml` so discovery
-cannot empty into a vacuous pass, and requires a group that, rendered by
-`pr_concurrency_groups.py`, keeps two pushes to one pull request together and
-keeps apart that pull request, a fork's pull request from a branch of the same
-name, two pushes to `main`, and two dispatches of another branch; and that uses
-`github.run_id` only as the fallback behind the pull-request number. A
-`github.ref` or `github.base_ref` fallback, a `github.head_ref`, `github.sha` or
-`github.run_id`-only group, the run identifier ahead of the number, or a
-constant group fails, and an expression the renderer does not model is refused
-rather than guessed at. It also requires exactly the event-conditioned
-`cancel-in-progress` expression. No two pull-request workflows may render the
-same group for one pull request, since whichever started last would cancel the
-others; each is rendered under its own name. Because `ci.yml` is the only
-pull-request workflow today, that comparison cannot fail yet, so each group is
-also rendered under two synthetic workflow names and must differ. Groups are
-compared casefolded, because GitHub treats group names case-insensitively. It
-reads the files at test setup, not at import, through `workflow_loader.py`,
-which refuses a duplicated mapping key because PyYAML keeps the last of two
-`concurrency:` blocks and says nothing, and refuses a document whose root is
-not a mapping, which would otherwise read as a workflow with no triggers and
-drop out of every contract; a file that cannot be read fails the tests that
-need it, with the reason, and a test drives the scope decision over a
-constructed directory. `pr_concurrency_groups_test.py` drives
-`fallback_problems` over each broken clause, and `workflow_loader_test.py`
-drives the non-mapping refusal. Each clause was proved by mutation: the cancel
-line removed, a literal `true`, a `ref` fallback, the run identifier ahead of
-the number, a constant group, a `head_ref` group, a `format()` group, the block
-removed, the trigger renamed to `pull_request_target`, a duplicated block, an
-unquoted `on:` beside the quoted one, and the `github.workflow` prefix dropped
-each fail it. So do a second pull-request workflow named `ci` beside `CI`, and
-a reader that stops reading `.yaml` files, both of which the first version of
-the contract passed.
-
 ### 2.4 Coverage ownership
 
 Coverage has two owners. Pull requests measure in `ci.yml`'s `coverage` job,

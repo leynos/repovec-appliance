@@ -295,6 +295,14 @@ through `leynos/shared-actions/.github/actions/install-whitaker` at
 `nightly-2026-05-28` under `$HOME/.local/share/whitaker/lints/`, as reported by
 `whitaker list`.
 
+Whitaker also gates cognitive complexity. Clippy's `cognitive_complexity`
+scores code after macro expansion, so it counts branching a macro generated,
+and neither `Cargo.toml` nor `clippy.toml` enables it. Whitaker's experimental
+`macro_aware_cognitive_complexity` gates it at `max_complexity = 9`,
+CodeScene's ceiling. `dylint.toml` opts in with
+`[whitaker] experimental = ["macro_aware_cognitive_complexity"]`. Fix a finding
+by extracting named helpers, never by raising the threshold.
+
 ### 1.4 Formatting workflow
 
 Rust formatting uses the nightly `rustfmt` selected by `rust-toolchain.toml`.

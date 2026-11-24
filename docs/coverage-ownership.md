@@ -76,6 +76,16 @@ the exactness of the selection. Skipping the driver in the coverage lane would
 be simpler and wrong: it is the only check that the opaque capability wrappers
 stay opaque.
 
+The fixture build is also paid for outside the timed test. A nextest setup
+script per nested-build binary (`warm-core-compile-time`,
+`warm-daemon-compile-time` and `warm-environment-policy-lint` in
+`.config/nextest.toml`) runs that binary once before any test starts, under its
+own allowance, so a cold `target` directory or a busy shared compile pool is
+spent in the script and not in the test's 10-minute allowance (#270). The
+profile's `global-timeout` is 35 minutes because those scripts run inside it
+(their allowances sum to 31 minutes), and the `coverage` job's
+`timeout-minutes` is 45 to leave room for the workspace build before them.
+
 Evidence limits, recorded so that no later reader mistakes a skipped step for
 proof:
 

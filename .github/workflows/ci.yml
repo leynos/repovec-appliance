@@ -237,7 +237,7 @@ jobs:
       ${{ (github.event.pull_request.head.repo.fork
       || github.event.pull_request.user.login == 'dependabot[bot]')
       && 'ubuntu-latest' || 'ubicloud-standard-2' }}
-    timeout-minutes: 25
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:

@@ -478,6 +478,7 @@ it. The values are a generous multiple of the measured maximum:
 | docs-gate    | 81 s                 | 30 min  |
 | test         | 169 s                | 25 min  |
 | lint         | 244 s                | 30 min  |
+| coverage     | 1,050 s (cold)       | 45 min  |
 
 *Table 2: Longest measured run per CI job against its reviewed ceiling.*
 
@@ -613,6 +614,21 @@ artefact and the same baseline path; the contract refuses a hand-over with no
 unconditional receiver. `coverage-warmup`, also on Ubicloud, compiles the
 pull-request lane's tests build-only (a build-only step is not a coverage lane
 to the contracts), so main's Ubicloud compiler cache stays warm.
+
+Tests that start a nested build (the `compile_time` trybuild drivers and the
+environment-policy lint test) are warmed by nextest setup scripts in
+`.config/nextest.toml`, one per binary, so a cold `target` directory or a busy
+compile pool is spent in a script that names itself instead of inside a timed
+test body (#270). A new test of that kind needs its own script and selector.
+The scripts run inside the profile's `global-timeout`, which is therefore sized
+above their allowances (31 minutes in all), and the `coverage` job's ceiling
+sits above that plus the workspace build. The trade-off: if every script used
+its whole allowance, the 35-minute global timeout would leave about four
+minutes for the tests themselves, whose own allowances run to 600 seconds. That
+is deliberate. The first cold coverage run measured the scripts at 476 s, 428 s
+and 69 s (about 16 minutes, with the timed tests then taking about a second
+each), so the allowances are the worst case and not the expectation, and a run
+that exhausts them is reported by nextest with the script named.
 
 The two lanes must select the same measurement, at the same pin, or the ratchet
 compares one thing with another. The contracts under `tests/workflow_contracts`

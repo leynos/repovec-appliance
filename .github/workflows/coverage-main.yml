@@ -50,7 +50,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@3551a0bf76fe47d0cc5ff632c7796a8ddb23717e
+        uses: leynos/shared-actions/.github/actions/setup-rust@29b1772534b37ea996c24a2ccb462e717073155d
         with:
           use-sccache: 'false'
           save-cache: 'false'
@@ -64,7 +64,7 @@ jobs:
       # The selection is the baseline every pull request's ratchet is measured
       # against, so ci.yml's coverage step must match it field for field.
       - name: Generate coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@3551a0bf76fe47d0cc5ff632c7796a8ddb23717e
+        uses: leynos/shared-actions/.github/actions/generate-coverage@29b1772534b37ea996c24a2ccb462e717073155d
         with:
           output-path: lcov.info
           format: lcov
@@ -90,7 +90,7 @@ jobs:
       # trigger is widened.
       - name: Upload coverage data to CodeScene
         if: steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main'
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@3551a0bf76fe47d0cc5ff632c7796a8ddb23717e
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@29b1772534b37ea996c24a2ccb462e717073155d
         with:
           path: lcov.info
           format: lcov
@@ -109,7 +109,7 @@ jobs:
       contents: read
     steps:
       - name: Publish the ratchet baseline
-        uses: leynos/shared-actions/.github/actions/publish-coverage-baseline@3551a0bf76fe47d0cc5ff632c7796a8ddb23717e
+        uses: leynos/shared-actions/.github/actions/publish-coverage-baseline@29b1772534b37ea996c24a2ccb462e717073155d
         with:
           artefact-name: coverage-baseline-handover
           baseline-rust-file: .coverage-baseline-v2.rust
@@ -129,13 +129,13 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@3551a0bf76fe47d0cc5ff632c7796a8ddb23717e
+        uses: leynos/shared-actions/.github/actions/setup-rust@29b1772534b37ea996c24a2ccb462e717073155d
       - name: Install build standard
         run: make install-build-tools
       - name: Fetch dependencies
         run: cargo fetch --locked
       - name: Compile the instrumented tests
-        uses: leynos/shared-actions/.github/actions/generate-coverage@3551a0bf76fe47d0cc5ff632c7796a8ddb23717e
+        uses: leynos/shared-actions/.github/actions/generate-coverage@29b1772534b37ea996c24a2ccb462e717073155d
         with:
           output-path: lcov.info
           format: lcov

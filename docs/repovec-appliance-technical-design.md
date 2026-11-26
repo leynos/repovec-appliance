@@ -67,18 +67,19 @@ A Rust daemon, `repovecd`, provides:
 
 ### Remote MCP endpoint
 
-A Rust service, `repovec-mcpd`, exposes an MCP endpoint over Streamable HTTP
-transport (single endpoint supporting GET and POST), implements origin
-validation, sessions, and authentication as required by the MCP transport
-specification.
+A Rust service, `repovec-mcpd`, exposes a stateless MCP endpoint over
+Streamable HTTP transport (a single endpoint accepting POST), and implements
+origin validation, authentication, and per-request admission as required by the
+MCP transport specification.
 
 Because grepai's built-in MCP server is stdio transport (`grepai mcp-serve`),
-and is designed for local agent integrations, `repovec-mcpd` acts as a
-transport and security adapter:
+and is designed for local agent integrations, `repovec-mcpd` terminates the
+external protocol and acts as an MCP client of grepai:
 
-- externally: Streamable HTTP MCP over HTTPS
-- internally: one `grepai mcp-serve` subprocess per MCP session (or per
-  client), with JSON-RPC bridged between HTTP and stdio
+- externally: Streamable HTTP MCP over HTTPS, with no protocol session
+- internally: a bounded pool of long-lived `grepai mcp-serve` subprocesses,
+  partitioned by security context, with each tool call authorized before it is
+  forwarded
 
 grepai's MCP tool surface includes:
 
@@ -343,49 +344,81 @@ add/remove projects and start/stop corresponding indexers.
 
 The proposed
 [ADR 0003: MCP transport baseline](adrs/adr-0003-mcp-transport-baseline.md)
-records the protocol-version conflict and the bounded delivery of roadmap item
-4.1.1. Its [execution plan](execplans/4-1-1-streamable-http-endpoint.md) awaits
-approval; the following describes the target architecture, not a shipped
-endpoint.
+records the evidence for a stateless protocol foundation and the bounded
+delivery of roadmap item 4.1.1. Its
+[execution plan](execplans/4-1-1-streamable-http-endpoint.md) awaits approval;
+the following describes the target architecture, not a shipped endpoint.
 
 repovec-mcpd implements MCP Streamable HTTP transport because MCP defines
-Streamable HTTP as the standard remote transport and describes requirements
-including:
+Streamable HTTP as the standard remote transport. Its foundation is MCP
+revision 2026-07-28, which describes requirements including:
 
-- a single HTTP endpoint supporting GET and POST
+- a single HTTP endpoint accepting POST, answering each request with one JSON
+  object or a Server-Sent Events (SSE) stream scoped to that request
+- protocol version, client identity, and client capabilities carried on every
+  request, with `server/discover` for up-front negotiation
 - Origin validation to mitigate DNS rebinding
 - binding to localhost when running locally
 - authentication for all connections
 
-repovec-mcpd follows the MCP session mechanism (`Mcp-Session-Id` header) so it
-can map a session to a dedicated `grepai mcp-serve` subprocess and cleanly
-terminate sessions.
+The protocol is stateless. repovec-mcpd issues no `Mcp-Session-Id`, opens no
+standalone GET stream, and offers no stream replay; GET and DELETE on the
+endpoint return `405 Method Not Allowed`. Closing a response stream cancels the
+request it belongs to. Each request is admitted, owned, bounded, and cancelled
+independently.
+
+Clients that speak an earlier Streamable HTTP revision (2025-03-26 to
+2025-11-25) are answered through `initialize` on the same endpoint and served
+statelessly. This is backward compatibility, not a second architecture: such
+clients receive no session and no GET stream. The appliance sends no
+unsolicited notifications and no server-to-client requests, so neither
+mechanism carries a RepoVec capability.
+
+The endpoint advertises tools only. Because the tool catalogue changes only
+when grepai is upgraded, cache hints on `tools/list` replace list-change
+notifications.
 
 ### Bridging to grepai MCP tools
 
 grepai's built-in MCP server communicates via stdio and exposes the full grepai
-tool surface, including RPG graph tools. repovec-mcpd bridges Streamable HTTP
-JSON-RPC to stdio JSON-RPC:
+tool surface, including RPG graph tools. The proposed
+[ADR 0004: Terminate MCP and manage grepai backends](adrs/adr-0004-grepai-backend-bridge.md)
+separates the external protocol lifecycle from the backend process lifecycle:
 
-- on `InitializeRequest`, spawn:
-  - `grepai mcp-serve` (with environment set to the grepai system user's
-    HOME so `~/.grepai/workspace.yaml` resolves)
-- for each incoming JSON-RPC message:
-  - forward to stdin (newline-delimited, without embedded newlines as per
-    stdio transport expectations)
-- stream responses back to the client using either:
-  - `application/json` (single response) or
-  - `text/event-stream` (SSE stream), as allowed by Streamable HTTP
-    transport
+- repovec-mcpd answers the external protocol itself and connects to each
+  grepai process as an MCP client over stdio, so the external and internal
+  protocol revisions can differ
+- a supervisor owns a bounded pool of `grepai mcp-serve` subprocesses, started
+  with the grepai system user's HOME so `~/.grepai/workspace.yaml` resolves,
+  and sets pool size, idle lifetime, start-up deadline, and restart back-off
+- processes are partitioned by security context, initially one partition per
+  grepai workspace; agent count does not determine process count, and a process
+  survives client reconnects
+- a crashed or unresponsive process fails only the requests it holds, and the
+  supervisor replaces it without client-side re-establishment
 
-This design intentionally avoids "re-implement grepai semantics" and therefore
-preserves:
+The proxy is protocol-aware, not transparent. grepai's project-scoped tools
+accept a `root` argument naming an absolute project path, which overrides the
+workspace the server was started with; forwarding it unchecked would let a
+remote caller choose which index on the host is read. repovec-mcpd therefore:
+
+- offers only allowlisted tools, derived from grepai's own catalogue, so a
+  grepai upgrade cannot expose a new tool without review
+- refuses the `root` argument and removes it from the schemas shown to callers
+- checks `workspace` and project-selection arguments against the caller's
+  authorized scope, and sets the effective scope itself when they are omitted
+
+Results are forwarded without reinterpretation. This design intentionally
+avoids "re-implement grepai semantics" and therefore preserves:
 
 - hybrid search behaviour
 - trace output shape and depth behaviour
 - RPG graph traversal semantics
-- any future grepai MCP tool additions (the proxy can be designed to be
-  largely transparent)
+
+Pooling depends on a feasibility spike against the pinned grepai binary,
+covering concurrent requests, cancellation, and repeated queries on one
+long-lived process. If the spike refutes it, the fallback is one subprocess per
+request.
 
 ### Token minting and revocation
 
@@ -401,7 +434,9 @@ credentials:
 To align with MCP's emphasis on proper authentication for remote servers and to
 reduce exposure to CSRF/DNS rebinding vectors, repovec-mcpd requires:
 
-- `Authorization: Bearer <token>` on all non-initialization requests
+- `Authorization: Bearer <token>` on every request; the stateless protocol has
+  no handshake to exempt, and the legacy `initialize` request is authenticated
+  like any other
 - strict `Origin` allowlist (configured hostnames only), rejecting
   absent/incorrect origins on browser-capable clients, as MCP recommends for
   Streamable HTTP servers

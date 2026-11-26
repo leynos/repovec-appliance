@@ -10,49 +10,67 @@ Status: DRAFT — awaiting explicit approval before implementation.
 
 ## Purpose / big picture
 
-This change gives `repovec-mcpd` a single `/mcp` Streamable HTTP endpoint that
-accepts Model Context Protocol (MCP) messages encoded with JSON Remote
-Procedure Call (JSON-RPC) over POST and can open a Server-Sent Events (SSE)
-stream over GET. A caller can observe negotiated JSON or SSE responses through
-a real loopback HTTP client. The endpoint remains closed to real MCP work in
-the shipped composition until authentication, origin policy, and a real backend
-are wired by their owning roadmap items.
+This change gives `repovec-mcpd` a single `/mcp` Streamable HTTP endpoint for
+the Model Context Protocol (MCP). The endpoint accepts POST. It answers each
+JSON Remote Procedure Call (JSON-RPC) request with one JSON object or with a
+Server-Sent Events (SSE) stream scoped to that request. A caller can observe
+both response modes, version negotiation, and the refusal of removed mechanisms
+through a real loopback HTTP client.
 
-The plan pins MCP protocol revision 2025-11-25 because the requested GET
-endpoint, sessions, and disconnect semantics are incompatible with the current
-2026-07-28 revision. Approval of this plan must explicitly accept the pin and
-the fail-closed delivery boundary recorded in
-[`docs/adrs/adr-0003-mcp-transport-baseline.md`](../adrs/adr-0003-mcp-transport-baseline.md).
+The foundation is MCP revision 2026-07-28, which is stateless: there is no
+protocol session, no standalone GET stream, and no stream replay. Clients that
+speak an earlier Streamable HTTP revision are answered through `initialize` on
+the same endpoint and served without sessions. The protocol is implemented by
+RMCP, the official Rust Software Development Kit (SDK).
+
+The endpoint remains closed to real MCP work in the shipped composition until
+authentication, Origin policy, and a real backend are wired by their owning
+roadmap items. Approval of this plan must explicitly accept the decisions in
+[`docs/adrs/adr-0003-mcp-transport-baseline.md`](../adrs/adr-0003-mcp-transport-baseline.md)
+and the direction in
+[`docs/adrs/adr-0004-grepai-backend-bridge.md`](../adrs/adr-0004-grepai-backend-bridge.md).
 This milestone provides transport foundations; it does not complete public,
 authenticated corpus access.
 
+An earlier draft of this plan pinned MCP 2025-11-25 and designed owned GET
+streams, a documented replay gap, and work that outlived a disconnect. The
+review of 2026-11-26 found that no RepoVec capability needs those mechanisms.
+"Surprises & discoveries" and the "Decision log" record the evidence.
+
 ## Constraints
 
-- Implement only roadmap item 4.1.1: one `/mcp` endpoint, GET and POST, and
-  `application/json` or `text/event-stream` response modes. Keep session
-  creation and lifecycle in 4.1.2, Origin policy in 4.1.3, and grepai stdio
-  bridging in 4.2.
-- Use MCP 2025-11-25 wire semantics, including the specified fallback to
-  2025-03-26 only when `MCP-Protocol-Version` and negotiated context are
-  absent. Accept explicit 2025-03-26 and 2025-11-25 for this transport subset;
-  reject other versions. Do not claim compatibility with 2026-07-28.
-- Keep HTTP framework types in the inbound adapter. Express transport and
-  response-routing contracts behind application-owned types or ports; the
-  domain/core must not depend on Axum or Hyper.
+- Implement only roadmap item 4.1.1: one `/mcp` endpoint accepting POST;
+  `application/json` and `text/event-stream` response modes; `server/discover`;
+  and stateless compatibility with earlier Streamable HTTP revisions. Keep
+  request admission limits, ownership tests, and cancellation propagation in
+  4.1.2, Origin policy in 4.1.3, the grepai bridge in 4.2, and tokens in 4.3.
+- Use MCP 2026-07-28 wire semantics as the foundation. Serve the earlier
+  Streamable HTTP revisions that the verified RMCP release supports, from
+  2025-03-26 to 2025-11-25, through `initialize` and without sessions. Do not
+  offer the HTTP+SSE transport of 2024-11-05.
+- Issue no `Mcp-Session-Id`, open no standalone stream, and offer no replay.
+  GET and DELETE on `/mcp` return 405. Ignore a received `Mcp-Session-Id` or
+  `Last-Event-ID` header.
+- Advertise tools only. Do not advertise resources, prompts, list-change
+  notifications, or the tasks extension.
+- Use RMCP for the protocol and its Streamable HTTP service. Do not write a
+  bespoke JSON-RPC, SSE, or version-negotiation implementation. If RMCP fails a
+  behaviour this plan requires, stop; do not patch around it.
+- Keep HTTP, Tower, and Axum types in the inbound adapter. Application ports
+  may use RMCP's protocol model types, which ADR 0003 treats as the shared MCP
+  vocabulary, but no transport type.
 - Keep production composition fail-closed. Without accepted authentication,
-  origin policy, and backend dependencies, the daemon must not accept MCP work
+  Origin policy, and backend dependencies, the daemon must not accept MCP work
   or report a successful JSON-RPC response. A loopback listener may report
-  unavailable service (503); test composition may inject fake dependencies.
+  unavailable service (503); test composition may inject fake dependencies. The
+  shipping binary has no switch that opens the endpoint.
 - Preserve the current startup contract: run synchronous startup checks before
   constructing the async serving runtime. Do not nest runtimes or weaken
   existing startup tests.
-- Never route responses through a shared anonymous broadcast channel. Each
-  request and GET stream has an injected, explicit owner. A backend reply with
-  no matching request owner is an internal protocol error and must not be
-  emitted to another caller.
-- Bound request-body size, concurrent work, response buffering, and stream
-  lifetime. Use deadlines and orderly shutdown. A client disconnect does not
-  cancel POST work under the pinned 2025-11-25 contract.
+- Each response reaches only the caller whose request produced it. Do not
+  introduce shared anonymous channels between requests.
+- Assert wire behaviour with an HTTP client that is not RMCP's, so that an
+  RMCP client and server cannot agree on a shared defect.
 - Do not add user-facing CLI/configuration or dependency APIs without updating
   the relevant design documents and recording the decision. Use caret
   dependency requirements. Do not edit generated `typos.toml` by hand.
@@ -62,17 +80,16 @@ authenticated corpus access.
   hygiene. Do not choose, reject, or reshape a dependency, feature, or test
   because of its behaviour under Cranelift, and do not add a codegen backend to
   `.cargo/config.toml`.
-- Follow the repository rules that landed on `main` after this plan was
-  drafted. Read no process environment outside a composition root, and never
-  mutate the parent environment or working directory in a test; inject values
-  through a seam as "Environment access policy" in `docs/developers-guide.md`
-  requires. Keep each code file within 400 lines. `make lint` now also runs the
-  Whitaker Dylint suite and the rustdoc lint table, so new modules and private
-  items need documentation. Whitaker's `macro_aware_cognitive_complexity` holds
-  every function to a complexity of 9 (`dylint.toml`), which bounds the size of
-  each dispatch and validation function. Every `assert!`, `assert_eq!`, and
-  `assert_ne!` needs a diagnostic message, and a lint may be relaxed only with
-  an item-scoped `#[expect(lint, reason = "...")]`.
+- Follow the repository rules in `AGENTS.md`. Read no process environment
+  outside a composition root, and never mutate the parent environment or
+  working directory in a test; inject values through a seam as "Environment
+  access policy" in `docs/developers-guide.md` requires. Keep each code file
+  within 400 lines. `make lint` runs the Whitaker Dylint suite and the rustdoc
+  lint table, so new modules and private items need documentation. Whitaker's
+  `macro_aware_cognitive_complexity` holds every function to a complexity of 9
+  (`dylint.toml`). Every `assert!`, `assert_eq!`, and `assert_ne!` needs a
+  diagnostic message, and a lint may be relaxed only with an item-scoped
+  `#[expect(lint, reason = "...")]`.
 - Instrument request handling with `tracing` spans and structured fields, as
   the "Observability" section of `AGENTS.md` requires. Do not hold a span guard
   across an `.await`, do not install a global recorder or subscriber outside
@@ -94,17 +111,16 @@ authenticated corpus access.
 
 ## Tolerances (exception triggers)
 
-- If implementation needs to change the pinned wire revision, the single
-  endpoint contract, production fail-closed behaviour, or the 4.1.2/4.1.3/4.2
-  ownership boundary, stop and update this plan and the ADR for explicit
-  approval.
-- If a new dependency is needed beyond an HTTP/SSE stack and the requested test
-  dependencies, record its exact role, version, and alternatives in the ADR and
-  stop for approval before adding it.
-- If the official Rust MCP SDK cannot pass the pinned contract suite without
-  pulling later session, subprocess, or security behaviour into this milestone,
-  discard the spike and use the thin adapter path. Do not expand scope to make
-  the SDK fit.
+- If implementation needs to change the protocol foundation, the legacy
+  compatibility range, the single endpoint contract, production fail-closed
+  behaviour, or the 4.1.2/4.1.3/4.2/4.3 ownership boundary, stop and update
+  this plan and ADR 0003 for explicit approval.
+- If RMCP fails any check in EP-M1, stop and report the failing check with its
+  evidence. Do not start a bespoke adapter without renewed approval.
+- The expected new dependencies are `rmcp` with its server and Streamable HTTP
+  server features, `axum`, further `tokio` features, and one non-RMCP HTTP
+  client for tests. If another dependency is needed, record its exact role,
+  version, and alternatives in ADR 0003 and stop for approval before adding it.
 - The anticipated change scope is `crates/repovec-mcpd`, workspace
   `Cargo.toml`/`Cargo.lock`, `docs/roadmap.md`, this plan,
   `docs/repovec-mcpd-architecture.md`, the technical design, ADR 0003, the
@@ -112,98 +128,133 @@ authenticated corpus access.
   client shared with other crates may also touch `crates/repovec-test-helpers`.
   Other paths or a materially larger diff require explicit review before
   proceeding.
-- Any unresolved ambiguity in normative status codes, GET stream ownership,
-  response correlation, body limits, or shipped startup behaviour is a stop
-  condition before implementation of that contract.
+- Any unresolved ambiguity in a status code, the legacy compatibility
+  behaviour, or shipped startup behaviour is a stop condition before
+  implementation of that contract.
 
 ## Risks
 
-- **Protocol drift — high severity, medium likelihood.** SDK defaults now target
-  the newer protocol. Pin tests and inspect the SDK's version behaviour during
-  the spike; do not infer conformance from compilation.
+- **SDK conformance — high severity, medium likelihood.** This plan relies on
+  RMCP behaviour taken from its documentation. EP-M1 observes each relied-upon
+  behaviour over a real socket before any dependency is committed, and the
+  contract tests keep observing it afterwards.
 - **Premature exposure — high severity, medium likelihood.** A listener can
   accidentally become an unauthenticated query endpoint. Keep the shipped
   composition unavailable until all policies and the backend are explicitly
-  injected; prove this over a loopback socket.
-- **Cross-request response leakage — high severity, low likelihood.** Concurrent
-  JSON-RPC requests can have equal IDs. Give each request its own response
-  channel and test interleaved replies with duplicate IDs.
-- **Resource exhaustion — high severity, medium likelihood.** Open streams,
-  oversized bodies, or slow clients can consume unbounded resources. Define
-  limits at the adapter boundary and test rejection, timeout, and shutdown.
-- **Protocol/design mismatch — high severity, high likelihood.** The existing
-  technical design referenced the transport without a version. ADR 0003 and the
-  linked design update propose resolving this by pinning 2025-11-25; this
-  remains a proposal until the user approves the plan.
-- **GET event ownership before sessions — medium severity, medium likelihood.**
-  The 2025 contract permits GET-initiated server messages. Inject a stream
-  source associated with the accepted connection in tests; do not simulate it
-  with global broadcast state. Session identity and reconnect replay remain out
-  of scope.
+  injected; prove this over a loopback socket. RMCP's Origin validation is
+  disabled by default, so the closed admission layer, not an RMCP default, is
+  the guarantee.
+- **Legacy client expectations — medium severity, medium likelihood.** A
+  legacy client may attempt a GET stream or expect a session. It receives 405
+  and no session header. RepoVec emits nothing such a stream would carry, but a
+  strict client could treat the refusal as fatal. Test with RMCP's client in
+  its legacy lifecycle, and record any real client found to fail.
+- **Specification movement — medium severity, high likelihood.** The next MCP
+  revision is targeted for 2027-03-30. Advertise the smallest capability set
+  and pin behaviour with contract tests, so that an RMCP upgrade which changes
+  the wire fails a test.
+- **Dependency weight — low severity, medium likelihood.** RMCP brings
+  authentication, client, and macro features this work does not need. Enable
+  only the server and Streamable HTTP server features, and record the resulting
+  additions to `Cargo.lock`.
+- **Cross-request leakage — high severity, low likelihood.** Concurrent
+  JSON-RPC requests can carry equal IDs. Each POST has its own response in the
+  stateless model; one loopback test with equal IDs guards the property here,
+  and 4.1.2 owns the fuller isolation evidence.
 
 ## Progress
 
 - [x] (2026-10-20) Read repository instructions, ExecPlan template, roadmap,
   technical design, and finalized reconnaissance packs.
-- [x] (2026-10-20) Verify current and pinned MCP transport text via Firecrawl;
-  record protocol drift and Axum SSE as a bounded implementation candidate.
-- [x] (2026-10-20) Draft requirements, abstract contracts, proof sketch,
-  test strategy, and milestone boundaries.
-- [ ] Receive explicit user approval of this plan, including the 2025-11-25
-  protocol baseline and fail-closed delivery boundary.
-- [x] (2026-10-20) Receive all six community-of-experts perspectives and
-  revise lifecycle, resource, protocol, milestone, and documentation contracts.
-- [x] (2026-10-20) Complete final expert re-review and reconcile the
-  protocol-version summaries with the detailed contract.
-- [x] (2026-10-20) Validate formatting and Markdown/spelling gates.
-- [x] (2026-10-20) Validate Mermaid diagrams and the diff; documentation-only
-  gates pass. Publication is recorded in the draft PR rather than feature
-  completion status.
+- [x] (2026-10-20) Draft the first plan, pinned to MCP 2025-11-25, and take it
+  through six expert reviews.
+- [x] (2026-10-20) Validate formatting, Markdown, spelling, and Mermaid gates.
 - [x] (2026-11-18) Rebase onto `main` at `df8c445` with no conflicts. Record
   the Cranelift exclusion, the newer repository rules, and `make typecheck` as
   a milestone gate.
 - [x] (2026-11-24) Rebase onto `main` at `e8ed310` with no conflicts. Renumber
-  the ADR to 0003 and move it to `docs/adrs/`, because `main` published a
-  different ADR 0002. Recheck every observation, reference, and blocker in this
-  plan against that tree and record the differences under "Surprises &
-  discoveries".
+  the ADR to 0003 and move it to `docs/adrs/`. Recheck every observation,
+  reference, and blocker against that tree.
+- [x] (2026-11-26) Reopen the architectural decision. Collect evidence on the
+  2026-07-28 revision, client support, RMCP, and grepai through Firecrawl.
+  Rewrite ADR 0003, add ADR 0004, and revise the technical design, the roadmap,
+  and this plan around a stateless foundation.
+- [ ] Receive explicit user approval of this plan and ADR 0003, including the
+  stateless foundation, RMCP, legacy cancellation on disconnect, and the
+  fail-closed delivery boundary.
 - [ ] After approval only: implement milestones EP-M1 through EP-M4 and keep
   this plan current at each stopping point.
 
 ## Surprises & discoveries
 
-- **Observation:** The current MCP revision changes both the requested GET
-  endpoint and session model. **Evidence:** The current specification says GET
-  stream endpoints and protocol-level sessions were removed in 2026-07-28;
-  revision 2025-11-25 defines GET SSE and session management. **Impact:** An
-  unversioned interpretation would change roadmap scope. The proposed baseline
-  is explicit and awaits approval in ADR 0003.
+- **Observation:** The 2026-07-28 revision replaces the mechanisms the first
+  draft preserved. **Evidence:** The
+  [changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog)
+  removes `Mcp-Session-Id`, the `initialize` handshake, the GET endpoint, and
+  `Last-Event-ID` replay; it adds per-request metadata, `server/discover`,
+  `subscriptions/listen`, and Multi Round-Trip Requests. **Impact:** The first
+  draft's reason for pinning 2025-11-25 was the roadmap's wording, not a
+  product need. The roadmap has been revised.
+- **Observation:** RepoVec needs none of the removed mechanisms. **Evidence:**
+  Its tools are read-only queries. It sends no unsolicited notifications and no
+  server-to-client requests, and the only use of a session was to key a grepai
+  subprocess, which ADR 0004 replaces. **Impact:** Owned GET streams, the
+  replay gap, and work that outlives a disconnect leave this plan.
+- **Observation:** A dual-era server is specified and necessary.
+  **Evidence:** The
+  [versioning specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning)
+  permits a server to implement both, and that legacy clients "have no
+  fall-forward mechanism". A comment of 2026-10-04 on
+  [openai/codex#37417](https://github.com/openai/codex/issues/37417) reports
+  Codex 0.155 to 0.160 negotiating 2025-06-18. **Impact:** Serving only
+  2026-07-28 would refuse clients in current use, so legacy negotiation is in
+  scope. The compatibility range starts below 2025-11-25.
+- **Observation:** Some claims in the review brief could not be confirmed.
+  **Evidence:** No Codex issue opened on 2026-11-20 about modern tool-list
+  subscriptions was found; #37417 was opened on 2026-08-07. Anthropic's
+  [announcement](https://claude.com/blog/bringing-mcp-2026-07-28-to-claude) of
+  2026-07-28 says support is "rolling out", and no later statement of Claude
+  Code's status was found. **Impact:** The decision does not depend on either
+  claim. Both eras are served, so it holds whichever clients have moved.
+- **Observation:** RMCP documents the behaviour this plan needs.
+  **Evidence:**
+  [RMCP 3.11.0](https://github.com/modelcontextprotocol/rust-sdk/releases/tag/rmcp-v3.11.0)
+  was released on 2026-11-17. Its README says it "serves the `2026-07-28`
+  draft statelessly automatically: no `Mcp-Session-Id`, no standalone
+  GET/DELETE stream, and no `Last-Event-ID` resumption", and that disabling
+  `legacy_session_mode` serves legacy versions statelessly as well. Its
+  `StreamableHttpService` "is a Tower service" that mounts on an Axum router.
+  `StreamableHttpServerConfig` documents `max_request_body_bytes` with a 413
+  response, `allowed_hosts` defaulting to loopback, `allowed_origins`
+  defaulting to no validation, and `json_response`, which falls back to SSE
+  when a handler emits a notification first. **Impact:** The bespoke adapter
+  comparison in the first draft is replaced by verification of RMCP.
+- **Observation:** grepai's `root` argument makes transparent proxying unsafe.
+  **Evidence:** The grepai 0.37.0 changelog says project-scoped tools accept
+  "an optional `root` parameter with an absolute project path", which "takes
+  precedence over a server started with `--workspace`". **Impact:** Outside
+  this item, but it shapes the port: the backend receives an authenticated
+  caller with every call, so 4.2.2 can authorize arguments. See ADR 0004.
 - **Observation:** The daemon currently validates startup and exits; it has no
   listener or protocol handler. **Evidence:** `crates/repovec-mcpd/src/main.rs`
   calls `repovec_core::appliance::daemon_startup::run_daemon_startup()` and
-  then returns. **Impact:** The first runtime change must preserve the
+  then returns. Rechecked at `e8ed310`: the crate has no `src/lib.rs` and no
+  `tests/` directory. **Impact:** The first runtime change must preserve the
   synchronous startup check, then create one persistent async serving runtime;
-  it must not nest runtimes. Rechecked at `e8ed310` on 2026-11-24: `main.rs` is
-  unchanged in substance, and the crate still has no `src/lib.rs` and no
-  `tests/` directory.
+  it must not nest runtimes.
 - **Observation:** `main` published a different ADR under the number this
   plan's ADR used. **Evidence:**
   `docs/adrs/adr-0002-shared-github-rest-traversal.md` landed with roadmap item
-  2.2.1, and the documentation style guide now requires
-  `docs/adrs/adr-nnnn-title-slug.md` with unique four-digit numbers.
-  **Impact:** This branch's ADR is the later, unpublished one, so it was
-  renumbered to 0003, moved to `docs/adrs/`, and every inbound link was
-  updated. Open pull request #100 proposes unrelated ADRs under the older
-  `docs/adr-003-…` naming; whichever branch merges second must renumber.
-- **Observation:** The workspace lockfile already resolves the candidate HTTP
-  stack, although no workspace crate depends on it directly. **Evidence:** At
-  `e8ed310`, `Cargo.lock` holds `axum` 0.8.9, `hyper` 1.10.1, and
-  `tokio-stream` 0.1.18. `axum` arrives through `tonic` (from `qdrant-client`)
-  and the `oauth2-test-server` development dependency. `repovec-mcpd` itself
+  2.2.1. **Impact:** This branch's ADR was renumbered to 0003 and moved to
+  `docs/adrs/`. Open pull request #100 proposes unrelated ADRs numbered 003 to
+  005 under the older naming; whichever branch merges second must renumber.
+- **Observation:** The workspace lockfile already resolves much of the HTTP
+  stack. **Evidence:** At `e8ed310`, `Cargo.lock` holds `axum` 0.8.9, `hyper`
+  1.10.1, and `tokio-stream` 0.1.18, through `tonic` (from `qdrant-client`) and
+  the `oauth2-test-server` development dependency. `repovec-mcpd` itself
   declares only `repovec-core` and `tracing-subscriber`, plus
-  `repovec-test-helpers` for tests. **Impact:** EP-M1 should weigh versions
-  that unify with the lockfile, to avoid compiling a second copy of the stack.
-  This does not select Axum; the feasibility comparison still decides.
+  `repovec-test-helpers` for tests. **Impact:** EP-M1 records whether RMCP's
+  HTTP stack unifies with these versions or compiles a second copy.
 - **Observation:** The workspace already carries the async runtime and every
   authorized test tool. **Evidence:** The root `Cargo.toml` declares `tokio`
   1.48.0 with `macros`, `rt-multi-thread`, and `time`; `rstest` 0.28.0;
@@ -214,84 +265,78 @@ authenticated corpus access.
   change to record in the ADR.
 - **Observation:** A loopback HTTP test fixture exists, but it faces the other
   way. **Evidence:** `repovec_test_helpers::recording_http` is a scripted
-  server that records requests from a blocking client; roadmap item 2.2.1 added
-  it for the GitHub listing adapters. `repovecd` uses `reqwest` 0.12 with its
-  blocking client, declared in that crate and not in the workspace table.
-  **Impact:** The MCP tests need a client that drives this daemon's listener,
-  including a streamed SSE body, so `recording_http` cannot be reused as it
-  stands. Follow its conventions (ephemeral loopback port, origin injected into
-  the code under test), and decide in EP-M1 whether a test client belongs in
+  server that records requests from a blocking client. `repovecd` uses
+  `reqwest` 0.12 with its blocking client, declared in that crate and not in
+  the workspace table. **Impact:** The MCP tests need a client that drives this
+  daemon's listener, including a streamed SSE body. Follow the fixture's
+  conventions (ephemeral loopback port, origin injected into the code under
+  test), and decide in EP-M1 whether a test client belongs in
   `repovec-test-helpers` or stays local to `repovec-mcpd`.
 - **Observation:** No test exercises the `repovec-mcpd` binary. **Evidence:**
   The startup contract is tested in
   `crates/repovec-core/src/appliance/daemon_startup/` (`tests.rs` and
-  `tests_live.rs`); no test in the workspace starts the `repovec-mcpd`
-  executable. **Impact:** The serve handoff needs its own evidence, and the
-  startup tests in `repovec-core` must keep passing unchanged.
-- **Observation:** The conditional proof tooling this plan names is absent.
-  **Evidence:** At `e8ed310` there is no `tools/verus/` directory and no
-  `verus/` directory; `tools/` holds only the `mold` pin. **Impact:** None for
-  the baseline design, which selects no proof. A later proof milestone would
-  have to add that tooling as part of its own approved scope.
+  `tests_live.rs`). **Impact:** The serve handoff needs its own evidence, and
+  the startup tests in `repovec-core` must keep passing unchanged.
 
 ## Decision log
 
-- **Decision:** Propose MCP 2025-11-25 as the transport baseline, with absent
-  version fallback to 2025-03-26 only without negotiated context. Accept
-  explicit 2025-03-26 and 2025-11-25 for the documented transport subset.
-  **Rationale:** It preserves the specified GET and later session requirements;
-  current 2026-07-28 semantics remove both. This is a proposal, not an accepted
-  product decision, until the user approves this plan. **Date/author:**
-  2026-10-20, planning agent.
-- **Decision:** Propose a thin Axum/Tokio HTTP/SSE adapter behind application
-  ports; compare it with the official Rust MCP SDK in one bounded spike.
-  **Rationale:** Axum exposes the needed endpoint and SSE primitives while
-  keeping transport choices in the adapter. SDK support and defaults must be
-  checked against the pinned protocol before selection. **Date/author:**
-  2026-10-20, planning agent.
+- **Decision:** Adopt MCP 2026-07-28 as the foundation and serve earlier
+  Streamable HTTP revisions statelessly on the same endpoint. **Rationale:**
+  The newer revision keeps every capability RepoVec uses and removes mechanisms
+  it does not need; the versioning specification defines dual-era servers; and
+  legacy clients remain in use. This is a proposal until the user approves ADR
+  0003. **Date/author:** 2026-11-26, planning agent, on the user's review.
+- **Decision:** Use RMCP's Streamable HTTP service on Axum, subject to the
+  EP-M1 checks. **Rationale:** RMCP 3.11.0 documents both protocol eras,
+  stateless serving, body limits, and Host and Origin validation. Writing the
+  same protocol by hand would duplicate a maintained implementation.
+  **Date/author:** 2026-11-26, planning agent.
+- **Decision:** Treat a closed response stream as cancellation for both eras.
+  **Rationale:** 2026-07-28 requires it. For legacy clients, 2025-11-25 says a
+  disconnect should not be read as cancellation, but without replay the result
+  cannot be delivered, and every tool is a read-only query. The deviation is
+  recorded in ADR 0003 for approval. **Date/author:** 2026-11-26, planning
+  agent.
+- **Decision:** Move admission limits, ownership evidence, and cancellation
+  propagation to roadmap item 4.1.2. **Rationale:** With sessions gone, 4.1.2
+  was redefined as request ownership, admission, and cancellation. Keeping
+  4.1.1 to the endpoint and its negotiation gives the smallest useful
+  increment; the shipped composition stays closed throughout. **Date/author:**
+  2026-11-26, planning agent.
+- **Decision:** Allow RMCP's model types in application ports. **Rationale:**
+  The backend bridge in 4.2 will be an RMCP client, so a second, owned model of
+  tools and results would only be translated back. Transport types stay in the
+  adapter. **Date/author:** 2026-11-26, planning agent.
 - **Decision:** Keep the shipped daemon fail-closed, while exposing the
   transport to real loopback end-to-end tests with injected fake backend and
   admission policies. **Rationale:** Authentication and Origin enforcement have
-  separate roadmap owners, and the stdio backend belongs to item 4.2. A
-  test-only fake exercises observable HTTP behaviour without presenting an
-  unauthenticated production service as complete. **Date/author:** 2026-10-20,
-  planning agent.
-- **Decision:** Omit event IDs, replay, and the recommended empty priming
-  event in this milestone. Do not accept `Last-Event-ID` as a replay promise;
-  return 400 in the injected accepting composition when it is supplied.
-  **Rationale:** A cursor without a retained event log would advertise recovery
-  the transport cannot supply. This deliberate deviation from the 2025-11-25
-  priming SHOULD is part of the approval request. SSE comments may keep a
-  connection alive without introducing event IDs. Session/replay design is
-  separate; session management alone does not imply replay support.
-  **Date/author:** 2026-10-20, planning agent.
-- **Decision:** No Verus milestone is proposed in the initial design.
-  **Rationale:** The transport contracts are finite dispatch partitions and
-  bounded request/response transitions. `rstest`, property tests, and real HTTP
-  tests can exercise those contracts directly. If design review identifies a
-  compact pure kernel with an unbounded property, stop, add its independent
-  model and representation relation to this plan, and obtain approval before
-  selecting Verus or adding proof plumbing. **Date/author:** 2026-10-20,
-  planning agent.
+  separate roadmap owners, and the grepai bridge belongs to item 4.2.
+  **Date/author:** 2026-10-20, planning agent; reaffirmed 2026-11-26.
+- **Decision:** No Verus milestone is proposed. **Rationale:** The contracts
+  are finite negotiation and dispatch partitions over a third-party protocol
+  implementation. `rstest` tables and real HTTP tests exercise them directly.
+  **Date/author:** 2026-10-20, planning agent; reaffirmed 2026-11-26.
 - **Decision:** Treat Cranelift compatibility as out of scope for this work.
   **Rationale:** The Cranelift experiment found that its compile-time gain was
   outweighed by a threefold increase in binary size and slower test execution.
   Cranelift is retained only as an unsupported compile-time option, and the
-  experiment is due to be revisited in about six months (May 2027). The HTTP
-  and SSE stack is therefore selected and tested on the LLVM backend alone; a
-  dependency that fails to build or link under Cranelift is not a defect of
-  this milestone. **Date/author:** 2026-11-18, planning agent, on the user's
-  instruction.
+  experiment is due to be revisited in about six months (May 2027).
+  **Date/author:** 2026-11-18, planning agent, on the user's instruction.
+- **Superseded (2026-11-26):** The first draft proposed pinning MCP
+  2025-11-25, comparing a thin Axum adapter with the SDK, owning a GET stream
+  per connection, rejecting `Last-Event-ID` as a documented replay gap, and
+  letting POST work outlive a disconnect. ADR 0003 records that proposal as
+  Option A and the evidence against it.
 
 ## Outcomes & retrospective
 
-Planning delivered as a draft for approval. Two Wyvern agents supplied
-repository evidence; Pandalump, Wafflecat, Telefono, Dinolump, Buzzy Bee, and
-Doggylump reviewed the design. Their revisions established green milestones,
-precise protocol rules, owned bounded streams, and mandatory operator docs. No
-code, dependency, roadmap status, or endpoint behaviour has been changed. At
-completion, record the delivered endpoint behaviour, all accepted deviations,
-gate results, and any remaining limitation here.
+Planning delivered as a draft for approval, then reopened on 2026-11-26 before
+any implementation. The lesson recorded so far is that the first draft accepted
+the roadmap's mechanisms as requirements and designed carefully around them;
+the review asked which capabilities those mechanisms served and found none. No
+code, dependency, or endpoint behaviour has been changed. At completion, record
+the delivered endpoint behaviour, all accepted deviations, gate results, and
+any remaining limitation here.
 
 ## Context and orientation
 
@@ -300,419 +345,333 @@ tracing, calls synchronous startup validation in `repovec-core`, and exits. The
 implementation retains these startup checks, then creates one persistent async
 runtime and a loopback listener at `127.0.0.1:8080`; it must not create a
 nested runtime. The listener returns 503 while backend or security policies are
-absent. Its manifest currently has no HTTP framework or SSE dependency, and no
+absent. Its manifest currently has no HTTP framework, no MCP dependency, and no
 async runtime: `tokio` is a workspace dependency that this crate does not yet
-use. `Cargo.toml` holds workspace dependency versions. The design and security
-boundary are in `docs/repovec-appliance-technical-design.md`; adjacent roadmap
-items separate session management (4.1.2), Origin policy (4.1.3), and the
-grepai stdio bridge (4.2).
+use. `Cargo.toml` holds workspace dependency versions.
 
-The HTTP handler is a driving adapter: it receives network requests, validates
-and parses the transport envelope, then calls application-owned ports. An
-application port is a Rust trait owned by the application boundary and
-implemented by an infrastructure adapter. SSE is Server-Sent Events, a
-text-based HTTP event stream. The endpoint's `/mcp` path and socket binding
-should be injectable for tests, while the shipped default remains loopback
-until the deployment/security work explicitly changes it.
+The terms used below:
+
+- A _modern_ client speaks MCP 2026-07-28. Each of its requests carries the
+  protocol version, client identity, and client capabilities, in headers and in
+  the JSON-RPC `_meta` field. It may call `server/discover` first.
+- A _legacy_ client speaks an earlier revision. It begins with an
+  `initialize` request and expects a negotiated version in the reply.
+- A _dual-era_ server answers both. RMCP gates each behaviour on the version
+  a request negotiates.
+- An _application port_ is a Rust trait owned by the daemon's application
+  layer and implemented by an adapter or a test fake.
+- _Admission_ is the decision, made before a request body is read, whether a
+  request may proceed and on whose behalf.
 
 Read these references before implementation:
 
 - [Technical design: remote endpoint and MCP transport/security
   invariants](../repovec-appliance-technical-design.md).
 - [ADR 0003: MCP transport baseline](../adrs/adr-0003-mcp-transport-baseline.md).
-- [Roadmap items 4.1.1–4.2](../roadmap.md).
+- [ADR 0004: Terminate MCP and manage grepai backends](../adrs/adr-0004-grepai-backend-bridge.md).
+- [Roadmap items 4.1.1–4.2.3](../roadmap.md).
 - [Rust testing with rstest fixtures](../rust-testing-with-rstest-fixtures.md).
 - [Rust doctest and DRY guide](../rust-doctest-dry-guide.md), for any public
   Rust API examples (not for private handler behaviour).
 - [Dependency-injection testing guide](../reliable-testing-in-rust-via-dependency-injection.md).
 - [Complexity antipatterns and refactoring strategies](../complexity-antipatterns-and-refactoring-strategies.md).
-- [Ortho-config user's guide](../ortho-config-users-guide.md), as the project
-  precedent for observable CLI/service behaviour and configuration docs.
 - [rstest-bdd user's guide](../rstest-bdd-users-guide.md).
-- Skills: `codegraph-mcp`, `hexagonal-architecture`, `rust-router`,
-  `execplans`, `firecrawl-mcp`, plus the routed HTTP/service, async,
-  state-machine, testing, and verification references selected during
-  implementation.
+- Skills: `hexagonal-architecture`, `rust-router`, `execplans`,
+  `firecrawl-mcp`, plus the routed web-service, async, testing, and
+  verification references selected during implementation.
 
-Protocol references checked through Firecrawl:
+Protocol and library references, checked through Firecrawl on 2026-11-26:
 
-- [MCP 2025-11-25 transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
-  defines one GET/POST endpoint; POST request responses as JSON or SSE; GET
-  SSE; response correlation; and the distinction between disconnect and
-  cancellation. It says an SSE stream SHOULD be primed for reconnect and allows
-  clients to reconnect with `Last-Event-ID`.
-- [MCP 2026-07-28 Streamable HTTP specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
-  removes GET stream endpoints and protocol sessions, and makes closing an SSE
-  response stream cancellation. It is not the proposed target for this item.
-- [Axum SSE response documentation](https://docs.rs/axum/latest/axum/response/sse/index.html)
-  is candidate adapter documentation, not a reason to select an unverified
-  dependency version.
+- [MCP 2026-07-28 Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+  defines the POST endpoint, request metadata headers, response modes,
+  cancellation by stream closure, and how a modern-only server answers legacy
+  traffic.
+- [MCP 2026-07-28 versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning)
+  defines the era model, `server/discover`, and the compatibility matrix.
+- [MCP 2025-11-25 transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
+  defines the legacy behaviour that compatibility must not contradict.
+- [RMCP README at 3.11.0](https://github.com/modelcontextprotocol/rust-sdk/blob/rmcp-v3.11.0/README.md)
+  and
+  [`StreamableHttpServerConfig`](https://docs.rs/rmcp/latest/rmcp/transport/streamable_http_server/tower/struct.StreamableHttpServerConfig.html)
+  document the server transport this plan uses.
 
 ## Conformance basis
 
-- `docs/roadmap.md`, item 4.1.1: one endpoint supporting GET and POST; JSON
-  single-response and SSE modes. Adjacent items 4.1.2, 4.1.3, and 4.2 remain
+- `docs/roadmap.md`, item 4.1.1, as revised on 2026-11-26: one endpoint
+  accepting POST; JSON single-response and SSE modes; `server/discover`; legacy
+  clients served through `initialize` without sessions; GET and DELETE refused
+  with 405; no `Mcp-Session-Id`. Items 4.1.2, 4.1.3, 4.2, and 4.3 remain
   explicitly out of scope.
 - `docs/repovec-appliance-technical-design.md`, “MCP transport and security
-  invariants” and “Bridging to grepai MCP tools”: transport and security
-  architecture; current planned linkage to ADR 0003.
+  invariants” and “Bridging to grepai MCP tools”.
+- `docs/adrs/adr-0003-mcp-transport-baseline.md`, proposed decision: modern
+  stateless foundation, stateless legacy compatibility, RMCP, and a fail-closed
+  shipping composition.
+- `docs/adrs/adr-0004-grepai-backend-bridge.md`, proposed direction, for the
+  shape of the backend port only.
 - Repository baseline: `e8ed31007f784742620c8a73959c998964fae871`, inspected
-  again on 2026-11-24 after the rebase; the plan was first drafted against
-  `7763a99f5dff25547a972888ed26d6381c465bb9`. This identifies the inspected
-  source tree, not a specification revision.
-- `docs/adrs/adr-0003-mcp-transport-baseline.md`, proposed decision: pin
-  2025-11-25, keep test dependencies injected, and keep shipping composition
-  fail-closed.
-- Governing standard: MCP Streamable HTTP 2025-11-25 at the dated specification
-  URL linked above, with its specified 2025-03-26 fallback when the
-  protocol-version header and negotiated context are absent. The 2026-07-28
-  revision is documented as a non-target pending a separate architecture
-  decision.
-- No Terms of Reference or other ADR specific to transport exists beyond ADR
-  0003. Any new durable architectural choice must update that ADR and the
-  technical design before the affected milestone is accepted.
+  on 2026-11-24. This identifies the inspected source tree, not a specification
+  revision.
+- Governing standard: MCP Streamable HTTP 2026-07-28, with the earlier
+  revisions' behaviour for clients that negotiate them.
+- Any new durable architectural choice must update ADR 0003 and the technical
+  design before the affected milestone is accepted.
 
 Trace links:
 
 ```plaintext
 ROADMAP-4.1.1 -> TDD-MCP-TRANSPORT -> ADR-0003 -> EP-M1..EP-M4 -> HTTP contract tests
-ROADMAP-4.1.2/4.1.3/4.2 -> explicit exclusions -> no session/origin/stdio implementation
+ROADMAP-4.1.2/4.1.3/4.2/4.3 -> explicit exclusions -> no limits/origin/bridge/token work
 ```
 
 ## Verification plan
 
-The abstract model is independent of Axum. A request is a method, headers,
-body-length class, and optionally one JSON-RPC message. An admitted exchange
-has an owner token mapped to one unique bounded receiver, a server-selected
-response mode, a bounded lifetime, and messages delivered only to that owner.
-The adapter refines this model by parsing HTTP into the abstract request,
-calling one injected port, and encoding the result as JSON or SSE.
+The contract has two owners. MCP defines the protocol outcomes, and RMCP
+implements them; this plan pins them with tests so that a change in either is
+noticed. RepoVec defines admission and the closed production composition, and
+implements them in a layer placed in front of the RMCP service.
 
-Invalid input remains in the total model and must be rejected; it is not
-excluded by a proof precondition. For valid POST requests, one backend
-operation is called and exactly one terminal response preserves the typed
-JSON-RPC id. The POST SSE sequence may contain related server requests or
-notifications before that terminal response; JSON mode contains only the
-terminal response. Accepted notifications and JSON-RPC responses use a separate
-one-way backend operation and return 202 with no body. GET returns an
-owner-scoped SSE stream containing only server requests or notifications, never
-JSON-RPC responses because replay is out of scope. A GET source cannot
-broadcast to multiple owners.
+Admission runs first and reads no request body. Closed production admission
+takes precedence over every other `/mcp` outcome. In an injected open
+composition the order is Origin, then authentication, then the protocol.
+Unknown paths return 404; no second MCP route is introduced.
 
-The following status contract applies after admission unless a row explicitly
-states denial. Closed production admission takes precedence over every other
-`/mcp` outcome. In an injected open composition, validate Origin, authenticate,
-validate method/headers, acquire capacity, then read the bounded body. Unknown
-paths return 404; no second MCP route is introduced.
+| Input or outcome                                           | HTTP result                                                       | Owner         |
+| ---------------------------------------------------------- | ----------------------------------------------------------------- | ------------- |
+| Production admission is closed                             | `503` for every `/mcp` method, before the body is read            | RepoVec       |
+| Injected Origin policy denies a request                    | `403`, before the backend is called                               | RepoVec, MCP  |
+| Injected authentication policy denies a request            | `401`, before the backend is called                               | RepoVec       |
+| GET or DELETE on `/mcp`                                    | `405`                                                             | MCP, ADR 0003 |
+| Modern request whose backend replies without notifications | `200`, `application/json`, one result object                      | MCP           |
+| Modern request whose backend emits progress first          | `200`, `text/event-stream`, notifications then one final response | MCP           |
+| `server/discover`                                          | `200`, supported versions, tools capability, server identity      | MCP           |
+| Modern request with a version the server does not support  | `400`, `UnsupportedProtocolVersionError` listing supported ones   | MCP           |
+| Modern request whose header and `_meta` versions differ    | `400`, `HeaderMismatch` error                                     | MCP           |
+| Modern request for a method the server does not implement  | `404`, JSON-RPC error `-32601`                                    | MCP           |
+| Legacy `initialize`                                        | `200`, negotiated legacy version, no `Mcp-Session-Id` header      | ADR 0003      |
+| Legacy tool call after `initialize`                        | `200`, served without a session                                   | ADR 0003      |
+| Request carrying `Mcp-Session-Id` or `Last-Event-ID`       | The header is ignored; no session header is returned              | MCP           |
+| Request body larger than the configured limit              | `413`                                                             | RMCP          |
+| Any path other than `/mcp`                                 | `404`                                                             | RepoVec       |
 
-| Input or outcome                                                                                                    | HTTP result                                                                               |
-| ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Admitted POST request whose backend completes in JSON mode                                                          | `200`, `application/json`, one response object                                            |
-| Admitted POST request whose backend completes in SSE mode                                                           | `200`, `text/event-stream`, related messages then one terminal response                   |
-| Accepted POST notification or JSON-RPC response                                                                     | `202`, empty body                                                                         |
-| GET with an acceptable SSE header                                                                                   | `200`, owner-scoped `text/event-stream`                                                   |
-| Unsupported method                                                                                                  | `405`, `Allow: GET, POST`                                                                 |
-| `Accept` does not advertise both required POST media types, or GET omits SSE                                        | `406`                                                                                     |
-| POST content type is missing, duplicated, or not `application/json`                                                 | `415`                                                                                     |
-| Malformed JSON, invalid JSON-RPC envelope, batch, duplicate version header, or invalid/unsupported explicit version | `400`                                                                                     |
-| POST body exceeds 1 MiB                                                                                             | `413`                                                                                     |
-| Production admission is closed                                                                                      | `503` for every `/mcp` method, before body parsing, backend dispatch, or GET subscription |
-| Injected authentication policy denies a request                                                                     | `401`, before backend dispatch                                                            |
-| Injected Origin policy denies a request                                                                             | `403`, before backend dispatch                                                            |
-| Global exchange permit is exhausted                                                                                 | `503` with `Retry-After: 1`                                                               |
-| Backend deadline expires before headers commit                                                                      | `504`; close an already-started SSE response                                              |
-| Backend protocol failure before headers commit                                                                      | `502`; close an already-started SSE response                                              |
+Caption: Status contract for the endpoint, and who defines each row.
 
-Caption: Transport outcomes after the explicitly ordered admission checks.
+Rows owned by MCP cite the 2026-07-28 transport and versioning pages. EP-M1
+observes every row against the real RMCP crate. If RMCP's behaviour differs
+from a row that MCP defines, stop: that is a conformance defect to report
+upstream and to record in ADR 0003, not a row to edit quietly. Behaviour the
+specification leaves open, such as a missing `Accept` header, is observed in
+EP-M1 and added to this table before EP-M2 begins.
 
-POST clients advertise both `application/json` and `text/event-stream`, as
-required by the pinned specification. The server's injected response policy
-selects JSON or SSE; the request does not invent a preference header. GET
-requires `text/event-stream`. Parse media types case-insensitively and honour
-quality weights: `q=0` is not acceptance. Require explicit positive entries for
-both POST types; wildcard-only offers receive 406. Accept an optional UTF-8
-charset on JSON; reject other charset values. With no negotiated session
-context, an absent `MCP-Protocol-Version` uses the 2025-03-26 fallback; accept
-explicit 2025-03-26 and 2025-11-25 for the transport behaviours implemented
-here, and reject other explicit values. This is not a claim of full feature
-parity for either revision. Combine repeated `Accept` field lines as one HTTP
-list. Reject duplicate `MCP-Protocol-Version` fields rather than choosing an
-arbitrary value.
-
-Validate JSON-RPC 2.0 envelopes before dispatch: a request has a string method
-and a non-null string or integer ID; a notification has a string method and no
-ID; a response has a valid request ID and exactly one of `result` or `error`.
-Reject batches, null/float/array request IDs, malformed envelopes, and a
-response containing both or neither of `result`/`error`. Allow `params` to be
-absent, an object, or an array; reject present null or scalar values. Preserve
-valid parameters as opaque JSON; keep `result` and error data opaque. Require
-the exact `jsonrpc: "2.0"` value and validate an error object with integer
-`code` and string `message`. Reject duplicate envelope keys and conflicting
-method/result/error shapes. A wrong response ID, unsolicited response, early
-backend close, or second terminal response is a backend protocol error and must
-not be forwarded.
-
-Use these bounded internal defaults unless a reviewed design change replaces
-them: 1 MiB per POST body; 64 KiB per encoded event or final JSON response; a
-16-event and 256 KiB per-exchange queue; 64 global POST exchanges; 16 global
-GET streams; a 120-second POST deadline starting before body read; a 15-minute
-GET stream lifetime; and a 10-second graceful shutdown period before explicit
-task cancellation. Acquire the fail-closed admission gate and relevant permits
-before parsing a body, calling a backend, or subscribing to a GET source. If a
-POST client disconnects, drop only the HTTP delivery receiver. Keep its permit
-while backend work completes or reaches its deadline, discarding undeliverable
-messages. If a bounded event queue overflows, close delivery and drain/discard
-until the deadline rather than cancelling the backend because the client
-disconnected. A GET disconnect ends only that owner's source. Explicit deadline
-and shutdown may cancel work. An oversized backend message is a protocol
-failure (502 before headers, stream closure afterwards); never buffer the
-entire oversized value just to reject it. Bound backend serialization with a
-size-limited writer and require the port implementation to bound messages
-before enqueueing. The server supervisor retains the task and permit
-independently of the HTTP body. Use an injected clock for deadlines and await
-task completion on shutdown. Verify delayed POST completion after disconnect,
-permit retention and release, and no output leakage.
-
-| Obligation                         | Statement and method                                                                                                                                                                                                                                                                                          | Artefact and evidence                                                                                                                                                                                                                                                                                                | Non-vacuity and limits                                                                                                                                                                                                                                                                           |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| V-1 Dispatch                       | Every method/header/version/content-type partition selects exactly one permitted handler or rejection. Use exhaustive `rstest` cases with `googletest` and `pretty_assertions`.                                                                                                                               | Unit tests in `crates/repovec-mcpd/src/transport/`; focused `cargo test -p repovec-mcpd transport`. Unsupported method, type, version, and malformed message each assert their status and no success body. POST clients advertise both response media types; an injected server policy chooses the JSON or SSE case. | Include one witness per success and error partition, including missing version fallback, empty/invalid content types, and explicit unsupported version. A representative mutation that swaps JSON/SSE response policy must fail. Finite headers are enumerated; parser internals are not proven. |
-| V-2 Correlation and isolation      | Each owner token maps to one unique bounded receiver. Concurrent POST requests with equal IDs, concurrent GET streams, and interleaved GET/POST work cannot cross-route messages. Use async unit tests and proptest over bounded interleavings.                                                               | `crates/repovec-mcpd/src/transport/` routing tests; run focused tests under Tokio multi-thread runtime. Reverse two POST completions with equal IDs, open two GET owners, and interleave their events.                                                                                                               | Generator classifies both completion orders, duplicate/non-duplicate IDs, and multiple GET owners with nonzero samples. A global ID map or broadcast mutation must fail. This checks repository routing, not Tokio internals.                                                                    |
-| V-3 Wire representation            | JSON mode is one complete JSON object with the original correlation id; SSE mode is valid UTF-8 event framing, with each data payload a valid JSON-RPC message and final response last. Use `rstest`, `insta` snapshots for normalized JSON/SSE variants, and proptest for event payload/framing round trips. | Unit encoder tests and snapshots colocated with transport code; `cargo test -p repovec-mcpd transport`. Add BDD assertions over a real loopback HTTP client.                                                                                                                                                         | Snapshots exclude credentials and normalize only nondeterministic headers; generators include empty event lists, multiline JSON serialization, Unicode, and multiple events. Mutation that drops a separator or response id must fail. Snapshot equality alone is not treated as proof.          |
-| V-4 Bounds and lifecycle           | Oversized bodies, excess concurrent exchanges, slow/non-reading clients, timed-out work, and shutdown cannot cause unbounded buffering or false success. A disconnected POST retains its permit until backend completion/deadline; delivery closes and undeliverable events are dropped.                      | Adapter tests and `crates/repovec-mcpd/tests/streamable_http.rs`; `cargo test -p repovec-mcpd`. Observe limit response, stream closure, permit release, and clean task completion.                                                                                                                                   | Exercise below/at/above each stated limit, a stalled stream, a non-reading client, and delayed completion after disconnect. A seeded limit-removal mutation must fail. These bounds do not prove resource use under arbitrary load.                                                              |
-| V-5 Production gate                | Admission runs before body parsing, backend calls, or GET subscription. Shipped composition accepts no request as successful until backend, authentication, and Origin policy are supplied.                                                                                                                   | `crates/repovec-mcpd/tests/streamable_http.rs`; request `/mcp`, observe 503, and assert fake backend/event-source call counts remain zero. Injected test composition returns protocol responses.                                                                                                                     | Demonstrate inhabited closed and injected open compositions. A parse/dispatch-before-denial mutation must fail. Socket tests exercise repository composition; TLS termination remains external.                                                                                                  |
-| V-6 Contract examples              | The observable endpoint supports JSON POST, SSE POST, GET SSE, unsupported methods, and protocol errors with pinned headers and status. Use `rstest-bdd` scenarios backed by real loopback HTTP and fake backend/admission ports.                                                                             | `crates/repovec-mcpd/tests/features/streamable_http.feature` and matching steps; run `cargo test -p repovec-mcpd`.                                                                                                                                                                                                   | Keep scenarios for valid JSON response, valid SSE response, GET event delivery, unsupported method/version, body limit, and fail-closed composition. Each must fail for the intended absent behaviour before implementation.                                                                     |
-| V-7 Message classes and disconnect | POST SSE may carry related server requests/notifications before one terminal correlated response; JSON mode has only the response. GET carries only owner-scoped server requests/notifications, never responses. POST disconnect does not cancel backend work.                                                | Async and loopback tests: delayed backend completion after client drop; two GET streams; interleaved GET and POST messages; invalid GET response, duplicate/wrong terminal ID, unsolicited response, and early backend close.                                                                                        | Each class has a reachable witness. Mutations that broadcast, send a response on GET, cancel POST on receiver drop, or emit a wrong/second response must fail.                                                                                                                                   |
-
-Candidate semantic lemmas, stated as proof-sketch hypotheses rather than
-assumed truths:
-
-- **L-1 Partition completeness:** every admissible method and media-type
-  combination is either accepted by exactly one branch or rejected; no input
-  can fall through to a success default.
-- **L-2 Owner preservation:** the owner token maps to one unique bounded
-  receiver, and encoding/delivery preserve that map independent of interleaving
-  or equal typed JSON-RPC IDs.
-- **L-3 Correlation preservation:** serialization retains the admitted
-  JSON-RPC request ID for its final response.
-- **L-4 Boundedness:** each exchange consumes no more than the body, per-event,
-  per-exchange queue, global concurrency, and lifetime bounds. A disconnected
-  POST drops delivery but retains its permit until completion or deadline.
+| Obligation               | What must hold                                                                                                                                                                               | Evidence                                                                                  |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| V-1 Negotiation          | Every era, version, and method partition in the table above produces its stated result. No partition is left to an untested default.                                                         | `rstest` cases over a loopback socket with a non-RMCP client                              |
+| V-2 No session artefacts | No response in any era carries `Mcp-Session-Id`. GET and DELETE never open a stream. A legacy client completes `initialize` and a tool call with no session.                                 | Loopback tests; an RMCP client in its `Initialize` lifecycle as an interoperability smoke |
+| V-3 Wire representation  | JSON mode is one complete JSON object carrying the request's ID. SSE mode is valid event framing, each data payload a JSON-RPC message, ending with the one final response for that request. | Loopback tests; `insta` snapshots of normalized JSON and SSE bodies                       |
+| V-4 Response ownership   | Two concurrent requests with equal JSON-RPC IDs each receive the result of their own call.                                                                                                   | One loopback test with a fake backend that returns a caller-specific marker               |
+| V-5 Production gate      | The shipped composition answers 503 to every method without reading a body or calling a backend, and has no configuration that opens it.                                                     | Loopback test against the production composition function; a recording fake backend       |
+| V-6 Contract examples    | The observable endpoint supports the scenarios listed under "Plan of work".                                                                                                                  | `rstest-bdd` scenarios backed by a real loopback server                                   |
+| V-7 Body bound           | A body over the limit is refused with 413 whether it arrives with `Content-Length` or chunked.                                                                                               | Loopback tests with both encodings                                                        |
+| V-8 Startup and shutdown | Startup checks run before the runtime starts; a failed check starts no listener. Shutdown stops accepting and ends open streams.                                                             | Composition-function tests with injected startup checks and an ephemeral listener         |
 
 Caption: Verification obligations and their executable evidence.
 
-No Verus proof is currently selected: these obligations concern finite
-dispatch, bounded async integration, or framework/network behaviour, and the
-required claims can be tested at their executable boundaries. If a pure,
-unbounded routing kernel emerges, stop before adding it; specify its abstract
-state, representation relation, lemmas, trusted assumptions, and mutation
-controls here, then propose an explicit EP-P proof milestone for approval. That
-conditional milestone must pin the verifier in `tools/verus/VERSION` and
-`tools/verus/SHA256SUMS` (neither exists yet), use
-`prover-tools verus install --repo-root .`, and pass
-`prover-tools verus run --repo-root . --proof-file verus/mcp_transport.rs` in
-addition to `make check-fmt`, `make typecheck`, `make lint`, and `make test`.
-Prove the selected semantic property for all admissible inputs with substantive
-lemmas and a refinement relationship to the executable kernel; a disconnected
-model is insufficient. Do not add proof files, a stub gate, or speculative
-solver plumbing in the baseline design. Tests remain necessary for HTTP, SSE
-framing, runtime wiring, and the fail-closed composition even if a later proof
-discharges a semantic lemma. No unproved theorem may be made to compile with
-assumptions or stubs.
+Each obligation needs a plausible wrong implementation that its test rejects.
+For V-2, a server left in RMCP's default legacy session mode returns a session
+header. For V-5, a composition that consults the admission policy after the
+body is read lets an oversized body reach the 413 path. For V-4, a fake that
+ignores the caller returns the same marker twice. Record the seeded fault and
+the failing output for each obligation in this plan.
 
-External axioms are limited to the pinned MCP specification's normative
-contract; the documented Axum/Tokio APIs; serde's JSON serialization contract;
-and the operating system's loopback socket behaviour. Do not attempt to prove
-third-party internals. Test the repository-owned adapter against those actual
-interfaces. Required evidence includes non-empty cases for every dispatch
-class, reachable duplicate-ID interleavings, and a negative mutation or seeded
-fault for each routing/framing/bounds obligation. If a tool cannot support the
-planned negative control, document an independent counterexample before
-accepting the obligation.
+No Verus proof is selected. These obligations concern finite negotiation
+partitions and the behaviour of a third-party protocol implementation over a
+network boundary, and tests at that boundary are the appropriate evidence. Do
+not add proof files, a stub gate, or solver plumbing. The repository has no
+`tools/verus/` or `verus/` directory at this baseline.
+
+External axioms are limited to the MCP specification's normative contract; the
+documented RMCP, Axum, and Tokio APIs; and the operating system's loopback
+socket behaviour. Do not attempt to prove third-party internals. Test the
+repository-owned composition against those actual interfaces.
 
 ## Plan of work
 
 The work is test-first. Each implementation stage starts with the smallest
 failing contract test, makes the smallest change that turns it green, then
-refactors while retaining the same focused evidence. `repovec-mcpd` remains a
-small daemon crate with a `src/lib.rs` target for integration testing; keep
-protocol rules in a cohesive transport module and keep HTTP request/response
-types at the adapter edge.
+refactors while retaining the same focused evidence. `repovec-mcpd` gains a
+`src/lib.rs` target so that integration tests can drive the same composition
+function the binary uses.
 
-Use stable scenario/test names and injected clocks; never mutate the parent
+Use stable scenario and test names and injected clocks; never mutate the parent
 process environment. Preserve the existing startup tests in
-`crates/repovec-core/src/appliance/daemon_startup/` and test the new serve
-handoff through the same production composition function with injected startup
-checks and an ephemeral listener. A test-only executable may exercise this
-function in a child process; no bypass switch belongs in the shipping binary.
-Also assert the real binary invokes this composition after successful
-validation through the existing startup seam.
+`crates/repovec-core/src/appliance/daemon_startup/`, and test the new serve
+handoff through the production composition function with injected startup
+checks and an ephemeral listener.
 
-The first approved milestone compares the official Rust SDK with a thin Axum
-adapter using the same pinned black-box contract cases. It may inspect
-dependencies and run a disposable prototype; it may not select new protocol
-semantics or introduce production exposure. Retain only the option that passes
-the contract cases and respects the ownership/security boundaries, then record
-the exact crate version and features in ADR 0003 before dependency changes.
+The structure has three parts:
 
-Implement the transport in separable modules such as `transport::contract`,
-`transport::http`, and `transport::sse` where the existing crate structure
-supports them. Define an application-owned backend port for one accepted MCP
-message and a stream source for GET events; do not expose Axum types in the
-port. A backend request port returns a bounded sequence that may contain
-related server requests/notifications and exactly one terminal correlated
-response. A separate one-way port accepts notifications/responses and cannot
-emit a terminal reply. A GET source returns only server requests/notifications;
-the type should make JSON-RPC responses unrepresentable there. Give each
-POST/GET exchange an owner token and unique bounded receiver. Set the limits
-below as explicit internal configuration with test injection. Do not add a user
-CLI or public configuration surface in 4.1.1.
+- an application layer that owns the `ToolBackend` and `Admission` ports and a
+  small RMCP server handler that advertises tools only and delegates to the
+  backend port;
+- an inbound adapter that builds RMCP's Streamable HTTP service with legacy
+  session mode disabled, sets the body limit, places the admission layer in
+  front of it, and mounts both at `/mcp` on an Axum router; and
+- a composition root that runs the startup checks, builds the runtime, binds
+  the listener, and wires either the closed production policies or, in tests,
+  injected fakes.
 
-Keep these numeric defaults unless the approved design review records a reason
-to change them: loopback bind `127.0.0.1:8080`; 1 MiB POST body; 64 KiB encoded
-event; 16 events and 256 KiB per exchange; 64 concurrent POSTs; 16 concurrent
-GET streams; 120-second POST deadline; 15-minute GET lifetime; 10-second
-graceful shutdown. The test composition binds an ephemeral loopback port. These
-limits are internal constants/configuration and do not add operator-facing
-options in this item.
+Use these initial defaults unless EP-M1 gives a reason to change them: loopback
+bind `127.0.0.1:8080`, and a 1 MiB POST body limit. Concurrency limits and
+request deadlines belong to item 4.1.2.
 
-Add one BDD feature specification before production code:
+The behavioural scenarios are:
 
 ```gherkin
-Feature: MCP Streamable HTTP transport
-  Scenario: Return one JSON response for a POST request
+Feature: Streamable HTTP endpoint
+
+  Scenario: Answer a modern tool call with JSON
     Given the MCP test server has an accepting fake backend
-    And the client accepts application/json and text/event-stream
-    When the client posts a valid MCP request to /mcp
-    Then the response is one application/json object with the same request id
+    When a modern client posts a tool call
+    Then the response is one JSON result with status 200
 
-  Scenario: Stream a POST response as server-sent events
-    Given the MCP test server has an accepting fake backend configured to use SSE
-    And the client accepts application/json and text/event-stream
-    When the client posts a valid MCP request
-    Then the response contains ordered SSE data events ending in its response
+  Scenario: Stream progress before the result
+    Given the MCP test server has a fake backend that reports progress
+    When a modern client posts a tool call with a progress token
+    Then the response is an event stream ending with the result
 
-  Scenario: Open the GET event stream
-    Given the MCP test server has an owned event source
-    And the client accepts text/event-stream
-    When the client gets /mcp
-    Then the response is text/event-stream with only that source's event
+  Scenario: Describe the server before any other request
+    Given the MCP test server has an accepting fake backend
+    When a modern client posts server/discover
+    Then the response lists the supported versions and the tools capability
 
-  Scenario: Keep concurrent GET event sources separate
-    Given two MCP clients have different owned event sources
-    When both clients get /mcp concurrently
-    Then each client receives only its own server message
+  Scenario: Serve a legacy client without a session
+    Given the MCP test server has an accepting fake backend
+    When a legacy client initializes and then posts a tool call
+    Then both responses succeed and neither carries a session header
 
-  Scenario: Finish backend work after a POST client disconnects
-    Given the MCP test server has a delayed accepting backend
-    When the client disconnects before its POST response arrives
-    Then backend work completes or reaches its deadline without forwarding output
+  Scenario: Refuse the removed stream endpoint
+    Given the MCP test server has an accepting fake backend
+    When a client sends GET to the MCP endpoint
+    Then the response status is 405
 
-  Scenario: Keep the shipped composition closed
+  Scenario: Keep the shipped daemon closed
     Given the MCP daemon has no backend or accepted security policies
-    When a client posts to /mcp on loopback
-    Then the response is service unavailable with no successful MCP result
+    When a client posts a tool call
+    Then the response status is 503 and no backend is called
 ```
 
-The BDD file is the observable specification. Add finite error and edge cases in
-`rstest` tables, snapshots only for stable multivariant wire output, and
-properties for framing/interleaving relations that hold across generated
-inputs. Add real loopback end-to-end tests because this change establishes an
-HTTP network boundary. Do not use external grepai, TLS, or a public service in
-these tests.
+Use `googletest` matchers, `pretty_assertions` for structured values, `rstest`
+tables for the negotiation partitions, and `insta` snapshots only for stable
+multivariant wire output with nondeterministic fields normalized. Do not use
+external grepai, TLS, or a public service in these tests.
 
-Update `docs/repovec-appliance-technical-design.md` and ADR 0003 with the final
-adapter/port, version, startup, listener, limits, and the accepted deviation
-from 2025-11-25 reconnect guidance. Add `docs/repovec-mcpd-architecture.md` to
-document the internal port, ownership, and reuse rules. Update
+Update `docs/repovec-appliance-technical-design.md` and ADR 0003 with the
+verified RMCP version and features, the listener, the body limit, and the
+observed legacy behaviour. Add `docs/repovec-mcpd-architecture.md` to document
+the ports, their ownership, and their reuse rules. Update
 `docs/developers-guide.md` with the adapter and test-injection convention.
 Update `docs/users-guide.md` because the daemon changes from startup-and-exit
 to a persistent loopback service returning 503 while disabled; state the bind
-address, status behaviour, startup/shutdown behaviour, protocol pin, and that
-public authenticated access is not yet available. Keep public Rust API doctests
-only if the implementation exposes a public API, and follow the doctest guide.
+address, status behaviour, startup and shutdown behaviour, the protocol
+revisions served, and that public authenticated access is not yet available.
 Mark roadmap item 4.1.1 done only in the completed implementation milestone,
 after documentation and all gates pass.
 
 ## Milestones and plateaus
 
-### EP-M1 — protocol and adapter feasibility
+### EP-M1 — RMCP verification
 
-**Requirements and gaps:** ROADMAP-4.1.1 and ADR-0003 protocol/tooling
-decision. **End state:** Inspect the official SDK first; discard it without a
-prototype if its documented interfaces already contradict the required
-boundary. Otherwise compare the minimum SDK and Axum prototypes using the same
-contract cases. Retain one path and record exact versions/features in ADR 0003.
-Keep prototypes in repository scratch space, never a `/tmp` build target, and
-remove them before the milestone commit. Run `make check-fmt`, `make typecheck`,
-`make lint`, and `make test` sequentially; the retained repository must be
-green. **Acceptance evidence:** Protocol contract cases establish POST JSON,
-POST SSE, GET SSE, 202 handling, invalid version, and unsupported media/method
-behaviour; the chosen path passes every in-scope case. **Conformance check:**
-Requirements match the pinned revision; design boundaries remain intact;
-2025-11-25 remains the target; no new public interface, dependency, trust
-boundary, or persisted format is introduced; trace links are current.
-**Recovery:** Delete the disposable prototype and repeat the comparison from
-the contract cases. **Remaining gaps:** No shipped listener or application
-backend. **Compatibility decision:** none.
+**Requirements and gaps:** ROADMAP-4.1.1 and the ADR-0003 choice of RMCP. **End
+state:** A disposable prototype in repository scratch space, never a `/tmp`
+build target, mounts RMCP's Streamable HTTP service with a trivial handler, and
+each check below is observed over a loopback socket with a non-RMCP client.
+Record the exact crate version, features, and observations in ADR 0003, then
+delete the prototype before the milestone commit. The checks:
 
-### EP-M2 — tested transport contracts
+1. A modern tool call succeeds, and `server/discover` reports the supported
+   versions.
+2. With `legacy_session_mode` disabled, `initialize` and a following tool
+   call succeed for 2025-11-25, 2025-06-18, and 2025-03-26, and no response
+   carries `Mcp-Session-Id`.
+3. GET and DELETE return 405; `Mcp-Session-Id` and `Last-Event-ID` request
+   headers change nothing.
+4. Every row of the status contract that MCP or RMCP owns behaves as stated.
+5. A handler that emits a notification before its result switches the
+   response to SSE; one that does not replies with JSON.
+6. Closing the response stream cancels the handler, for a modern and for a
+   legacy request.
+7. A Tower layer in front of the service can answer 503, 401, or 403 without
+   the body being read, and can pass an authenticated caller to the handler.
+8. A server handler can be written by hand, without RMCP's macros, and passes
+   this repository's Clippy and Whitaker configuration.
+9. RMCP's HTTP stack unifies with the `axum` and `hyper` versions already in
+   `Cargo.lock`, or the cost of a second copy is recorded.
 
-**Requirements and gaps:** Dispatch, envelope validation, response mode,
-correlation, and bounded message ownership for ROADMAP-4.1.1. **End state:**
-Add failing unit tests, capture the intended red evidence, then implement the
-pure contract types and validators that make them pass. Introduce `src/lib.rs`
-and the application ports together with their tested consumers. Do not add
-endpoint BDD bindings until EP-M3 can make them pass. No ignored,
-expected-failure, staged-away, or restored failing tests are permitted at this
-milestone boundary. Run `make check-fmt`, `make typecheck`, `make lint`, and
-`make test` sequentially and commit only the green plateau. **Acceptance
-evidence:** The focused contract suite first fails on missing validation
-behaviour, then passes for both success and rejection partitions. **Conformance
-check:** Recheck ROADMAP-4.1.1 clauses, domain purity, selected adapter,
-upstream assumptions, dependency changes, trust boundary, and trace links.
-Ports are owned by the daemon application, not its HTTP adapter. **Recovery:**
-Revert the complete milestone commit if necessary; preserve red and green
-transcripts in this plan. **Remaining gaps:** Executable HTTP adapter and
-BDD/socket evidence. **Compatibility decision:** none.
+Run `make check-fmt`, `make typecheck`, `make lint`, and `make test`
+sequentially; the retained repository must be green. **Acceptance evidence:** A
+table in ADR 0003 giving the observed result of each check. **Conformance
+check:** Requirements match ADR 0003; no public interface, trust boundary, or
+persisted format is introduced; trace links are current. **Recovery:** Delete
+the disposable prototype and repeat. If any check fails, stop and report it;
+the tolerance above forbids a bespoke adapter without renewed approval.
+**Remaining gaps:** No shipped listener or application backend. **Compatibility
+decision:** none.
 
-### EP-M3 — HTTP/SSE adapter and bounded routing
+### EP-M2 — application ports and server handler
 
-**Requirements and gaps:** One `/mcp` GET/POST endpoint, JSON/SSE modes,
-correlation, framing, bounds, and runtime wiring. **End state:** Injected test
-composition serves JSON POST, SSE POST, and GET SSE over loopback; production
-composition fails closed. Each exchange owns bounded response delivery. The SSE
-stream has no replay or session generation; the ADR records the accepted
-temporary gap against 2025-11-25 reconnection recommendations. Run
-`make check-fmt`, `make typecheck`, `make lint`, and `make test` sequentially
-after the milestone. The daemon's startup checks still run synchronously before
-the serve runtime starts. **Acceptance evidence:** BDD and socket tests observe
-expected headers, status, content type, complete JSON/SSE frames, correlation
-under duplicate IDs, resource-limit failures, closed production composition,
-and clean shutdown. **Conformance check:** Confirm versioned wire contract; no
-session, Origin, or stdio implementation leaked into this milestone; no
-unapproved public API, dependency, trust boundary, or persisted format; keep
-trace links current. **Recovery:** Revert adapter wiring while retaining tests
-and port contracts; remove disposable dependencies only when not selected.
-**Remaining gaps:** Authentication, strict Origin allowlist, session
-lifecycle/replay, grepai bridge, HTTPS deployment, and remote corpus queries.
+**Requirements and gaps:** The tool catalogue, tool calls, and capability
+advertisement for ROADMAP-4.1.1. **End state:** Add failing tests, capture the
+intended red evidence, then add `src/lib.rs`, the `ToolBackend` and `Admission`
+ports, a fake backend for tests, and the RMCP server handler that advertises
+tools only and delegates to the port. Add the `rmcp` dependency with the
+features verified in EP-M1. No ignored, expected-failure, or staged-away tests
+are permitted at this milestone boundary. Run `make check-fmt`,
+`make typecheck`, `make lint`, and `make test` sequentially and commit only the
+green plateau. **Acceptance evidence:** Handler tests show that the advertised
+capabilities are tools only, that the catalogue and call results come from the
+port, and that a backend error becomes an MCP error and never a fabricated
+success. **Conformance check:** Recheck ROADMAP-4.1.1 clauses, port ownership,
+dependency changes, and trace links. Ports are owned by the daemon application
+and carry no transport type. **Recovery:** Revert the complete milestone commit
+if necessary; preserve red and green transcripts in this plan. **Remaining
+gaps:** Executable HTTP endpoint and socket evidence. **Compatibility
+decision:** none.
+
+### EP-M3 — HTTP endpoint, admission, and composition
+
+**Requirements and gaps:** One `/mcp` endpoint, both response modes,
+negotiation in both eras, the body bound, the closed production composition,
+and runtime wiring. **End state:** The injected test composition serves the
+status contract over loopback; the production composition answers 503. The
+daemon's startup checks still run synchronously before the serve runtime
+starts, and shutdown ends open streams. Run `make check-fmt`, `make typecheck`,
+`make lint`, and `make test` sequentially after the milestone. **Acceptance
+evidence:** Obligations V-1 to V-8 pass, each with its recorded seeded fault.
+**Conformance check:** Confirm the wire contract in both eras; no session,
+concurrency-limit, Origin-policy, bridge, or token implementation leaked into
+this milestone; no unapproved public API, dependency, trust boundary, or
+persisted format; keep trace links current. **Recovery:** Revert adapter wiring
+while retaining tests and port contracts. **Remaining gaps:** Request limits
+and cancellation propagation (4.1.2), Origin allowlist (4.1.3), grepai bridge
+(4.2), tokens (4.3), HTTPS deployment, and remote corpus queries.
 **Compatibility decision:** none.
 
 ### EP-M4 — documentation and acceptance
 
 **Requirements and gaps:** Design traceability and complete observable
-acceptance for ROADMAP-4.1.1. **End state:** Design/ADR/developer documentation
-reflects implementation; user guide documents the persistent listener and
-unavailable response; roadmap item 4.1.1 is marked done only after all
-implementation evidence passes. Run `make fmt`, `make markdownlint`, and
-`make nixie` sequentially after doc changes. Then run `make check-fmt`,
-`make typecheck`, `make lint`, and `make test` sequentially. **Acceptance
-evidence:** All gate transcripts are recorded in this plan, the roadmap
-checkbox and design are accurate, and a loopback client can exercise the
-injected transport while the shipped composition remains closed. **Conformance
-check:** Reconcile discoveries against roadmap, technical design, ADR 0003, and
-the pinned specification; verify all trace links and boundaries. **Recovery:**
-Keep the implementation complete but leave roadmap unchecked if any required
-gate or upstream update fails; correct the evidence and rerun the affected
+acceptance for ROADMAP-4.1.1. **End state:** Design, ADR, and developer
+documentation reflects implementation; the users guide documents the persistent
+listener and its unavailable response; roadmap item 4.1.1 is marked done only
+after all implementation evidence passes. Run `make fmt`, `make markdownlint`,
+and `make nixie` sequentially after documentation changes. Then run
+`make check-fmt`, `make typecheck`, `make lint`, and `make test` sequentially.
+**Acceptance evidence:** All gate transcripts are recorded in this plan, the
+roadmap checkbox and design are accurate, and a loopback client can exercise
+the injected transport while the shipped composition remains closed.
+**Conformance check:** Reconcile discoveries against the roadmap, technical
+design, ADR 0003, and the specification; verify all trace links and boundaries.
+**Recovery:** Keep the implementation complete but leave the roadmap unchecked
+if any required gate fails; correct the evidence and rerun the affected
 sequential gates. **Remaining gaps:** Explicitly list the later roadmap items
 above. **Compatibility decision:** none.
 
@@ -747,133 +706,122 @@ set -o pipefail
 make nixie 2>&1 | tee /tmp/repovec-nixie-4-1-1.out
 ```
 
-Focused commands should follow the selected adapter's test layout. The
-anticipated focused unit command is `cargo test -p repovec-mcpd transport`; the
-full `make test` target is authoritative. Do not invent a passing test count:
-record actual counts and concise output after execution. Expected acceptance
+The anticipated focused command is `cargo test -p repovec-mcpd`; the full
+`make test` target is authoritative. Do not invent a passing test count: record
+actual counts and concise output after execution. Expected acceptance
 transcripts will include examples such as:
 
 ```plaintext
-POST /mcp Accept: application/json, text/event-stream -> JSON policy: 200 application/json
-POST /mcp Accept: application/json, text/event-stream -> SSE policy: 200 text/event-stream
-GET /mcp Accept: text/event-stream -> 200 Content-Type: text/event-stream
-production composition without policies/backend -> 503, no MCP success body
+POST /mcp tools/call, 2026-07-28, backend replies directly -> 200 application/json
+POST /mcp tools/call, 2026-07-28, backend reports progress -> 200 text/event-stream
+POST /mcp server/discover                                  -> 200, tools capability only
+POST /mcp initialize, 2025-11-25                           -> 200, no Mcp-Session-Id
+GET  /mcp                                                  -> 405
+production composition, any method                         -> 503, no backend call
 ```
-
-Before implementation, verify the current workspace dependency versions and
-test support, use CodeGraph for relevant call paths, and compare SDK/Axum
-behaviour against the contract cases. Use the requested community-of-experts
-review before user approval; incorporate review findings into this plan and
-record material decisions before asking for approval.
 
 ## Validation and acceptance
 
-The plan itself is accepted when the user explicitly confirms the DRAFT and the
-proposed protocol/security boundaries. That confirmation is not implied by
-silence. After approval, each milestone must pass its focused acceptance and
-the applicable sequential gates before work proceeds.
-
-The completed feature is accepted when an injected real HTTP server accepts
-POST JSON and POST SSE, GET returns a live SSE stream from its injected owner,
-unsupported inputs produce protocol-appropriate failures, duplicate IDs do not
-cross-route concurrent responses, resource limits and shutdown are observable,
-and the shipped binary refuses successful MCP work until its real backend and
-security policies are wired. The selected protocol revision and limitations
-must be stated accurately in the design and ADR. No Verus command is required
-unless a later approved plan revision selects a pure unbounded proof.
+Acceptance is behavioural. A loopback client that is not RMCP's can complete a
+modern tool call in both response modes, call `server/discover`, complete a
+legacy `initialize` and tool call without receiving a session, and be refused
+on GET; and the shipped binary refuses MCP work until its real backend and
+security policies are wired. An RMCP client completes one call in each of its
+`Discover` and `Initialize` lifecycles as an interoperability smoke. The
+protocol revisions served and the limitations must be stated accurately in the
+design and ADR.
 
 ## Idempotence and recovery
 
 Contract tests and loopback servers use ephemeral ports and injected
-dependencies, so repeated test runs create no persistent session or event
-state. Keep the selected dependency and lockfile change only after its spike
-passes the pinned contract. If a test process stops midway, rerun the focused
-command; do not reuse a stale listener or event log. If a milestone fails, keep
-the last coherent commit and plan evidence, correct the smallest failed
-contract, and rerun that milestone's gates sequentially.
+dependencies, so repeated test runs create no persistent state. Keep the `rmcp`
+dependency and lockfile change only after EP-M1 passes. If a test process stops
+midway, rerun the focused command; do not reuse a stale listener. If a
+milestone fails, keep the last coherent commit and plan evidence, correct the
+smallest failed contract, and rerun that milestone's gates sequentially.
 
 ## Artefacts and notes
 
 Commit each coherent green milestone after its gates; never commit a red
 intermediate state. Record conformance evidence and rollback commit IDs here.
 
-Expected implementation artefacts include transport unit tests, the BDD feature
-and step bindings, stable normalized snapshots for the JSON/SSE variants, and a
-loopback end-to-end test. Exact module paths may be refined after the SDK/Axum
-spike, but that choice must not change port ownership or protocol contracts.
+Expected implementation artefacts include handler unit tests, the BDD feature
+and step bindings, stable normalized snapshots for the JSON and SSE variants,
+and a loopback end-to-end test. Exact module paths may be refined in EP-M1, but
+that choice must not change port ownership or protocol contracts.
+
 Planning validation (2026-10-20): `make fmt`, `make check-fmt`,
 `make markdownlint` (including spelling), `make nixie`, and `git diff --check`
-passed. The spelling generator left `typos.toml` unchanged. Runtime lint and
-tests are reserved for implementation milestones because this change is
-documentation-only. Record later command output and deviations here.
+passed.
 
-Rebase validation (2026-11-18): the two planning commits replayed onto `main` at
-`df8c445` without conflict, and `git range-diff` shows both unchanged.
+Rebase validation (2026-11-18 and 2026-11-24): the planning commits replayed
+onto `main` at `df8c445` and then `e8ed310` without conflict.
 
-Rebase validation (2026-11-24): the three planning commits replayed onto `main`
-at `e8ed310` without conflict. The only `range-diff` change is context in
-`docs/contents.md`, where `main` added the 2.2.1 plan and ADR 0002.
+Design review evidence (2026-11-26): sources were read through Firecrawl. The
+MCP changelog, transport, and versioning pages, the RMCP release notes, README,
+and configuration reference, the grepai changelog and `mcp-serve` reference,
+and the MCP release-cycle announcement are linked from ADR 0003 and ADR 0004.
+Nothing was executed against RMCP or grepai; EP-M1 and the ADR 0004 spike own
+that evidence.
 
 ## Interfaces and dependencies
 
-Create `crates/repovec-mcpd/src/application.rs` for port ownership and
-`src/transport/{contract,http,sse}.rs` for the adapter. The application has no
-Axum, Hyper, or socket types. Use these conceptual signatures, refining the
-async spelling to the selected stack without changing their contracts:
+Create `crates/repovec-mcpd/src/application/` for the ports and server handler,
+and `src/transport/` for the Axum and RMCP wiring. Use these conceptual
+signatures, refining the async spelling and the RMCP type names to the verified
+release without changing their contracts:
 
 ```rust,ignore
-trait McpBackend {
-    async fn request(&self, owner: ExchangeOwner, request: RpcRequest,
-        output: BoundedPostSink) -> Result<(), BackendError>;
-    async fn accept(&self, owner: ExchangeOwner, message: OneWayMessage)
-        -> Result<(), BackendError>;
+/// Supplies the tool catalogue and executes tool calls for one caller.
+trait ToolBackend {
+    async fn catalogue(&self, caller: &Caller) -> Result<Vec<Tool>, BackendError>;
+    async fn call(&self, caller: &Caller, call: ToolCall, context: CallContext)
+        -> Result<ToolOutcome, BackendError>;
 }
-trait EventSource {
-    async fn subscribe(&self, owner: ExchangeOwner, output: BoundedGetSink)
-        -> Result<(), BackendError>;
+
+/// Decides, before a body is read, whether a request may proceed.
+trait Admission {
+    fn admit(&self, head: &RequestHead) -> Result<Caller, Denial>;
 }
 ```
 
-`ExchangeOwner` is an opaque connection/exchange token, distinct from the
-JSON-RPC ID and from a future session ID. `OneWayMessage` is a notification or
-client response. `BoundedPostSink` accepts related server requests,
-notifications, and one final response; `BoundedGetSink` accepts only server
-requests and notifications. Each sink consumes a delivery capability unique to
-one receiver. The server supervisor owns the producer task and capacity permit;
-HTTP body drops cannot drop that task. The runtime is an implementation detail
-of these capabilities. `BackendError` is a semantic error enum, not an opaque
-report. Admission returns either an owner capability or a typed denial.
+`Tool`, `ToolCall`, and `ToolOutcome` stand for RMCP's tool, call-parameter,
+and call-result model types. `Caller` is an opaque value produced only by
+admission; it identifies who is asking and will carry the authorized corpus
+scope once item 4.3 defines it. Every backend call receives it, which is what
+lets item 4.2.2 authorize tool arguments. `CallContext` carries the request's
+cancellation signal and a sink for progress notifications, so item 4.1.2 can
+propagate cancellation without changing the port. `RequestHead` is an
+application-owned view of the method, path, and headers; it is not an HTTP
+framework type. `BackendError` and `Denial` are semantic error enums, not
+opaque reports.
 
-JSON mode is selected only for exchanges whose backend contract promises one
-terminal reply without interactive server requests; if an intermediate message
-arrives, fail with 502 rather than silently losing it. SSE mode can carry the
-full related sequence. The policy is injected at server construction and can
-choose SSE conservatively; do not infer a method whitelist or interpret grepai
-tool semantics. Test both policy settings with the same request fixture.
+The production composition supplies an `Admission` that denies every request
+with "service unavailable", and no backend. Tests supply an accepting admission
+and a fake backend. There is no other way to open the endpoint.
 
-The selected HTTP adapter must support one `/mcp` route, request-body limits,
-response streaming, timeouts, cancellation on server shutdown, and loopback
-test binding. Axum's documented SSE response and `KeepAlive` facilities are a
-candidate. Resolve the actual caret version and features from current workspace
-and upstream documentation in EP-M1. `rstest`, `rstest-bdd`, `googletest`,
-`pretty_assertions`, `insta`, and `proptest` are authorized test tools for the
-specified cases. All six are already workspace dependencies; add to the
-`repovec-mcpd` manifest only what the tests require.
+`rstest`, `rstest-bdd`, `googletest`, `pretty_assertions`, `insta`, and
+`proptest` are authorized test tools for the specified cases. All six are
+already workspace dependencies; add to the `repovec-mcpd` manifest only what
+the tests require.
 
 ## Revision note
 
 Initial draft (2026-10-20): added the approved-scope candidate, versioned
 transport contract, verification sketch, test-first milestones, and explicit
-approval gate. Expert review revisions corrected the green milestone rule, made
-resource and lifecycle contracts concrete, and added mandatory operator
-documentation. No implementation has started; documentation gates, publication,
-and user approval remain.
+approval gate, pinned to MCP 2025-11-25.
 
 Revision (2026-11-18): rebased onto `main`, recorded the Cranelift exclusion
 and the newer repository rules, and added `make typecheck` to each milestone.
 
 Revision (2026-11-24): rebased onto `main` at `e8ed310`; renumbered the ADR to
-0003 under `docs/adrs/`; refreshed the repository baseline, dependency
-observations, test-fixture references, and constraints against the current
-tree. The blocker is unchanged: this plan and ADR 0003 await explicit approval,
-and no implementation has started.
+0003 under `docs/adrs/`; refreshed the repository baseline and observations.
+
+Revision (2026-11-26): reopened the architectural decision on the user's
+review. Replaced the 2025-11-25 pin with a 2026-07-28 stateless foundation and
+stateless legacy compatibility; replaced the adapter comparison with
+verification of RMCP; removed GET streams, the replay gap, and work that
+outlives a disconnect; moved request limits and cancellation propagation to
+item 4.1.2; and aligned the plan with ADR 0004 and the revised roadmap. The
+blocker is unchanged in kind: this plan, ADR 0003, and ADR 0004 await explicit
+approval, and no implementation has started.

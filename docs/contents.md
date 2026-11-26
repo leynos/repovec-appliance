@@ -20,7 +20,11 @@
   why every GitHub REST listing uses one crate-private, profile-driven, bounded
   traversal.
 - [ADR 0003: MCP transport baseline](adrs/adr-0003-mcp-transport-baseline.md):
-  proposed protocol version and security boundary for the HTTP transport.
+  proposed stateless protocol foundation, legacy compatibility, and security
+  boundary for the HTTP transport.
+- [ADR 0004: Terminate MCP and manage grepai backends](adrs/adr-0004-grepai-backend-bridge.md):
+  proposed separation of the protocol lifecycle from pooled grepai
+  subprocesses, with authorization of each tool call.
 - [Complexity antipatterns and refactoring strategies](complexity-antipatterns-and-refactoring-strategies.md):
   maintainability and refactoring reference for contributors working in the
   codebase.

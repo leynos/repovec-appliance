@@ -333,31 +333,35 @@ where
     if matched_files.is_empty() {
         DocsGatePlan::no_documentation_changes()
     } else {
-        let mut conservative_fallback_files = Vec::new();
-        let mut nixie_required = false;
+        let (conservative_fallback_files, nixie_required) =
+            scan_matched_files(&matched_files, &mut path_contains_mermaid);
+        DocsGatePlan::required(matched_files, conservative_fallback_files, nixie_required)
+    }
+}
 
-        for path in &matched_files {
-            if is_docs_tooling_config_path(path) {
-                nixie_required = true;
-                continue;
-            }
-
-            if !is_markdown_path(path) {
-                continue;
-            }
-
+/// Returns the Markdown files whose Mermaid content is unknown, and whether
+/// any matched file requires Mermaid validation.
+fn scan_matched_files<F>(
+    matched_files: &[String],
+    path_contains_mermaid: &mut F,
+) -> (Vec<String>, bool)
+where
+    F: FnMut(&str) -> MermaidDetection,
+{
+    let mut conservative_fallback_files = Vec::new();
+    let mut nixie_required = false;
+    for path in matched_files {
+        if is_docs_tooling_config_path(path) {
+            nixie_required = true;
+        } else if is_markdown_path(path) {
             let detection = path_contains_mermaid(path);
             if detection.is_unknown() {
                 conservative_fallback_files.push(path.clone());
             }
-
-            if detection.requires_nixie() {
-                nixie_required = true;
-            }
+            nixie_required |= detection.requires_nixie();
         }
-
-        DocsGatePlan::required(matched_files, conservative_fallback_files, nixie_required)
     }
+    (conservative_fallback_files, nixie_required)
 }
 
 fn normalize_path(path: &str) -> Option<String> {

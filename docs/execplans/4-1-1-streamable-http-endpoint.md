@@ -6,7 +6,8 @@ This ExecPlan is a living document. Its `Constraints`,
 `Conformance basis`, and `Verification plan` must be updated as the work
 proceeds.
 
-Status: DRAFT — awaiting explicit approval before implementation.
+Status: APPROVED — design decisions accepted on 2026-11-26; implementation not
+started.
 
 ## Purpose / big picture
 
@@ -25,7 +26,7 @@ RMCP, the official Rust Software Development Kit (SDK).
 
 The endpoint remains closed to real MCP work in the shipped composition until
 authentication, Origin policy, and a real backend are wired by their owning
-roadmap items. Approval of this plan must explicitly accept the decisions in
+roadmap items. The user accepted, on 2026-11-26, the decisions in
 [`docs/adrs/adr-0003-mcp-transport-baseline.md`](../adrs/adr-0003-mcp-transport-baseline.md)
 and the direction in
 [`docs/adrs/adr-0004-grepai-backend-bridge.md`](../adrs/adr-0004-grepai-backend-bridge.md).
@@ -179,10 +180,12 @@ review of 2026-11-26 found that no RepoVec capability needs those mechanisms.
   2026-07-28 revision, client support, RMCP, and grepai through Firecrawl.
   Rewrite ADR 0003, add ADR 0004, and revise the technical design, the roadmap,
   and this plan around a stateless foundation.
-- [ ] Receive explicit user approval of this plan and ADR 0003, including the
-  stateless foundation, RMCP, legacy cancellation on disconnect, and the
-  fail-closed delivery boundary.
-- [ ] After approval only: implement milestones EP-M1 through EP-M4 and keep
+- [x] (2026-11-26) Receive the user's acceptance of the recommendations: the
+  stateless foundation, RMCP, legacy cancellation on disconnect, the
+  fail-closed delivery boundary, tools-only capabilities, the move of request
+  limits to 4.1.2, tokens on every request, and the tool allowlist. ADR 0003
+  and ADR 0004 are now Accepted.
+- [ ] Implement milestones EP-M1 through EP-M4 and keep
   this plan current at each stopping point.
 
 ## Surprises & discoveries
@@ -284,8 +287,8 @@ review of 2026-11-26 found that no RepoVec capability needs those mechanisms.
   Streamable HTTP revisions statelessly on the same endpoint. **Rationale:**
   The newer revision keeps every capability RepoVec uses and removes mechanisms
   it does not need; the versioning specification defines dual-era servers; and
-  legacy clients remain in use. This is a proposal until the user approves ADR
-  0003. **Date/author:** 2026-11-26, planning agent, on the user's review.
+  legacy clients remain in use. The user accepted this on 2026-11-26.
+  **Date/author:** 2026-11-26, planning agent, on the user's review.
 - **Decision:** Use RMCP's Streamable HTTP service on Axum, subject to the
   EP-M1 checks. **Rationale:** RMCP 3.11.0 documents both protocol eras,
   stateless serving, body limits, and Host and Origin validation. Writing the
@@ -295,8 +298,8 @@ review of 2026-11-26 found that no RepoVec capability needs those mechanisms.
   **Rationale:** 2026-07-28 requires it. For legacy clients, 2025-11-25 says a
   disconnect should not be read as cancellation, but without replay the result
   cannot be delivered, and every tool is a read-only query. The deviation is
-  recorded in ADR 0003 for approval. **Date/author:** 2026-11-26, planning
-  agent.
+  recorded in ADR 0003 and was accepted on 2026-11-26. **Date/author:**
+  2026-11-26, planning agent.
 - **Decision:** Move admission limits, ownership evidence, and cancellation
   propagation to roadmap item 4.1.2. **Rationale:** With sessions gone, 4.1.2
   was redefined as request ownership, admission, and cancellation. Keeping
@@ -404,10 +407,10 @@ Protocol and library references, checked through Firecrawl on 2026-11-26:
   explicitly out of scope.
 - `docs/repovec-appliance-technical-design.md`, “MCP transport and security
   invariants” and “Bridging to grepai MCP tools”.
-- `docs/adrs/adr-0003-mcp-transport-baseline.md`, proposed decision: modern
+- `docs/adrs/adr-0003-mcp-transport-baseline.md`, accepted decision: modern
   stateless foundation, stateless legacy compatibility, RMCP, and a fail-closed
   shipping composition.
-- `docs/adrs/adr-0004-grepai-backend-bridge.md`, proposed direction, for the
+- `docs/adrs/adr-0004-grepai-backend-bridge.md`, accepted decision, for the
   shape of the backend port only.
 - Repository baseline: `e8ed31007f784742620c8a73959c998964fae871`, inspected
   on 2026-11-24. This identifies the inspected source tree, not a specification
@@ -677,8 +680,7 @@ above. **Compatibility decision:** none.
 
 ## Concrete steps
 
-Run repository commands from the root of the candidate worktree. Do not start
-implementation commands before this plan is explicitly approved. Delegate gates
+Run repository commands from the root of the candidate worktree. Delegate gates
 to the `scrutineer` agent, the exclusive full-gate runner for this candidate.
 Run formatting before format checks, lint, and tests; never overlap gates. At
 each major implementation milestone, run the four project code gates
@@ -823,5 +825,5 @@ stateless legacy compatibility; replaced the adapter comparison with
 verification of RMCP; removed GET streams, the replay gap, and work that
 outlives a disconnect; moved request limits and cancellation propagation to
 item 4.1.2; and aligned the plan with ADR 0004 and the revised roadmap. The
-blocker is unchanged in kind: this plan, ADR 0003, and ADR 0004 await explicit
-approval, and no implementation has started.
+user accepted the recommendations the same day, so ADR 0003 and ADR 0004 are
+Accepted and the plan is approved. No implementation has started.

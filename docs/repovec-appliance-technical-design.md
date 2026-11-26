@@ -342,12 +342,12 @@ add/remove projects and start/stop corresponding indexers.
 
 ### MCP transport and security invariants
 
-The proposed
 [ADR 0003: MCP transport baseline](adrs/adr-0003-mcp-transport-baseline.md)
 records the evidence for a stateless protocol foundation and the bounded
 delivery of roadmap item 4.1.1. Its
-[execution plan](execplans/4-1-1-streamable-http-endpoint.md) awaits approval;
-the following describes the target architecture, not a shipped endpoint.
+[execution plan](execplans/4-1-1-streamable-http-endpoint.md) has not yet been
+implemented; the following describes the target architecture, not a shipped
+endpoint.
 
 repovec-mcpd implements MCP Streamable HTTP transport because MCP defines
 Streamable HTTP as the standard remote transport. Its foundation is MCP
@@ -381,7 +381,7 @@ notifications.
 ### Bridging to grepai MCP tools
 
 grepai's built-in MCP server communicates via stdio and exposes the full grepai
-tool surface, including RPG graph tools. The proposed
+tool surface, including RPG graph tools.
 [ADR 0004: Terminate MCP and manage grepai backends](adrs/adr-0004-grepai-backend-bridge.md)
 separates the external protocol lifecycle from the backend process lifecycle:
 

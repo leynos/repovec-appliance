@@ -4,10 +4,13 @@ Renumbered from 002 on 2026-11-24 (duplicate number).
 
 ## Status
 
-Proposed. Approval of the linked execution plan is required before
-implementation. No transport implementation is authorized by this document.
+Accepted on 2026-11-26. `repovec-mcpd` adopts MCP 2026-07-28 Streamable HTTP as
+its stateless foundation, serves earlier Streamable HTTP revisions through
+`initialize` without sessions, uses RMCP subject to the verification milestone,
+treats a closed response stream as cancellation in both eras, and ships closed
+until authentication, Origin policy, and a backend exist.
 
-This revision replaces the first proposal, which pinned Model Context Protocol
+This decision replaces the first proposal, which pinned Model Context Protocol
 (MCP) revision 2025-11-25. That proposal was never accepted; it is retained
 below as Option A.
 
@@ -109,7 +112,7 @@ both eras.
 
 _Table 1: Trade-offs between the transport baseline options._
 
-## Proposed direction
+## Decision outcome
 
 Adopt Option C.
 
@@ -137,8 +140,8 @@ Adopt Option C.
   2026-07-28 requires. For legacy clients the same rule applies once a response
   can no longer be delivered. Revision 2025-11-25 says a disconnect should not
   be read as cancellation, but without replay the result is undeliverable, and
-  every RepoVec tool is a read-only query. This SHOULD-level deviation is part
-  of the approval request.
+  every RepoVec tool is a read-only query. This SHOULD-level deviation was
+  accepted with this ADR.
 - **Delivery boundary.** Keep the shipping composition closed to MCP work
   until authentication, Origin policy, and a real backend exist. A loopback
   listener that answers `503 Service Unavailable`, and test-only injected
@@ -160,12 +163,14 @@ deployment, API-token storage, Origin policy, or the grepai bridge.
 
 ## Migration plan
 
-1. Approve this ADR, [ADR 0004](adr-0004-grepai-backend-bridge.md), and the
+1. Follow the
    [Streamable HTTP execution plan](../execplans/4-1-1-streamable-http-endpoint.md).
+   This ADR and [ADR 0004](adr-0004-grepai-backend-bridge.md) were accepted on
+   2026-11-26.
 2. Run the plan's RMCP verification milestone, and record the verified crate
    version, features, and observed behaviour here.
 3. Deliver the endpoint behind the closed production composition.
-4. Update this ADR to Accepted when the baseline is approved. A later protocol
+4. A later protocol
    revision must update the roadmap, design, client documentation, and contract
    tests together.
 
@@ -189,12 +194,17 @@ deployment, API-token storage, Origin policy, or the grepai bridge.
 
 ## Outstanding decisions
 
-Approval must explicitly cover:
+None blocks implementation. The user accepted the following on 2026-11-26:
 
 - the modern stateless foundation with stateless legacy compatibility;
 - the choice of RMCP, subject to the verification milestone;
-- treating disconnect as cancellation for legacy clients; and
-- the fail-closed incremental delivery boundary.
+- treating disconnect as cancellation for legacy clients;
+- the fail-closed incremental delivery boundary;
+- advertising tools only; and
+- moving request limits and cancellation propagation to roadmap item 4.1.2.
+
+If RMCP fails the verification milestone, this ADR must be revisited before any
+alternative is built.
 
 ## Architectural rationale
 

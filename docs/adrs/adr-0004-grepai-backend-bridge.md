@@ -2,9 +2,12 @@
 
 ## Status
 
-Proposed. The pooling element depends on a feasibility spike against the pinned
-grepai binary, described under "Migration plan". No bridge implementation is
-authorized by this document.
+Accepted on 2026-11-26. `repovec-mcpd` terminates the external MCP protocol,
+acts as an MCP client of grepai, offers an allowlisted tool catalogue, and
+authorizes each tool call against the caller's scope. Pooling of grepai
+subprocesses is accepted as the intended design and remains gated on the
+feasibility spike described under "Migration plan"; one subprocess per request
+is the accepted fallback.
 
 ## Date
 
@@ -89,7 +92,7 @@ tool call before forwarding it.
 
 _Table 1: Trade-offs between the backend bridge options._
 
-## Proposed direction
+## Decision outcome
 
 Adopt Option C, with Option B as the fallback if the spike refutes pooling.
 

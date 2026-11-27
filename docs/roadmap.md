@@ -353,20 +353,30 @@ and branch.
 
 ### 4.1. MCP Streamable HTTP transport
 
-Objective: `repovec-mcpd` implements the MCP Streamable HTTP transport
-specification, handling sessions, origin validation, and authentication.
+Objective: `repovec-mcpd` implements the stateless MCP Streamable HTTP
+transport, handling request admission, origin validation, and authentication,
+and remains compatible with clients of earlier protocol revisions.
 
 - [ ] 4.1.1. Implement Streamable HTTP endpoint
-  - Implement a single HTTP endpoint supporting GET and POST as defined by
-    the MCP transport specification.
+  - Implement a single HTTP endpoint accepting POST as defined by the MCP
+    2026-07-28 transport specification, using the official Rust SDK (RMCP).
     See repovec-appliance-technical-design.md, "MCP transport and security
-    invariants".
+    invariants", and ADR 0003.
   - Support `application/json` single-response and `text/event-stream`
     SSE modes.
-- [ ] 4.1.2. Implement session management
-  - Generate and track `Mcp-Session-Id` headers.
-  - Map each session to a dedicated `grepai mcp-serve` subprocess.
-  - Clean up subprocesses on session termination or timeout.
+  - Answer `server/discover`, and serve clients of earlier Streamable HTTP
+    revisions through `initialize` without protocol sessions.
+  - Success criteria: GET and DELETE receive a 405 response, and no response
+    carries an `Mcp-Session-Id` header.
+- [ ] 4.1.2. Implement request ownership, admission, and cancellation
+  - Admit each request independently, and bound concurrent requests, request
+    body size, and request lifetime.
+  - Give each admitted request one owner, so a result reaches only the caller
+    that asked for it.
+  - Cancel the backend work of a request when its response stream closes or
+    the server shuts down.
+  - Success criteria: a request over the concurrency limit is refused without
+    reaching a backend, and a closed stream releases its capacity.
 - [ ] 4.1.3. Implement origin validation
   - Validate the `Origin` header against a configured allowlist.
   - Reject requests with absent or non-matching origins on browser-capable
@@ -375,25 +385,37 @@ specification, handling sessions, origin validation, and authentication.
 
 ### 4.2. grepai stdio bridge
 
-Objective: `repovec-mcpd` bridges Streamable HTTP JSON-RPC to grepai's
-stdio-based MCP server transparently.
+Objective: `repovec-mcpd` terminates the external MCP protocol and serves
+grepai's tools through managed `grepai mcp-serve` subprocesses, authorizing
+each call against the caller's corpus scope.
 
-- [ ] 4.2.1. Implement subprocess lifecycle management
-  - On `InitializeRequest`, spawn `grepai mcp-serve` with the correct
-    `HOME` environment variable (`/var/lib/repovec`).
+- [ ] 4.2.1. Implement managed subprocess lifecycle and pooling
+  - Begin with a feasibility spike against the pinned grepai binary, covering
+    concurrent requests, cancellation, and repeated queries on one
+    long-lived process; record the outcome in ADR 0004 before committing to
+    pooling.
+  - Connect to `grepai mcp-serve` as an MCP client over stdio, started with
+    the correct `HOME` environment variable (`/var/lib/repovec`).
     See repovec-appliance-technical-design.md, "Bridging to grepai MCP
     tools".
-  - Forward JSON-RPC messages to stdin (newline-delimited).
-  - Read responses from stdout and route them to the correct HTTP response.
-- [ ] 4.2.2. Implement transparent tool proxying
-  - Pass all tool calls through without interpretation so that grepai tool
-    additions are automatically available.
-  - Confirm the full grepai tool surface is accessible: `grepai_search`,
-    trace tools, `grepai_index_status`, and RPG graph tools.
-- [ ] 4.2.3. Handle subprocess failure and recovery
-  - Detect subprocess crashes and return an MCP error response to the
-    client.
-  - Allow session re-establishment after a subprocess failure.
+  - Own a bounded pool of subprocesses partitioned by security context, with
+    limits on pool size, idle lifetime, and start-up time.
+- [ ] 4.2.2. Implement protocol-aware tool proxying with corpus authorization
+  - Offer an allowlisted tool catalogue derived from grepai's own, covering
+    `grepai_search`, trace tools, `grepai_index_status`, and RPG graph tools.
+  - Refuse the `root` argument, and constrain `workspace` and project-selection
+    arguments to the caller's authorized scope.
+  - Forward results without reinterpretation, so grepai's search, trace, and
+    graph semantics are preserved.
+  - Success criteria: a call naming a path or project outside the caller's
+    scope is refused before it reaches grepai.
+- [ ] 4.2.3. Handle backend failure, recovery, and request isolation
+  - Detect subprocess crashes and unresponsive subprocesses, and return an
+    MCP error response to the affected callers only.
+  - Replace a failed subprocess so that later requests succeed without
+    client-side re-establishment.
+  - Success criteria: a failure in one request's subprocess does not fail or
+    delay requests served by another.
 
 ### 4.3. Token minting and revocation
 
@@ -411,8 +433,8 @@ access to the MCP endpoint.
     the hash.
   - Support scope assignment: read, search, trace, admin.
 - [ ] 4.3.3. Implement token validation and revocation
-  - Validate `Authorization: Bearer <token>` on all non-initialization
-    requests.
+  - Validate `Authorization: Bearer <token>` on every request, including
+    `server/discover` and the legacy `initialize` request.
   - Implement immediate revocation by setting `revoked_at`.
   - Update `last_used_at` on each successful authentication.
   - Success criteria: a revoked token is rejected on the next request.

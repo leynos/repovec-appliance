@@ -146,6 +146,8 @@ jobs:
         with:
           python-version: '3.13'
           enable-cache: true
+      - name: Install the YAML lint tools
+        uses: leynos/shared-actions/.github/actions/install-yaml-lint@bd052c68a4792e92c3272fb1b6ea3b594f3ab7f3
       - name: Lint
         run: make lint
       - name: Install mdtablefix for workflow contracts

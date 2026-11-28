@@ -79,6 +79,7 @@ Run via ``make test-workflow-contracts``.
 from __future__ import annotations
 
 import pytest
+from registry_comparison import registry_mismatches
 
 from ci_runner_placement_support import (
     DELEGATED_JOBS,
@@ -280,18 +281,20 @@ def test_a_reusable_caller_declares_no_runner(
 def test_the_actionlint_registry_matches_the_labels_in_use() -> None:
     """Scenario: the registry and the workflows drift apart.
 
-    Invariant: the registered labels are exactly the non-GitHub-hosted
-    labels in use, compared in both directions. An unregistered label makes
-    actionlint report a lane nobody broke; a registered label no lane uses
-    is worse, because it silently permits a runner family nobody
-    reviewed for whatever lane adopts it next.
+    Invariant: every non-GitHub-hosted label in use is covered by an entry,
+    and every entry (an exact label or a trailing ``*``, as the estate's
+    ``ubicloud-*``) covers a label in use, compared in both directions. An
+    unregistered label makes actionlint report a lane nobody broke; an entry
+    no lane uses is worse, because it silently permits a runner family
+    nobody reviewed for whatever lane adopts it next.
     """
     needing_registration = _labels_in_use() - set(GITHUB_HOSTED_LABELS)
-    registered = _registered_labels()
-    assert registered == needing_registration, (
-        "the actionlint runner registry must hold exactly the labels in use; "
-        f"unregistered {sorted(needing_registration - registered)} and stale "
-        f"{sorted(registered - needing_registration)}"
+    unregistered, stale = registry_mismatches(
+        _registered_labels(), needing_registration
+    )
+    assert not unregistered and not stale, (
+        "the actionlint runner registry must cover the labels in use and no "
+        f"others; unregistered {unregistered} and stale {stale}"
     )
 
 

@@ -437,12 +437,13 @@ are thin callers of reusable workflows, so this repository declares no runner
 for them; scheduled and administrative lanes also keep free public-repository
 minutes on GitHub-hosted runners.
 
-`.github/actionlint.yaml` registers both Ubicloud labels, because actionlint
-validates `runs-on` against GitHub's own label set and would otherwise report
-every migrated lane as an unknown runner. The contract compares the registry
-against the labels in use in both directions, so adding a shape without
-registering it fails, and so does leaving a registered shape behind after a
-lane stops using it.
+`.github/actionlint.yaml` registers the Ubicloud labels with the estate's
+`ubicloud-*` entry, because actionlint validates `runs-on` against GitHub's own
+label set and would otherwise report every migrated lane as an unknown runner.
+An entry is an exact label or ends in `*`. The contract compares the registry
+against the labels in use in both directions, so a label no entry covers fails,
+and so does an entry that covers no label in use; a wildcard stays in use while
+any label matches it.
 
 #### Why the lanes moved
 
@@ -1714,3 +1715,25 @@ formal model would restate the implementation instead of proving the deployed
 composition. Revisit a Verus or Kani milestone only if a pure policy kernel
 with nontrivial arithmetic or invariants is introduced here, such as a
 reconciliation planner.
+
+## YAML lint
+
+`make lint` runs `make yamllint` and `make actionlint` as prerequisites.
+`make yamllint` runs `yamllint --strict` over every tracked `.yml` and `.yaml`
+file, reading `.yamllint.yml`, which extends the estate base
+`.yamllint-estate.yml` (a verbatim copy of the estate canon; do not edit it).
+The base ignores Helm chart templates (`**/charts/**/templates/`), so a tracked
+file there is passed to yamllint but not checked, and a local `ignore` in
+`.yamllint.yml` replaces that entry rather than adding to it. Run it from the
+repository root, because yamllint resolves `extends` against the current
+directory. `make actionlint` checks the GitHub Actions workflows, accepting the
+runner labels in `.github/actionlint.yaml`, and runs ShellCheck over their Bash
+and `sh` `run:` scripts when it is on `PATH` (it skips PowerShell steps).
+
+Install the tools locally at the versions CI uses:
+`uv tool install yamllint==1.38.0`, and the `actionlint` 1.7.12 and
+`shellcheck` 0.11.0 release binaries (a package manager's builds can differ and
+change what the lint reports). CI installs the same pinned versions with the
+`install-yaml-lint` action of `leynos/shared-actions` before it runs
+`make lint`. The `YAMLLINT` and `ACTIONLINT` variables name the commands when
+they are not on `PATH`.
